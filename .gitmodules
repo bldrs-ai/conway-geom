@@ -1,0 +1,15 @@
+[submodule "external/tinynurbs"]
+	path = external/tinynurbs
+	url = https://github.com/nickcastel50/tinynurbs.git
+[submodule "external/TinyCppTest"]
+	path = external/TinyCppTest
+	url = https://github.com/nickcastel50/TinyCppTest.git
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/nickcastel50/glm.git
+[submodule "external/earcut.hpp"]
+	path = external/earcut.hpp
+	url = https://github.com/nickcastel50/earcut.hpp
+[submodule "external/manifold"]
+	path = external/manifold
+	url = https://github.com/nickcastel50/manifold.git
