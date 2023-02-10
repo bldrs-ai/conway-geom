@@ -1,7 +1,13 @@
 #!/bin/sh
 
 #add path to emsdk environment below
-source /Users/soar/Documents/GitHub/emsdk/emsdk_env.sh
+envPath=$EMSDK
+
+envPath+='/emsdk_env.sh'
+
+echo ${envPath}
+
+source ${envPath}
 ./macos_genie/genie gmake
 
 if [ "$1" != "" ];
