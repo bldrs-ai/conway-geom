@@ -1,7 +1,11 @@
 @echo off
 
-rem add path to emsdk environment below
-call D:\emsdk\emsdk_env.bat
+set EMSDKPATH=%EMSDK%
+set FILENAME="\emsdk_env.bat"
+
+rem Combine two paths
+set COMBINED="%EMSDK:"=%\%FILENAME:"=%"
+call %COMBINED%
 call windows_genie\genie gmake
 
 if "%1" NEQ "" (
