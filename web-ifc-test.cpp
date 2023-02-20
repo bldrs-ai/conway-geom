@@ -398,7 +398,12 @@ int main()
     // return 0;
 
     //std::string content = ReadFile(L"C:/Users/qmoya/Desktop/PROGRAMES/VSCODE/IFC.JS/issues/#83 processing/05111002_IFCR2_Geo_Columns_1.ifc");
+    
+    //from outside debugger 
     std::string content = ReadFile("../../../index.ifc");
+    
+    //from inside debugger 
+    //std::string content = ReadFile("index.ifc");
 
     webifc::LoaderSettings set;
     set.COORDINATE_TO_ORIGIN = true;
