@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "include/web-ifc.h"
+//#include "include/conway-geometry.h"
 #include "include/web-ifc-geometry.h"
 #include "include/math/triangulate-with-boundaries.h"
 #include "include/ifc-schema.h"
@@ -397,7 +398,7 @@ int main()
     // return 0;
 
     //std::string content = ReadFile(L"C:/Users/qmoya/Desktop/PROGRAMES/VSCODE/IFC.JS/issues/#83 processing/05111002_IFCR2_Geo_Columns_1.ifc");
-    std::string content = ReadFile("C:/Users/qmoya/Desktop/PROGRAMES/VSCODE/IFC.JS/issues/#295/cylinders.ifc");
+    std::string content = ReadFile("../../../index.ifc");
 
     webifc::LoaderSettings set;
     set.COORDINATE_TO_ORIGIN = true;
