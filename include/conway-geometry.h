@@ -506,5 +506,294 @@ namespace webifc
                 glm::dvec4(Axis3 * scale3, 0),
                 glm::dvec4(pos, 1));
         }
+
+		//case ifc::IFCCONNECTEDFACESET:
+		//case ifc::IFCCLOSEDSHELL:
+		//case ifc::IFCOPENSHELL:
+		//These cases are handled by getBrep()
+		struct ParamsGetBrep
+        {
+            size_t numFaces;
+            uint32_t* indices;
+        };
+
+		Geometry getBrep(ParamsGetBrep parameters)
+		{
+
+		}
+
+		//case ifc::IFCPOLYLOOP:
+		struct ParamsGetPolyLoop {
+			size_t numPoints;
+			glm::dvec3* points;
+		};
+
+		IfcCurve3D GetPolyLoop(ParamsGetPolyLoop parameters)
+		{
+			IfcCurve3D curve;
+
+			if (parameters.numPoints > 0)
+			{
+				curve.points.reserve(parameters.numPoints);
+
+				glm::dvec3 prevPoint = parameters.points[0];
+
+				curve.points.push_back(prevPoint);
+
+				for (size_t index = 1; index < parameters.numPoints; index++)
+				{
+					glm::dvec3 currentPoint = parameters.points[index];
+					//trim repeats 
+					if (currentPoint.x != prevPoint.x && currentPoint.y != prevPoint.y && currentPoint.z != prevPoint.z)
+					{
+						curve.points.push_back(parameters.points[index]);
+					}
+
+					prevPoint = currentPoint;
+				}
+			}
+
+			return curve;
+		}
+
+		bool notPresent(glm::dvec3 pt, std::vector<glm::dvec3> points)
+		{
+			for (auto &pt2 : points)
+			{
+				if (pt.x == pt2.x && pt.y == pt2.y && pt.z == pt2.z)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		//case ifc::IFCEDGELOOP:
+		/*IfcCurve3D GetEdgeLoop()
+		{
+			_loader.MoveToArgumentOffset(line, 0);
+				auto edges = _loader.GetSetArgument();
+				int id = 0;
+
+				for (auto &token : edges)
+				{
+					uint32_t edgeId = _loader.GetRefArgument(token);
+					IfcCurve<3> edgeCurve = GetOrientedEdge(edgeId);
+
+					// Important not to repeat the last point otherwise triangulation fails
+					// if the list has zero points this is initial, no repetition is possible, otherwise we must check
+					if (curve.points.size() == 0)
+					{
+						for (auto &pt : edgeCurve.points)
+						{
+							curve.points.push_back(pt);
+							curve.indices.push_back(id);
+						}
+					}
+					else
+					{
+						for (auto &pt : edgeCurve.points)
+						{
+							if (notPresent(pt, curve.points))
+							{
+								curve.points.push_back(pt);
+								curve.indices.push_back(id);
+							}
+						}
+					}
+					id++;
+				}
+
+				return curve;
+		}*/
+
+		//case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
+		//case ifc::IFCINDEXEDPOLYGONALFACE:
+		struct ParamsReadIndexedPolygonalFace {
+			size_t numPoints;
+			size_t numIndices;
+			bool indexedPolygonalFaceWithVoids;
+			glm::dvec3* points;
+			uint32_t* indices;
+		};
+
+
+		std::vector<IfcBound3D> ReadIndexedPolygonalFace(ParamsReadIndexedPolygonalFace parameters)
+		{
+			std::vector<IfcBound3D> bounds;
+			bounds.emplace_back();
+
+			for (size_t index = 0; index < parameters.numIndices; index++)
+			{
+				uint32_t currentIndex = parameters.indices[index];
+
+				glm::dvec3 point = parameters.points[currentIndex - 1];
+
+				// I am not proud of this (I inherited this - NC)
+				bounds.back().curve.points.push_back(point);
+
+			}
+
+			if (!parameters.indexedPolygonalFaceWithVoids)
+			{
+				return bounds;
+			}
+
+
+			//TODO: // handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
+
+
+		}
+
+		void TriangulateBounds(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds)
+		{
+			if (bounds.size() == 1 && bounds[0].curve.points.size() == 3)
+			{
+				auto c = bounds[0].curve;
+
+				size_t offset = geometry.numPoints;
+
+				geometry.AddFace(c.points[0], c.points[1], c.points[2]);
+			}
+			else if (bounds.size() > 0 && bounds[0].curve.points.size() >= 3)
+			{
+				// bound greater than 4 vertices or with holes, triangulate
+				// TODO: modify to use glm::dvec2 with custom accessors
+				using Point = std::array<double, 2>;
+				std::vector<std::vector<Point>> polygon;
+
+				uint32_t offset = geometry.numPoints;
+
+				// if more than one bound
+				if (bounds.size() > 1)
+				{
+					// locate the outer bound index
+					int outerIndex = -1;
+					for (int i = 0; i < bounds.size(); i++)
+					{
+						if (bounds[i].type == IfcBoundType::OUTERBOUND)
+						{
+							outerIndex = i;
+							break;
+						}
+					}
+
+					if (outerIndex == -1)
+					{
+						printf("Expected outer bound!\n");
+					}
+					else
+					{
+						// swap the outer bound to the first position
+						std::swap(bounds[0], bounds[outerIndex]);
+					}
+				}
+
+				// if the first bound is not an outer bound now, this is unexpected
+				if (bounds[0].type != IfcBoundType::OUTERBOUND)
+				{
+					printf("Expected outer bound first!\n");
+				}
+
+				glm::dvec3 v1, v2, v3;
+				if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3))
+				{
+					// these points are on a line
+					printf("No basis found for brep!\n");
+					return;
+				}
+
+				glm::dvec3 v12(glm::normalize(v3 - v2));
+				glm::dvec3 v13(glm::normalize(v1 - v2));
+				glm::dvec3 n = glm::normalize(glm::cross(v12, v13));
+				v12 = glm::cross(v13, n);
+
+				// check winding of outer bound
+				IfcCurve<2> test;
+				for (int i = 0; i < bounds[0].curve.points.size(); i++)
+				{
+					glm::dvec3 pt = bounds[0].curve.points[i];
+					glm::dvec3 pt2 = pt - v1;
+
+					glm::dvec2 proj(
+						glm::dot(pt2, v12),
+						glm::dot(pt2, v13));
+
+					test.Add(proj);
+				}
+
+				// if the outer bound is clockwise under the current projection (v12,v13,n), we invert the projection
+				if (!test.IsCCW())
+				{
+					n *= -1;
+					std::swap(v12, v13);
+				}
+
+				for (auto &bound : bounds)
+				{
+					std::vector<Point> points;
+					for (int i = 0; i < bound.curve.points.size(); i++)
+					{
+						glm::dvec3 pt = bound.curve.points[i];
+						geometry.AddPoint(pt, n);
+
+						// project pt onto plane of curve to obtain 2d coords
+						glm::dvec3 pt2 = pt - v1;
+
+						glm::dvec2 proj(
+							glm::dot(pt2, v12),
+							glm::dot(pt2, v13));
+
+						points.push_back({proj.x, proj.y});
+					}
+
+					polygon.push_back(points);
+				}
+
+				std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+				for (int i = 0; i < indices.size(); i += 3)
+				{
+					geometry.AddFace(offset + indices[i + 0], offset + indices[i + 1], offset + indices[i + 2]);
+				}
+			}
+			else
+			{
+				printf("bad bound\n");
+			}
+		}
+
+		//case ifc::IFCPOLYGONALFACESET:
+		struct ParamsPolygonalFaceSet {
+			uint32_t indicesPerFace;
+			size_t numPoints;
+			size_t numIndices;
+			bool indexedPolygonalFaceWithVoids;
+			glm::dvec3* points;
+			uint32_t* indices;
+		};
+		Geometry getPolygonalFaceSetGeometry(ParamsPolygonalFaceSet parameters)
+		{
+			Geometry geom;
+			std::vector<IfcBound3D> bounds;
+
+			ParamsReadIndexedPolygonalFace readIndexedPolygonalFaceParameters;
+			readIndexedPolygonalFaceParameters.numIndices = parameters.indicesPerFace;
+			readIndexedPolygonalFaceParameters.indexedPolygonalFaceWithVoids = parameters.indexedPolygonalFaceWithVoids;
+			readIndexedPolygonalFaceParameters.points = parameters.points;
+
+			for (size_t faceIndex = 0; faceIndex < parameters.numIndices / parameters.indicesPerFace; faceIndex++)
+			{
+				readIndexedPolygonalFaceParameters.indices = &parameters.indices[faceIndex * parameters.indicesPerFace];
+				bounds = ReadIndexedPolygonalFace(readIndexedPolygonalFaceParameters);
+
+				TriangulateBounds(geom, bounds);
+
+				bounds.clear();
+			}
+
+			return geom;
+		}
+
     };
 }

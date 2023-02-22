@@ -405,6 +405,8 @@ int main()
     //from inside debugger 
     //std::string content = ReadFile("index.ifc");
 
+    std::cout << "Tracing IFC Schema for input file...\n";
+
     webifc::LoaderSettings set;
     set.COORDINATE_TO_ORIGIN = true;
     set.DUMP_CSG_MESHES = false;
