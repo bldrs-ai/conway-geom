@@ -337,6 +337,153 @@ namespace webifc
 
         private:
 
+		//case ifc::IFCPLANE:
+		//case ifc::IFCBSPLINESURFACE:
+		//case ifc::IFCBSPLINESURFACEWITHKNOTS:
+		//case ifc::IFCRATIONALBSPLINESURFACEWITHKNOTS:
+		struct ParamsGetSurface 
+		{
+			bool isPlane;
+			glm::dmat4 transformation;
+			bool isBsplineSurface;
+			double Udegree;
+			double Vdegree;
+			//TODO: How do we pass these across? 
+			std::vector<std::vector<glm::vec<3, glm::f64>>> ctrolPts;
+			std::string curveType;
+			std::string closedU;
+			std::string closedV;
+			std::string selfIntersect;
+			bool isBsplineSurfaceWithKnots;
+			std::vector<glm::f64> UMultiplicity;
+			std::vector<glm::f64> VMultiplicity;
+			std::vector<glm::f64> UKnots;
+			std::vector<glm::f64> VKnots;
+			bool isRationalBsplineSurfaceWithKnots;
+			std::vector<std::vector<glm::f64>> weightPts;
+			bool isCylindricalSurface;
+			double radius;
+			bool isSurfaceOfRevolution;
+			glm::dmat4 revolutionDirection;
+			IfcProfile3D revolutionProfile;
+			bool includeTransformation;
+			bool isSurfaceOfLinearExtrusion;
+			glm::dvec3 extrusionDirection;
+			IfcProfile extrusionProfile;
+			bool customLength;
+			double length;
+		};
+		IfcSurface GetSurface(ParamsGetSurface parameters)
+		{
+			if (parameters.isPlane)
+			{
+				IfcSurface surface;
+
+				surface.transformation = parameters.transformation;
+
+				return surface;
+			}
+			else if ( parameters.isBsplineSurface )
+			{
+				IfcSurface surface;
+
+				surface.BSplineSurface.Active = true;
+				surface.BSplineSurface.UDegree = parameters.Udegree;
+				surface.BSplineSurface.VDegree = parameters.Vdegree;
+				surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
+				surface.BSplineSurface.ClosedU = parameters.closedU;
+				surface.BSplineSurface.ClosedV = parameters.closedV;
+				surface.BSplineSurface.CurveType = parameters.curveType;
+
+				//TODO: Old implementation wasn't returning a surface for this case.
+				return surface;
+			}
+			else if (parameters.isBsplineSurfaceWithKnots || parameters.isRationalBsplineSurfaceWithKnots)
+			{
+				IfcSurface surface;
+
+				if (parameters.UKnots[parameters.UKnots.size() - 1] != (int)parameters.UKnots[parameters.UKnots.size() - 1])
+				{
+					for (uint32_t i = 0; i < parameters.UKnots.size(); i++)
+					{
+						parameters.UKnots[i] = parameters.UKnots[i] * (parameters.UKnots.size() - 1) / parameters.UKnots[parameters.UKnots.size() - 1];
+					}
+				}
+
+				if (parameters.VKnots[parameters.VKnots.size() - 1] != (int)parameters.VKnots[parameters.VKnots.size() - 1])
+				{
+					for (uint32_t i = 0; i < parameters.VKnots.size(); i++)
+					{
+						parameters.VKnots[i] = parameters.VKnots[i] * (parameters.VKnots.size() - 1) / parameters.VKnots[parameters.VKnots.size() - 1];
+					}
+				}
+
+				surface.BSplineSurface.Active = true;
+				surface.BSplineSurface.UDegree = parameters.Udegree;
+				surface.BSplineSurface.VDegree = parameters.Vdegree;
+				surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
+				surface.BSplineSurface.UMultiplicity = parameters.UMultiplicity;
+				surface.BSplineSurface.VMultiplicity = parameters.VMultiplicity;
+				surface.BSplineSurface.UKnots = parameters.UKnots;
+				surface.BSplineSurface.VKnots = parameters.VKnots;
+
+				if ( parameters.isRationalBsplineSurfaceWithKnots )
+				{
+					surface.BSplineSurface.WeightPoints = parameters.weightPts;
+				}
+
+				return surface;
+			}
+			else if (parameters.isCylindricalSurface)
+			{
+				IfcSurface surface;
+
+				surface.transformation = parameters.transformation;
+				surface.CylinderSurface.Active = true;
+				surface.CylinderSurface.Radius = parameters.radius;
+
+				return surface;
+			}
+			else if ( parameters.isSurfaceOfRevolution )
+			{
+				IfcSurface surface;
+
+				if (parameters.includeTransformation)
+				{
+					surface.transformation = parameters.transformation;
+				}
+
+				surface.RevolutionSurface.Active = true;
+				surface.RevolutionSurface.Direction = parameters.revolutionDirection;
+				surface.RevolutionSurface.Profile = parameters.revolutionProfile;
+
+				return surface;
+			}
+			else if (parameters.isSurfaceOfLinearExtrusion)
+			{
+				IfcSurface surface;
+
+				glm::dvec3 direction = parameters.extrusionDirection;
+
+				double length = 0;
+				if (parameters.customLength)
+				{
+					length = parameters.length;
+				}
+
+				surface.ExtrusionSurface.Active = true;
+				surface.ExtrusionSurface.Length = length;
+				surface.ExtrusionSurface.Profile = parameters.extrusionProfile;
+				surface.ExtrusionSurface.Direction = direction;
+				surface.transformation = parameters.transformation;
+
+				return surface;
+			}
+
+			return IfcSurface();
+		}
+
+
 		//case ifc::IFCAXIS2PLACEMENT2D:
 		//case ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2D:
 		//case ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM:
@@ -422,6 +569,7 @@ namespace webifc
 			return glm::dmat3();
 		}
 
+		//case ifc::IFCPOLYLINE
 		template <uint32_t DIM>
 		void ComputePolylineCurve(IfcCurve<DIM> &curve, glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1)
 		{
@@ -439,12 +587,14 @@ namespace webifc
 			}
 		}
 
+		//case ifc::IFCCOMPOSITECURVE
 		template <uint32_t DIM>
 		void ComputeCompositeCurve(IfcCurve<DIM> &curve, glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1)
 		{
 			//todo: recursion 
 		}
 
+		//case ifc::IFCCOMPOSITECURVESEGMENT
 		template <uint32_t DIM>
 		void ComputeCompositeCurveSegment(IfcCurve<DIM> &curve, glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1)
 		{
@@ -469,8 +619,11 @@ namespace webifc
 			TrimmingSelect end;
 		};
 
+		//case ifc::IFCLINE
 		template <uint32_t DIM>
-		void ComputeCurveLine(IfcCurve<DIM> &curve, TrimmingArguments trim, int sameSense = -1)
+		void ComputeCurveLine(IfcCurve<DIM> &curve, 
+		TrimmingArguments trim, 
+		int sameSense = -1)
 		{
 			bool condition = sameSense == 1 || sameSense == -1;
 			if (edge)
@@ -540,8 +693,12 @@ namespace webifc
 			}
 		}
 
+		//case ifc::IFCTRIMMEDCURVE
 		template <uint32_t DIM>
-		void ComputeTrimmedCurve(IfcCurve<DIM> &curve, glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1)
+		void ComputeTrimmedCurve(IfcCurve<DIM> &curve, 
+		glm::vec<DIM, glm::f64> points, 
+		bool edge, 
+		int sameSense = -1)
 		{
 			//todo: recursion 
 		}
@@ -559,8 +716,15 @@ namespace webifc
 			uint32_t* indices;
 		};
 
+
+		//case ifc::IFCINDEXEDPOLYCURVE
 		template <uint32_t DIM>
-		void ComputeIndexedPolycurve(IfcCurve<DIM> &curve, std::vector<glm::dvec2> points, uint32_t numSegments, CurveSegmentIndex* segments, bool curveLineIndex, bool selfIntersects)
+		void ComputeIndexedPolycurve(IfcCurve<DIM> &curve, 
+		std::vector<glm::dvec2> points, 
+		uint32_t numSegments, 
+		CurveSegmentIndex* segments, 
+		bool curveLineIndex, 
+		bool selfIntersects)
 		{
 			if (selfIntersects)
 			{
@@ -596,9 +760,16 @@ namespace webifc
 			}
 		}
 
+		//case ifc::IFCCIRCLE
 		//TODO: Rework this parameter list, I really don't like it. Probably should split all 2D and 3D functions and get rid of the DIM template.
 		template <uint32_t DIM>
-		void ComputeCircleCurve(IfcCurve<DIM> &curve, glm::mat4 placementMat4, glm::mat3 placementMat3, double radius, bool selfIntersects, TrimmingArguments trim, int sameSense = -1)
+		void ComputeCircleCurve(IfcCurve<DIM> &curve, 
+		glm::mat4 placementMat4, 
+		glm::mat3 placementMat3, 
+		double radius, 
+		bool selfIntersects, 
+		TrimmingArguments trim, 
+		int sameSense = -1)
 		{
 			glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
 			if constexpr (DIM == 2)
@@ -722,9 +893,16 @@ namespace webifc
 			}
 		}
 
+		//case ifc::IFCELLIPSE
 		//TODO: Rework this parameter list, I really don't like it. Probably should split all 2D and 3D functions and get rid of the DIM template.
 		template <uint32_t DIM>
-		void ComputeEllipseCurve(IfcCurve<DIM> &curve, glm::mat4 placementMat4, glm::mat3 placementMat3, double radius1, double radius2, TrimmingArguments trim, int trimSense = -1)
+		void ComputeEllipseCurve(IfcCurve<DIM> &curve, 
+		glm::mat4 placementMat4, 
+		glm::mat3 placementMat3, 
+		double radius1, 
+		double radius2, 
+		TrimmingArguments trim, 
+		int trimSense = -1)
 		{
 			glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
 			if constexpr (DIM == 2)
@@ -852,33 +1030,16 @@ namespace webifc
 			}
 		}
 
-		/*struct ParamsComputeCurve 
-		{
-			//cases 
-			bool isPolyLine;
-			bool isCompositeCurve;
-			bool isCompositeCurveSegment;
-			bool isLine;
-			bool isTrimmedCurve;
-			bool isIndexedPolyCurve;
-			bool isCircle;
-			bool isEllipse;
-			bool isBsplineCurve;
-			bool isBsplineCurveWithKnots;
-			bool isRationalBsplineCurveWithKnots;
 
-
-			bool edge;
-			int sameSense = -1;
-			int trimSense = -1;
-			
-			//IfcCurve<DIM> &curve;
-		};
-		*/
-
+		//case ifc::IFCBSPLINECURVE
 		template <uint32_t DIM>
-		void ComputeBsplineCurve(IfcCurve<DIM> &curve, std::vector<glm::vec<DIM, glm::f64>> ctrolPts, std::vector<glm::f64> knots, 
-								 std::vector<glm::f64> weights, double degree, bool edge, int sameSense = -1)
+		void ComputeBsplineCurve(IfcCurve<DIM> &curve, 
+		std::vector<glm::vec<DIM, glm::f64>> ctrolPts, 
+		std::vector<glm::f64> knots, 
+		std::vector<glm::f64> weights, 
+		double degree,
+		bool edge, 
+		int sameSense = -1)
 		{
 			bool condition = sameSense == 0;
 			if (edge)
@@ -903,734 +1064,132 @@ namespace webifc
 			}
 		}
 
+		/*
+		* The IfcBSplineCurveWithKnots is a spline curve parameterized by spline functions for which the knot values are explicitly given.
+		* This is the type of b-spline curve for which the knot values are explicitly given. This subtype shall be used to represent non-uniform B-spline curves and may be used for other knot types.
+		* Let L denote the number of distinct values amongst the d+k+2 knots in the knot list; L will be referred to as the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
 
-		/*template <uint32_t DIM>
-		void ComputeCurve(uint32_t expressID, IfcCurve<DIM> &curve, bool edge, int sameSense = -1, int trimSense = -1, IfcTrimmingArguments trim = {})
+		* All knot multiplicities except the first and the last shall be in the range 1,...,d; the first and last may have a maximum value of d + 1. In evaluating the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a sequence u, u, u,; in the knot array.
+		* @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
+		* @param knotMultiplicities == The multiplicities of the knots. This list defines the number of times each knot in the knots list is to be repeated in constructing the knot array.
+		* @param distinctKnots == The list of distinct knots used to define the B-spline basis functions.
+		*/
+		//case ifc::IFCBSPLINECURVEWITHKNOTS
+		template <uint32_t DIM>
+		void ComputeBsplineCurveWithKnots(IfcCurve<DIM> &curve, 
+		std::vector<glm::vec<DIM, glm::f64>> ctrolPts, 
+		std::vector<glm::f64> knotMultiplicities,
+		std::vector<glm::f64> distinctKnots,
+		double degree,
+		bool edge,
+		int sameSense = -1)
 		{
-			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
-			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
-			switch (line.ifcType)
+			bool condition = sameSense == 0;
+			if (edge)
 			{
-			case ifc::IFCPOLYLINE:
-			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto points = _loader.GetSetArgument();
-
-				for (auto &token : points)
-				{
-					uint32_t pointId = _loader.GetRefArgument(token);
-					curve.Add(GetCartesianPoint<DIM>(pointId));
-				}
-
-				if (edge)
-				{
-					if (sameSense == 1 || sameSense == -1)
-					{
-						std::reverse(curve.points.begin(), curve.points.end());
-					}
-				}
-
-				break;
-			}
-			case ifc::IFCCOMPOSITECURVE:
-			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto segments = _loader.GetSetArgument();
-				auto selfIntersects = _loader.GetStringArgument();
-
-				if (selfIntersects == "T")
-				{
-					// TODO: this is probably bad news
-					_loader.ReportError({LoaderErrorType::UNSPECIFIED, "Self intersecting composite curve", line.expressID});
-				}
-
-				for (auto &token : segments)
-				{
-					if (DEBUG_DUMP_SVG)
-					{
-						if constexpr (DIM == 2)
-						{
-							DumpSVGCurve(curve.points, L"partial_curve.html");
-						}
-					}
-
-					uint32_t segmentId = _loader.GetRefArgument(token);
-
-					ComputeCurve<DIM>(segmentId, curve, edge, sameSense, trimSense);
-				}
-
-				break;
-			}
-			case ifc::IFCCOMPOSITECURVESEGMENT:
-			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto transition = _loader.GetStringArgument();
-				auto sameSenseS = _loader.GetStringArgument();
-				auto parentID = _loader.GetRefArgument();
-
-				bool sameSense = sameSenseS == "T";
-
-				ComputeCurve<DIM>(parentID, curve, edge, sameSense, trimSense);
-
-				break;
+				condition = !condition;
 			}
 
-			// TODO: review and simplify
-			case ifc::IFCLINE:
+			// The IfcBSplineCurveWithKnots is a spline curve parameterized by spline functions for which the knot values are explicitly given.
+			// This is the type of b-spline curve for which the knot values are explicitly given. This subtype shall be used to represent non-uniform B-spline curves and may be used for other knot types.
+			// Let L denote the number of distinct values amongst the d+k+2 knots in the knot list; L will be referred to as the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
+
+			// All knot multiplicities except the first and the last shall be in the range 1,...,d; the first and last may have a maximum value of d + 1. In evaluating the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a sequence u, u, u,; in the knot array.
+			std::vector<glm::f64> knots;
+			std::vector<glm::f64> weights;
+
+			for (int k = 0; k < distinctKnots.size(); k++)
 			{
-				bool condition = sameSense == 1 || sameSense == -1;
-				if (edge)
+				double knot = distinctKnots[k];
+				for (int i = 0; i < knotMultiplicities[k]; i++)
 				{
-					condition = !condition;
+					knots.push_back(knot);
 				}
-				if constexpr (DIM == 2)
-				{
-					if (trim.start.hasPos && trim.end.hasPos)
-					{
-
-						if (condition)
-						{
-							curve.Add(trim.start.pos);
-							curve.Add(trim.end.pos);
-						}
-						else
-						{
-							curve.Add(trim.end.pos);
-							curve.Add(trim.start.pos);
-						}
-					}
-					else if (trim.start.hasParam && trim.end.hasParam)
-					{
-						_loader.MoveToArgumentOffset(line, 0);
-						auto positionID = _loader.GetRefArgument();
-						auto vectorID = _loader.GetRefArgument();
-						glm::dvec3 placement = glm::dvec3(GetCartesianPoint2D(positionID), 0);
-						glm::dvec3 vector;
-						vector = GetVector(vectorID);
-
-						if (condition)
-						{
-							glm::dvec3 p1 = placement + vector * trim.start.param;
-							glm::dvec3 p2 = placement + vector * trim.end.param;
-							curve.Add(p1);
-							curve.Add(p2);
-						}
-						else
-						{
-							glm::dvec3 p2 = placement + vector * trim.start.param;
-							glm::dvec3 p1 = placement + vector * trim.end.param;
-							curve.Add(p1);
-							curve.Add(p2);
-						}
-					}
-					else
-					{
-						_loader.ReportError({LoaderErrorType::UNSUPPORTED_TYPE, "Unsupported trimmingselect IFCLINE", line.expressID, line.ifcType});
-					}
-				}
-				else if constexpr (DIM == 3)
-				{
-					if (trim.start.hasPos && trim.end.hasPos)
-					{
-						if (condition)
-						{
-							curve.Add(trim.start.pos3D);
-							curve.Add(trim.end.pos3D);
-						}
-						else
-						{
-							curve.Add(trim.end.pos3D);
-							curve.Add(trim.start.pos3D);
-						}
-					}
-					else
-					{
-						_loader.ReportError({LoaderErrorType::UNSUPPORTED_TYPE, "Unsupported trimmingselect IFCLINE", line.expressID, line.ifcType});
-					}
-				}
-
-				break;
 			}
-			case ifc::IFCTRIMMEDCURVE:
+
+			if (knots.size() != ctrolPts.size() + degree + 1)
 			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto basisCurveID = _loader.GetRefArgument();
-				auto trim1Set = _loader.GetSetArgument();
-				auto trim2Set = _loader.GetSetArgument();
-
-				auto senseAgreementS = _loader.GetStringArgument();
-				auto trimmingPreference = _loader.GetStringArgument();
-
-				auto trim1 = ParseTrimSelect(DIM, trim1Set);
-				auto trim2 = ParseTrimSelect(DIM, trim2Set);
-
-				IfcTrimmingArguments trim;
-
-				trim.exist = true;
-				trim.start = trim1;
-				trim.end = trim2;
-
-				bool senseAgreement = senseAgreementS == "T";
-
-				if (trimSense == 0)
-				{
-					senseAgreement = !senseAgreement;
-				}
-
-				ComputeCurve<DIM>(basisCurveID, curve, edge, sameSense, senseAgreement, trim);
-
-				break;
+				std::cout << "Error: Knots and control points do not match" << std::endl;
 			}
-			case ifc::IFCINDEXEDPOLYCURVE:
+
+			// build default weights vector
+			for (int i = 0; i < ctrolPts.size(); i++)
 			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto pts2DRef = _loader.GetRefArgument();
-
-				_loader.MoveToArgumentOffset(line, 2);
-
-				if (_loader.GetTokenType() != webifc::IfcTokenType::EMPTY)
-				{
-					_loader.Reverse();
-					auto selfIntersects = _loader.GetStringArgument();
-
-					if (selfIntersects == "T")
-					{
-						// TODO: this is probably bad news
-						_loader.ReportError({LoaderErrorType::UNSPECIFIED, "Self intersecting ifcindexedpolycurve", line.expressID});
-					}
-				}
-
-				if constexpr (DIM == 2)
-				{
-					_loader.MoveToArgumentOffset(line, 1);
-					if (_loader.GetTokenType() != webifc::IfcTokenType::EMPTY)
-					{
-						auto pnSegment = ReadCurveIndices();
-						for (auto &sg : pnSegment)
-						{
-							if (sg.type == "IFCLINEINDEX")
-							{
-								auto pts = ReadIfcCartesianPointList2D(pts2DRef);
-								for (auto &pt : sg.indexs)
-								{
-									curve.Add(pts[pt - 1]);
-								}
-							}
-							if (sg.type == "IFCARCINDEX")
-							{
-								auto pts = ReadIfcCartesianPointList2D(pts2DRef);
-								IfcCurve<2> arc = BuildArc3Pt(pts[sg.indexs[0] - 1], pts[sg.indexs[1] - 1], pts[sg.indexs[2] - 1]);
-								for (auto &pt : arc.points)
-								{
-									curve.Add(pt);
-								}
-							}
-						}
-					}
-					else
-					{
-						auto pts = ReadIfcCartesianPointList2D(pts2DRef);
-						for (auto &pt : pts)
-						{
-							curve.Add(pt);
-						}
-					}
-				}
-				else
-				{
-					_loader.ReportError({LoaderErrorType::UNSPECIFIED, "Parsing ifcindexedpolycurve in 3D is not possible", line.expressID});
-				}
-
-				break;
+				weights.push_back(1);
 			}
 
-			// TODO: review and simplify
-			case ifc::IFCCIRCLE:
+			std::vector<glm::vec<DIM, glm::f64>> tempPoints = GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
+			for (int i = 0; i < tempPoints.size(); i++)
 			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto positionID = _loader.GetRefArgument();
-				double radius = _loader.GetDoubleArgument();
-
-				glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
-				if constexpr (DIM == 2)
-				{
-					placement = GetAxis2Placement2D(positionID);
-				}
-				else
-				{
-					placement = GetLocalPlacement(positionID);
-				}
-
-				double startDegrees = 0;
-				double endDegrees = 360;
-
-				if (trim.exist)
-				{
-					if (trim.start.hasParam && trim.end.hasParam)
-					{
-						startDegrees = trim.start.param;
-						endDegrees = trim.end.param;
-					}
-					else if (trim.start.hasPos && trim.end.hasPos)
-					{
-						if constexpr (DIM == 2)
-						{
-							double xx = placement[2].x - trim.start.pos.x;
-							double yy = placement[2].y - trim.start.pos.y;
-							startDegrees = VectorToAngle(xx, yy);
-							xx = placement[2].x - trim.end.pos.x;
-							yy = placement[2].y - trim.end.pos.y;
-							endDegrees = VectorToAngle(xx, yy);
-						}
-						else if constexpr (DIM == 3)
-						{
-							glm::dvec4 vecX = placement[0];
-							glm::dvec4 vecY = placement[1];
-							glm::dvec4 vecZ = placement[2];
-
-							glm::dvec3 v1 = glm::dvec3(
-								trim.start.pos3D.x - placement[3].x,
-								trim.start.pos3D.y - placement[3].y,
-								trim.start.pos3D.z - placement[3].z);
-							glm::dvec3 v2 = glm::dvec3(
-								trim.end.pos3D.x - placement[3].x,
-								trim.end.pos3D.y - placement[3].y,
-								trim.end.pos3D.z - placement[3].z);
-
-							double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
-							double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-							double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
-
-							double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
-							double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-							double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
-
-							endDegrees = VectorToAngle(dxS, dyS) - 90;
-							startDegrees = VectorToAngle(dxE, dyE) - 90;
-						}
-					}
-				}
-
-				double startRad = startDegrees / 180 * CONST_PI;
-				double endRad = endDegrees / 180 * CONST_PI;
-				double lengthDegrees = endDegrees - startDegrees;
-
-				// unset or true
-				if (trimSense == 1 || trimSense == -1)
-				{
-					if (lengthDegrees < 0)
-					{
-						lengthDegrees += 360;
-					}
-				}
-				else
-				{
-					if (lengthDegrees > 0)
-					{
-						lengthDegrees -= 360;
-					}
-				}
-
-				double lengthRad = lengthDegrees / 180 * CONST_PI;
-
-				size_t startIndex = curve.points.size();
-
-				const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-
-				for (int i = 0; i < numSegments; i++)
-				{
-					double ratio = static_cast<double>(i) / (numSegments - 1);
-					double angle = startRad + ratio * lengthRad;
-
-					if (sameSense == 0)
-					{
-						angle = endRad - ratio * lengthRad;
-					}
-
-					glm::vec<DIM, glm::f64> pos;
-					if constexpr (DIM == 2)
-					{
-						glm::dvec2 vec(0);
-						vec[0] = radius * std::cos(angle);
-						vec[1] = -radius * std::sin(angle); // not sure why we need this, but we apparently do
-						pos = placement * glm::dvec3(vec, 1);
-					}
-					else
-					{
-						glm::dvec3 vec(0);
-						vec[0] = radius * std::cos(angle);
-						vec[1] = -radius * std::sin(angle); // negative or not???
-						pos = placement * glm::dvec4(glm::dvec3(vec), 1);
-					}
-					curve.Add(pos);
-				}
-
-				// without a trim, we close the circle
-				if (!trim.exist)
-				{
-					curve.Add(curve.points[startIndex]);
-				}
-
-				break;
+				curve.Add(tempPoints[i]);
 			}
 
-			// TODO: review and simplify
-			case ifc::IFCELLIPSE:
+			if (condition)
 			{
-				_loader.MoveToArgumentOffset(line, 0);
-				auto positionID = _loader.GetRefArgument();
-				double radius1 = _loader.GetDoubleArgument();
-				double radius2 = _loader.GetDoubleArgument();
-
-				glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
-				if constexpr (DIM == 2)
-				{
-					placement = GetAxis2Placement2D(positionID);
-				}
-				else
-				{
-					placement = GetLocalPlacement(positionID);
-				}
-
-				double startDegrees = 0;
-				double endDegrees = 360;
-
-				if (trim.exist)
-				{
-					if (trim.start.hasParam && trim.end.hasParam)
-					{
-						startDegrees = trim.start.param;
-						endDegrees = trim.end.param;
-					}
-					else if (trim.start.hasPos && trim.end.hasPos)
-					{
-						if constexpr (DIM == 2)
-						{
-							double xx = placement[2].x - trim.start.pos.x;
-							double yy = placement[2].y - trim.start.pos.y;
-							startDegrees = VectorToAngle(xx, yy);
-							xx = placement[2].x - trim.end.pos.x;
-							yy = placement[2].y - trim.end.pos.y;
-							endDegrees = VectorToAngle(xx, yy);
-						}
-						else if constexpr (DIM == 3)
-						{
-							glm::dvec4 vecX = placement[0];
-							glm::dvec4 vecY = placement[1];
-							glm::dvec4 vecZ = placement[2];
-
-							glm::dvec3 v1 = glm::dvec3(
-								trim.start.pos3D.x - placement[3].x,
-								trim.start.pos3D.y - placement[3].y,
-								trim.start.pos3D.z - placement[3].z);
-							glm::dvec3 v2 = glm::dvec3(
-								trim.end.pos3D.x - placement[3].x,
-								trim.end.pos3D.y - placement[3].y,
-								trim.end.pos3D.z - placement[3].z);
-
-							double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
-							double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-							double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
-
-							double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
-							double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-							double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
-
-							endDegrees = VectorToAngle(dxS, dyS) - 90;
-							startDegrees = VectorToAngle(dxE, dyE) - 90;
-						}
-					}
-				}
-
-				double startRad = startDegrees / 180 * CONST_PI;
-				double endRad = endDegrees / 180 * CONST_PI;
-
-				// TODO: Because this is an ellipse you need to correct the angles
-
-				// startRad = atan((radius1 / radius2) * tan(startDegrees));
-				// endRad = atan((radius1 / radius2) * tan(endDegrees));
-
-				double lengthDegrees = endDegrees - startDegrees;
-
-				// unset or true
-				if (trimSense == 1 || trimSense == -1)
-				{
-					if (lengthDegrees < 0)
-					{
-						lengthDegrees += 360;
-					}
-				}
-				else
-				{
-					if (lengthDegrees > 0)
-					{
-						lengthDegrees -= 360;
-					}
-				}
-
-				double lengthRad = lengthDegrees / 180 * CONST_PI;
-
-				size_t startIndex = curve.points.size();
-
-				const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-
-				for (int i = 0; i < numSegments; i++)
-				{
-					double ratio = static_cast<double>(i) / (numSegments - 1);
-					double angle = startRad + ratio * lengthRad;
-					if (sameSense == 0)
-					{
-						angle = endRad - ratio * lengthRad;
-					}
-					glm::vec<DIM, glm::f64> pos;
-					if constexpr (DIM == 2)
-					{
-						glm::dvec2 vec(0);
-						vec[0] = radius1 * std::cos(angle);
-						vec[1] = -radius2 * std::sin(angle);
-						pos = placement * glm::dvec3(vec, 1);
-					}
-					else
-					{
-						glm::dvec3 vec(0);
-						vec[0] = radius1 * std::cos(angle);
-						vec[1] = -radius2 * std::sin(angle); // negative or not???
-						pos = placement * glm::dvec4(glm::dvec3(vec), 1);
-					}
-					curve.Add(pos);
-				}
-
-				// without a trim, we close the circle
-				if (!trim.exist)
-				{
-					curve.Add(curve.points[startIndex]);
-				}
-
-				break;
+				std::reverse(curve.points.begin(), curve.points.end());
 			}
-			case ifc::IFCBSPLINECURVE:
+		}
+
+		/*
+		* The IfcBSplineCurveWithKnots is a spline curve parameterized by spline functions for which the knot values are explicitly given.
+		* This is the type of b-spline curve for which the knot values are explicitly given. This subtype shall be used to represent non-uniform B-spline curves and may be used for other knot types.
+		* Let L denote the number of distinct values amongst the d+k+2 knots in the knot list; L will be referred to as the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
+
+		* All knot multiplicities except the first and the last shall be in the range 1,...,d; the first and last may have a maximum value of d + 1. In evaluating the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a sequence u, u, u,; in the knot array.
+		* @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
+		* @param knotMultiplicities == The multiplicities of the knots. This list defines the number of times each knot in the knots list is to be repeated in constructing the knot array.
+		* @param distinctKnots == The list of distinct knots used to define the B-spline basis functions.
+		* @param weights == list double 
+		*/
+		//case ifc::IFCRATIONALBSPLINECURVEWITHKNOTS
+		template <uint32_t DIM>
+		void ComputeRationalBsplineCurveWithKnots(IfcCurve<DIM> &curve, 
+		std::vector<glm::vec<DIM, glm::f64>> ctrolPts, 
+		std::vector<glm::f64> knotMultiplicities,
+		std::vector<glm::f64> distinctKnots,
+		std::vector<glm::f64> weights,
+		double degree,
+		bool edge,
+		int sameSense = -1)
+		{
+			bool condition = sameSense == 0;
+			if (edge)
 			{
-				bool condition = sameSense == 0;
-				if (edge)
-				{
-					condition = !condition;
-				}
-
-				std::vector<glm::vec<DIM, glm::f64>> ctrolPts;
-				std::vector<glm::f64> knotMultiplicities;
-				std::vector<glm::f64> distinctKnots;
-				std::vector<glm::f64> knots;
-				std::vector<glm::f64> indexes;
-				std::vector<glm::f64> weights;
-
-				_loader.MoveToArgumentOffset(line, 0);
-				double degree = _loader.GetDoubleArgument();
-				auto points = _loader.GetSetArgument();
-				auto curveType = _loader.GetStringArgument();
-				auto closed = _loader.GetStringArgument();
-				auto selfIntersect = _loader.GetStringArgument();
-
-				for (auto &token : points)
-				{
-					uint32_t pointId = _loader.GetRefArgument(token);
-					ctrolPts.push_back(GetCartesianPoint<DIM>(pointId));
-				}
-
-				// build default knots
-				for (int k = 0; k < points.size() + degree + 1; k++)
-				{
-					knots.push_back(k);
-				}
-
-				if (knots.size() != ctrolPts.size() + degree + 1)
-				{
-					std::cout << "Error: Knots and control points do not match" << std::endl;
-				}
-
-				// build default weights vector
-				for (int i = 0; i < ctrolPts.size(); i++)
-				{
-					weights.push_back(1);
-				}
-
-				std::vector<glm::vec<DIM, glm::f64>> tempPoints = GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-				for (int i = 0; i < tempPoints.size(); i++)
-				{
-					curve.Add(tempPoints[i]);
-				}
-
-				if (condition)
-				{
-					std::reverse(curve.points.begin(), curve.points.end());
-				}
-
-				break;
+				condition = !condition;
 			}
-			case ifc::IFCBSPLINECURVEWITHKNOTS:
+
+			// The IfcBSplineCurveWithKnots is a spline curve parameterized by spline functions for which the knot values are explicitly given.
+			// This is the type of b-spline curve for which the knot values are explicitly given. This subtype shall be used to represent non-uniform B-spline curves and may be used for other knot types.
+			// Let L denote the number of distinct values amongst the d+k+2 knots in the knot list; L will be referred to as the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
+
+			// All knot multiplicities except the first and the last shall be in the range 1,...,d; the first and last may have a maximum value of d + 1. In evaluating the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a sequence u, u, u,; in the knot array.
+			std::vector<glm::f64> knots;
+
+			for (int k = 0; k < distinctKnots.size(); k++)
 			{
-				bool condition = sameSense == 0;
-				if (edge)
+				double knot = distinctKnots[k];
+				for (int i = 0; i < knotMultiplicities[k]; i++)
 				{
-					condition = !condition;
+					knots.push_back(knot);
 				}
-
-				// The IfcBSplineCurveWithKnots is a spline curve parameterized by spline functions for which the knot values are explicitly given.
-				// This is the type of b-spline curve for which the knot values are explicitly given. This subtype shall be used to represent non-uniform B-spline curves and may be used for other knot types.
-				// Let L denote the number of distinct values amongst the d+k+2 knots in the knot list; L will be referred to as the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
-
-				// All knot multiplicities except the first and the last shall be in the range 1,...,d; the first and last may have a maximum value of d + 1. In evaluating the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a sequence u, u, u,; in the knot array.
-				std::vector<glm::vec<DIM, glm::f64>> ctrolPts;
-				std::vector<glm::f64> knotMultiplicities;
-				std::vector<glm::f64> distinctKnots;
-				std::vector<glm::f64> knots;
-				std::vector<glm::f64> indexes;
-				std::vector<glm::f64> weights;
-
-				_loader.MoveToArgumentOffset(line, 0);
-				double degree = _loader.GetDoubleArgument();
-				auto points = _loader.GetSetArgument();
-				auto curveType = _loader.GetStringArgument();
-				auto closed = _loader.GetStringArgument();
-				auto selfIntersect = _loader.GetStringArgument();
-				auto knotMultiplicitiesSet = _loader.GetSetArgument(); // The multiplicities of the knots. This list defines the number of times each knot in the knots list is to be repeated in constructing the knot array.
-				auto knotSet = _loader.GetSetArgument();			   // The list of distinct knots used to define the B-spline basis functions.
-
-				for (auto &token : points)
-				{
-					uint32_t pointId = _loader.GetRefArgument(token);
-					ctrolPts.push_back(GetCartesianPoint<DIM>(pointId));
-				}
-
-				for (auto &token : knotMultiplicitiesSet)
-				{
-					knotMultiplicities.push_back(_loader.GetDoubleArgument(token));
-				}
-
-				for (auto &token : knotSet)
-				{
-					distinctKnots.push_back(_loader.GetDoubleArgument(token));
-				}
-
-				for (int k = 0; k < distinctKnots.size(); k++)
-				{
-					double knot = distinctKnots[k];
-					for (int i = 0; i < knotMultiplicities[k]; i++)
-					{
-						knots.push_back(knot);
-					}
-				}
-
-				if (knots.size() != ctrolPts.size() + degree + 1)
-				{
-					std::cout << "Error: Knots and control points do not match" << std::endl;
-				}
-
-				// build default weights vector
-				for (int i = 0; i < ctrolPts.size(); i++)
-				{
-					weights.push_back(1);
-				}
-
-				std::vector<glm::vec<DIM, glm::f64>> tempPoints = GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-				for (int i = 0; i < tempPoints.size(); i++)
-				{
-					curve.Add(tempPoints[i]);
-				}
-
-				if (condition)
-				{
-					std::reverse(curve.points.begin(), curve.points.end());
-				}
-
-				break;
 			}
-			case ifc::IFCRATIONALBSPLINECURVEWITHKNOTS:
+
+			if (knots.size() != ctrolPts.size() + degree + 1)
 			{
-
-				bool condition = sameSense == 0;
-				if (edge)
-				{
-					condition = !condition;
-				}
-
-				std::vector<glm::vec<DIM, glm::f64>> ctrolPts;
-				std::vector<glm::f64> distinctKnots;
-				std::vector<glm::u32> knotMultiplicities;
-				std::vector<glm::f64> knots;
-				std::vector<glm::f64> weights;
-				_loader.MoveToArgumentOffset(line, 0);
-				double degree = _loader.GetDoubleArgument();
-				auto points = _loader.GetSetArgument();
-				auto curveType = _loader.GetStringArgument();
-				auto closed = _loader.GetStringArgument();
-				auto selfIntersect = _loader.GetStringArgument();
-				auto knotMultiplicitiesSet = _loader.GetSetArgument(); // The multiplicities of the knots. This list defines the number of times each knot in the knots list is to be repeated in constructing the knot array.
-				auto knotSet = _loader.GetSetArgument();
-				auto knotSpec = _loader.GetStringArgument(); // The description of the knot type. This is for information only.
-				auto weightsSet = _loader.GetSetArgument();
-
-				for (auto &token : points)
-				{
-					uint32_t pointId = _loader.GetRefArgument(token);
-					ctrolPts.push_back(GetCartesianPoint<DIM>(pointId));
-				}
-
-				for (auto &token : knotMultiplicitiesSet)
-				{
-					knotMultiplicities.push_back(_loader.GetDoubleArgument(token));
-				}
-
-				for (auto &token : knotSet)
-				{
-					distinctKnots.push_back(_loader.GetDoubleArgument(token));
-				}
-
-				for (auto &token : weightsSet)
-				{
-					weights.push_back(_loader.GetDoubleArgument(token));
-				}
-
-				for (int k = 0; k < distinctKnots.size(); k++)
-				{
-					double knot = distinctKnots[k];
-					for (int i = 0; i < knotMultiplicities[k]; i++)
-					{
-						knots.push_back(knot);
-					}
-				}
-
-				if (knots.size() != ctrolPts.size() + degree + 1)
-				{
-					std::cout << "Error: Knots and control points do not match" << std::endl;
-				}
-
-				std::vector<glm::vec<DIM, glm::f64>> tempPoints = GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-				for (int i = 0; i < tempPoints.size(); i++)
-				{
-					curve.Add(tempPoints[i]);
-				}
-
-				if (condition)
-				{
-					std::reverse(curve.points.begin(), curve.points.end());
-				}
-
-				break;
-			}
-			default:
-				_loader.ReportError({LoaderErrorType::UNSUPPORTED_TYPE, "Unsupported curve type", line.expressID, line.ifcType});
-				break;
+				std::cout << "Error: Knots and control points do not match" << std::endl;
 			}
 
-			if (DEBUG_DUMP_SVG)
+			std::vector<glm::vec<DIM, glm::f64>> tempPoints = GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
+			for (int i = 0; i < tempPoints.size(); i++)
 			{
-				if constexpr (DIM == 2)
-				{
-					DumpSVGCurve(curve.points, L"partial_curve.html");
-				}
+				curve.Add(tempPoints[i]);
 			}
-		}*/
+
+			if (condition)
+			{
+				std::reverse(curve.points.begin(), curve.points.end());
+			}
+		}
 
         //case ifc::IFCAXIS1PLACEMENT:
         struct ParamsAxis1Placement3D
@@ -1806,15 +1365,107 @@ namespace webifc
 		//case ifc::IFCCLOSEDSHELL:
 		//case ifc::IFCOPENSHELL:
 		//These cases are handled by getBrep()
+		struct ParamsAddFaceToGeometry
+		{
+			uint32_t boundsSize;
+			uint32_t* indices;
+			uint32_t indicesPerFace;
+			IfcBound3D* boundsArray;
+			bool advancedBrep;
+			IfcSurface* surface;
+		};
+
 		struct ParamsGetBrep
         {
-            size_t numFaces;
+			uint32_t boundsSize;
+			uint32_t indicesPerFace;
+            size_t numIndices;
             uint32_t* indices;
+			IfcBound3D* boundsArray;
+			bool advancedBrep;
+			IfcSurface* surface;
         };
 
 		Geometry getBrep(ParamsGetBrep parameters)
 		{
+			Geometry geometry;
+			//set parameters 
+			ParamsAddFaceToGeometry paramsAddFaceToGeometry;
+			paramsAddFaceToGeometry.boundsSize = parameters.boundsSize;
+			paramsAddFaceToGeometry.indicesPerFace = parameters.indicesPerFace;
+			paramsAddFaceToGeometry.boundsArray = parameters.boundsArray;
+			paramsAddFaceToGeometry.advancedBrep = parameters.advancedBrep;
+			paramsAddFaceToGeometry.surface = parameters.surface;
 
+
+			for (size_t faceIndex = 0; faceIndex < parameters.numIndices / parameters.indicesPerFace; faceIndex++)
+			{
+				paramsAddFaceToGeometry.indices = &parameters.indices[faceIndex * parameters.indicesPerFace];
+
+				
+				AddFaceToGeometry(paramsAddFaceToGeometry, geometry);
+			}
+
+			return geometry;
+		}
+
+		//case ifc::IFCFACE:
+		//case ifc::IFCADVANCEDFACE:
+
+		void AddFaceToGeometry(ParamsAddFaceToGeometry parameters, Geometry &geometry)
+		{
+			if (!parameters.advancedBrep)
+			{
+				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
+
+				for (int i = 0; i < parameters.boundsSize; i++)
+				{
+					bounds3D[i] = parameters.boundsArray[i];
+				}
+
+				TriangulateBounds(geometry, bounds3D);
+			}
+			else
+			{
+				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
+
+				for (int i = 0; i < parameters.boundsSize; i++)
+				{
+					bounds3D[i] = parameters.boundsArray[i];
+				}
+
+				//auto surface = GetSurface(surfRef);
+
+				if (parameters.surface == nullptr)
+				{
+					printf("surface was nullptr\n");
+					return;
+				}
+
+				auto surface = parameters.surface[0];
+
+				// TODO: place the face in the surface and tringulate
+				if (surface.BSplineSurface.Active)
+				{
+					TriangulateBspline(geometry, bounds3D, surface);
+				}
+				else if (surface.CylinderSurface.Active)
+				{
+					TriangulateCylindricalSurface(geometry, bounds3D, surface);
+				}
+				else if (surface.RevolutionSurface.Active)
+				{
+					TriangulateRevolution(geometry, bounds3D, surface);
+				}
+				else if (surface.ExtrusionSurface.Active)
+				{
+					TriangulateExtrusion(geometry, bounds3D, surface);
+				}
+				else
+				{
+					TriangulateBounds(geometry, bounds3D);
+				}
+			}
 		}
 
 		bool notPresent(glm::dvec3 pt, std::vector<glm::dvec3> points)
@@ -1965,6 +1616,643 @@ namespace webifc
 			//TODO: // handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
 
 
+		}
+
+		void TriangulateRevolution(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		{
+			// First we get the revolution data
+
+			glm::dvec3 cent = surface.RevolutionSurface.Direction[3];
+			glm::dvec3 vecX = glm::normalize(surface.RevolutionSurface.Direction[0]);
+			glm::dvec3 vecY = glm::normalize(surface.RevolutionSurface.Direction[1]);
+			glm::dvec3 vecZ = glm::normalize(surface.RevolutionSurface.Direction[2]);
+
+			std::vector<std::vector<glm::dvec3>> newPoints;
+
+			double numRots = 10;
+
+			for (int r = 0; r < numRots; r++)
+			{
+				std::vector<glm::dvec3> newList;
+				newPoints.push_back(newList);
+			}
+
+			std::vector<glm::dvec3> bounding;
+			std::vector<double> angleVec;
+			std::vector<double> angleDsp;
+
+			// Now we construct the bounding box of the boundary ...
+			// ... by adding the middle point of all curves
+
+			for (int i = 0; i < bounds.size(); i++)
+			{
+				double xx = 0;
+				double yy = 0;
+				double zz = 0;
+				double cc = 0;
+				int lastTeam = bounds[i].curve.indices[0];
+				for (int j = 0; j < bounds[i].curve.points.size(); j++)
+				{
+					// If it is the first point of the group we close the previous group ...
+					//  ... and create a new one. Else, the point is of the current group
+					if (lastTeam != bounds[i].curve.indices[j] || j == (bounds[i].curve.points.size() - 1))
+					{
+						if (cc > 0)
+						{
+							xx /= cc;
+							yy /= cc;
+							zz /= cc;
+							bounding.push_back(glm::dvec3(xx, yy, zz));
+						}
+						xx = bounds[i].curve.points[j].x;
+						yy = bounds[i].curve.points[j].y;
+						zz = bounds[i].curve.points[j].z;
+						cc = 1;
+
+						lastTeam = bounds[i].curve.indices[j];
+					}
+					else
+					{
+						xx += bounds[i].curve.points[j].x;
+						yy += bounds[i].curve.points[j].y;
+						zz += bounds[i].curve.points[j].z;
+						cc++;
+					}
+				}
+			}
+
+			// There is a problem when points in the revolution are around 0 degrees
+			// Numerical instabilities can make these points to jump from 0 to 360
+			// It causes lots of trouble when drawing the boundaries in the revolution
+
+			// The method presented here finds the angle of each point, measures the ...
+			//  ... angular difference and then, if the difference is bigger than 180 ...
+			//  ... corrects it to a lesser value. Finally it gets the first angle and ...
+			//  ... adds the angular differences again, reconstructing a corrected boundary.
+
+			// Now we find the angle of each point in the reference plane of the cylinder
+			for (int j = 0; j < bounding.size(); j++)
+			{
+				double xx = bounding[j].x - cent.x;
+				double yy = bounding[j].y - cent.y;
+				double zz = bounding[j].z - cent.z;
+				double dx = vecX.x * xx + vecX.y * yy + vecX.z * zz;
+				double dy = vecY.x * xx + vecY.y * yy + vecY.z * zz;
+				double dz = vecZ.x * xx + vecZ.y * yy + vecZ.z * zz;
+				double temp = VectorToAngle(dx, dy);
+				while (temp < 0)
+				{
+					temp += 360;
+				}
+				while (temp > 360)
+				{
+					temp -= 360;
+				}
+				angleVec.push_back(temp);
+			}
+
+			for (int i = 0; i < angleVec.size() - 1; i++)
+			{
+				if (angleVec[i] - angleVec[i + 1] > 180)
+				{
+					angleDsp.push_back(360 - (angleVec[i] - angleVec[i + 1]));
+				}
+				else if (angleVec[i] - angleVec[i + 1] < -180)
+				{
+					angleDsp.push_back(-(angleVec[i] - angleVec[i + 1] + 360));
+				}
+				else
+				{
+					angleDsp.push_back(angleVec[i + 1] - angleVec[i]);
+				}
+			}
+
+			double startDegrees = angleVec[0];
+			double endDegrees = angleVec[0];
+
+			// Add angular differences starting from the first angle. We also correct the start and end angles
+
+			double temp = angleVec[0];
+			for (int i = 0; i < angleDsp.size(); i++)
+			{
+				temp += angleDsp[i];
+				if (endDegrees < temp)
+				{
+					endDegrees = temp;
+				}
+				if (startDegrees > temp)
+				{
+					startDegrees = temp;
+				}
+			}
+
+			// Then we use the start and end angles as bounding boxes of the boundary ...
+			//  ... we will represent this bounding box.
+
+			double startRad = startDegrees / 180 * CONST_PI;
+			double endRad = endDegrees / 180 * CONST_PI;
+			double radSpan = endRad - startRad;
+			double radStep = radSpan / (numRots - 1);
+
+			for (int i = 0; i < surface.RevolutionSurface.Profile.curve.points.size(); i++)
+			{
+				double xx = surface.RevolutionSurface.Profile.curve.points[i].x - cent.x;
+				double yy = surface.RevolutionSurface.Profile.curve.points[i].y - cent.y;
+				double zz = surface.RevolutionSurface.Profile.curve.points[i].z - cent.z;
+
+				double dx = vecX.x * xx + vecX.y * yy + vecX.z * zz;
+				double dy = vecY.x * xx + vecY.y * yy + vecY.z * zz;
+				double dz = vecZ.x * xx + vecZ.y * yy + vecZ.z * zz;
+				double dd = sqrt(dx * dx + dy * dy);
+				for (int r = 0; r < numRots; r++)
+				{
+					double angle = startRad + r * radStep;
+					double dtempX = sin(angle) * dd;
+					double dtempY = cos(angle) * dd;
+					double newPx = dtempX * vecX.x + dtempY * vecY.x + dz * vecZ.x + cent.x;
+					double newPy = dtempX * vecX.y + dtempY * vecY.y + dz * vecZ.y + cent.y;
+					double newPz = dtempX * vecX.z + dtempY * vecY.z + dz * vecZ.z + cent.z;
+					glm::dvec3 newPt = glm::dvec3(
+						newPx,
+						newPy,
+						newPz);
+					newPoints[r].push_back(newPt);
+				}
+			}
+			for (int r = 0; r < numRots - 1; r++)
+			{
+				int r1 = r + 1;
+				for (int s = 0; s < newPoints[r].size() - 1; s++)
+				{
+					geometry.AddFace(newPoints[r][s], newPoints[r][s + 1], newPoints[r1][s]);
+					geometry.AddFace(newPoints[r1][s], newPoints[r][s + 1], newPoints[r1][s + 1]);
+				}
+			}
+		}
+
+		void TriangulateCylindricalSurface(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		{
+			// First we get the cylinder data
+
+			double radius = surface.CylinderSurface.Radius;
+			glm::dvec3 cent = surface.transformation[3];
+			glm::dvec3 vecX = glm::normalize(surface.transformation[0]);
+			glm::dvec3 vecY = glm::normalize(surface.transformation[1]);
+			glm::dvec3 vecZ = glm::normalize(surface.transformation[2]);
+
+			std::vector<std::vector<glm::dvec3>> newPoints;
+
+			double numRots = 10;
+			double minZ = 1e+10;
+			double maxZ = -1e+10;
+
+			// Find the relative coordinates of each curve point in the cylinder reference plane
+			// Only retain the max and min relative Z
+			for (int i = 0; i < bounds.size(); i++)
+			{
+				for (int j = 0; j < bounds[i].curve.points.size(); j++)
+				{
+					glm::dvec3 vv = bounds[i].curve.points[j] - cent;
+					double dx = glm::dot(vecX, vv);
+					double dy = glm::dot(vecY, vv);
+					double dz = glm::dot(vecZ, vv);
+					if (maxZ < dz)
+					{
+						maxZ = dz;
+					}
+					if (minZ > dz)
+					{
+						minZ = dz;
+					}
+				}
+			}
+
+			for (int r = 0; r < numRots; r++)
+			{
+				std::vector<glm::dvec3> newList;
+				newPoints.push_back(newList);
+			}
+
+			std::vector<glm::dvec3> bounding;
+			std::vector<double> angleVec;
+			std::vector<double> angleDsp;
+
+			// Find the max. curve index in the boundary
+
+			int maxTeam = 0;
+			for (int i = 0; i < bounds.size(); i++)
+			{
+				for (int j = 0; j < bounds[i].curve.indices.size(); j++)
+				{
+					if (bounds[i].curve.indices[j] > maxTeam)
+					{
+						maxTeam = bounds[i].curve.indices[j];
+					}
+				}
+			}
+
+			std::vector<std::vector<glm::dvec3>> boundingGroups;
+
+			// We group each point with their boundary
+
+			for (int r = 0; r < maxTeam; r++)
+			{
+				std::vector<glm::dvec3> boundingTemp = std::vector<glm::dvec3>();
+				for (int i = 0; i < bounds.size(); i++)
+				{
+					for (int j = 0; j < bounds[i].curve.points.size(); j++)
+					{
+						if (bounds[i].curve.indices[j] == r)
+						{
+							boundingTemp.push_back(bounds[i].curve.points[j]);
+						}
+					}
+				}
+				boundingGroups.push_back(boundingTemp);
+			}
+
+			int repeats = 0;
+			bool start = false;
+			bool end = false;
+			int id = 0;
+
+			// In the case of boundary lines having only 2 endings...
+			//... we omit these lines and add solely curves having > 2 points...
+			//... starting from a 2 point line, by doing it this way we don't have repeated points
+			while (!end && repeats < maxTeam * 3)
+			{
+				if (id >= boundingGroups.size())
+				{
+					id = 0;
+				}
+				if (boundingGroups[id].size() < 3)
+				{
+					if (!start)
+					{
+						start = true;
+					}
+					else
+					{
+						break;
+					}
+				}
+				if (boundingGroups[id].size() > 2 && start)
+				{
+					for (int i = 0; i < boundingGroups[id].size(); i++)
+					{
+						bounding.push_back(boundingGroups[id][i]);
+					}
+				}
+				id++;
+				repeats++;
+			}
+
+			// If the previous method finds nothing, then we don't have straight lines ...
+			//... then we add all boundary points directly
+			if (bounding.size() == 0)
+			{
+				for (int j = 0; j < boundingGroups.size(); j++)
+				{
+					for (int i = 0; i < boundingGroups[j].size(); i++)
+					{
+						bounding.push_back(boundingGroups[j][i]);
+					}
+				}
+			}
+
+			double startDegrees = 0;
+			double endDegrees = 360;
+
+			// Now we project the points in the cylinder surface
+			// There is a problem when points in the cylinder are around 0 degrees
+			// Numerical instabilities can make these points to jump from 0 to 360
+			// It causes lots of trouble when drawing the boundaries in the cylinder
+
+			// The method presented here finds the angle of each point, measures the ...
+			//  ... angular difference and then, if the difference is bigger than 180 ...
+			//  ... corrects it to a lesser value. Finally it gets the first angle and ...
+			//  ... adds the angular differences again, reconstructing a corrected boundary.
+
+			// Now we find the angle of each point in the reference plane of the cylinder
+			for (int j = 0; j < bounding.size(); j++)
+			{
+				glm::dvec3 vv = bounding[j] - cent;
+				double dx = glm::dot(vecX, vv);
+				double dy = glm::dot(vecY, vv);
+				double dz = glm::dot(vecZ, vv);
+				double temp = VectorToAngle(dx, dy);
+				while (temp < 0)
+				{
+					temp += 360;
+				}
+				while (temp > 360)
+				{
+					temp -= 360;
+				}
+				angleVec.push_back(temp);
+			}
+
+			// Then we find the angular difference
+			for (int i = 0; i < angleVec.size() - 1; i++)
+			{
+				if (angleVec[i] - angleVec[i + 1] > 180)
+				{
+					angleDsp.push_back(360 - (angleVec[i] - angleVec[i + 1]));
+				}
+				else if (angleVec[i] - angleVec[i + 1] < -180)
+				{
+					angleDsp.push_back(-(angleVec[i] - angleVec[i + 1] + 360));
+				}
+				else
+				{
+					angleDsp.push_back(angleVec[i + 1] - angleVec[i]);
+				}
+			}
+
+			startDegrees = angleVec[0];
+			endDegrees = angleVec[0];
+
+			// Add angular differences starting from the first angle. We also correct the start and end angles
+
+			double temp = angleVec[0];
+			for (int i = 0; i < angleDsp.size(); i++)
+			{
+				temp += angleDsp[i];
+				if (endDegrees < temp)
+				{
+					endDegrees = temp;
+				}
+				if (startDegrees > temp)
+				{
+					startDegrees = temp;
+				}
+			}
+
+			// Then we use the start and end angles as bounding boxes of the boundary ...
+			//  ... we will represent this bounding box.
+
+			while (startDegrees < -360)
+			{
+				startDegrees += 360;
+			}
+			double startRad = startDegrees / 180 * CONST_PI;
+			double endRad = endDegrees / 180 * CONST_PI;
+			double radSpan = endRad - startRad;
+			double radStep = radSpan / (numRots - 1);
+
+			for (int r = 0; r < numRots; r++)
+			{
+				double angle = startRad + r * radStep;
+				double dtempX = sin(angle) * radius;
+				double dtempY = cos(angle) * radius;
+				double newPx = dtempX * vecX.x + dtempY * vecY.x + minZ * vecZ.x + cent.x;
+				double newPy = dtempX * vecX.y + dtempY * vecY.y + minZ * vecZ.y + cent.y;
+				double newPz = dtempX * vecX.z + dtempY * vecY.z + minZ * vecZ.z + cent.z;
+				glm::dvec3 newPt = glm::dvec3(
+					newPx,
+					newPy,
+					newPz);
+				newPoints[r].push_back(newPt);
+			}
+			for (int r = 0; r < numRots; r++)
+			{
+				double angle = startRad + r * radStep;
+				double dtempX = sin(angle) * radius;
+				double dtempY = cos(angle) * radius;
+				double newPx = dtempX * vecX.x + dtempY * vecY.x + maxZ * vecZ.x + cent.x;
+				double newPy = dtempX * vecX.y + dtempY * vecY.y + maxZ * vecZ.y + cent.y;
+				double newPz = dtempX * vecX.z + dtempY * vecY.z + maxZ * vecZ.z + cent.z;
+				glm::dvec3 newPt = glm::dvec3(
+					newPx,
+					newPy,
+					newPz);
+				newPoints[r].push_back(newPt);
+			}
+
+			for (int r = 0; r < numRots - 1; r++)
+			{
+				int r1 = r + 1;
+				for (int s = 0; s < newPoints[r].size() - 1; s++)
+				{
+					geometry.AddFace(newPoints[r][s], newPoints[r][s + 1], newPoints[r1][s]);
+					geometry.AddFace(newPoints[r1][s], newPoints[r][s + 1], newPoints[r1][s + 1]);
+				}
+			}
+		}
+
+		// TODO: review and simplify
+		void TriangulateExtrusion(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		{
+			// NO EXAMPLE FILES ABOUT THIS CASE
+
+			// THIS IS A SIMPLE EXTRUSION, NOT TRIMMED
+
+			double len = surface.ExtrusionSurface.Length;
+			glm::dvec3 dir = surface.ExtrusionSurface.Direction;
+
+			if (!surface.ExtrusionSurface.Profile.isComposite)
+			{
+				for (int j = 0; j < surface.ExtrusionSurface.Profile.curve.points.size() - 1; j++)
+				{
+					int j2 = j + 1;
+
+					double npx = surface.ExtrusionSurface.Profile.curve.points[j].x + dir.x * len;
+					double npy = surface.ExtrusionSurface.Profile.curve.points[j].y + dir.y * len;
+					double npz = dir.z * len;
+					glm::dvec3 nptj1 = glm::dvec3(
+						npx,
+						npy,
+						npz);
+					npx = surface.ExtrusionSurface.Profile.curve.points[j2].x + dir.x * len;
+					npy = surface.ExtrusionSurface.Profile.curve.points[j2].y + dir.y * len;
+					npz = dir.z * len;
+					glm::dvec3 nptj2 = glm::dvec3(
+						npx,
+						npy,
+						npz);
+					geometry.AddFace(
+						glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j], 0),
+						glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j2], 0),
+						nptj1);
+					geometry.AddFace(
+						glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j2], 0),
+						nptj2,
+						nptj1);
+				}
+			}
+			else
+			{
+				for (uint32_t i = 0; i < surface.ExtrusionSurface.Profile.profiles.size(); i++)
+				{
+					for (int j = 0; j < surface.ExtrusionSurface.Profile.profiles[i].curve.points.size() - 1; j++)
+					{
+						int j2 = j + 1;
+
+						double npx = surface.ExtrusionSurface.Profile.profiles[i].curve.points[j].x + dir.x * len;
+						double npy = surface.ExtrusionSurface.Profile.profiles[i].curve.points[j].y + dir.y * len;
+						double npz = dir.z * len;
+						glm::dvec3 nptj1 = glm::dvec3(
+							npx,
+							npy,
+							npz);
+						npx = surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].x + dir.x * len;
+						npy = surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].y + dir.y * len;
+						npz = dir.z * len;
+						glm::dvec3 nptj2 = glm::dvec3(
+							npx,
+							npy,
+							npz);
+						geometry.AddFace(
+							glm::dvec3(surface.ExtrusionSurface.Profile.profiles[i].curve.points[j], 0),
+							glm::dvec3(surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2], 0),
+							nptj1);
+						geometry.AddFace(
+							glm::dvec3(surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2], 0),
+							nptj2,
+							nptj1);
+					}
+				}
+			}
+		}
+
+		// TODO: review and simplify
+		void TriangulateBspline(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		{
+			double limit = 1e-4;
+
+			// First: We define the Nurbs surface
+
+			tinynurbs::RationalSurface3d srf;
+			srf.degree_u = surface.BSplineSurface.UDegree;
+			srf.degree_v = surface.BSplineSurface.VDegree;
+			size_t num_u = surface.BSplineSurface.ControlPoints.size();
+			size_t num_v = surface.BSplineSurface.ControlPoints[0].size();
+
+			std::vector<glm::dvec3> controlPoints;
+			for (std::vector<glm::dvec3> row : surface.BSplineSurface.ControlPoints)
+			{
+				for (glm::dvec3 point : row)
+				{
+					controlPoints.push_back({point.x, point.y, point.z});
+				}
+			}
+			srf.control_points = tinynurbs::array2(num_u, num_v, controlPoints);
+
+			std::vector<double> weights;
+			for (std::vector<double> row : surface.BSplineSurface.Weights)
+			{
+				for (double weight : row)
+				{
+					weights.push_back(weight);
+				}
+			}
+			if (weights.size() != num_u * num_v)
+			{
+				for (int i = 0; i < num_u * num_v; i++)
+				{
+					weights.push_back(1.0);
+				}
+			}
+			srf.weights = tinynurbs::array2(num_u, num_v, weights);
+
+			for (int i = 0; i < surface.BSplineSurface.UMultiplicity.size(); i++)
+			{
+				for (int r = 0; r < surface.BSplineSurface.UMultiplicity[i]; r++)
+				{
+					srf.knots_u.push_back(surface.BSplineSurface.UKnots[i]);
+				}
+			}
+
+			for (int i = 0; i < surface.BSplineSurface.VMultiplicity.size(); i++)
+			{
+				for (int r = 0; r < surface.BSplineSurface.VMultiplicity[i]; r++)
+				{
+					srf.knots_v.push_back(surface.BSplineSurface.VKnots[i]);
+				}
+			}
+
+			// If the NURBS surface is valid we continue
+
+			if (tinynurbs::surfaceIsValid(srf))
+			{
+
+				// Find projected boundary using NURBS inverse evaluation
+
+				using Point = std::array<double, 2>;
+				std::vector<std::vector<Point>> uvBoundaryValues;
+
+				std::vector<Point> points;
+				for (int j = 0; j < bounds[0].curve.points.size(); j++)
+				{
+					glm::dvec3 pt = bounds[0].curve.points[j];
+					glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf);
+					points.push_back({pInv.x, pInv.y});
+				}
+				uvBoundaryValues.push_back(points);
+
+				// Triangulate projected boundary
+				// Subdivide resulting triangles to increase definition
+				// r indicates the level of subdivision, currently 3 you can increase it to 5
+
+				std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
+
+				for (int r = 0; r < 3; r++)
+				{
+					std::vector<uint32_t> newIndices;
+					std::vector<Point> newUVPoints;
+
+					for (int i = 0; i < indices.size(); i += 3)
+					{
+						Point p0 = uvBoundaryValues[0][indices[i + 0]];
+						Point p1 = uvBoundaryValues[0][indices[i + 1]];
+						Point p2 = uvBoundaryValues[0][indices[i + 2]];
+
+						newUVPoints.push_back(p0);
+						newUVPoints.push_back(p1);
+						newUVPoints.push_back(p2);
+
+						Point p3 = {(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2};
+						Point p4 = {(p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2};
+						Point p5 = {(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2};
+
+						newUVPoints.push_back(p3);
+						newUVPoints.push_back(p4);
+						newUVPoints.push_back(p5);
+
+						int offset = newUVPoints.size() - 6;
+
+						newIndices.push_back(offset + 0);
+						newIndices.push_back(offset + 3);
+						newIndices.push_back(offset + 4);
+
+						newIndices.push_back(offset + 3);
+						newIndices.push_back(offset + 5);
+						newIndices.push_back(offset + 4);
+
+						newIndices.push_back(offset + 3);
+						newIndices.push_back(offset + 1);
+						newIndices.push_back(offset + 5);
+
+						newIndices.push_back(offset + 4);
+						newIndices.push_back(offset + 5);
+						newIndices.push_back(offset + 2);
+					}
+
+					uvBoundaryValues[0] = newUVPoints;
+					indices = newIndices;
+				}
+
+				for (int i = 0; i < indices.size(); i += 3)
+				{
+					Point p0 = uvBoundaryValues[0][indices[i + 0]];
+					Point p1 = uvBoundaryValues[0][indices[i + 1]];
+					Point p2 = uvBoundaryValues[0][indices[i + 2]];
+					glm::dvec3 pt00 = tinynurbs::surfacePoint(srf, p0[0], p0[1]);
+					glm::dvec3 pt01 = tinynurbs::surfacePoint(srf, p1[0], p1[1]);
+					glm::dvec3 pt10 = tinynurbs::surfacePoint(srf, p2[0], p2[1]);
+					geometry.AddFace(pt00, pt01, pt10);
+				}
+			}
 		}
 
 		void TriangulateBounds(Geometry &geometry, std::vector<IfcBound3D> &bounds)
