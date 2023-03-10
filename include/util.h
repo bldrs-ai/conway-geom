@@ -38,11 +38,11 @@ namespace webifc
 
 	void writeFile(std::wstring filename, std::string data)
 	{
-#ifdef _MSC_VER
+//#ifdef _MSC_VER
 		std::ofstream out(filename);
 		out << data;
 		out.close();
-#endif
+//#endif
 	}
 
 	// for some reason std::string_view is not compiling...

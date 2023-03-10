@@ -38,6 +38,9 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(webifc::IfcLoader &loader, webifc::
 {
     std::vector<webifc::IfcFlatMesh> meshes;
 
+    std::cout << "Dumping Meshes...\n";
+    int count = 0;
+
     for (auto type : ifc::IfcElements)
     {
         auto elements = loader.GetExpressIDsWithType(type);
@@ -45,6 +48,18 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(webifc::IfcLoader &loader, webifc::
         for (int i = 0; i < elements.size(); i++)
         {
             auto mesh = geometryLoader.GetFlatMesh(elements[i]);
+
+            auto mesh2 = geometryLoader.GetMesh(elements[i]);
+
+            std::string fileName = "./";
+            fileName += std::to_string(i);
+            fileName += "_.obj";
+
+
+            std::wstring wsTmp(fileName.begin(), fileName.end());
+            geometryLoader.DumpMesh(mesh2, wsTmp);
+
+            std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
 
             /*
             for (auto& geom : mesh.geometries)

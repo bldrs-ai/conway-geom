@@ -22,7 +22,7 @@ namespace webifc
     MeshLocation isInsideMesh(const glm::dvec3& pt, glm::dvec3 normal, IfcGeometry& g)
     {
         glm::dvec3 dir(1, 1.1, 1.4);
-        glm::dvec3 dir2(1.4, 1.1, 1);
+        //glm::dvec3 dir2(1.4, 1.1, 1);
 
         int winding = 0;
         for (uint32_t i = 0; i < g.numFaces; i++)

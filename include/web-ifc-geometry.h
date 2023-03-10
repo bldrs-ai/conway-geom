@@ -422,7 +422,7 @@ namespace webifc
 			}
 			else
 			{
-				printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+				printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 				switch (line.ifcType)
 				{
 					
@@ -722,6 +722,19 @@ namespace webifc
 
 					auto coordinatesRef = _loader.GetRefArgument();
 					auto points = ReadIfcCartesianPointList3D(coordinatesRef);
+					
+					printf("webifc::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;\n");
+
+					printf("parametersPolygonalFaceset.numPoints = %i;\n", points.size());
+					printf("parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];\n");
+					//print points 
+					for (int i = 0; i < points.size(); i++)
+					{
+						printf("parametersPolygonalFaceset.points[%i].x = %.3f;\n", i, points[i].x);
+						printf("parametersPolygonalFaceset.points[%i].y = %.3f;\n", i, points[i].y);
+						printf("parametersPolygonalFaceset.points[%i].z = %.3f;\n\n", i, points[i].z);
+						//printf("Point %i: X: %.3f, Y: %.3f, Z: %.3f\n", i, points[i].x, points[i].y, points[i].z);
+					}
 
 					// second optional argument closed, ignored
 
@@ -732,10 +745,15 @@ namespace webifc
 					IfcGeometry geom;
 
 					std::vector<IfcBound3D> bounds;
+
+					printf("parametersPolygonalFaceset.indicesPerFace = 4;\n");
+					printf("parametersPolygonalFaceset.numIndices = %i * parametersPolygonalFaceset.indicesPerFace;\n", faces.size());
+					printf("parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];\n");
+					uint32_t indexCount = 0;
 					for (auto &face : faces)
 					{
 						uint32_t faceID = _loader.GetRefArgument(face);
-						ReadIndexedPolygonalFace(faceID, bounds, points);
+						ReadIndexedPolygonalFace(faceID, bounds, points, indexCount);
 
 						TriangulateBounds(geom, bounds);
 
@@ -1385,14 +1403,14 @@ namespace webifc
 			return result;
 		}
 
-		void ReadIndexedPolygonalFace(uint32_t expressID, std::vector<IfcBound3D> &bounds, const std::vector<glm::dvec3> &points)
+		void ReadIndexedPolygonalFace(uint32_t expressID, std::vector<IfcBound3D> &bounds, const std::vector<glm::dvec3> &points, uint32_t &_count)
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
 			bounds.emplace_back();
 
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
@@ -1406,6 +1424,8 @@ namespace webifc
 				for (auto &indexID : indexIDs)
 				{
 					uint32_t index = static_cast<uint32_t>(_loader.GetDoubleArgument(indexID));
+
+					printf("parametersPolygonalFaceset.indices[%i] = %i;\n", _count++, index);
 					glm::dvec3 point = points[index - 1]; // indices are 1-based
 
 					// I am not proud of this
@@ -1432,7 +1452,7 @@ namespace webifc
 					{
 						_loader.Reverse();
 						uint32_t index = static_cast<uint32_t>(_loader.GetDoubleArgument());
-
+						printf("%i\n", index);
 						glm::dvec3 point = points[index - 1]; // indices are still 1-based
 
 						// I am also not proud of this
@@ -1452,7 +1472,7 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCCONNECTEDFACESET:
@@ -1483,7 +1503,7 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCPRESENTATIONSTYLEASSIGNMENT:
@@ -1768,7 +1788,7 @@ namespace webifc
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			
@@ -1841,7 +1861,7 @@ namespace webifc
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCFACEOUTERBOUND:
@@ -1896,7 +1916,7 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCPOLYLOOP:
@@ -2011,7 +2031,7 @@ namespace webifc
 			auto edgeID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(edgeID);
 
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCEDGECURVE:
@@ -3151,7 +3171,7 @@ namespace webifc
 		IfcProfile GetProfileByLine(uint32_t lineID)
 		{
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCARBITRARYOPENPROFILEDEF:
@@ -3501,7 +3521,7 @@ namespace webifc
 		IfcProfile3D GetProfile3DByLine(uint32_t lineID)
 		{
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCARBITRARYOPENPROFILEDEF:
@@ -3529,7 +3549,7 @@ namespace webifc
 			auto &line = _loader.GetLine(lineID);
 
 			// TODO: IfcSweptSurface and IfcBSplineSurface still missing
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCPLANE:
@@ -3967,7 +3987,7 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCAXIS2PLACEMENT2D:
@@ -4073,7 +4093,7 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCAXIS1PLACEMENT:
@@ -4109,13 +4129,20 @@ namespace webifc
 				glm::dvec3 zAxis(0, 0, 1);
 				glm::dvec3 xAxis(1, 0, 0);
 
+				printf("webifc::ConwayGeometryProcessor::ParamsAxis2Placement3D parametersAxis2Placement3D;\n");
+
 				_loader.MoveToArgumentOffset(line, 0);
 				uint32_t posID = _loader.GetRefArgument();
 				IfcTokenType zID = _loader.GetTokenType();
 				if (zID == IfcTokenType::REF)
 				{
 					_loader.Reverse();
-					zAxis = glm::normalize(GetCartesianPoint3D(_loader.GetRefArgument()));
+					glm::dvec3 zAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
+					printf("parametersAxis2Placement3D.zAxisRef.x = %.3f;\n", zAxisPoint3D.x);
+					printf("parametersAxis2Placement3D.zAxisRef.y = %.3f;\n", zAxisPoint3D.y);
+					printf("parametersAxis2Placement3D.zAxisRef.z = %.3f;\n", zAxisPoint3D.z);
+					printf("parametersAxis2Placement3D.normalizeZ = true;\n");
+					zAxis = glm::normalize(zAxisPoint3D);
 				}
 
 				_loader.MoveToArgumentOffset(line, 2);
@@ -4123,10 +4150,19 @@ namespace webifc
 				if (xID == IfcTokenType::REF)
 				{
 					_loader.Reverse();
-					xAxis = glm::normalize(GetCartesianPoint3D(_loader.GetRefArgument()));
+					glm::dvec3 xAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
+					printf("parametersAxis2Placement3D.xAxisRef.x = %.3f;\n", xAxisPoint3D.x);
+					printf("parametersAxis2Placement3D.xAxisRef.y = %.3f;\n", xAxisPoint3D.y);
+					printf("parametersAxis2Placement3D.xAxisRef.z = %.3f;\n", xAxisPoint3D.z);
+					printf("parametersAxis2Placement3D.normalizeX = true;\n");
+					xAxis = glm::normalize(xAxisPoint3D);
 				}
 
 				glm::dvec3 pos = GetCartesianPoint3D(posID);
+
+				printf("parametersAxis2Placement3D.position.x = %.3f;\n", pos.x);
+				printf("parametersAxis2Placement3D.position.y = %.3f;\n", pos.y);
+				printf("parametersAxis2Placement3D.position.z = %.3f;\n", pos.z);
 
 				glm::dvec3 yAxis = glm::normalize(glm::cross(zAxis, xAxis));
 				xAxis = glm::normalize(glm::cross(yAxis, zAxis));
@@ -4311,7 +4347,7 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
 			switch (line.ifcType)
 			{
 			case ifc::IFCPOLYLINE:

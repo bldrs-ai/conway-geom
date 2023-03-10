@@ -141,9 +141,9 @@ namespace webifc
                 glm::dvec2 pb = glm::dvec2(1, 0);//projectOnTriangle(b, a, b, c);
                 glm::dvec2 pc = glm::dvec2(0, 1);//projectOnTriangle(c, a, b, c);
 
-                glm::dvec3 uupa = FromBary(a, b, c, ToBary2(pa));//unProjectFromTriangle(pa, a, b, c);
-                glm::dvec3 uupb = FromBary(a, b, c, ToBary2(pb));//unProjectFromTriangle(pb, a, b, c);
-                glm::dvec3 uupc = FromBary(a, b, c, ToBary2(pc));//unProjectFromTriangle(pc, a, b, c);
+                //glm::dvec3 uupa = FromBary(a, b, c, ToBary2(pa));//unProjectFromTriangle(pa, a, b, c);
+                //glm::dvec3 uupb = FromBary(a, b, c, ToBary2(pb));//unProjectFromTriangle(pb, a, b, c);
+                //glm::dvec3 uupc = FromBary(a, b, c, ToBary2(pc));//unProjectFromTriangle(pc, a, b, c);
 
                 auto loops = makeLoops2(a, b, c, pa, pb, pc, ints);
 
@@ -251,7 +251,7 @@ namespace webifc
 
     const uint32_t GRID_CELLS_AXIS = 100;
 
-    Partition MakePartition(const IfcGeometry& m, const AABB& aabb)
+    /*Partition MakePartition(const IfcGeometry& m, const AABB& aabb)
     {
         Partition p;
 
@@ -270,7 +270,7 @@ namespace webifc
         }
 
         return p;
-    }
+    }*/
 
     void intersectMeshMesh(const IfcGeometry& mesh1, const IfcGeometry& mesh2, IfcGeometry& result1, IfcGeometry& result2)
     {
@@ -292,7 +292,7 @@ namespace webifc
                 const glm::dvec3& e = mesh2.GetPoint(t2.i1);
                 const glm::dvec3& f = mesh2.GetPoint(t2.i2);
 
-                glm::dvec3 n = computeNormal(a, b, c);
+               // glm::dvec3 n = computeNormal(a, b, c);
 
                 TriTriResult intersectionLine = intersect_triangle_triangle(a, b, c, d, e, f);
 

@@ -47,6 +47,14 @@ struct GeometryStatistics
 	}
 };
 
+    enum GeometryProcessorSettings : int
+	{
+		CIRCLE_SEGMENTS_LOW = 5,
+		CIRCLE_SEGMENTS_MEDIUM = 8,
+		CIRCLE_SEGMENTS_HIGH = 12,
+		BOOL_ABORT_THRESHOLD = 10000 // 10k verts
+	};
+
 namespace webifc
 {
 
@@ -325,17 +333,15 @@ namespace webifc
 	class ConwayGeometryProcessor
 	{ 
         public:
-		ConwayGeometryProcessor(IfcLoader &l)
+		ConwayGeometryProcessor()
 		{
 		}
 
         //case ifc::IFCMAPPEDITEM:
-        ComposedMesh getMappedItem(uint32_t ifcPresentation, uint32_t localPlacement)
+        /*ComposedMesh getMappedItem(uint32_t ifcPresentation, uint32_t localPlacement)
         {
 
-        }
-
-        private:
+        }*/
 
 		//case ifc::IFCPLANE:
 		//case ifc::IFCBSPLINESURFACE:
@@ -601,6 +607,56 @@ namespace webifc
 			//todo: recursion 
 		}
 
+		IfcCurve<2> BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2, const glm::dvec2 &p3)
+		{
+			double f1 = (p1.x * p1.x - p2.x * p2.x + p1.y * p1.y - p2.y * p2.y);
+			double f2 = (p1.x * p1.x - p3.x * p3.x + p1.y * p1.y - p3.y * p3.y);
+			double v = 2 * (p1.x - p2.x) * (p1.y - p3.y) - 2 * (p1.x - p3.x) * (p1.y - p2.y);
+
+			double cenX = ((p1.y - p3.y) * f1 - (p1.y - p2.y) * f2) / v;
+			double cenYa = (f2 - 2 * cenX * (p1.x - p3.x)) / (2 * (p1.y - p3.y));
+			double cenYb = (f1 - 2 * cenX * (p1.x - p2.x)) / (2 * (p1.y - p2.y));
+			double cenY = cenYa;
+			if (isnan(cenY))
+			{
+				cenY = cenYb;
+			}
+
+			glm::dvec2 pCen;
+			pCen.x = cenX;
+			pCen.y = cenY;
+
+			double radius = sqrt(pow(cenX - p1.x, 2) + pow(cenY - p1.y, 2));
+
+			//Using geometrical subdivision to avoid complex calculus with angles
+
+			std::vector<glm::dvec2> pointList;
+			pointList.push_back(p1);
+			pointList.push_back(p2);
+			pointList.push_back(p3);
+
+			while(pointList.size() < GeometryProcessorSettings::CIRCLE_SEGMENTS_MEDIUM)
+			{
+				std::vector<glm::dvec2> tempPointList;
+				for (uint32_t j = 0; j < pointList.size() - 1; j++)
+				{
+					glm::dvec2 pt = (pointList[j] + pointList[j + 1]);
+					pt.x /= 2;
+					pt.y /= 2;
+					glm::dvec2 vc = glm::normalize(pt - pCen);
+					pt = pCen + vc * radius;
+					tempPointList.push_back(pointList[j]);
+					tempPointList.push_back(pt);
+				}
+				tempPointList.push_back(pointList[pointList.size() - 1]);
+				pointList = tempPointList;
+			}
+			IfcCurve<2> curve;
+			curve.points = pointList;
+
+			return curve;
+		}
+
 		struct TrimmingSelect
 		{
 			bool hasParam = false;
@@ -622,6 +678,7 @@ namespace webifc
 		//case ifc::IFCLINE
 		template <uint32_t DIM>
 		void ComputeCurveLine(IfcCurve<DIM> &curve, 
+		bool edge,
 		TrimmingArguments trim, 
 		int sameSense = -1)
 		{
@@ -728,7 +785,7 @@ namespace webifc
 		{
 			if (selfIntersects)
 			{
-				sprintf("Self intersecting ifcindexedpolycurve");
+				printf("Self intersecting ifcindexedpolycurve");
 				return;
 			}
 
@@ -756,7 +813,7 @@ namespace webifc
 			}
 			else
 			{
-				sprintf("Parsing ifcindexedpolycurve in 3D is not possible");
+				printf("Parsing ifcindexedpolycurve in 3D is not possible");
 			}
 		}
 
@@ -769,6 +826,7 @@ namespace webifc
 		double radius, 
 		bool selfIntersects, 
 		TrimmingArguments trim, 
+		int trimSense = -1,
 		int sameSense = -1)
 		{
 			glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
@@ -819,11 +877,11 @@ namespace webifc
 
 						double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
 						double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-						double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
+						//double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
 
 						double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
 						double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-						double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
+						//double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
 
 						endDegrees = VectorToAngle(dxS, dyS) - 90;
 						startDegrees = VectorToAngle(dxE, dyE) - 90;
@@ -856,7 +914,7 @@ namespace webifc
 			size_t startIndex = curve.points.size();
 
 			//const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-			const int numSegments = LoaderSettings::CIRCLE_SEGMENTS_HIGH;
+			const int numSegments = GeometryProcessorSettings::CIRCLE_SEGMENTS_HIGH;
 
 			for (int i = 0; i < numSegments; i++)
 			{
@@ -902,7 +960,8 @@ namespace webifc
 		double radius1, 
 		double radius2, 
 		TrimmingArguments trim, 
-		int trimSense = -1)
+		int trimSense = -1, 
+		int sameSense = -1 )
 		{
 			glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
 			if constexpr (DIM == 2)
@@ -952,11 +1011,11 @@ namespace webifc
 
 						double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
 						double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-						double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
+						//double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
 
 						double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
 						double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-						double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
+						//double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
 
 						endDegrees = VectorToAngle(dxS, dyS) - 90;
 						startDegrees = VectorToAngle(dxE, dyE) - 90;
@@ -995,7 +1054,7 @@ namespace webifc
 			size_t startIndex = curve.points.size();
 
 			//const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-			const int numSegments = LoaderSettings::CIRCLE_SEGMENTS_HIGH;
+			const int numSegments = GeometryProcessorSettings::CIRCLE_SEGMENTS_HIGH;
 
 			for (int i = 0; i < numSegments; i++)
 			{
@@ -1610,11 +1669,14 @@ namespace webifc
 			if (!parameters.indexedPolygonalFaceWithVoids)
 			{
 				return bounds;
+			} else 
+			{
+				//TODO: handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
 			}
 
 
-			//TODO: // handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
-
+			
+			return bounds;
 
 		}
 
@@ -1698,7 +1760,7 @@ namespace webifc
 				double zz = bounding[j].z - cent.z;
 				double dx = vecX.x * xx + vecX.y * yy + vecX.z * zz;
 				double dy = vecY.x * xx + vecY.y * yy + vecY.z * zz;
-				double dz = vecZ.x * xx + vecZ.y * yy + vecZ.z * zz;
+				//double dz = vecZ.x * xx + vecZ.y * yy + vecZ.z * zz;
 				double temp = VectorToAngle(dx, dy);
 				while (temp < 0)
 				{
@@ -1813,8 +1875,8 @@ namespace webifc
 				for (int j = 0; j < bounds[i].curve.points.size(); j++)
 				{
 					glm::dvec3 vv = bounds[i].curve.points[j] - cent;
-					double dx = glm::dot(vecX, vv);
-					double dy = glm::dot(vecY, vv);
+					//double dx = glm::dot(vecX, vv);
+					//double dy = glm::dot(vecY, vv);
 					double dz = glm::dot(vecZ, vv);
 					if (maxZ < dz)
 					{
@@ -1939,7 +2001,7 @@ namespace webifc
 				glm::dvec3 vv = bounding[j] - cent;
 				double dx = glm::dot(vecX, vv);
 				double dy = glm::dot(vecY, vv);
-				double dz = glm::dot(vecZ, vv);
+				//double dz = glm::dot(vecZ, vv);
 				double temp = VectorToAngle(dx, dy);
 				while (temp < 0)
 				{
@@ -2118,7 +2180,7 @@ namespace webifc
 		// TODO: review and simplify
 		void TriangulateBspline(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
 		{
-			double limit = 1e-4;
+			//double limit = 1e-4;
 
 			// First: We define the Nurbs surface
 
@@ -2261,7 +2323,7 @@ namespace webifc
 			{
 				auto c = bounds[0].curve;
 
-				size_t offset = geometry.numPoints;
+				//size_t offset = geometry.numPoints;
 
 				geometry.AddFace(c.points[0], c.points[1], c.points[2]);
 			}
@@ -2373,6 +2435,29 @@ namespace webifc
 			}
 		}
 
+		std::string GeometryToObj(const Geometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1))
+		{	
+			std::stringstream obj;
+
+			double scale = 1.0;
+
+			for (uint32_t i = 0; i < geom.numPoints; i++)
+			{
+				glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
+				obj << "v " << t.x * scale << " " << t.y * scale << " " << t.z * scale << "\n";
+			}
+
+			for (uint32_t i = 0; i < geom.numFaces; i++)
+			{
+				Face f = geom.GetFace(i);
+				obj << "f " << (f.i0 + 1 + offset) << "// " << (f.i1 + 1 + offset) << "// " << (f.i2 + 1 + offset) << "//\n";
+			}
+
+			offset += geom.numPoints;
+
+			return obj.str();
+		}
+
 		//case ifc::IFCPOLYGONALFACESET:
 		struct ParamsPolygonalFaceSet {
 			size_t numPoints;
@@ -2404,6 +2489,8 @@ namespace webifc
 
 			return geom;
 		}
+
+		        private:
 
     };
 }
