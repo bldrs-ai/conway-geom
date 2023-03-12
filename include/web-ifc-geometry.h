@@ -730,10 +730,10 @@ namespace webifc
 					//print points 
 					for (int i = 0; i < points.size(); i++)
 					{
-						printf("parametersPolygonalFaceset.points[%i].x = %.3f;\n", i, points[i].x);
-						printf("parametersPolygonalFaceset.points[%i].y = %.3f;\n", i, points[i].y);
-						printf("parametersPolygonalFaceset.points[%i].z = %.3f;\n\n", i, points[i].z);
-						//printf("Point %i: X: %.3f, Y: %.3f, Z: %.3f\n", i, points[i].x, points[i].y, points[i].z);
+						printf("parametersPolygonalFaceset.points[%i].x = %.6f;\n", i, points[i].x);
+						printf("parametersPolygonalFaceset.points[%i].y = %.6f;\n", i, points[i].y);
+						printf("parametersPolygonalFaceset.points[%i].z = %.6f;\n\n", i, points[i].z);
+						//printf("Point %i: X: %.6f, Y: %.6f, Z: %.6f\n", i, points[i].x, points[i].y, points[i].z);
 					}
 
 					// second optional argument closed, ignored
@@ -4138,9 +4138,9 @@ namespace webifc
 				{
 					_loader.Reverse();
 					glm::dvec3 zAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
-					printf("parametersAxis2Placement3D.zAxisRef.x = %.3f;\n", zAxisPoint3D.x);
-					printf("parametersAxis2Placement3D.zAxisRef.y = %.3f;\n", zAxisPoint3D.y);
-					printf("parametersAxis2Placement3D.zAxisRef.z = %.3f;\n", zAxisPoint3D.z);
+					printf("parametersAxis2Placement3D.zAxisRef.x = %.6f;\n", zAxisPoint3D.x);
+					printf("parametersAxis2Placement3D.zAxisRef.y = %.6f;\n", zAxisPoint3D.y);
+					printf("parametersAxis2Placement3D.zAxisRef.z = %.6f;\n", zAxisPoint3D.z);
 					printf("parametersAxis2Placement3D.normalizeZ = true;\n");
 					zAxis = glm::normalize(zAxisPoint3D);
 				}
@@ -4151,18 +4151,18 @@ namespace webifc
 				{
 					_loader.Reverse();
 					glm::dvec3 xAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
-					printf("parametersAxis2Placement3D.xAxisRef.x = %.3f;\n", xAxisPoint3D.x);
-					printf("parametersAxis2Placement3D.xAxisRef.y = %.3f;\n", xAxisPoint3D.y);
-					printf("parametersAxis2Placement3D.xAxisRef.z = %.3f;\n", xAxisPoint3D.z);
+					printf("parametersAxis2Placement3D.xAxisRef.x = %.6f;\n", xAxisPoint3D.x);
+					printf("parametersAxis2Placement3D.xAxisRef.y = %.6f;\n", xAxisPoint3D.y);
+					printf("parametersAxis2Placement3D.xAxisRef.z = %.6f;\n", xAxisPoint3D.z);
 					printf("parametersAxis2Placement3D.normalizeX = true;\n");
 					xAxis = glm::normalize(xAxisPoint3D);
 				}
 
 				glm::dvec3 pos = GetCartesianPoint3D(posID);
 
-				printf("parametersAxis2Placement3D.position.x = %.3f;\n", pos.x);
-				printf("parametersAxis2Placement3D.position.y = %.3f;\n", pos.y);
-				printf("parametersAxis2Placement3D.position.z = %.3f;\n", pos.z);
+				printf("parametersAxis2Placement3D.position.x = %.6f;\n", pos.x);
+				printf("parametersAxis2Placement3D.position.y = %.6f;\n", pos.y);
+				printf("parametersAxis2Placement3D.position.z = %.6f;\n", pos.z);
 
 				glm::dvec3 yAxis = glm::normalize(glm::cross(zAxis, xAxis));
 				xAxis = glm::normalize(glm::cross(yAxis, zAxis));

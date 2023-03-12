@@ -173,6 +173,16 @@ void TestTriangleDecompose()
 int main()
 {
     std::cout << "Hello Conway-Geom test!\n";
+
+
+    std::vector<webifc::Geometry> geometryVec;
+
+    //taken from web ifc obj dump code 
+    glm::dmat4 NormalizeMat(
+		glm::dvec4(1, 0, 0, 0),
+		glm::dvec4(0, 0, -1, 0),
+		glm::dvec4(0, 1, 0, 0),
+		glm::dvec4(0, 0, 0, 1));
     
     //from outside debugger 
     //std::string content = ReadFile("../../../index.ifc");
@@ -206,37 +216,37 @@ int main()
     webifc::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 76.000;
-    parametersPolygonalFaceset.points[0].y = -11.450;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 76.0000;
+    parametersPolygonalFaceset.points[0].y = -11.4504;
+    parametersPolygonalFaceset.points[0].z = 0.0000;
 
-    parametersPolygonalFaceset.points[1].x = 76.000;
-    parametersPolygonalFaceset.points[1].y = -11.450;
-    parametersPolygonalFaceset.points[1].z = 15.000;
+    parametersPolygonalFaceset.points[1].x = 76.0000;
+    parametersPolygonalFaceset.points[1].y = -11.4504;
+    parametersPolygonalFaceset.points[1].z = 15.0000;
 
-    parametersPolygonalFaceset.points[2].x = 76.000;
-    parametersPolygonalFaceset.points[2].y = 0.000;
-    parametersPolygonalFaceset.points[2].z = 15.000;
+    parametersPolygonalFaceset.points[2].x = 76.0000;
+    parametersPolygonalFaceset.points[2].y = 0.0000;
+    parametersPolygonalFaceset.points[2].z = 15.0000;
 
-    parametersPolygonalFaceset.points[3].x = 76.000;
-    parametersPolygonalFaceset.points[3].y = 0.000;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 76.0000;
+    parametersPolygonalFaceset.points[3].y = 0.0000;
+    parametersPolygonalFaceset.points[3].z = 0.0000;
 
-    parametersPolygonalFaceset.points[4].x = 86.000;
-    parametersPolygonalFaceset.points[4].y = -11.450;
-    parametersPolygonalFaceset.points[4].z = 15.000;
+    parametersPolygonalFaceset.points[4].x = 86.0000;
+    parametersPolygonalFaceset.points[4].y = -11.4504;
+    parametersPolygonalFaceset.points[4].z = 15.0000;
 
-    parametersPolygonalFaceset.points[5].x = 86.000;
-    parametersPolygonalFaceset.points[5].y = -11.450;
-    parametersPolygonalFaceset.points[5].z = 0.000;
+    parametersPolygonalFaceset.points[5].x = 86.0000;
+    parametersPolygonalFaceset.points[5].y = -11.4504;
+    parametersPolygonalFaceset.points[5].z = 0.0000;
 
-    parametersPolygonalFaceset.points[6].x = 86.000;
-    parametersPolygonalFaceset.points[6].y = 0.000;
-    parametersPolygonalFaceset.points[6].z = 15.000;
+    parametersPolygonalFaceset.points[6].x = 86.0000;
+    parametersPolygonalFaceset.points[6].y = 0.0000;
+    parametersPolygonalFaceset.points[6].z = 15.0000;
 
-    parametersPolygonalFaceset.points[7].x = 86.000;
-    parametersPolygonalFaceset.points[7].y = 0.000;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 86.0000;
+    parametersPolygonalFaceset.points[7].y = 0.0000;
+    parametersPolygonalFaceset.points[7].z = 0.0000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -274,57 +284,45 @@ int main()
 
     webifc::Geometry geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
+    geometryVec.push_back(geometry);
 
-    printf("Testing obj export...");
-    std::string completeObj = "";
-
-    size_t offset = 0;
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
-
-    //filthy but just testing quick
-    int count = 0;
-    std::string fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 48.000;
-    parametersPolygonalFaceset.points[0].y = -11.450;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 48.0000;
+    parametersPolygonalFaceset.points[0].y = -11.4504;
+    parametersPolygonalFaceset.points[0].z = 0.0000;
 
-    parametersPolygonalFaceset.points[1].x = 48.000;
-    parametersPolygonalFaceset.points[1].y = -11.450;
-    parametersPolygonalFaceset.points[1].z = 30.000;
+    parametersPolygonalFaceset.points[1].x = 48.0000;
+    parametersPolygonalFaceset.points[1].y = -11.4504;
+    parametersPolygonalFaceset.points[1].z = 30.0000;
 
-    parametersPolygonalFaceset.points[2].x = 48.000;
-    parametersPolygonalFaceset.points[2].y = 0.000;
-    parametersPolygonalFaceset.points[2].z = 30.000;
+    parametersPolygonalFaceset.points[2].x = 48.0000;
+    parametersPolygonalFaceset.points[2].y = 0.0000;
+    parametersPolygonalFaceset.points[2].z = 30.0000;
 
-    parametersPolygonalFaceset.points[3].x = 48.000;
-    parametersPolygonalFaceset.points[3].y = 0.000;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 48.0000;
+    parametersPolygonalFaceset.points[3].y = 0.0000;
+    parametersPolygonalFaceset.points[3].z = 0.0000;
 
-    parametersPolygonalFaceset.points[4].x = 58.000;
-    parametersPolygonalFaceset.points[4].y = -11.450;
-    parametersPolygonalFaceset.points[4].z = 0.000;
+    parametersPolygonalFaceset.points[4].x = 58.0000;
+    parametersPolygonalFaceset.points[4].y = -11.4504;
+    parametersPolygonalFaceset.points[4].z = 0.0000;
 
-    parametersPolygonalFaceset.points[5].x = 58.000;
-    parametersPolygonalFaceset.points[5].y = -11.450;
-    parametersPolygonalFaceset.points[5].z = 30.000;
+    parametersPolygonalFaceset.points[5].x = 58.0000;
+    parametersPolygonalFaceset.points[5].y = -11.4504;
+    parametersPolygonalFaceset.points[5].z = 30.0000;
 
-    parametersPolygonalFaceset.points[6].x = 58.000;
-    parametersPolygonalFaceset.points[6].y = 0.000;
-    parametersPolygonalFaceset.points[6].z = 30.000;
+    parametersPolygonalFaceset.points[6].x = 58.0000;
+    parametersPolygonalFaceset.points[6].y = 0.0000;
+    parametersPolygonalFaceset.points[6].z = 30.0000;
 
-    parametersPolygonalFaceset.points[7].x = 58.000;
-    parametersPolygonalFaceset.points[7].y = 0.000;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 58.0000;
+    parametersPolygonalFaceset.points[7].y = 0.0000;
+    parametersPolygonalFaceset.points[7].z = 0.0000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -360,56 +358,48 @@ int main()
     parametersPolygonalFaceset.indices[22] = 7;
     parametersPolygonalFaceset.indices[23] = 6;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    webifc::Geometry geometry2 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
+    geometryVec.push_back(geometry2);
 
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp1(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp1, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 0.000;
-    parametersPolygonalFaceset.points[0].y = -11.450;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 0.0000;
+    parametersPolygonalFaceset.points[0].y = -11.4504;
+    parametersPolygonalFaceset.points[0].z = 0.0000;
 
-    parametersPolygonalFaceset.points[1].x = 0.000;
-    parametersPolygonalFaceset.points[1].y = -11.450;
-    parametersPolygonalFaceset.points[1].z = 30.000;
+    parametersPolygonalFaceset.points[1].x = 0.0000;
+    parametersPolygonalFaceset.points[1].y = -11.4504;
+    parametersPolygonalFaceset.points[1].z = 30.0000;
 
-    parametersPolygonalFaceset.points[2].x = 0.000;
-    parametersPolygonalFaceset.points[2].y = 0.000;
-    parametersPolygonalFaceset.points[2].z = 30.000;
+    parametersPolygonalFaceset.points[2].x = 0.0000;
+    parametersPolygonalFaceset.points[2].y = 0.0000;
+    parametersPolygonalFaceset.points[2].z = 30.0000;
 
-    parametersPolygonalFaceset.points[3].x = 0.000;
-    parametersPolygonalFaceset.points[3].y = 0.000;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 0.0000;
+    parametersPolygonalFaceset.points[3].y = 0.0000;
+    parametersPolygonalFaceset.points[3].z = 0.0000;
 
-    parametersPolygonalFaceset.points[4].x = 10.000;
-    parametersPolygonalFaceset.points[4].y = -11.450;
-    parametersPolygonalFaceset.points[4].z = 0.000;
+    parametersPolygonalFaceset.points[4].x = 10.0000;
+    parametersPolygonalFaceset.points[4].y = -11.4504;
+    parametersPolygonalFaceset.points[4].z = 0.0000;
 
-    parametersPolygonalFaceset.points[5].x = 10.000;
-    parametersPolygonalFaceset.points[5].y = -11.450;
-    parametersPolygonalFaceset.points[5].z = 30.000;
+    parametersPolygonalFaceset.points[5].x = 10.0000;
+    parametersPolygonalFaceset.points[5].y = -11.4504;
+    parametersPolygonalFaceset.points[5].z = 30.0000;
 
-    parametersPolygonalFaceset.points[6].x = 10.000;
-    parametersPolygonalFaceset.points[6].y = 0.000;
-    parametersPolygonalFaceset.points[6].z = 30.000;
+    parametersPolygonalFaceset.points[6].x = 10.0000;
+    parametersPolygonalFaceset.points[6].y = 0.0000;
+    parametersPolygonalFaceset.points[6].z = 30.0000;
 
-    parametersPolygonalFaceset.points[7].x = 10.000;
-    parametersPolygonalFaceset.points[7].y = 0.000;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 10.0000;
+    parametersPolygonalFaceset.points[7].y = 0.0000;
+    parametersPolygonalFaceset.points[7].z = 0.0000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -445,55 +435,47 @@ int main()
     parametersPolygonalFaceset.indices[22] = 6;
     parametersPolygonalFaceset.indices[23] = 5;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    webifc::Geometry geometry3 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
+    geometryVec.push_back(geometry3);
 
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp2(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp2, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 0.002;
-    parametersPolygonalFaceset.points[0].y = -12.648;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 0.00232305;
+    parametersPolygonalFaceset.points[0].y = -12.647637;
+    parametersPolygonalFaceset.points[0].z = 0.000000;
 
-    parametersPolygonalFaceset.points[1].x = 0.002;
-    parametersPolygonalFaceset.points[1].y = -24.098;
-    parametersPolygonalFaceset.points[1].z = 0.000;
+    parametersPolygonalFaceset.points[1].x = 0.00232305;
+    parametersPolygonalFaceset.points[1].y = -24.098042;
+    parametersPolygonalFaceset.points[1].z = 0.000000;
 
-    parametersPolygonalFaceset.points[2].x = 0.002;
-    parametersPolygonalFaceset.points[2].y = -24.098;
-    parametersPolygonalFaceset.points[2].z = 15.000;
+    parametersPolygonalFaceset.points[2].x = 0.00232305;
+    parametersPolygonalFaceset.points[2].y = -24.098042;
+    parametersPolygonalFaceset.points[2].z = 15.000000;
 
-    parametersPolygonalFaceset.points[3].x = 0.002;
-    parametersPolygonalFaceset.points[3].y = -12.648;
-    parametersPolygonalFaceset.points[3].z = 15.000;
+    parametersPolygonalFaceset.points[3].x = 0.00232305;
+    parametersPolygonalFaceset.points[3].y = -12.647637;
+    parametersPolygonalFaceset.points[3].z = 15.000000;
 
-    parametersPolygonalFaceset.points[4].x = 10.002;
-    parametersPolygonalFaceset.points[4].y = -12.648;
-    parametersPolygonalFaceset.points[4].z = 0.000;
+    parametersPolygonalFaceset.points[4].x = 10.002323;
+    parametersPolygonalFaceset.points[4].y = -12.647637;
+    parametersPolygonalFaceset.points[4].z = 0.000000;
 
-    parametersPolygonalFaceset.points[5].x = 10.002;
-    parametersPolygonalFaceset.points[5].y = -24.098;
-    parametersPolygonalFaceset.points[5].z = 0.000;
+    parametersPolygonalFaceset.points[5].x = 10.002323;
+    parametersPolygonalFaceset.points[5].y = -24.098042;
+    parametersPolygonalFaceset.points[5].z = 0.000000;
 
-    parametersPolygonalFaceset.points[6].x = 10.002;
-    parametersPolygonalFaceset.points[6].y = -24.098;
-    parametersPolygonalFaceset.points[6].z = 15.000;
+    parametersPolygonalFaceset.points[6].x = 10.002323;
+    parametersPolygonalFaceset.points[6].y = -24.098042;
+    parametersPolygonalFaceset.points[6].z = 15.000000;
 
-    parametersPolygonalFaceset.points[7].x = 10.002;
-    parametersPolygonalFaceset.points[7].y = -12.648;
-    parametersPolygonalFaceset.points[7].z = 15.000;
+    parametersPolygonalFaceset.points[7].x = 10.002323;
+    parametersPolygonalFaceset.points[7].y = -12.647637;
+    parametersPolygonalFaceset.points[7].z = 15.000000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -529,56 +511,48 @@ int main()
     parametersPolygonalFaceset.indices[22] = 5;
     parametersPolygonalFaceset.indices[23] = 8;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    webifc::Geometry geometry4 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
+    geometryVec.push_back(geometry4);
 
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp3(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp3, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 24.000;
-    parametersPolygonalFaceset.points[0].y = -11.450;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 24.0000;
+    parametersPolygonalFaceset.points[0].y = -11.4504;
+    parametersPolygonalFaceset.points[0].z = 0.0000;
 
-    parametersPolygonalFaceset.points[1].x = 24.000;
-    parametersPolygonalFaceset.points[1].y = -11.450;
-    parametersPolygonalFaceset.points[1].z = 30.000;
+    parametersPolygonalFaceset.points[1].x = 24.0000;
+    parametersPolygonalFaceset.points[1].y = -11.4504;
+    parametersPolygonalFaceset.points[1].z = 30.0000;
 
-    parametersPolygonalFaceset.points[2].x = 24.000;
-    parametersPolygonalFaceset.points[2].y = 0.000;
-    parametersPolygonalFaceset.points[2].z = 30.000;
+    parametersPolygonalFaceset.points[2].x = 24.0000;
+    parametersPolygonalFaceset.points[2].y = 0.0000;
+    parametersPolygonalFaceset.points[2].z = 30.0000;
 
-    parametersPolygonalFaceset.points[3].x = 24.000;
-    parametersPolygonalFaceset.points[3].y = 0.000;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 24.0000;
+    parametersPolygonalFaceset.points[3].y = 0.0000;
+    parametersPolygonalFaceset.points[3].z = 0.0000;
 
-    parametersPolygonalFaceset.points[4].x = 34.000;
-    parametersPolygonalFaceset.points[4].y = -11.450;
-    parametersPolygonalFaceset.points[4].z = 30.000;
+    parametersPolygonalFaceset.points[4].x = 34.0000;
+    parametersPolygonalFaceset.points[4].y = -11.4504;
+    parametersPolygonalFaceset.points[4].z = 30.0000;
 
-    parametersPolygonalFaceset.points[5].x = 34.000;
-    parametersPolygonalFaceset.points[5].y = -11.450;
-    parametersPolygonalFaceset.points[5].z = 0.000;
+    parametersPolygonalFaceset.points[5].x = 34.0000;
+    parametersPolygonalFaceset.points[5].y = -11.4504;
+    parametersPolygonalFaceset.points[5].z = 0.0000;
 
-    parametersPolygonalFaceset.points[6].x = 34.000;
-    parametersPolygonalFaceset.points[6].y = 0.000;
-    parametersPolygonalFaceset.points[6].z = 30.000;
+    parametersPolygonalFaceset.points[6].x = 34.0000;
+    parametersPolygonalFaceset.points[6].y = 0.0000;
+    parametersPolygonalFaceset.points[6].z = 30.0000;
 
-    parametersPolygonalFaceset.points[7].x = 34.000;
-    parametersPolygonalFaceset.points[7].y = 0.000;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 34.0000;
+    parametersPolygonalFaceset.points[7].y = 0.0000;
+    parametersPolygonalFaceset.points[7].z = 0.0000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -614,56 +588,49 @@ int main()
     parametersPolygonalFaceset.indices[22] = 8;
     parametersPolygonalFaceset.indices[23] = 7;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
-
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
-
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
+    webifc::Geometry geometry5 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
 
-    std::wstring wsTmp4(fileName.begin(), fileName.end());
+    geometryVec.push_back(geometry5);
 
-    webifc::writeFile(wsTmp4, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 47.860;
-    parametersPolygonalFaceset.points[0].y = 0.973;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 47.859639;
+    parametersPolygonalFaceset.points[0].y = 0.973380;
+    parametersPolygonalFaceset.points[0].z = 0.000000;
 
-    parametersPolygonalFaceset.points[1].x = 47.860;
-    parametersPolygonalFaceset.points[1].y = 0.973;
-    parametersPolygonalFaceset.points[1].z = 15.000;
+    parametersPolygonalFaceset.points[1].x = 47.859639;
+    parametersPolygonalFaceset.points[1].y = 0.973380;
+    parametersPolygonalFaceset.points[1].z = 15.000000;
 
-    parametersPolygonalFaceset.points[2].x = 47.860;
-    parametersPolygonalFaceset.points[2].y = 12.424;
-    parametersPolygonalFaceset.points[2].z = 15.000;
+    parametersPolygonalFaceset.points[2].x = 47.859639;
+    parametersPolygonalFaceset.points[2].y = 12.423785;
+    parametersPolygonalFaceset.points[2].z = 15.000000;
 
-    parametersPolygonalFaceset.points[3].x = 47.860;
-    parametersPolygonalFaceset.points[3].y = 12.424;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 47.859639;
+    parametersPolygonalFaceset.points[3].y = 12.423785;
+    parametersPolygonalFaceset.points[3].z = 0.000000;
 
-    parametersPolygonalFaceset.points[4].x = 57.860;
-    parametersPolygonalFaceset.points[4].y = 0.973;
-    parametersPolygonalFaceset.points[4].z = 0.000;
+    parametersPolygonalFaceset.points[4].x = 57.859639;
+    parametersPolygonalFaceset.points[4].y = 0.973380;
+    parametersPolygonalFaceset.points[4].z = 0.000000;
 
-    parametersPolygonalFaceset.points[5].x = 57.860;
-    parametersPolygonalFaceset.points[5].y = 0.973;
-    parametersPolygonalFaceset.points[5].z = 15.000;
+    parametersPolygonalFaceset.points[5].x = 57.859639;
+    parametersPolygonalFaceset.points[5].y = 0.973380;
+    parametersPolygonalFaceset.points[5].z = 15.000000;
 
-    parametersPolygonalFaceset.points[6].x = 57.860;
-    parametersPolygonalFaceset.points[6].y = 12.424;
-    parametersPolygonalFaceset.points[6].z = 15.000;
+    parametersPolygonalFaceset.points[6].x = 57.859639;
+    parametersPolygonalFaceset.points[6].y = 12.423785;
+    parametersPolygonalFaceset.points[6].z = 15.000000;
 
-    parametersPolygonalFaceset.points[7].x = 57.860;
-    parametersPolygonalFaceset.points[7].y = 12.424;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 57.859639;
+    parametersPolygonalFaceset.points[7].y = 12.423785;
+    parametersPolygonalFaceset.points[7].z = 0.000000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -699,56 +666,47 @@ int main()
     parametersPolygonalFaceset.indices[22] = 6;
     parametersPolygonalFaceset.indices[23] = 5;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    webifc::Geometry geometry6 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
+    geometryVec.push_back(geometry6);
 
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
-
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp5(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp5, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
     parametersPolygonalFaceset.numPoints = 8;
     parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
-    parametersPolygonalFaceset.points[0].x = 62.000;
-    parametersPolygonalFaceset.points[0].y = -11.450;
-    parametersPolygonalFaceset.points[0].z = 0.000;
+    parametersPolygonalFaceset.points[0].x = 62.0000;
+    parametersPolygonalFaceset.points[0].y = -11.4504;
+    parametersPolygonalFaceset.points[0].z = 0.0000;
 
-    parametersPolygonalFaceset.points[1].x = 62.000;
-    parametersPolygonalFaceset.points[1].y = -11.450;
-    parametersPolygonalFaceset.points[1].z = 15.000;
+    parametersPolygonalFaceset.points[1].x = 62.0000;
+    parametersPolygonalFaceset.points[1].y = -11.4504;
+    parametersPolygonalFaceset.points[1].z = 15.0000;
 
-    parametersPolygonalFaceset.points[2].x = 62.000;
-    parametersPolygonalFaceset.points[2].y = 0.000;
-    parametersPolygonalFaceset.points[2].z = 15.000;
+    parametersPolygonalFaceset.points[2].x = 62.0000;
+    parametersPolygonalFaceset.points[2].y = 0.0000;
+    parametersPolygonalFaceset.points[2].z = 15.0000;
 
-    parametersPolygonalFaceset.points[3].x = 62.000;
-    parametersPolygonalFaceset.points[3].y = 0.000;
-    parametersPolygonalFaceset.points[3].z = 0.000;
+    parametersPolygonalFaceset.points[3].x = 62.0000;
+    parametersPolygonalFaceset.points[3].y = 0.0000;
+    parametersPolygonalFaceset.points[3].z = 0.0000;
 
-    parametersPolygonalFaceset.points[4].x = 72.000;
-    parametersPolygonalFaceset.points[4].y = -11.450;
-    parametersPolygonalFaceset.points[4].z = 15.000;
+    parametersPolygonalFaceset.points[4].x = 72.0000;
+    parametersPolygonalFaceset.points[4].y = -11.4504;
+    parametersPolygonalFaceset.points[4].z = 15.0000;
 
-    parametersPolygonalFaceset.points[5].x = 72.000;
-    parametersPolygonalFaceset.points[5].y = -11.450;
-    parametersPolygonalFaceset.points[5].z = 0.000;
+    parametersPolygonalFaceset.points[5].x = 72.0000;
+    parametersPolygonalFaceset.points[5].y = -11.4504;
+    parametersPolygonalFaceset.points[5].z = 0.0000;
 
-    parametersPolygonalFaceset.points[6].x = 72.000;
-    parametersPolygonalFaceset.points[6].y = 0.000;
-    parametersPolygonalFaceset.points[6].z = 15.000;
+    parametersPolygonalFaceset.points[6].x = 72.0000;
+    parametersPolygonalFaceset.points[6].y = 0.0000;
+    parametersPolygonalFaceset.points[6].z = 15.0000;
 
-    parametersPolygonalFaceset.points[7].x = 72.000;
-    parametersPolygonalFaceset.points[7].y = 0.000;
-    parametersPolygonalFaceset.points[7].z = 0.000;
+    parametersPolygonalFaceset.points[7].x = 72.0000;
+    parametersPolygonalFaceset.points[7].y = 0.0000;
+    parametersPolygonalFaceset.points[7].z = 0.0000;
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
@@ -784,33 +742,54 @@ int main()
     parametersPolygonalFaceset.indices[22] = 8;
     parametersPolygonalFaceset.indices[23] = 7;
 
-    geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    webifc::Geometry geometry7 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
-    offset = 0;
-    completeObj = "";
-    completeObj += conwayGeometryProcessor.GeometryToObj(geometry, offset);
+    geometryVec.push_back(geometry7);
 
-    //filthy but just testing quick
-    fileName = "./";
-    fileName += std::to_string(count++);
-    fileName += "_conway.obj";
-
-
-    std::wstring wsTmp6(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp6, completeObj);
+    //free memory 
+    delete parametersPolygonalFaceset.points;
+    delete parametersPolygonalFaceset.indices;
 
     auto time = webifc::ms() - start;
 
-    //std::cout << "Reading took " << time << "ms" << std::endl;
+    std::cout << "Processing geometry t " << time << "ms" << std::endl;
+
+    std::cout << "Testing individual obj export..." << std::endl;
+
+    for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
+    {
+        size_t offset = 0;
+        std::string singleObj = conwayGeometryProcessor.GeometryToObj(geometryVec[geometryIndex], offset, NormalizeMat);
+
+        //filthy but just testing quick
+        std::string fileName = "./";
+        fileName += std::to_string(geometryIndex);
+        fileName += "_conway.obj";
 
 
-    //TODO: Start adding some tests here. 
-    start = webifc::ms();
+        std::wstring wsTmp(fileName.begin(), fileName.end());
 
-    time = webifc::ms() - start;
+        webifc::writeFile(wsTmp, singleObj);
+    }
 
-    std::cout << "Processing geometry took " << time << "ms" << std::endl;
+    std::cout << "Testing complete obj export..." << std::endl;
+
+    std::string completeObj = "";
+    size_t offset = 0;
+
+    for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
+    {
+        completeObj += conwayGeometryProcessor.GeometryToObj(geometryVec[geometryIndex], offset, NormalizeMat);
+    }
+
+    //filthy but just testing quick
+    std::string fileName = "./index_ifc_full_conway.obj";
+
+    std::wstring wsTmp(fileName.begin(), fileName.end());
+
+    webifc::writeFile(wsTmp, completeObj);
+
+    geometryVec.clear();
 
     std::cout << "Done" << std::endl;
 }

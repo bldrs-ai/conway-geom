@@ -53,7 +53,7 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(webifc::IfcLoader &loader, webifc::
 
             std::string fileName = "./";
             fileName += std::to_string(i);
-            fileName += "_.obj";
+            fileName += "_webifc.obj";
 
 
             std::wstring wsTmp(fileName.begin(), fileName.end());
