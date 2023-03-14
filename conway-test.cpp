@@ -170,11 +170,8 @@ void TestTriangleDecompose()
     }
 }
 
-int main()
+void genIndexIfc()
 {
-    std::cout << "Hello Conway-Geom test!\n";
-
-
     std::vector<webifc::Geometry> geometryVec;
 
     //taken from web ifc obj dump code 
@@ -790,6 +787,14 @@ int main()
     webifc::writeFile(wsTmp, completeObj);
 
     geometryVec.clear();
+}
 
+int main()
+{
+    std::cout << "Hello Conway-Geom test!\n";
+
+    //generate simple index.ifc geometry 
+    genIndexIfc();
+    
     std::cout << "Done" << std::endl;
 }
