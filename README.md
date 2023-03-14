@@ -20,6 +20,7 @@
 8. Run ```build_win.bat debug``` or ```build_win.bat release``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
 
 ## Current IFC Schema Coverage (For Ifc-JS Feature Parity)
+### 31.11% Complete (28/90)
 
 1.  ifc::IFCPLANE
 2.  ifc::IFCBSPLINESURFACE
