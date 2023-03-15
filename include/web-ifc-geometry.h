@@ -723,17 +723,16 @@ namespace webifc
 					auto coordinatesRef = _loader.GetRefArgument();
 					auto points = ReadIfcCartesianPointList3D(coordinatesRef);
 					
-					printf("webifc::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;\n");
+					printCodeGen("webifc::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;\n");
 
-					printf("parametersPolygonalFaceset.numPoints = %i;\n", points.size());
-					printf("parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];\n");
+					printCodeGen("parametersPolygonalFaceset.numPoints = %i;\n", points.size());
+					printCodeGen("parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];\n");
 					//print points 
 					for (int i = 0; i < points.size(); i++)
 					{
-						printf("parametersPolygonalFaceset.points[%i].x = %.6f;\n", i, points[i].x);
-						printf("parametersPolygonalFaceset.points[%i].y = %.6f;\n", i, points[i].y);
-						printf("parametersPolygonalFaceset.points[%i].z = %.6f;\n\n", i, points[i].z);
-						//printf("Point %i: X: %.6f, Y: %.6f, Z: %.6f\n", i, points[i].x, points[i].y, points[i].z);
+						printCodeGen("parametersPolygonalFaceset.points[%i].x = %.6f;\n", i, points[i].x);
+						printCodeGen("parametersPolygonalFaceset.points[%i].y = %.6f;\n", i, points[i].y);
+						printCodeGen("parametersPolygonalFaceset.points[%i].z = %.6f;\n\n", i, points[i].z);
 					}
 
 					// second optional argument closed, ignored
@@ -746,9 +745,9 @@ namespace webifc
 
 					std::vector<IfcBound3D> bounds;
 
-					printf("parametersPolygonalFaceset.indicesPerFace = 4;\n");
-					printf("parametersPolygonalFaceset.numIndices = %i * parametersPolygonalFaceset.indicesPerFace;\n", faces.size());
-					printf("parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];\n");
+					printCodeGen("parametersPolygonalFaceset.indicesPerFace = 4;\n");
+					printCodeGen("parametersPolygonalFaceset.numIndices = %i * parametersPolygonalFaceset.indicesPerFace;\n", faces.size());
+					printCodeGen("parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];\n");
 					uint32_t indexCount = 0;
 					for (auto &face : faces)
 					{
@@ -1425,7 +1424,7 @@ namespace webifc
 				{
 					uint32_t index = static_cast<uint32_t>(_loader.GetDoubleArgument(indexID));
 
-					printf("parametersPolygonalFaceset.indices[%i] = %i;\n", _count++, index);
+					printCodeGen("parametersPolygonalFaceset.indices[%i] = %i;\n", _count++, index);
 					glm::dvec3 point = points[index - 1]; // indices are 1-based
 
 					// I am not proud of this
@@ -4129,7 +4128,7 @@ namespace webifc
 				glm::dvec3 zAxis(0, 0, 1);
 				glm::dvec3 xAxis(1, 0, 0);
 
-				printf("webifc::ConwayGeometryProcessor::ParamsAxis2Placement3D parametersAxis2Placement3D;\n");
+				printCodeGen("webifc::ConwayGeometryProcessor::ParamsAxis2Placement3D parametersAxis2Placement3D;\n");
 
 				_loader.MoveToArgumentOffset(line, 0);
 				uint32_t posID = _loader.GetRefArgument();
@@ -4138,10 +4137,10 @@ namespace webifc
 				{
 					_loader.Reverse();
 					glm::dvec3 zAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
-					printf("parametersAxis2Placement3D.zAxisRef.x = %.6f;\n", zAxisPoint3D.x);
-					printf("parametersAxis2Placement3D.zAxisRef.y = %.6f;\n", zAxisPoint3D.y);
-					printf("parametersAxis2Placement3D.zAxisRef.z = %.6f;\n", zAxisPoint3D.z);
-					printf("parametersAxis2Placement3D.normalizeZ = true;\n");
+					printCodeGen("parametersAxis2Placement3D.zAxisRef.x = %.6f;\n", zAxisPoint3D.x);
+					printCodeGen("parametersAxis2Placement3D.zAxisRef.y = %.6f;\n", zAxisPoint3D.y);
+					printCodeGen("parametersAxis2Placement3D.zAxisRef.z = %.6f;\n", zAxisPoint3D.z);
+					printCodeGen("parametersAxis2Placement3D.normalizeZ = true;\n");
 					zAxis = glm::normalize(zAxisPoint3D);
 				}
 
@@ -4151,18 +4150,18 @@ namespace webifc
 				{
 					_loader.Reverse();
 					glm::dvec3 xAxisPoint3D = GetCartesianPoint3D(_loader.GetRefArgument());
-					printf("parametersAxis2Placement3D.xAxisRef.x = %.6f;\n", xAxisPoint3D.x);
-					printf("parametersAxis2Placement3D.xAxisRef.y = %.6f;\n", xAxisPoint3D.y);
-					printf("parametersAxis2Placement3D.xAxisRef.z = %.6f;\n", xAxisPoint3D.z);
-					printf("parametersAxis2Placement3D.normalizeX = true;\n");
+					printCodeGen("parametersAxis2Placement3D.xAxisRef.x = %.6f;\n", xAxisPoint3D.x);
+					printCodeGen("parametersAxis2Placement3D.xAxisRef.y = %.6f;\n", xAxisPoint3D.y);
+					printCodeGen("parametersAxis2Placement3D.xAxisRef.z = %.6f;\n", xAxisPoint3D.z);
+					printCodeGen("parametersAxis2Placement3D.normalizeX = true;\n");
 					xAxis = glm::normalize(xAxisPoint3D);
 				}
 
 				glm::dvec3 pos = GetCartesianPoint3D(posID);
 
-				printf("parametersAxis2Placement3D.position.x = %.6f;\n", pos.x);
-				printf("parametersAxis2Placement3D.position.y = %.6f;\n", pos.y);
-				printf("parametersAxis2Placement3D.position.z = %.6f;\n", pos.z);
+				printCodeGen("parametersAxis2Placement3D.position.x = %.6f;\n", pos.x);
+				printCodeGen("parametersAxis2Placement3D.position.y = %.6f;\n", pos.y);
+				printCodeGen("parametersAxis2Placement3D.position.z = %.6f;\n", pos.z);
 
 				glm::dvec3 yAxis = glm::normalize(glm::cross(zAxis, xAxis));
 				xAxis = glm::normalize(glm::cross(yAxis, zAxis));

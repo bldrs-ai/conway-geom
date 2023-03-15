@@ -26,6 +26,21 @@ namespace webifc
 	const double EPS_SMALL = 1e-6;
 	const double EPS_BIG = 1e-4;
 
+	bool shouldPrintCodeGen = false;
+	bool exportObjs 		= false;
+	//bool exportSingleObj 	= false;
+
+	int printCodeGen(const char *format, ...)
+	{
+		va_list args;
+		va_start(args, format);
+
+		if(shouldPrintCodeGen)
+				vprintf(format, args);
+
+		va_end(args);
+	}
+
 	bool MatrixFlipsTriangles(const glm::dmat4 &mat)
 	{
 		return glm::determinant(mat) < 0;
@@ -1363,6 +1378,14 @@ namespace webifc
 		}
 	};
 
+	/*std::optional<glm:dvec3> GetOriginRec(IfcComposedMesh &mesh, IfcGeometry &geometry, glm::dmat4 mat)
+	{
+
+
+
+		return std::nullopt;
+	}*/
+
 	std::optional<glm::dvec3> GetOriginRec(IfcComposedMesh &mesh, std::unordered_map<uint32_t, IfcGeometry> &geometryMap, glm::dmat4 mat)
 	{
 		glm::dmat4 newMat = mat * mesh.transformation;
@@ -1381,7 +1404,7 @@ namespace webifc
 				{
 					Face f = meshGeom.GetFace(i);
 					glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
-
+					printf("GetOriginRec: a - X: %.3f, Y: %.3f, Z: %.3f", a.x, a.y, a.z);
 					return a;
 				}
 			}
@@ -1392,10 +1415,12 @@ namespace webifc
 			auto v = GetOriginRec(c, geometryMap, newMat);
 			if (v.has_value())
 			{
+				printf("GetOriginRec: v - X: %.3f, Y: %.3f, Z: %.3f", v->x, v->y, v->z);
 				return v;
 			}
 		}
-
+		
+		printf("GetOriginRec: null");
 		return std::nullopt;
 	}
 

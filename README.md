@@ -19,6 +19,16 @@
 7. [Install MinGW-64](https://github.com/msys2/msys2-installer/releases/download/2022-06-03/msys2-x86_64-20220603.exe) and add ```g++.exe``` location to your PATH variable. 
 8. Run ```build_win.bat debug``` or ```build_win.bat release``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
 
+## conway_native Usage
+1. Running application currently parses geometry from index.ifc and outputs individual obj files + a single complete obj file. 
+
+## webifc_native Usage
+1. Launching executable with no arguments loads index.ifc from repository root and parses ifc type information.
+2. -i /Path/To/IFC.ifc - Loads external ifc files and parses ifc type information.
+3. -objs - outputs geometry from ifc to individudal obj files
+4. -pc - Prints generated code for conway geometry processor (Internal only - used for debugging / development - WIP)
+5. -h - Displays help.
+
 ## Current IFC Schema Coverage (For Ifc-JS Feature Parity)
 ### 31.11% Complete (28/90)
 

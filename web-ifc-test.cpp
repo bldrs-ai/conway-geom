@@ -49,17 +49,20 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(webifc::IfcLoader &loader, webifc::
         {
             auto mesh = geometryLoader.GetFlatMesh(elements[i]);
 
-            auto mesh2 = geometryLoader.GetMesh(elements[i]);
+            if ( webifc::exportObjs )
+            {
+                auto composedMesh = geometryLoader.GetMesh(elements[i]);
 
-            std::string fileName = "./";
-            fileName += std::to_string(i);
-            fileName += "_webifc.obj";
+                std::string fileName = "./";
+                fileName += std::to_string(i);
+                fileName += "_webifc.obj";
 
 
-            std::wstring wsTmp(fileName.begin(), fileName.end());
-            geometryLoader.DumpMesh(mesh2, wsTmp);
+                std::wstring wsTmp(fileName.begin(), fileName.end());
+                geometryLoader.DumpMesh(composedMesh, wsTmp);
 
-            std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+                std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+            }
 
             /*
             for (auto& geom : mesh.geometries)
@@ -400,9 +403,45 @@ void serialize(std::vector<std::string> filePaths, std::string serializedName)
     loader->DisableSerializer();
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     std::cout << "Hello web IFC test!\n";
+
+    std::string file_path;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+
+        if (arg == "-i") {
+            // The next argument should be the file path
+            if (i + 1 < argc) {
+                file_path = argv[i + 1];
+                i++; // Skip the next argument
+            } else {
+                std::cerr << "Error: file path not provided" << std::endl;
+                return 1;
+            }
+        } else if (arg == "-pc") {
+            webifc::shouldPrintCodeGen = true;
+        } 
+        else if (arg == "-objs")
+        {
+             webifc::exportObjs = true;
+        }
+        else if( arg == "-h")
+        {
+            std::cout << "## webifc_native Usage\n1. Launching executable with no arguments loads index.ifc from repository root and parses" << 
+            " ifc type information.\n-i /Path/To/IFC.ifc - Loads external ifc files and parses ifc type information" << 
+            "\n-objs - outputs geometry from ifc to individudal obj files" << 
+            "\n-pc - Prints generated code for conway geometry processor (Internal only - used for debugging / development - WIP)"
+            "\n-h - Displays help\n";
+            return 0;
+        }
+        else {
+            std::cerr << "Error: invalid argument " << arg << std::endl;
+            return 1;
+        }
+    }
 
     // TestTriangleDecompose();
 
@@ -415,7 +454,20 @@ int main()
     //std::string content = ReadFile(L"C:/Users/qmoya/Desktop/PROGRAMES/VSCODE/IFC.JS/issues/#83 processing/05111002_IFCR2_Geo_Columns_1.ifc");
     
     //from outside debugger 
-    std::string content = ReadFile("../../../index.ifc");
+    std::string content;
+    if (file_path.empty())
+    {
+        content = ReadFile("../../../index.ifc");
+    } else 
+    {
+        content = ReadFile(file_path);
+    }
+
+    if (content.empty())
+    {
+        std::cerr << "Error: invalid filepath." << std::endl;
+        return 1;
+    }
     
     //from inside debugger 
     //std::string content = ReadFile("index.ifc");
