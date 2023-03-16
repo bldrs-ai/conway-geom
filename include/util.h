@@ -26,9 +26,25 @@ namespace webifc
 	const double EPS_SMALL = 1e-6;
 	const double EPS_BIG = 1e-4;
 
-	bool shouldPrintCodeGen = false;
-	bool exportObjs 		= false;
+	bool shouldPrintCodeGen 	= false;
+	bool exportObjs 			= false;
+	bool collectStats			= false;
+	bool verboseStats			= false;
+	bool shouldPrintTypeInfo	= false;
+
 	//bool exportSingleObj 	= false;
+	std::set<uint32_t> uniqueTypeDefs;
+
+	int printTypeInfo(const char *format, ...)
+	{
+		va_list args;
+		va_start(args, format);
+
+		if(shouldPrintTypeInfo)
+				vprintf(format, args);
+
+		va_end(args);
+	}
 
 	int printCodeGen(const char *format, ...)
 	{
@@ -39,6 +55,14 @@ namespace webifc
 				vprintf(format, args);
 
 		va_end(args);
+	}
+
+	void collectStatistics(uint32_t ifcLineType)
+	{
+		if ( collectStats )
+		{
+			webifc::uniqueTypeDefs.insert(ifcLineType);
+		}
 	}
 
 	bool MatrixFlipsTriangles(const glm::dmat4 &mat)

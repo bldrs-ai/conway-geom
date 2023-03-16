@@ -38,7 +38,10 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(webifc::IfcLoader &loader, webifc::
 {
     std::vector<webifc::IfcFlatMesh> meshes;
 
-    std::cout << "Dumping Meshes...\n";
+    if ( webifc::exportObjs ) 
+    {
+        std::cout << "Dumping Meshes...\n";
+    }
     int count = 0;
 
     for (auto type : ifc::IfcElements)
@@ -421,20 +424,38 @@ int main(int argc, char *argv[])
                 std::cerr << "Error: file path not provided" << std::endl;
                 return 1;
             }
-        } else if (arg == "-pc") {
+        } else if (arg == "-c") {
             webifc::shouldPrintCodeGen = true;
         } 
         else if (arg == "-objs")
         {
              webifc::exportObjs = true;
         }
+        else if (arg == "-stats")
+        {
+            webifc::collectStats = true;
+            webifc::uniqueTypeDefs.clear();
+        }
+        else if (arg == "-statsv")
+        {
+            webifc::collectStats = true;
+            webifc::verboseStats = true;
+            webifc::uniqueTypeDefs.clear();
+        }
+        else if (arg == "-t")
+        {
+            webifc::shouldPrintTypeInfo = true;
+        }
         else if( arg == "-h")
         {
-            std::cout << "## webifc_native Usage\n1. Launching executable with no arguments loads index.ifc from repository root and parses" << 
-            " ifc type information.\n-i /Path/To/IFC.ifc - Loads external ifc files and parses ifc type information" << 
-            "\n-objs - outputs geometry from ifc to individudal obj files" << 
-            "\n-pc - Prints generated code for conway geometry processor (Internal only - used for debugging / development - WIP)"
-            "\n-h - Displays help\n";
+            std::cout << "webifc_native Usage\n\tLaunching executable with no arguments loads index.ifc from repository root and parses" << 
+            " ifc type information.\n\t-i /Path/To/IFC.ifc - Loads external ifc files and parses ifc type information" << 
+            "\n\t-objs - Outputs geometry from ifc to individudal obj files" << 
+            "\n\t-stats - Outputs currently supported ifc type coverage for a given ifc file" <<
+            "\n\t-statsv - Outputs currently supported ifc type coverage + prints type name info for a given ifc file" <<
+            "\n\t-t - Traces and prints IFC type information gathered from parsing a given ifc file" << 
+            "\n\t-c - Prints generated code for conway geometry processor (Internal only - used for debugging / development - WIP)"
+            "\n\t-h - Displays help\n";
             return 0;
         }
         else {
@@ -457,6 +478,7 @@ int main(int argc, char *argv[])
     std::string content;
     if (file_path.empty())
     {
+        file_path = "../../../index.ifc";
         content = ReadFile("../../../index.ifc");
     } else 
     {
@@ -472,7 +494,10 @@ int main(int argc, char *argv[])
     //from inside debugger 
     //std::string content = ReadFile("index.ifc");
 
-    std::cout << "Tracing IFC Schema for input file...\n";
+    if (webifc::shouldPrintTypeInfo)
+    {
+        std::cout << "Tracing IFC Schema for input file...\n";
+    }
 
     webifc::LoaderSettings set;
     set.COORDINATE_TO_ORIGIN = true;
@@ -521,5 +546,90 @@ int main(int argc, char *argv[])
 
     std::cout << "Generating geometry took " << time << "ms" << std::endl;
 
-    std::cout << "Done" << std::endl;
+
+    if ( webifc::collectStats )
+    {
+        std::vector<uint32_t> currentlySupportedTypes = 
+        {
+            ifc::IFCPLANE, 
+            ifc::IFCBSPLINESURFACE,
+            ifc::IFCBSPLINESURFACEWITHKNOTS,
+            ifc::IFCRATIONALBSPLINESURFACEWITHKNOTS,
+            ifc::IFCAXIS2PLACEMENT2D,
+            ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2D,
+            ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM,
+            ifc::IFCPOLYLINE,
+            ifc::IFCLINE,
+            ifc::IFCINDEXEDPOLYCURVE,
+            ifc::IFCCIRCLE,
+            ifc::IFCELLIPSE,
+            ifc::IFCBSPLINECURVE,
+            ifc::IFCBSPLINECURVEWITHKNOTS,
+            ifc::IFCRATIONALBSPLINECURVEWITHKNOTS,
+            ifc::IFCAXIS1PLACEMENT,
+            ifc::IFCAXIS2PLACEMENT3D,
+            ifc::IFCLOCALPLACEMENT,
+            ifc::IFCCARTESIANTRANSFORMATIONOPERATOR3D,
+            ifc::IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM,
+            ifc::IFCCONNECTEDFACESET,
+            ifc::IFCCLOSEDSHELL,
+            ifc::IFCOPENSHELL,
+            ifc::IFCFACE,
+            ifc::IFCADVANCEDFACE,
+            ifc::IFCPOLYLOOP,
+            ifc::IFCINDEXEDPOLYGONALFACE,
+            ifc::IFCPOLYGONALFACESET
+        };
+
+        uint32_t uniqueTypeDefsSize = webifc::uniqueTypeDefs.size();
+        std::vector<uint32_t> supportedTypes;
+        std::vector<uint32_t> unsupportedTypes;
+
+        std::cout << "\n\n********** IFC Statistics **********" << std::endl;
+        std::cout <<"Input File: " << file_path.c_str() << std::endl;
+        std::cout << "Unique IFC Types: " << uniqueTypeDefsSize << std::endl;
+        for (const auto& ifcType : webifc::uniqueTypeDefs) 
+        {
+
+            if (webifc::verboseStats)
+            {
+                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+            }
+
+            if ( std::find(currentlySupportedTypes.begin(), currentlySupportedTypes.end(), ifcType) != currentlySupportedTypes.end() )
+            {
+                supportedTypes.push_back(ifcType);
+            } 
+            else 
+            {
+                unsupportedTypes.push_back(ifcType);
+            }
+        }
+
+        uint32_t supportedSize = supportedTypes.size();
+        uint32_t unsupportedSize = unsupportedTypes.size();
+        std::cout << "\nSupported Types: " << supportedSize << std::endl;
+        if (webifc::verboseStats)
+        {
+            for (const auto& ifcType : supportedTypes) 
+            {
+                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+            }
+        }
+
+
+        std::cout << "\nUnsupported Types: " << unsupportedSize << std::endl;
+        if (webifc::verboseStats)
+        {
+            for (const auto& ifcType : unsupportedTypes) 
+            {
+                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+            }
+        }
+
+        std::cout << "\nPercentage Supported: " << ((double)supportedSize / (double)uniqueTypeDefsSize) * 100 << "%" << std::endl;
+        std::cout << "************************************" << std::endl;
+    }
+
+    std::cout << "Done." << std::endl;
 }

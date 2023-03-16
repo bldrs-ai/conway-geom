@@ -422,7 +422,10 @@ namespace webifc
 			}
 			else
 			{
-				printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+				const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+				collectStatistics(line.ifcType);
+				printTypeInfo("//%s\n", ifcLineType);
 				switch (line.ifcType)
 				{
 					
@@ -1409,7 +1412,10 @@ namespace webifc
 
 			bounds.emplace_back();
 
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
@@ -1471,7 +1477,10 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCCONNECTEDFACESET:
@@ -1502,7 +1511,10 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCPRESENTATIONSTYLEASSIGNMENT:
@@ -1787,7 +1799,10 @@ namespace webifc
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			
@@ -1860,7 +1875,10 @@ namespace webifc
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCFACEOUTERBOUND:
@@ -1915,7 +1933,10 @@ namespace webifc
 		{
 			auto lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCPOLYLOOP:
@@ -2030,7 +2051,10 @@ namespace webifc
 			auto edgeID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(edgeID);
 
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCEDGECURVE:
@@ -3170,7 +3194,10 @@ namespace webifc
 		IfcProfile GetProfileByLine(uint32_t lineID)
 		{
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCARBITRARYOPENPROFILEDEF:
@@ -3520,7 +3547,10 @@ namespace webifc
 		IfcProfile3D GetProfile3DByLine(uint32_t lineID)
 		{
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCARBITRARYOPENPROFILEDEF:
@@ -3548,7 +3578,10 @@ namespace webifc
 			auto &line = _loader.GetLine(lineID);
 
 			// TODO: IfcSweptSurface and IfcBSplineSurface still missing
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCPLANE:
@@ -3986,7 +4019,10 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCAXIS2PLACEMENT2D:
@@ -4092,7 +4128,10 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+			
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCAXIS1PLACEMENT:
@@ -4346,7 +4385,10 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
-			printf("//%s\n", GetReadableNameFromTypeCode(line.ifcType));
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			switch (line.ifcType)
 			{
 			case ifc::IFCPOLYLINE:
