@@ -37,7 +37,7 @@ if [ ! -d ".git/modules" ]; then
     fi
 fi
 
-./macos_genie/genie gmake
+./macos_genie/genie-$(uname -m) gmake
 if [ $? -ne 0 ]; then
     echo "! Could not generate makefiles" 1>&2
     exit 1
