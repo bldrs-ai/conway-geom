@@ -338,10 +338,29 @@ namespace webifc
 		}
 
         //case ifc::IFCMAPPEDITEM:
-        /*ComposedMesh getMappedItem(uint32_t ifcPresentation, uint32_t localPlacement)
-        {
+		struct ParamsGetMappedItem
+		{
+			glm::dmat4 transformation;
+			IfcComposedMesh ifcPresentationMesh;
+		};
 
-        }*/
+        IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters)
+        {
+			IfcComposedMesh mesh;
+			mesh.transformation = parameters.transformation;
+			mesh.children.push_back(parameters.ifcPresentationMesh);
+
+			return mesh;
+        }
+
+		//case ifc::IFCBOOLEANCLIPPINGRESULT:
+		struct ParamsGetBooleanClippingResult 
+		{
+			IfcComposedMesh firstMesh;
+			IfcComposedMesh secondMesh;
+		};
+
+		
 
 		//case ifc::IFCPLANE:
 		//case ifc::IFCBSPLINESURFACE:

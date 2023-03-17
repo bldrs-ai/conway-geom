@@ -1402,13 +1402,20 @@ namespace webifc
 		}
 	};
 
-	/*std::optional<glm:dvec3> GetOriginRec(IfcComposedMesh &mesh, IfcGeometry &geometry, glm::dmat4 mat)
+	std::optional<glm::dvec3> GetOriginRec(IfcGeometry &geometry, glm::dmat4 transformation, glm::dmat4 mat)
 	{
 
+		glm::dmat4 newMat = mat * transformation;
 
+		if (geometry.numFaces)
+		{
+			Face f = geometry.GetFace(0);
+			glm::dvec3 a = newMat * glm::dvec4(geometry.GetPoint(f.i0), 1);
+			return a;
+		}
 
 		return std::nullopt;
-	}*/
+	}
 
 	std::optional<glm::dvec3> GetOriginRec(IfcComposedMesh &mesh, std::unordered_map<uint32_t, IfcGeometry> &geometryMap, glm::dmat4 mat)
 	{
@@ -1428,7 +1435,7 @@ namespace webifc
 				{
 					Face f = meshGeom.GetFace(i);
 					glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
-					printf("GetOriginRec: a - X: %.3f, Y: %.3f, Z: %.3f", a.x, a.y, a.z);
+					printf("GetOriginRec (Mesh(expressID: %i)): a - X: %.3f, Y: %.3f, Z: %.3f\n", mesh.expressID, a.x, a.y, a.z);
 					return a;
 				}
 			}
@@ -1439,12 +1446,12 @@ namespace webifc
 			auto v = GetOriginRec(c, geometryMap, newMat);
 			if (v.has_value())
 			{
-				printf("GetOriginRec: v - X: %.3f, Y: %.3f, Z: %.3f", v->x, v->y, v->z);
+				printf("GetOriginRec (Mesh(expressID: %i)): v - X: %.3f, Y: %.3f, Z: %.3f\n", c.expressID, v->x, v->y, v->z);
 				return v;
 			}
 		}
 		
-		printf("GetOriginRec: null");
+		printf("GetOriginRec: null\n");
 		return std::nullopt;
 	}
 
