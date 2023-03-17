@@ -1,34 +1,63 @@
 #!/bin/sh
 
-#add path to emsdk environment below
-envPath=$EMSDK
+case "${1}" in
+    "clean")
+        ( cd gmake && \
+            gmake config=debug64 clean && \
+            gmake config=debugemscripten clean && \
+            gmake config=release64 clean && \
+            gmake config=releaseemscripten clean
+        ) && exit 0 || exit 1
+        ;;
+    "debug")
+        native_config=debug64
+        wasm_config=debugemscripten
+        ;;
+    "release")
+        native_config=release64
+        wasm_config=releaseemscripten
+        ;;
+    *)
+        echo "$0 <clean | debug | release>" 1>&2
+        exit 1
+        ;;
+esac
 
-envPath+='/emsdk_env.sh'
+if [ -z "${EMSDK}" ]; then
+    echo "! EMSDK environment variable not defined" 1>&2
+    echo "! Did you forget to activate the emsdk environment?" 1>&2
+    echo "!! See https://emscripten.org/docs/getting_started/downloads.html" 1>&2
+    exit 1
+fi
 
-echo ${envPath}
+source "${EMSDK}/emsdk_env.sh"
+export EMSCRIPTEN="${EMSDK}/upstream/emscripten"
 
-source ${envPath}
-./macos_genie/genie gmake
+if [ "$(/usr/bin/arch)" == "arm64" ]; then
+    sed -I '' -e "s@^NODE_JS = .*@NODE_JS = '$(brew --prefix node)/bin/node'@" "${EMSDK}/.emscripten"
+fi
 
-if [ "$1" != "" ];
-then
-	if [ "$1" = "debug" ] 
-	then
-		cd gmake
-		make config=debug64 conway_geom_native
-		make config=debug64 webifc_native
-		make config=debugemscripten conway_geom_wasm
-		make config=debugemscripten conway_geom_wasm_mt
-	fi
+if [ ! -d ".git/modules" ]; then
+    git submodule update --init
+    if [ $? -ne 0 ]; then
+        echo "! Could not initialize Git submodules" 1>&2
+        exit 1
+    fi
+fi
 
-	if [ "$1" = "release" ]
-	then
-		cd gmake
-		make config=release64 conway_geom_native
-		make config=release64 webifc_native
-		make config=releaseemscripten conway_geom_wasm
-		make config=releaseemscripten conway_geom_wasm_mt
-	fi
+./macos_genie/genie-$(uname -m) gmake
+if [ $? -ne 0 ]; then
+    echo "! Could not generate makefiles" 1>&2
+    exit 1
+fi
+
+( cd gmake && \
+    make config=${native_config} conway_geom_native webifc_native && \
+    make config=${wasm_config} conway_geom_wasm conway_geom_wasm_mt
+)
+if [ $? -ne 0 ]; then
+    echo "! Build failed" 1>&2
+    exit 1
 fi
 
 echo "Finished."
