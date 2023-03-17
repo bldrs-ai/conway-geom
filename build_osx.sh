@@ -1,6 +1,14 @@
 #!/bin/sh
 
 case "${1}" in
+    "clean")
+        ( cd gmake && \
+            gmake config=debug64 clean && \
+            gmake config=debugemscripten clean && \
+            gmake config=release64 clean && \
+            gmake config=releaseemscripten clean
+        ) && exit 0 || exit 1
+        ;;
     "debug")
         native_config=debug64
         wasm_config=debugemscripten
@@ -10,7 +18,7 @@ case "${1}" in
         wasm_config=releaseemscripten
         ;;
     *)
-        echo "$0 <debug | release>" 1>&2
+        echo "$0 <clean | debug | release>" 1>&2
         exit 1
         ;;
 esac
