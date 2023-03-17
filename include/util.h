@@ -1402,20 +1402,6 @@ namespace webifc
 		}
 	};
 
-	std::optional<glm::dvec3> GetOriginRec(IfcGeometry &geometry, glm::dmat4 transformation, glm::dmat4 mat)
-	{
-
-		glm::dmat4 newMat = mat * transformation;
-
-		if (geometry.numFaces)
-		{
-			Face f = geometry.GetFace(0);
-			glm::dvec3 a = newMat * glm::dvec4(geometry.GetPoint(f.i0), 1);
-			return a;
-		}
-
-		return std::nullopt;
-	}
 
 	std::optional<glm::dvec3> GetOriginRec(IfcComposedMesh &mesh, std::unordered_map<uint32_t, IfcGeometry> &geometryMap, glm::dmat4 mat)
 	{

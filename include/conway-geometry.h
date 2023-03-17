@@ -26,7 +26,7 @@
 
 #include "ifc-schema.h"
 #include "web-ifc.h"
-#include "util.h"
+#include "conway-util.h"
 
 const double EXTRUSION_DISTANCE_HALFSPACE_M = 50;
 
@@ -55,245 +55,8 @@ struct GeometryStatistics
 		BOOL_ABORT_THRESHOLD = 10000 // 10k verts
 	};
 
-namespace webifc
+namespace conway
 {
-
-    struct Geometry
-	{
-        uint32_t numPoints = 0;
-		uint32_t numFaces = 0;
-		std::vector<float> fvertexData;
-		std::vector<double> vertexData;
-		std::vector<uint32_t> indexData;
-		glm::dvec3 min = glm::dvec3(DBL_MAX, DBL_MAX, DBL_MAX);
-		glm::dvec3 max = glm::dvec3(-DBL_MAX, -DBL_MAX, -DBL_MAX);
-		bool normalized = false;
-
-		glm::dvec3 GetExtent() const
-		{
-			return max - min;
-		}
-
-		// set all vertices relative to min
-		void Normalize()
-		{
-			for (size_t i = 0; i < vertexData.size(); i += 6)
-			{
-				vertexData[i + 0] = vertexData[i + 0] - min.x;
-				vertexData[i + 1] = vertexData[i + 1] - min.y;
-				vertexData[i + 2] = vertexData[i + 2] - min.z;
-			}
-
-			normalized = true;
-		}
-
-		inline void AddPoint(glm::dvec4 &pt, glm::dvec3 &n)
-		{
-			glm::dvec3 p = pt;
-			AddPoint(p, n);
-		}
-
-		inline void AddPoint(glm::dvec3 &pt, glm::dvec3 &n)
-		{
-			// vertexData.reserve((numPoints + 1) * VERTEX_FORMAT_SIZE_FLOATS);
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 0] = pt.x;
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 1] = pt.y;
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 2] = pt.z;
-			vertexData.push_back(pt.x);
-			vertexData.push_back(pt.y);
-			vertexData.push_back(pt.z);
-
-			min = glm::min(min, pt);
-			max = glm::max(max, pt);
-
-			vertexData.push_back(n.x);
-			vertexData.push_back(n.y);
-			vertexData.push_back(n.z);
-
-			if (std::isnan(pt.x) || std::isnan(pt.y) || std::isnan(pt.z))
-			{
-				printf("NaN in geom!\n");
-			}
-
-			if (std::isnan(n.x) || std::isnan(n.y) || std::isnan(n.z))
-			{
-				printf("NaN in geom!\n");
-			}
-
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 3] = n.x;
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 4] = n.y;
-			// vertexData[numPoints * VERTEX_FORMAT_SIZE_FLOATS + 5] = n.z;
-
-			numPoints += 1;
-		}
-
-		inline void AddFace(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c)
-		{
-			glm::dvec3 normal;
-			if (!computeSafeNormal(a, b, c, normal))
-			{
-				// bail out, zero area triangle
-				printf("zero tri");
-				return;
-			}
-
-			AddFace(numPoints + 0, numPoints + 1, numPoints + 2);
-
-			AddPoint(a, normal);
-			AddPoint(b, normal);
-			AddPoint(c, normal);
-		}
-
-		inline void AddFace(uint32_t a, uint32_t b, uint32_t c)
-		{
-			// indexData.reserve((numFaces + 1) * 3);
-			// indexData[numFaces * 3 + 0] = a;
-			// indexData[numFaces * 3 + 1] = b;
-			// indexData[numFaces * 3 + 2] = c;
-			indexData.push_back(a);
-			indexData.push_back(b);
-			indexData.push_back(c);
-
-			numFaces++;
-		}
-
-		inline Face GetFace(uint32_t index) const
-		{
-			Face f;
-			f.i0 = indexData[index * 3 + 0];
-			f.i1 = indexData[index * 3 + 1];
-			f.i2 = indexData[index * 3 + 2];
-			return f;
-		}
-
-		inline glm::dvec3 GetPoint(uint32_t index) const
-		{
-			return glm::dvec3(
-				vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
-				vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
-				vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]);
-		}
-
-		void GetCenterExtents(glm::dvec3 &center, glm::dvec3 &extents) const
-		{
-			glm::dvec3 min(DBL_MAX, DBL_MAX, DBL_MAX);
-			glm::dvec3 max(DBL_MIN, DBL_MIN, DBL_MIN);
-
-			for (size_t i = 0; i < numPoints; i++)
-			{
-				auto pt = GetPoint(i);
-				min = glm::min(min, pt);
-				max = glm::max(max, pt);
-			}
-
-			extents = (max - min);
-			center = min + extents / 2.0;
-		}
-
-		IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const
-		{
-			IfcGeometry newGeom;
-
-			double scale = std::max(extents.x, std::max(extents.y, extents.z));
-
-			for (size_t i = 0; i < numFaces; i++)
-			{
-				auto face = GetFace(i);
-				auto a = (GetPoint(face.i0) - center) / scale;
-				auto b = (GetPoint(face.i1) - center) / scale;
-				auto c = (GetPoint(face.i2) - center) / scale;
-
-				newGeom.AddFace(a, b, c);
-			}
-
-			return newGeom;
-		}
-
-		IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const
-		{
-			IfcGeometry newGeom;
-
-			double scale = std::max(extents.x, std::max(extents.y, extents.z));
-
-			for (size_t i = 0; i < numFaces; i++)
-			{
-				auto face = GetFace(i);
-				auto a = GetPoint(face.i0) * scale + center;
-				auto b = GetPoint(face.i1) * scale + center;
-				auto c = GetPoint(face.i2) * scale + center;
-
-				newGeom.AddFace(a, b, c);
-			}
-
-			return newGeom;
-		}
-
-		uint32_t GetVertexData()
-		{
-			// unfortunately webgl can't do doubles
-			if (fvertexData.size() != vertexData.size())
-			{
-				fvertexData.resize(vertexData.size());
-				for (size_t i = 0; i < vertexData.size(); i += 6)
-				{
-					fvertexData[i + 0] = vertexData[i + 0];
-					fvertexData[i + 1] = vertexData[i + 1];
-					fvertexData[i + 2] = vertexData[i + 2];
-
-					fvertexData[i + 3] = vertexData[i + 3];
-					fvertexData[i + 4] = vertexData[i + 4];
-					fvertexData[i + 5] = vertexData[i + 5];
-				}
-
-				// cleanup
-				// vertexData = {};
-			}
-
-			if (fvertexData.empty())
-			{
-				return 0;
-			}
-
-			return (uint32_t)(size_t)&fvertexData[0];
-		}
-
-		void AddGeometry(IfcGeometry geom)
-		{
-			uint32_t maxIndex = numPoints;
-			numPoints += geom.numPoints;
-			min = glm::min(min, geom.min);
-			max = glm::max(max, geom.max);
-			vertexData.insert(vertexData.end(), geom.vertexData.begin(), geom.vertexData.end());
-			for (uint32_t k = 0; k < geom.numFaces; k++)
-			{
-				AddFace(
-					maxIndex + geom.indexData[k * 3 + 0],
-					maxIndex + geom.indexData[k * 3 + 1],
-					maxIndex + geom.indexData[k * 3 + 2]);
-			}
-		}
-
-		uint32_t GetVertexDataSize()
-		{
-			return (uint32_t)fvertexData.size();
-		}
-
-		uint32_t GetIndexData()
-		{
-			return (uint32_t)(size_t)&indexData[0];
-		}
-
-		uint32_t GetIndexDataSize()
-		{
-			return (uint32_t)indexData.size();
-		}
-
-		bool IsEmpty()
-		{
-			return vertexData.empty();
-		}
-	};
-
     struct ComposedMesh
 	{
 		glm::dvec4 color;
@@ -353,13 +116,124 @@ namespace webifc
 			return mesh;
         }
 
+		/*Geometry BoolSubtract(const Geometry &firstGeom, const std::vector<Geometry> &secondGeoms)
+		{
+			Geometry result;
+			Geometry secondGeom;
+
+			if (_loader.GetSettings().USE_FAST_BOOLS)
+			{
+				for (auto geom : secondGeoms)
+				{
+					if (geom.numFaces != 0)
+					{
+						if (secondGeom.numFaces == 0)
+						{
+							secondGeom = geom;
+						}
+						else
+						{
+							secondGeom = boolJoin(secondGeom, geom);
+						}
+
+						if (_loader.GetSettings().DUMP_CSG_MESHES)
+						{
+							DumpIfcGeometry(geom, L"geom.obj");
+						}
+					}
+				}
+				if (firstGeom.numFaces == 0 || secondGeom.numFaces == 0)
+				{
+					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "bool aborted due to empty source or target"});
+
+					// bail out because we will get strange meshes
+					// if this happens, probably there's an issue parsing the mesh that occurred earlier
+					return firstGeom;
+				}
+
+				Geometry r1;
+				Geometry r2;
+
+				intersectMeshMesh(firstGeom, secondGeom, r1, r2);
+
+				if (_loader.GetSettings().DUMP_CSG_MESHES)
+				{
+					DumpIfcGeometry(r1, L"r1.obj");
+					DumpIfcGeometry(r2, L"r2.obj");
+				}
+				result = boolSubtract(r1, r2);
+			}
+			else
+			{
+				const int threshold = LoaderSettings().BOOL_ABORT_THRESHOLD;
+				std::vector<Geometry> seconds;
+
+				for (auto &geom : secondGeoms)
+				{
+					if (geom.numPoints < threshold)
+					{
+						seconds.push_back(geom);
+					}
+					else
+					{
+						_loader.ReportError({LoaderErrorType::BOOL_ERROR, "complex bool aborted due to BOOL_ABORT_THRESHOLD"});
+					}
+
+					if (_loader.GetSettings().DUMP_CSG_MESHES)
+					{
+						DumpIfcGeometry(geom, L"geom.obj");
+					}
+				}
+
+				if (firstGeom.numPoints > threshold)
+				{
+					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "complex bool aborted due to BOOL_ABORT_THRESHOLD"});
+
+					// bail out because we expect this operation to take too long
+					return firstGeom;
+				}
+
+				if (firstGeom.numFaces == 0 || seconds.size() == 0)
+				{
+					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "bool aborted due to empty source or target"});
+
+					// bail out because we will get strange meshes
+					// if this happens, probably there's an issue parsing the mesh that occurred earlier
+					return firstGeom;
+				}
+
+				result = boolMultiOp_Manifold(firstGeom, seconds, expressID);
+			}
+
+			if (_loader.GetSettings().DUMP_CSG_MESHES)
+			{
+				DumpIfcGeometry(firstGeom, L"first.obj");
+				DumpIfcGeometry(secondGeom, L"second.obj");
+				DumpIfcGeometry(result, L"result.obj");
+			}
+
+			return result;
+		}*/
+
 		//case ifc::IFCBOOLEANCLIPPINGRESULT:
 		struct ParamsGetBooleanClippingResult 
 		{
-			IfcComposedMesh firstMesh;
-			IfcComposedMesh secondMesh;
+			Geometry& firstMesh;
+			//glm::dmat4 firstMeshTranslation;
+			Geometry& secondMesh;
 		};
 
+		/*Geometry GetBooleanClippingResult(ParamsGetBooleanClippingResult parameters)
+		{
+			//glm::dvec3 origin = GetOrigin(parameters.firstMesh, parameters.firstMeshTranslation);
+			//auto normalizeMat = glm::translate(-origin);
+			std::vector<Geometry> flatSecondGeoms;
+			flatSecondGeoms.push_back(parameters.secondMesh);
+
+			Geometry resultMesh = BoolSubtract(parameters.firstMesh, flatSecondGeoms, line.expressID);
+
+
+		} */
 		
 
 		//case ifc::IFCPLANE:
@@ -1699,7 +1573,7 @@ namespace webifc
 
 		}
 
-		void TriangulateRevolution(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		void TriangulateRevolution(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// First we get the revolution data
 
@@ -1871,7 +1745,7 @@ namespace webifc
 			}
 		}
 
-		void TriangulateCylindricalSurface(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		void TriangulateCylindricalSurface(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// First we get the cylinder data
 
@@ -2122,7 +1996,7 @@ namespace webifc
 		}
 
 		// TODO: review and simplify
-		void TriangulateExtrusion(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		void TriangulateExtrusion(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// NO EXAMPLE FILES ABOUT THIS CASE
 
@@ -2197,7 +2071,7 @@ namespace webifc
 		}
 
 		// TODO: review and simplify
-		void TriangulateBspline(Geometry &geometry, std::vector<IfcBound3D> &bounds, webifc::IfcSurface &surface)
+		void TriangulateBspline(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			//double limit = 1e-4;
 
@@ -2508,8 +2382,5 @@ namespace webifc
 
 			return geom;
 		}
-
-		        private:
-
-    };
+	};
 }
