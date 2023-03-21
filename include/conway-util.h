@@ -32,39 +32,6 @@ namespace conway
 	bool verboseStats			= false;
 	bool shouldPrintTypeInfo	= false;
 
-	//bool exportSingleObj 	= false;
-	std::set<uint32_t> uniqueTypeDefs;
-
-	int printTypeInfo(const char *format, ...)
-	{
-		va_list args;
-		va_start(args, format);
-
-		if(shouldPrintTypeInfo)
-				vprintf(format, args);
-
-		va_end(args);
-	}
-
-	int printCodeGen(const char *format, ...)
-	{
-		va_list args;
-		va_start(args, format);
-
-		if(shouldPrintCodeGen)
-				vprintf(format, args);
-
-		va_end(args);
-	}
-
-	void collectStatistics(uint32_t ifcLineType)
-	{
-		if ( collectStats )
-		{
-			webifc::uniqueTypeDefs.insert(ifcLineType);
-		}
-	}
-
 	bool MatrixFlipsTriangles(const glm::dmat4 &mat)
 	{
 		return glm::determinant(mat) < 0;

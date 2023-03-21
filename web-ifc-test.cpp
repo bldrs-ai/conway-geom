@@ -589,21 +589,34 @@ int main(int argc, char *argv[])
         };
 
         uint32_t uniqueTypeDefsSize = webifc::uniqueTypeDefs.size();
-        std::vector<uint32_t> supportedTypes;
-        std::vector<uint32_t> unsupportedTypes;
+        std::vector<std::pair<unsigned int, unsigned int>> supportedTypes;
+        std::vector<std::pair<unsigned int, unsigned int>> unsupportedTypes;
 
         std::cout << "\n\n********** IFC Statistics **********" << std::endl;
         std::cout <<"Input File: " << file_path.c_str() << std::endl;
         std::cout << "Unique IFC Types: " << uniqueTypeDefsSize << std::endl;
-        for (const auto& ifcType : webifc::uniqueTypeDefs) 
+
+        // Copy the elements of the map into a vector
+        std::vector<std::pair<unsigned int, unsigned int>> vectorUniqueTypeDefs(webifc::uniqueTypeDefs.begin(), webifc::uniqueTypeDefs.end());
+
+        // Sort the vector in descending order by the second value
+        std::sort(vectorUniqueTypeDefs.begin(), vectorUniqueTypeDefs.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+
+        if (webifc::verboseStats)
+        {
+            std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
+        }
+
+        for (const auto& ifcType : vectorUniqueTypeDefs) 
         {
 
             if (webifc::verboseStats)
             {
-                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+                std::cout << ifcType.second << "\t\t\t\t\t" << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
             }
 
-            if ( std::find(currentlySupportedTypes.begin(), currentlySupportedTypes.end(), ifcType) != currentlySupportedTypes.end() )
+            if ( std::find(currentlySupportedTypes.begin(), currentlySupportedTypes.end(), ifcType.first) != currentlySupportedTypes.end() )
             {
                 supportedTypes.push_back(ifcType);
             } 
@@ -618,9 +631,11 @@ int main(int argc, char *argv[])
         std::cout << "\nSupported Types: " << supportedSize << std::endl;
         if (webifc::verboseStats)
         {
+            std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
+
             for (const auto& ifcType : supportedTypes) 
             {
-                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+                std::cout << ifcType.second << "\t\t\t\t\t" << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
             }
         }
 
@@ -628,9 +643,10 @@ int main(int argc, char *argv[])
         std::cout << "\nUnsupported Types: " << unsupportedSize << std::endl;
         if (webifc::verboseStats)
         {
+            std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
             for (const auto& ifcType : unsupportedTypes) 
             {
-                std::cout << GetReadableNameFromTypeCode(ifcType) << std::endl;
+                std::cout << ifcType.second << "\t\t\t\t\t" << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
             }
         }
 

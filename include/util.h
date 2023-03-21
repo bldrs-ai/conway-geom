@@ -12,6 +12,7 @@
 #include <optional>
 #include <cstring>
 #include <functional>
+#include <map>
 
 #include <glm/glm.hpp>
 
@@ -33,7 +34,7 @@ namespace webifc
 	bool shouldPrintTypeInfo	= false;
 
 	//bool exportSingleObj 	= false;
-	std::set<uint32_t> uniqueTypeDefs;
+	std::map<uint32_t, uint32_t> uniqueTypeDefs;
 
 	int printTypeInfo(const char *format, ...)
 	{
@@ -61,7 +62,17 @@ namespace webifc
 	{
 		if ( collectStats )
 		{
-			webifc::uniqueTypeDefs.insert(ifcLineType);
+			std::map<uint32_t, uint32_t>::iterator uniqueTypeDefIterator;
+			uniqueTypeDefIterator = uniqueTypeDefs.find(ifcLineType);
+
+			if (uniqueTypeDefIterator != uniqueTypeDefs.end())
+			{
+				uniqueTypeDefIterator->second++;
+			} 
+			else 
+			{
+				webifc::uniqueTypeDefs.insert(std::pair<uint32_t, uint32_t>(ifcLineType, 0));
+			}
 		}
 	}
 
