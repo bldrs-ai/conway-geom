@@ -19,8 +19,8 @@
 #include <glm/gtx/transform.hpp>
 #include <mapbox/earcut.hpp>
 
-#include "math/intersect-mesh-mesh.h"
-#include "math/bool-mesh-mesh.h"
+#include "math/intersect-mesh-mesh-conway.h"
+#include "math/bool-mesh-mesh-conway.h"
 
 #include <tinynurbs/tinynurbs.h>
 
@@ -49,6 +49,7 @@ struct GeometryStatistics
 
     enum GeometryProcessorSettings : int
 	{
+
 		CIRCLE_SEGMENTS_LOW = 5,
 		CIRCLE_SEGMENTS_MEDIUM = 8,
 		CIRCLE_SEGMENTS_HIGH = 12,
@@ -64,7 +65,7 @@ namespace conway
 		uint32_t expressID;
 		bool hasGeometry = false;
 		bool hasColor = false;
-        Geometry meshGeometry;
+        IfcGeometry meshGeometry;
 		std::vector<ComposedMesh> children;
 
 		std::optional<glm::dvec4> GetColor()
@@ -88,6 +89,15 @@ namespace conway
 			return std::nullopt;
 		}
 	};
+
+	bool COORDINATE_TO_ORIGIN = false;
+	bool USE_FAST_BOOLS = true; //TODO: This needs to be fixed in the future to rely on elalish/manifold
+	bool DUMP_CSG_MESHES = false;
+	int CIRCLE_SEGMENTS_LOW = 5;
+	int CIRCLE_SEGMENTS_MEDIUM = 8;
+	int CIRCLE_SEGMENTS_HIGH = 12;
+	bool MESH_CACHE = false;
+	int BOOL_ABORT_THRESHOLD = 10000; // 10k verts
 
     /*
      * The purpose of this class is to process all of the geometry extraction / transform request queries as required by the IFC file format. 
@@ -116,12 +126,12 @@ namespace conway
 			return mesh;
         }
 
-		/*Geometry BoolSubtract(const Geometry &firstGeom, const std::vector<Geometry> &secondGeoms)
+		IfcGeometry BoolSubtract(const IfcGeometry &firstGeom, const std::vector<IfcGeometry> &secondGeoms)
 		{
-			Geometry result;
-			Geometry secondGeom;
+			IfcGeometry result;
+			IfcGeometry secondGeom;
 
-			if (_loader.GetSettings().USE_FAST_BOOLS)
+			if (USE_FAST_BOOLS/*LoaderSettings::USE_FAST_BOOLS*/)
 			{
 				for (auto geom : secondGeoms)
 				{
@@ -136,7 +146,7 @@ namespace conway
 							secondGeom = boolJoin(secondGeom, geom);
 						}
 
-						if (_loader.GetSettings().DUMP_CSG_MESHES)
+						if (DUMP_CSG_MESHES/*_loader.GetSettings().DUMP_CSG_MESHES*/)
 						{
 							DumpIfcGeometry(geom, L"geom.obj");
 						}
@@ -144,19 +154,19 @@ namespace conway
 				}
 				if (firstGeom.numFaces == 0 || secondGeom.numFaces == 0)
 				{
-					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "bool aborted due to empty source or target"});
+					printf("bool aborted due to empty source or target");
 
 					// bail out because we will get strange meshes
 					// if this happens, probably there's an issue parsing the mesh that occurred earlier
 					return firstGeom;
 				}
 
-				Geometry r1;
-				Geometry r2;
+				IfcGeometry r1;
+				IfcGeometry r2;
 
 				intersectMeshMesh(firstGeom, secondGeom, r1, r2);
 
-				if (_loader.GetSettings().DUMP_CSG_MESHES)
+				if (DUMP_CSG_MESHES/*_loader.GetSettings().DUMP_CSG_MESHES*/)
 				{
 					DumpIfcGeometry(r1, L"r1.obj");
 					DumpIfcGeometry(r2, L"r2.obj");
@@ -165,8 +175,8 @@ namespace conway
 			}
 			else
 			{
-				const int threshold = LoaderSettings().BOOL_ABORT_THRESHOLD;
-				std::vector<Geometry> seconds;
+				const int threshold = BOOL_ABORT_THRESHOLD/*LoaderSettings().BOOL_ABORT_THRESHOLD*/;
+				std::vector<IfcGeometry> seconds;
 
 				for (auto &geom : secondGeoms)
 				{
@@ -176,10 +186,10 @@ namespace conway
 					}
 					else
 					{
-						_loader.ReportError({LoaderErrorType::BOOL_ERROR, "complex bool aborted due to BOOL_ABORT_THRESHOLD"});
+						printf("complex bool aborted due to BOOL_ABORT_THRESHOLD");
 					}
 
-					if (_loader.GetSettings().DUMP_CSG_MESHES)
+					if (DUMP_CSG_MESHES/*_loader.GetSettings().DUMP_CSG_MESHES*/)
 					{
 						DumpIfcGeometry(geom, L"geom.obj");
 					}
@@ -187,7 +197,7 @@ namespace conway
 
 				if (firstGeom.numPoints > threshold)
 				{
-					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "complex bool aborted due to BOOL_ABORT_THRESHOLD"});
+					printf("complex bool aborted due to BOOL_ABORT_THRESHOLD");
 
 					// bail out because we expect this operation to take too long
 					return firstGeom;
@@ -195,17 +205,17 @@ namespace conway
 
 				if (firstGeom.numFaces == 0 || seconds.size() == 0)
 				{
-					_loader.ReportError({LoaderErrorType::BOOL_ERROR, "bool aborted due to empty source or target"});
+					printf("bool aborted due to empty source or target");
 
 					// bail out because we will get strange meshes
 					// if this happens, probably there's an issue parsing the mesh that occurred earlier
 					return firstGeom;
 				}
 
-				result = boolMultiOp_Manifold(firstGeom, seconds, expressID);
+				result = boolMultiOp_Manifold(firstGeom, seconds);
 			}
 
-			if (_loader.GetSettings().DUMP_CSG_MESHES)
+			if (DUMP_CSG_MESHES/*_loader.GetSettings().DUMP_CSG_MESHES*/)
 			{
 				DumpIfcGeometry(firstGeom, L"first.obj");
 				DumpIfcGeometry(secondGeom, L"second.obj");
@@ -213,28 +223,421 @@ namespace conway
 			}
 
 			return result;
-		}*/
+		}
 
 		//case ifc::IFCBOOLEANCLIPPINGRESULT:
-		struct ParamsGetBooleanClippingResult 
+		//case ifc::IFCBOOLEANRESULT:
+		struct ParamsGetBooleanResult 
 		{
-			Geometry& firstMesh;
-			//glm::dmat4 firstMeshTranslation;
-			Geometry& secondMesh;
+			IfcGeometry& firstMesh;
+			IfcGeometry& secondMesh;
+			bool clippingResult;
 		};
 
-		/*Geometry GetBooleanClippingResult(ParamsGetBooleanClippingResult parameters)
+		IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters)
 		{
 			//glm::dvec3 origin = GetOrigin(parameters.firstMesh, parameters.firstMeshTranslation);
 			//auto normalizeMat = glm::translate(-origin);
-			std::vector<Geometry> flatSecondGeoms;
+			std::vector<IfcGeometry> flatSecondGeoms;
 			flatSecondGeoms.push_back(parameters.secondMesh);
 
-			Geometry resultMesh = BoolSubtract(parameters.firstMesh, flatSecondGeoms, line.expressID);
+			IfcGeometry resultGeometry = BoolSubtract(parameters.firstMesh, flatSecondGeoms);
 
+			return resultGeometry;
 
-		} */
+		} 
+
+		IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance, glm::dvec3 cuttingPlaneNormal = glm::dvec3(0), glm::dvec3 cuttingPlanePos = glm::dvec3(0))
+		{
+			IfcGeometry geom;
+			std::vector<bool> holesIndicesHash;
+
+			// build the caps
+			{
+				using Point = std::array<double, 2>;
+				int polygonCount = 1 + profile.holes.size(); // Main profile + holes
+				std::vector<std::vector<Point>> polygon(polygonCount);
+
+				glm::dvec3 normal = dir;
+
+				for (int i = 0; i < profile.curve.points.size(); i++)
+				{
+					glm::dvec2 pt = profile.curve.points[i];
+					glm::dvec4 et = glm::dvec4(glm::dvec3(pt, 0) + dir * distance, 1);
+
+					geom.AddPoint(et, normal);
+					polygon[0].push_back({pt.x, pt.y});
+				}
+
+				for (int i = 0; i < profile.curve.points.size(); i++)
+				{
+					holesIndicesHash.push_back(false);
+				}
+
+				for (int i = 0; i < profile.holes.size(); i++)
+				{
+					IfcCurve<2> hole = profile.holes[i];
+					int pointCount = hole.points.size();
+
+					for (int j = 0; j < pointCount; j++)
+					{
+						holesIndicesHash.push_back(j == 0);
+
+						glm::dvec2 pt = hole.points[j];
+						glm::dvec4 et = glm::dvec4(glm::dvec3(pt, 0) + dir * distance, 1);
+
+						profile.curve.Add(pt);
+						geom.AddPoint(et, normal);
+						polygon[i + 1].push_back({pt.x, pt.y}); // Index 0 is main profile; see earcut reference
+					}
+				}
+
+				std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+				if (indices.size() < 3)
+				{
+					// probably a degenerate polygon
+					printf("degenerate polygon in extrude");
+					return geom;
+				}
+
+				uint32_t offset = 0;
+				bool winding = GetWindingOfTriangle(geom.GetPoint(offset + indices[0]), geom.GetPoint(offset + indices[1]), geom.GetPoint(offset + indices[2]));
+				bool flipWinding = !winding;
+
+				for (int i = 0; i < indices.size(); i += 3)
+				{
+					if (flipWinding)
+					{
+						geom.AddFace(offset + indices[i + 0], offset + indices[i + 2], offset + indices[i + 1]);
+					}
+					else
+					{
+						geom.AddFace(offset + indices[i + 0], offset + indices[i + 1], offset + indices[i + 2]);
+					}
+				}
+
+				offset += geom.numPoints;
+
+				normal = -dir;
+
+				for (int i = 0; i < profile.curve.points.size(); i++)
+				{
+					glm::dvec2 pt = profile.curve.points[i];
+					glm::dvec4 et = glm::dvec4(glm::dvec3(pt, 0), 1);
+
+					if (cuttingPlaneNormal != glm::dvec3(0))
+					{
+						et = glm::dvec4(glm::dvec3(pt, 0), 1);
+						glm::dvec3 transDir = glm::dvec4(dir, 0);
+
+						// project {et} onto the plane, following the extrusion normal
+						double ldotn = glm::dot(transDir, cuttingPlaneNormal);
+						if (ldotn == 0)
+						{
+							printf("0 direction in extrude\n");
+						}
+						else
+						{
+							glm::dvec3 dpos = cuttingPlanePos - glm::dvec3(et);
+							double dist = glm::dot(dpos, cuttingPlaneNormal) / ldotn;
+							// we want to apply dist, even when negative
+							et = et + glm::dvec4(dist * transDir, 1);
+						}
+					}
+
+					geom.AddPoint(et, normal);
+				}
+
+				for (int i = 0; i < indices.size(); i += 3)
+				{
+					if (flipWinding)
+					{
+						geom.AddFace(offset + indices[i + 0], offset + indices[i + 1], offset + indices[i + 2]);
+					}
+					else
+					{
+						geom.AddFace(offset + indices[i + 0], offset + indices[i + 2], offset + indices[i + 1]);
+					}
+				}
+			}
+
+			uint32_t capSize = profile.curve.points.size();
+			for (int i = 1; i < capSize; i++)
+			{
+				// https://github.com/tomvandig/web-ifc/issues/5
+				if (holesIndicesHash[i])
+				{
+					continue;
+				}
+
+				uint32_t bl = i - 1;
+				uint32_t br = i - 0;
+
+				uint32_t tl = capSize + i - 1;
+				uint32_t tr = capSize + i - 0;
+
+				// this winding should be correct
+				geom.AddFace(geom.GetPoint(tl),
+							 geom.GetPoint(br),
+							 geom.GetPoint(bl));
+
+				geom.AddFace(geom.GetPoint(tl),
+							 geom.GetPoint(tr),
+							 geom.GetPoint(br));
+			}
+
+			return geom;
+		}
+
+		//case ifc::IFCHALFSPACESOLID:
+		struct ParamsGetHalfspaceSolid
+		{
+			IfcSurface& surface;
+			bool flipWinding;
+			double optionalLinearScalingFactor = 1.0;
+		};
+
+		IfcGeometry GetHalfSpaceSolid(ParamsGetHalfspaceSolid parameters)
+		{
+			glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
+
+			if (parameters.flipWinding)
+			{
+				extrusionNormal *= -1;
+			}
+
+			double d = EXTRUSION_DISTANCE_HALFSPACE_M / parameters.optionalLinearScalingFactor;
+
+			IfcProfile profile;
+			profile.isConvex = false;
+			profile.curve = GetRectangleCurve(d, d, glm::dmat3(1));
+
+			auto geom = Extrude(profile, extrusionNormal, d);
+
+			// @Refactor: duplicate of extrudedareasolid
+			if (parameters.flipWinding)
+			{
+				for (uint32_t i = 0; i < geom.numFaces; i++)
+				{
+					uint32_t temp = geom.indexData[i * 3 + 0];
+					temp = geom.indexData[i * 3 + 0];
+					geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
+					geom.indexData[i * 3 + 1] = temp;
+				}
+			}
+
+			return geom;
+		}
 		
+		//case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
+		struct ParamsGetPolygonalBoundedHalfspace
+		{
+			IfcSurface& surface; 
+			glm::dmat4 position;
+			conway::IfcCurve<2> curve;
+			bool halfSpaceInPlaneDirection; //agreement != "T"
+			double optionalLinearScalingFactor = 1.0;
+		};
+
+		IfcGeometry GetPolygonalBoundedHalfspace(ParamsGetPolygonalBoundedHalfspace parameters)
+		{
+			if (!parameters.curve.IsCCW())
+			{
+				parameters.curve.Invert();
+			}
+
+			glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
+			glm::dvec3 planeNormal = parameters.surface.transformation[2];
+			glm::dvec3 planePosition = parameters.surface.transformation[3];
+
+			glm::dmat4 invPosition = glm::inverse(parameters.position);
+			glm::dvec3 localPlaneNormal = invPosition * glm::dvec4(planeNormal, 0);
+			auto localPlanePos = invPosition * glm::dvec4(planePosition, 1);
+
+			bool flipWinding = false;
+			double extrudeDistance = EXTRUSION_DISTANCE_HALFSPACE_M / parameters.optionalLinearScalingFactor;
+			bool halfSpaceInPlaneDirection = parameters.halfSpaceInPlaneDirection;
+			bool extrudeInPlaneDirection = glm::dot(localPlaneNormal, extrusionNormal) > 0;
+			bool ignoreDistanceInExtrude = (!halfSpaceInPlaneDirection && extrudeInPlaneDirection) || (halfSpaceInPlaneDirection && !extrudeInPlaneDirection);
+
+			if (ignoreDistanceInExtrude)
+			{
+				// spec says this should be * 0, but that causes issues for degenerate 0 volume pbhs
+				// hopefully we can get away by just inverting it
+				extrudeDistance *= -1;
+				flipWinding = true;
+			}
+
+			IfcProfile profile;
+			profile.isConvex = false;
+			profile.curve = parameters.curve;
+
+			conway::IfcGeometry geom = Extrude(profile, extrusionNormal, extrudeDistance, localPlaneNormal, localPlanePos);
+			// auto geom = Extrude(profile, surface.transformation, extrusionNormal, EXTRUSION_DISTANCE_HALFSPACE);
+
+			// @Refactor: duplicate of extrudedareasolid
+			if (flipWinding)
+			{
+				for (uint32_t i = 0; i < geom.numFaces; i++)
+				{
+					uint32_t temp = geom.indexData[i * 3 + 0];
+					temp = geom.indexData[i * 3 + 0];
+					geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
+					geom.indexData[i * 3 + 1] = temp;
+				}
+			}
+
+			if (DUMP_CSG_MESHES/*_loader.GetSettings().DUMP_CSG_MESHES*/)
+			{
+				DumpIfcGeometry(geom, L"pbhs.obj");
+			}
+
+			return geom;
+		}
+
+		//case ifc::IFCREPRESENTATIONMAP
+		//TODO: see if this is needed
+
+
+		//case ifc::IFCCONNECTEDFACESET:
+		//case ifc::IFCCLOSEDSHELL:
+		//case ifc::IFCOPENSHELL:
+		//These cases are handled by getBrep()
+		struct ParamsAddFaceToGeometry
+		{
+			uint32_t boundsSize;
+			uint32_t* indices;
+			uint32_t indicesPerFace;
+			IfcBound3D* boundsArray;
+			bool advancedBrep;
+			IfcSurface* surface;
+		};
+
+		struct ParamsGetBrep
+        {
+			uint32_t boundsSize;
+			uint32_t indicesPerFace;
+            size_t numIndices;
+            uint32_t* indices;
+			IfcBound3D* boundsArray;
+			bool advancedBrep;
+			IfcSurface* surface;
+        };
+
+		IfcGeometry getBrep(ParamsGetBrep parameters)
+		{
+			IfcGeometry geometry;
+			//set parameters 
+			ParamsAddFaceToGeometry paramsAddFaceToGeometry;
+			paramsAddFaceToGeometry.boundsSize = parameters.boundsSize;
+			paramsAddFaceToGeometry.indicesPerFace = parameters.indicesPerFace;
+			paramsAddFaceToGeometry.boundsArray = parameters.boundsArray;
+			paramsAddFaceToGeometry.advancedBrep = parameters.advancedBrep;
+			paramsAddFaceToGeometry.surface = parameters.surface;
+
+
+			for (size_t faceIndex = 0; faceIndex < parameters.numIndices / parameters.indicesPerFace; faceIndex++)
+			{
+				paramsAddFaceToGeometry.indices = &parameters.indices[faceIndex * parameters.indicesPerFace];
+
+				
+				AddFaceToGeometry(paramsAddFaceToGeometry, geometry);
+			}
+
+			return geometry;
+		}
+
+		//case ifc::IFCFACE:
+		//case ifc::IFCADVANCEDFACE:
+
+		void AddFaceToGeometry(ParamsAddFaceToGeometry parameters, IfcGeometry &geometry)
+		{
+			if (!parameters.advancedBrep)
+			{
+				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
+
+				for (int i = 0; i < parameters.boundsSize; i++)
+				{
+					bounds3D[i] = parameters.boundsArray[i];
+				}
+
+				TriangulateBounds(geometry, bounds3D);
+			}
+			else
+			{
+				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
+
+				for (int i = 0; i < parameters.boundsSize; i++)
+				{
+					bounds3D[i] = parameters.boundsArray[i];
+				}
+
+				//auto surface = GetSurface(surfRef);
+
+				if (parameters.surface == nullptr)
+				{
+					printf("surface was nullptr\n");
+					return;
+				}
+
+				auto surface = parameters.surface[0];
+
+				// TODO: place the face in the surface and tringulate
+				if (surface.BSplineSurface.Active)
+				{
+					TriangulateBspline(geometry, bounds3D, surface);
+				}
+				else if (surface.CylinderSurface.Active)
+				{
+					TriangulateCylindricalSurface(geometry, bounds3D, surface);
+				}
+				else if (surface.RevolutionSurface.Active)
+				{
+					TriangulateRevolution(geometry, bounds3D, surface);
+				}
+				else if (surface.ExtrusionSurface.Active)
+				{
+					TriangulateExtrusion(geometry, bounds3D, surface);
+				}
+				else
+				{
+					TriangulateBounds(geometry, bounds3D);
+				}
+			}
+		}
+
+
+		//case ifc::IFCFACEBASEDSURFACEMODEL:
+		//case ifc::IFCSHELLBASEDSURFACEMODEL:
+		struct ParamsGetSurfaceModel
+		{
+			uint32_t numShellRefs;
+			ParamsGetBrep* shells;
+		};
+
+		struct ResponseGeometryArray
+		{
+			uint32_t numRepresentations;
+			IfcGeometry* geometryArray;
+		};
+
+		ResponseGeometryArray GetSurfaceModel(ParamsGetSurfaceModel parameters)
+		{
+			ResponseGeometryArray response;
+			std::vector<IfcGeometry> geometryArray;
+
+			for (uint32_t shellIndex = 0; shellIndex < parameters.numShellRefs; shellIndex++)
+			{
+				geometryArray.push_back(getBrep(parameters.shells[shellIndex]));
+			}
+
+			response.numRepresentations = parameters.numShellRefs;
+			response.geometryArray = geometryArray.data();
+
+			return response;
+
+		}
 
 		//case ifc::IFCPLANE:
 		//case ifc::IFCBSPLINESURFACE:
@@ -1313,113 +1716,6 @@ namespace conway
                 glm::dvec4(pos, 1));
         }
 
-		//case ifc::IFCCONNECTEDFACESET:
-		//case ifc::IFCCLOSEDSHELL:
-		//case ifc::IFCOPENSHELL:
-		//These cases are handled by getBrep()
-		struct ParamsAddFaceToGeometry
-		{
-			uint32_t boundsSize;
-			uint32_t* indices;
-			uint32_t indicesPerFace;
-			IfcBound3D* boundsArray;
-			bool advancedBrep;
-			IfcSurface* surface;
-		};
-
-		struct ParamsGetBrep
-        {
-			uint32_t boundsSize;
-			uint32_t indicesPerFace;
-            size_t numIndices;
-            uint32_t* indices;
-			IfcBound3D* boundsArray;
-			bool advancedBrep;
-			IfcSurface* surface;
-        };
-
-		Geometry getBrep(ParamsGetBrep parameters)
-		{
-			Geometry geometry;
-			//set parameters 
-			ParamsAddFaceToGeometry paramsAddFaceToGeometry;
-			paramsAddFaceToGeometry.boundsSize = parameters.boundsSize;
-			paramsAddFaceToGeometry.indicesPerFace = parameters.indicesPerFace;
-			paramsAddFaceToGeometry.boundsArray = parameters.boundsArray;
-			paramsAddFaceToGeometry.advancedBrep = parameters.advancedBrep;
-			paramsAddFaceToGeometry.surface = parameters.surface;
-
-
-			for (size_t faceIndex = 0; faceIndex < parameters.numIndices / parameters.indicesPerFace; faceIndex++)
-			{
-				paramsAddFaceToGeometry.indices = &parameters.indices[faceIndex * parameters.indicesPerFace];
-
-				
-				AddFaceToGeometry(paramsAddFaceToGeometry, geometry);
-			}
-
-			return geometry;
-		}
-
-		//case ifc::IFCFACE:
-		//case ifc::IFCADVANCEDFACE:
-
-		void AddFaceToGeometry(ParamsAddFaceToGeometry parameters, Geometry &geometry)
-		{
-			if (!parameters.advancedBrep)
-			{
-				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
-
-				for (int i = 0; i < parameters.boundsSize; i++)
-				{
-					bounds3D[i] = parameters.boundsArray[i];
-				}
-
-				TriangulateBounds(geometry, bounds3D);
-			}
-			else
-			{
-				std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
-
-				for (int i = 0; i < parameters.boundsSize; i++)
-				{
-					bounds3D[i] = parameters.boundsArray[i];
-				}
-
-				//auto surface = GetSurface(surfRef);
-
-				if (parameters.surface == nullptr)
-				{
-					printf("surface was nullptr\n");
-					return;
-				}
-
-				auto surface = parameters.surface[0];
-
-				// TODO: place the face in the surface and tringulate
-				if (surface.BSplineSurface.Active)
-				{
-					TriangulateBspline(geometry, bounds3D, surface);
-				}
-				else if (surface.CylinderSurface.Active)
-				{
-					TriangulateCylindricalSurface(geometry, bounds3D, surface);
-				}
-				else if (surface.RevolutionSurface.Active)
-				{
-					TriangulateRevolution(geometry, bounds3D, surface);
-				}
-				else if (surface.ExtrusionSurface.Active)
-				{
-					TriangulateExtrusion(geometry, bounds3D, surface);
-				}
-				else
-				{
-					TriangulateBounds(geometry, bounds3D);
-				}
-			}
-		}
-
 		bool notPresent(glm::dvec3 pt, std::vector<glm::dvec3> points)
 		{
 			for (auto &pt2 : points)
@@ -1573,7 +1869,7 @@ namespace conway
 
 		}
 
-		void TriangulateRevolution(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
+		void TriangulateRevolution(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// First we get the revolution data
 
@@ -1745,7 +2041,7 @@ namespace conway
 			}
 		}
 
-		void TriangulateCylindricalSurface(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
+		void TriangulateCylindricalSurface(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// First we get the cylinder data
 
@@ -1996,7 +2292,7 @@ namespace conway
 		}
 
 		// TODO: review and simplify
-		void TriangulateExtrusion(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
+		void TriangulateExtrusion(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			// NO EXAMPLE FILES ABOUT THIS CASE
 
@@ -2071,7 +2367,7 @@ namespace conway
 		}
 
 		// TODO: review and simplify
-		void TriangulateBspline(Geometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
+		void TriangulateBspline(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, conway::IfcSurface &surface)
 		{
 			//double limit = 1e-4;
 
@@ -2210,7 +2506,7 @@ namespace conway
 			}
 		}
 
-		void TriangulateBounds(Geometry &geometry, std::vector<IfcBound3D> &bounds)
+		void TriangulateBounds(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds)
 		{
 			if (bounds.size() == 1 && bounds[0].curve.points.size() == 3)
 			{
@@ -2328,7 +2624,7 @@ namespace conway
 			}
 		}
 
-		std::string GeometryToObj(const Geometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1))
+		std::string GeometryToObj(const IfcGeometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1))
 		{	
 			std::stringstream obj;
 
@@ -2360,9 +2656,9 @@ namespace conway
 			glm::dvec3* points;
 			uint32_t* indices;
 		};
-		Geometry getPolygonalFaceSetGeometry(ParamsPolygonalFaceSet parameters)
+		IfcGeometry getPolygonalFaceSetGeometry(ParamsPolygonalFaceSet parameters)
 		{
-			Geometry geom;
+			IfcGeometry geom;
 			std::vector<IfcBound3D> bounds;
 
 			ParamsReadIndexedPolygonalFace readIndexedPolygonalFaceParameters;

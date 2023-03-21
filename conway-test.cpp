@@ -172,7 +172,7 @@ void TestTriangleDecompose()
 
 void genIndexIfc()
 {
-    std::vector<conway::Geometry> geometryVec;
+    std::vector<conway::IfcGeometry> geometryVec;
 
     //taken from web ifc obj dump code 
     glm::dmat4 NormalizeMat(
@@ -279,7 +279,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 8;
     parametersPolygonalFaceset.indices[23] = 7;
 
-    conway::Geometry geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry);
 
@@ -355,7 +355,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 7;
     parametersPolygonalFaceset.indices[23] = 6;
 
-    conway::Geometry geometry2 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry2 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry2);
 
@@ -432,7 +432,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 6;
     parametersPolygonalFaceset.indices[23] = 5;
 
-    conway::Geometry geometry3 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry3 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry3);
 
@@ -508,7 +508,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 5;
     parametersPolygonalFaceset.indices[23] = 8;
 
-    conway::Geometry geometry4 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry4 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry4);
 
@@ -585,7 +585,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 8;
     parametersPolygonalFaceset.indices[23] = 7;
 
-    conway::Geometry geometry5 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry5 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
 
     geometryVec.push_back(geometry5);
@@ -663,7 +663,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 6;
     parametersPolygonalFaceset.indices[23] = 5;
 
-    conway::Geometry geometry6 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry6 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry6);
 
@@ -739,7 +739,7 @@ void genIndexIfc()
     parametersPolygonalFaceset.indices[22] = 8;
     parametersPolygonalFaceset.indices[23] = 7;
 
-    conway::Geometry geometry7 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
+    conway::IfcGeometry geometry7 = conwayGeometryProcessor.getPolygonalFaceSetGeometry(parametersPolygonalFaceset);
 
     geometryVec.push_back(geometry7);
 

@@ -578,7 +578,14 @@ int main(int argc, char *argv[])
             ifc::IFCADVANCEDFACE,
             ifc::IFCPOLYLOOP,
             ifc::IFCINDEXEDPOLYGONALFACE,
-            ifc::IFCPOLYGONALFACESET
+            ifc::IFCPOLYGONALFACESET,
+            ifc::IFCMAPPEDITEM,
+            ifc::IFCBOOLEANCLIPPINGRESULT,
+            ifc::IFCBOOLEANRESULT,
+            ifc::IFCHALFSPACESOLID,
+            ifc::IFCPOLYGONALBOUNDEDHALFSPACE,
+            ifc::IFCFACEBASEDSURFACEMODEL,
+            ifc::IFCSHELLBASEDSURFACEMODEL
         };
 
         uint32_t uniqueTypeDefsSize = webifc::uniqueTypeDefs.size();
