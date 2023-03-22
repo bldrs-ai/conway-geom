@@ -12,6 +12,15 @@
 #include "include/math/triangulate-with-boundaries.h"
 #include "include/ifc-schema.h"
 
+//GLTFSDK
+#include <GLTFSDK/GLTF.h>
+#include <GLTFSDK/BufferBuilder.h>
+#include <GLTFSDK/GLTFResourceWriter.h>
+#include <GLTFSDK/GLBResourceWriter.h>
+#include <GLTFSDK/IStreamWriter.h>
+#include <GLTFSDK/Serialize.h>
+#include <GLTFSDK/ExtensionsKHR.h>
+
 std::string ReadFile(std::string filename)
 {
     std::ifstream t(filename);

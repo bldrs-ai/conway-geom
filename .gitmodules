@@ -18,3 +18,6 @@
 	path = external/manifold
 	url = https://github.com/bldrs-ai/manifold.git
 	branch = main
+[submodule "external/gltf-sdk"]
+	path = external/gltf-sdk
+	url = https://github.com/nickcastel50/glTF-SDK.git

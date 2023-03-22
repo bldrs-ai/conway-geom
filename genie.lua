@@ -35,6 +35,7 @@ solution "conway_geom"
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
+        glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -46,6 +47,7 @@ solution "conway_geom"
                     --WebIfcSourceFiles,
                     ManifoldSrcFiles,
                     WebIfcTestSourceFiles,
+                    glTFSDKSrcFiles,
                      ConwayTestingMain
                     }
 
@@ -70,7 +72,9 @@ solution "conway_geom"
             "external/manifold/src/polygon/include",
             "external/manifold/src/sdf/include",
             "external/manifold/src/third_party/graphlite/include",
-            "external/manifold/src/third_party/glm"
+            "external/manifold/src/third_party/glm",
+            "external/gltf-sdk/GLTFSDK/Inc",
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
@@ -189,6 +193,7 @@ solution "conway_geom"
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
+        glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -198,7 +203,8 @@ solution "conway_geom"
                     WebIfcMathFiles,
                     WebIfcParsingFiles,
                     WebIfcSourceFiles,
-                    ManifoldSrcFiles
+                    ManifoldSrcFiles,
+                    glTFSDKSrcFiles
                     --WebIfcTestSourceFiles,
                     -- WebIfcTestingMain
                     }
@@ -224,7 +230,9 @@ solution "conway_geom"
             "external/manifold/src/polygon/include",
             "external/manifold/src/sdf/include",
             "external/manifold/src/third_party/graphlite/include",
-            "external/manifold/src/third_party/glm"
+            "external/manifold/src/third_party/glm",
+            "external/gltf-sdk/GLTFSDK/Inc",
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
@@ -268,6 +276,7 @@ solution "conway_geom"
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
+        glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-pthread", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -277,7 +286,8 @@ solution "conway_geom"
                     WebIfcMathFiles,
                     WebIfcParsingFiles,
                     WebIfcSourceFiles,
-                    ManifoldSrcFiles
+                    ManifoldSrcFiles,
+                    glTFSDKSrcFiles
                     --WebIfcTestSourceFiles,
                     --WebIfcTestingMain
                     }
@@ -303,7 +313,9 @@ solution "conway_geom"
             "external/manifold/src/polygon/include",
             "external/manifold/src/sdf/include",
             "external/manifold/src/third_party/graphlite/include",
-            "external/manifold/src/third_party/glm"
+            "external/manifold/src/third_party/glm",
+            "external/gltf-sdk/GLTFSDK/Inc",
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
