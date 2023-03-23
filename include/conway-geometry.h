@@ -28,6 +28,59 @@
 #include "web-ifc.h"
 #include "conway-util.h"
 
+//GLTFSDK
+#include <GLTFSDK/GLTF.h>
+#include <GLTFSDK/BufferBuilder.h>
+#include <GLTFSDK/GLTFResourceWriter.h>
+#include <GLTFSDK/GLBResourceWriter.h>
+#include <GLTFSDK/IStreamWriter.h>
+#include <GLTFSDK/Serialize.h>
+#include <GLTFSDK/ExtensionsKHR.h>
+
+//Note - A new IStreamWriter will need to be written for emscripten builds. 
+namespace
+{
+    // The glTF SDK is decoupled from all file I/O by the IStreamWriter (and IStreamReader)
+    // interface(s) and the C++ stream-based I/O library. This allows the glTF SDK to be used in
+    // sandboxed environments, such as WebAssembly modules and UWP apps, where any file I/O code
+    // must be platform or use-case specific.
+    class StreamWriter : public Microsoft::glTF::IStreamWriter
+    {
+      public:
+        StreamWriter( std::filesystem::path pathBase )
+            : m_pathBase( std::move( pathBase ) )
+        {
+            assert( m_pathBase.has_root_path() );
+        }
+
+        // Resolves the relative URIs of any external resources declared in the glTF manifest
+        std::shared_ptr< std::ostream > GetOutputStream( const std::string& filename ) const override
+        {
+            // In order to construct a valid stream:
+            // 1. The filename argument will be encoded as UTF-8 so use filesystem::u8path to
+            //    correctly construct a path instance.
+            // 2. Generate an absolute path by concatenating m_pathBase with the specified filename
+            //    path. The filesystem::operator/ uses the platform's preferred directory separator
+            //    if appropriate.
+            // 3. Always open the file stream in binary mode. The glTF SDK will handle any text
+            //    encoding issues for us.
+            auto streamPath = m_pathBase / std::filesystem::u8path( filename );
+            auto stream     = std::make_shared< std::ofstream >( streamPath, std::ios_base::binary );
+
+            // Check if the stream has no errors and is ready for I/O operations
+            if ( !stream || !( *stream ) )
+            {
+                throw std::runtime_error( "Unable to create a valid output stream for uri: " + filename );
+            }
+
+            return stream;
+        }
+
+      private:
+        std::filesystem::path m_pathBase;
+    };
+} // namespace
+
 const double EXTRUSION_DISTANCE_HALFSPACE_M = 50;
 
 const bool DEBUG_DUMP_SVG = false;
@@ -2622,6 +2675,184 @@ namespace conway
 			{
 				printf("bad bound\n");
 			}
+		}
+
+		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, std::string filePath, glm::dmat4 transform = glm::dmat4(1))
+		{
+
+			try 
+			{
+				//The Document instance represents the glTF JSON manifest
+				Microsoft::glTF::Document document;
+
+				//Create a Buffer - it will be the 'current' Buffer that all the BufferViews
+				//created by this BufferBuilder will automatically reference
+
+				// Pass the absolute path, without the filename, to the stream writer
+				std::unique_ptr< StreamWriter >                    streamWriter = std::make_unique< StreamWriter >( std::filesystem::path(filePath).parent_path().c_str() );
+				std::unique_ptr< Microsoft::glTF::ResourceWriter > resourceWriter;
+
+				if ( !isGlb )
+				{
+					resourceWriter = std::make_unique< Microsoft::glTF::GLTFResourceWriter >( std::move( streamWriter ) );
+				}
+				else
+				{
+					resourceWriter = std::make_unique< Microsoft::glTF::GLBResourceWriter >( std::move( streamWriter ) );
+				}
+
+				std::string accessorIdIndices;
+				std::string accessorIdPositions;
+				std::string accessorIdUVs;
+
+				// Use the BufferBuilder helper class to simplify the process of
+				// constructing valid glTF Buffer, BufferView and Accessor entities
+				Microsoft::glTF::BufferBuilder bufferBuilder( std::move( resourceWriter ) );
+
+				//if Draco
+				Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression dracoMeshCompression;
+
+				//no Draco
+				// Create all the resource data (e.g. triangle indices and
+				// vertex positions) that will be written to the binary buffer
+				const char* bufferId = nullptr;
+
+				// Specify the 'special' GLB buffer ID. This informs the GLBResourceWriter that it should use
+				// the GLB container's binary chunk (usually the desired buffer location when creating GLBs)
+				if ( isGlb )
+				{
+					bufferId = Microsoft::glTF::GLB_BUFFER_ID;
+				}
+				else
+				{
+					bufferId = std::filesystem::path(filePath).filename().c_str();
+				}
+
+				// Create a Buffer - it will be the 'current' Buffer that all the BufferViews
+				// created by this BufferBuilder will automatically reference
+				bufferBuilder.AddBuffer( bufferId );
+
+				// Add an Accessor for the indices and positions
+				std::vector< float >    positions;
+				positions.resize(geom.numPoints * 3);
+
+				std::vector< float > minValues( 3U, std::numeric_limits< float >::max() );
+				std::vector< float > maxValues( 3U, std::numeric_limits< float >::lowest() );
+
+				//this internally populates the vertex float array, current storage type is double 
+				geom.GetVertexData();
+
+				const size_t positionCount = positions.size();
+
+				for (uint32_t i = 0; i < geom.numPoints; i++)
+				{
+					glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
+					positions[3 * i + 0] = (float)t.x;
+					positions[3 * i + 1] = (float)t.y;
+					positions[3 * i + 2] = (float)t.z;
+				}
+
+
+				// Accessor min/max properties must be set for vertex position data so calculate them here
+				for ( size_t i = 0U, j = 0U; i < positionCount; ++i, j = ( i % 3U ) )
+				{
+					minValues[ j ] = std::min( positions[ i ], minValues[ j ] );
+					maxValues[ j ] = std::max( positions[ i ], maxValues[ j ] );
+				}
+
+				// Create a BufferView with a target of ELEMENT_ARRAY_BUFFER (as it will reference index
+				// data) - it will be the 'current' BufferView that all the Accessors created by this
+				// BufferBuilder will automatically reference
+				bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ELEMENT_ARRAY_BUFFER );
+
+				// Copy the Accessor's id - subsequent calls to AddAccessor may invalidate the returned reference
+				accessorIdIndices = bufferBuilder.AddAccessor( geom.indexData, { Microsoft::glTF::TYPE_SCALAR, Microsoft::glTF::COMPONENT_UNSIGNED_INT } ).id;
+
+				// Create a BufferView with target ARRAY_BUFFER (as it will reference vertex attribute data)
+				bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ARRAY_BUFFER );
+
+				//Add positions accessor
+				accessorIdPositions = bufferBuilder.AddAccessor( positions, { Microsoft::glTF::TYPE_VEC3, Microsoft::glTF::COMPONENT_FLOAT, false, std::move( minValues ), std::move( maxValues ) } ).id;
+
+				// Construct a Material
+				Microsoft::glTF::Material    material;
+				material.doubleSided = true;
+
+				Microsoft::glTF::TextureInfo textureInfo;
+
+				// Add it to the Document and store the generated ID
+				auto materialId = document.materials.Append( std::move( material ), Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty ).id;
+
+				// Construct a MeshPrimitive. Unlike most types in glTF, MeshPrimitives are direct children
+				// of their parent Mesh entity rather than being children of the Document. This is why they
+				// don't have an ID member.
+				Microsoft::glTF::MeshPrimitive meshPrimitive;
+				meshPrimitive.materialId = materialId;
+
+				meshPrimitive.indicesAccessorId                                = accessorIdIndices;
+				meshPrimitive.attributes[ Microsoft::glTF::ACCESSOR_POSITION ] = accessorIdPositions;
+
+				// Add all of the Buffers, BufferViews and Accessors that were created using BufferBuilder to
+				// the Document. Note that after this point, no further calls should be made to BufferBuilder
+				bufferBuilder.Output( document );
+
+				// Construct a Mesh and add the MeshPrimitive as a child
+				Microsoft::glTF::Mesh mesh;
+				mesh.primitives.push_back( std::move( meshPrimitive ) );
+				// Add it to the Document and store the generated ID
+				auto meshId = document.meshes.Append( std::move( mesh ), Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty ).id;
+
+				// Construct a Node adding a reference to the Mesh
+				Microsoft::glTF::Node node;
+				node.meshId = meshId;
+
+				// Add it to the Document and store the generated ID
+				auto nodeId = document.nodes.Append( std::move( node ), Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty ).id;
+
+				// Construct a Scene
+				Microsoft::glTF::Scene scene;
+				scene.nodes.push_back( nodeId );
+				// Add it to the Document, using a utility method that also sets the Scene as the Document's default
+				document.SetDefaultScene( std::move( scene ), Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty );
+
+				std::string manifest;
+
+				try
+				{
+					// Serialize the glTF Document into a JSON manifest
+					manifest = Serialize( document, Microsoft::glTF::SerializeFlags::Pretty );
+				}
+				catch ( const Microsoft::glTF::GLTFException& ex )
+				{
+					std::stringstream ss;
+
+					printf( "Microsoft::glTF::Serialize failed: %s", ex.what() );
+				}
+
+				auto& genericResourceWriter = bufferBuilder.GetResourceWriter();
+
+				if ( isGlb )
+				{
+					auto glbResourceWriter = static_cast< Microsoft::glTF::GLBResourceWriter* >( &genericResourceWriter );
+
+					filePath += ".glb";
+
+					glbResourceWriter->Flush( manifest, filePath ); // A GLB container isn't created until the GLBResourceWriter::Flush member function is called
+				}
+				else
+				{
+					filePath += ".gltf";
+					genericResourceWriter.WriteExternal( filePath, manifest ); // Binary resources have already been written, just need to write the manifest
+				}
+			}
+			catch ( const std::exception& ex )
+			{
+				printf( "Couldn't write GLB file: %s", ex.what() );
+				return false;
+			}
+
+			return true;
+
 		}
 
 		std::string GeometryToObj(const IfcGeometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1))

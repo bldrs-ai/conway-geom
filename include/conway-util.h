@@ -26,11 +26,11 @@ namespace conway
 	const double EPS_SMALL = 1e-6;
 	const double EPS_BIG = 1e-4;
 
-	bool shouldPrintCodeGen 	= false;
-	bool exportObjs 			= false;
-	bool collectStats			= false;
-	bool verboseStats			= false;
-	bool shouldPrintTypeInfo	= false;
+	bool exportGltfs 	                = false;
+    bool exportGlbs                     = false;
+	bool exportObjs 			        = false;
+    bool exportSingleGeometry 	        = false;
+    bool exportIndividualGeometryFiles  = false;
 
 	bool MatrixFlipsTriangles(const glm::dmat4 &mat)
 	{

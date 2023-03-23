@@ -12,15 +12,6 @@
 #include "include/math/triangulate-with-boundaries.h"
 #include "include/ifc-schema.h"
 
-//GLTFSDK
-#include <GLTFSDK/GLTF.h>
-#include <GLTFSDK/BufferBuilder.h>
-#include <GLTFSDK/GLTFResourceWriter.h>
-#include <GLTFSDK/GLBResourceWriter.h>
-#include <GLTFSDK/IStreamWriter.h>
-#include <GLTFSDK/Serialize.h>
-#include <GLTFSDK/ExtensionsKHR.h>
-
 std::string ReadFile(std::string filename)
 {
     std::ifstream t(filename);
@@ -213,11 +204,11 @@ void genIndexIfc()
 
     glm::dmat4 localPlacementMatrix = conwayGeometryProcessor.GetAxis2Placement3D(parametersAxis2Placement3D);
 
-    printf("localPlacementMatrix[0][1] = %.3f, localPlacementMatrix[0][2] = %.3f, localPlacementMatrix[0][3] = %.3f, localPlacementMatrix[0][4] = %.3f,\n", localPlacementMatrix[0][0], localPlacementMatrix[0][1], localPlacementMatrix[0][2], localPlacementMatrix[0][3]);
+    /*printf("localPlacementMatrix[0][1] = %.3f, localPlacementMatrix[0][2] = %.3f, localPlacementMatrix[0][3] = %.3f, localPlacementMatrix[0][4] = %.3f,\n", localPlacementMatrix[0][0], localPlacementMatrix[0][1], localPlacementMatrix[0][2], localPlacementMatrix[0][3]);
     printf("localPlacementMatrix[1][1] = %.3f, localPlacementMatrix[1][2] = %.3f, localPlacementMatrix[1][3] = %.3f, localPlacementMatrix[1][4] = %.3f,\n", localPlacementMatrix[1][0], localPlacementMatrix[1][1], localPlacementMatrix[1][2], localPlacementMatrix[1][3]);
     printf("localPlacementMatrix[2][1] = %.3f, localPlacementMatrix[2][2] = %.3f, localPlacementMatrix[2][3] = %.3f, localPlacementMatrix[2][4] = %.3f,\n", localPlacementMatrix[2][0], localPlacementMatrix[2][1], localPlacementMatrix[2][2], localPlacementMatrix[2][3]);
     printf("localPlacementMatrix[3][1] = %.3f, localPlacementMatrix[3][2] = %.3f, localPlacementMatrix[3][3] = %.3f, localPlacementMatrix[3][4] = %.3f,\n", localPlacementMatrix[3][0], localPlacementMatrix[3][1], localPlacementMatrix[3][2], localPlacementMatrix[3][3]);
-    
+    */
 
     conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;
     parametersPolygonalFaceset.numPoints = 8;
@@ -758,9 +749,22 @@ void genIndexIfc()
 
     auto time = webifc::ms() - start;
 
-    std::cout << "Processing geometry t " << time << "ms" << std::endl;
+    std::cout << "Processing geometry took " << time << "ms" << std::endl;
 
-    std::cout << "Testing individual obj export..." << std::endl;
+    if (conway::exportObjs)
+    {
+        std::cout << "Testing OBJ export..." << std::endl;
+    }
+
+    if (conway::exportGltfs)
+    {
+        std::cout << "Testing GLTF export..." << std::endl;
+    }
+
+    if (conway::exportGlbs)
+    {
+        std::cout << "Testing GLB export..." << std::endl;
+    }
 
     for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
     {
@@ -768,40 +772,147 @@ void genIndexIfc()
         std::string singleObj = conwayGeometryProcessor.GeometryToObj(geometryVec[geometryIndex], offset, NormalizeMat);
 
         //filthy but just testing quick
-        std::string fileName = "./";
-        fileName += std::to_string(geometryIndex);
-        fileName += "_conway.obj";
+        std::string fileNameGltf = "./";
+        fileNameGltf += std::to_string(geometryIndex);
+        fileNameGltf += "_conway";
+
+        if (conway::exportGltfs && conway::exportIndividualGeometryFiles)
+        {
+            printf("Writing GLTF...\n");
+            conwayGeometryProcessor.GeometryToGltf(geometry, false, fileNameGltf, NormalizeMat);
+        }
 
 
-        std::wstring wsTmp(fileName.begin(), fileName.end());
+        if (conway::exportGlbs && conway::exportIndividualGeometryFiles)
+        {
+            printf("Writing GLB...\n");
+            conwayGeometryProcessor.GeometryToGltf(geometry, true, fileNameGltf, NormalizeMat);
+        }
 
-        webifc::writeFile(wsTmp, singleObj);
+        if (conway::exportObjs && conway::exportIndividualGeometryFiles)
+        {
+            //filthy but just testing quick
+            std::string fileNameObj = "./";
+            fileNameObj += std::to_string(geometryIndex);
+            fileNameObj += "_conway.obj";
+
+             std::wstring wsTmp(fileNameObj.begin(), fileNameObj.end());
+
+            printf("Writing OBJ...\n");
+            webifc::writeFile(wsTmp, singleObj);
+        }
     }
-
-    std::cout << "Testing complete obj export..." << std::endl;
 
     std::string completeObj = "";
     size_t offset = 0;
 
-    for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
+    if (conway::exportSingleGeometry)
     {
-        completeObj += conwayGeometryProcessor.GeometryToObj(geometryVec[geometryIndex], offset, NormalizeMat);
+        conway::IfcGeometry fullGeometry;
+
+        for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
+        {
+            fullGeometry.AddGeometry(geometryVec[geometryIndex]);
+        }
+
+        std::string fileNameGltf = "./index_ifc_full_conway";
+
+        if (conway::exportGltfs)
+        {
+            printf("Writing Complete GLTF...\n");
+            if ( !conwayGeometryProcessor.GeometryToGltf(fullGeometry, false, fileNameGltf, NormalizeMat) ) 
+            {
+                printf("Error writing GLTF.");
+            }
+        }
+
+        if (conway::exportGlbs)
+        {
+            printf("Writing Complete GLB...\n");
+            if (!conwayGeometryProcessor.GeometryToGltf(fullGeometry, true, fileNameGltf, NormalizeMat) )
+            {
+                printf("Error writing GLB.");
+            }
+        }
+
+        if (conway::exportObjs)
+        {
+            std::cout << "Writing Complete OBJ..." << std::endl;
+            completeObj = conwayGeometryProcessor.GeometryToObj(fullGeometry, offset, NormalizeMat);
+        
+            std::string fileName = "./index_ifc_full_conway.obj";
+
+            std::wstring wsTmp(fileName.begin(), fileName.end());
+
+            webifc::writeFile(wsTmp, completeObj);
+        }
     }
-
-    //filthy but just testing quick
-    std::string fileName = "./index_ifc_full_conway.obj";
-
-    std::wstring wsTmp(fileName.begin(), fileName.end());
-
-    webifc::writeFile(wsTmp, completeObj);
 
     geometryVec.clear();
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     std::cout << "Hello Conway-Geom test!\n";
 
+    if (argc < 2)
+    {
+       std::cout << "conway_geom_native Usage\n\tLaunching executable with no arguments displays help" << 
+            "\n\t-obj   - Outputs geometry from index.ifc to obj file(s)" << 
+            "\n\t-gltf  - Outputs geometry from index.ifc to gltf file(s)" <<
+            "\n\t-glb   - Outputs geometry from index.ifc to glb file(s)" <<
+            "\n\t-full  - Outputs geometry from index.ifc to a single geometry file" <<
+            "\n\t(-full is the default if -full and -split not specified)" <<
+            "\n\t-split - Outputs geometry from index.ifc to individual geometry files" << 
+            "\n\t-h     - Displays help\n";
+        return 0;
+    }
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+
+        if (arg == "-gltf") {
+            conway::exportGltfs = true;
+        } 
+        else if (arg == "-obj")
+        {
+             conway::exportObjs = true;
+        }
+        else if (arg == "-glb")
+        {
+            conway::exportGlbs = true;
+        }
+        else if (arg == "-full")
+        {
+            conway::exportSingleGeometry = true;
+        }
+        else if (arg == "-split")
+        {
+            conway::exportIndividualGeometryFiles = true;
+        }
+        else if( arg == "-h")
+        {
+            std::cout << "conway_geom_native Usage\n\tLaunching executable with no arguments displays help" << 
+            "\n\t-obj   - Outputs geometry from index.ifc to obj file(s)" << 
+            "\n\t-gltf  - Outputs geometry from index.ifc to gltf file(s)" <<
+            "\n\t-glb   - Outputs geometry from index.ifc to glb file(s)" <<
+            "\n\t-full  - Outputs geometry from index.ifc to a single geometry file" <<
+            "\n\t(-full is the default if -full and -split not specified)" <<
+            "\n\t-split - Outputs geometry from index.ifc to individual geometry files" << 
+            "\n\t-h     - Displays help\n";
+            return 0;
+        }
+        else {
+            std::cerr << "Error: invalid argument " << arg << std::endl;
+            return 1;
+        }
+    }
+
+    if (!conway::exportIndividualGeometryFiles && !conway::exportSingleGeometry)
+    {
+        conway::exportSingleGeometry = true;
+    }
+    
     //generate simple index.ifc geometry 
     genIndexIfc();
     
