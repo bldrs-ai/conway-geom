@@ -322,6 +322,10 @@ namespace webifc
 			mesh.color = styledItemColor;
 			mesh.transformation = glm::dmat4(1);
 
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//%s\n", ifcLineType);
 			bool isIfcElement = ifc::isIfcElement(line.ifcType);
 			if (isIfcElement)
 			{
@@ -422,10 +426,6 @@ namespace webifc
 			}
 			else
 			{
-				const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
-				
-				collectStatistics(line.ifcType);
-				printTypeInfo("//%s\n", ifcLineType);
 				switch (line.ifcType)
 				{
 					
@@ -1198,6 +1198,11 @@ namespace webifc
 				uint32_t lineID = _loader.ExpressIDToLineID(_loader.GetRefArgument());
 				auto &line = _loader.GetLine(lineID);
 				_loader.MoveToArgumentOffset(line, 0);
+
+				const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+				collectStatistics(line.ifcType);
+				printTypeInfo("//Parameter: %s\n", ifcLineType);
 			}
 
 			_loader.Reverse();
@@ -1358,6 +1363,11 @@ namespace webifc
 
 			_loader.MoveToArgumentOffset(line, 0);
 
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
+
 			std::vector<glm::dvec3> result;
 
 			IfcTokenType t = _loader.GetTokenType();
@@ -1385,6 +1395,11 @@ namespace webifc
 			auto &line = _loader.GetLine(lineID);
 
 			_loader.MoveToArgumentOffset(line, 0);
+
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
 
 			std::vector<glm::dvec2> result;
 
@@ -5116,6 +5131,11 @@ namespace webifc
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
+
 			_loader.MoveToArgumentOffset(line, 0);
 			auto positionID = _loader.GetRefArgument();
 			double length = _loader.GetDoubleArgument();
@@ -5133,6 +5153,11 @@ namespace webifc
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
 
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
+
 			_loader.MoveToArgumentOffset(line, 0);
 			auto coords = _loader.GetSetArgument();
 
@@ -5147,6 +5172,11 @@ namespace webifc
 		{
 			uint32_t lineID = _loader.ExpressIDToLineID(expressID);
 			auto &line = _loader.GetLine(lineID);
+
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
 
 			/*
 			_loader.MoveToArgumentOffset(line, 0);
@@ -5179,6 +5209,11 @@ namespace webifc
 			auto &line = _loader.GetLine(lineID);
 
 			_loader.MoveToArgumentOffset(line, 0);
+
+			const char* ifcLineType = GetReadableNameFromTypeCode(line.ifcType);
+				
+			collectStatistics(line.ifcType);
+			printTypeInfo("//Parameter: %s\n", ifcLineType);
 			IfcTokenType t = _loader.GetTokenType();
 
 			glm::vec<DIM, glm::f64> point;

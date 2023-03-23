@@ -71,7 +71,7 @@ namespace webifc
 			} 
 			else 
 			{
-				webifc::uniqueTypeDefs.insert(std::pair<uint32_t, uint32_t>(ifcLineType, 0));
+				webifc::uniqueTypeDefs.insert(std::pair<uint32_t, uint32_t>(ifcLineType, 1));
 			}
 		}
 	}
