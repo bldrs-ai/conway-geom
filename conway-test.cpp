@@ -758,12 +758,26 @@ void genIndexIfc()
 
     if (conway::exportGltfs)
     {
-        std::cout << "Testing GLTF export..." << std::endl;
+        if (conway::exportDraco)
+        {
+            std::cout << "Testing GLTF export (Draco)..." << std::endl;
+        }
+        else
+        {
+            std::cout << "Testing GLTF export..." << std::endl;
+        }
     }
 
     if (conway::exportGlbs)
     {
-        std::cout << "Testing GLB export..." << std::endl;
+        if (conway::exportDraco)
+        {
+            std::cout << "Testing GLB export (Draco)..." << std::endl;
+        }
+        else
+        {
+            std::cout << "Testing GLB export..." << std::endl;
+        }
     }
 
     for ( int geometryIndex = 0; geometryIndex < geometryVec.size(); geometryIndex++ )
@@ -778,15 +792,30 @@ void genIndexIfc()
 
         if (conway::exportGltfs && conway::exportIndividualGeometryFiles)
         {
-            printf("Writing GLTF...\n");
-            conwayGeometryProcessor.GeometryToGltf(geometry, false, fileNameGltf, NormalizeMat);
+            if (conway::exportDraco)
+            {
+                printf("Writing GLTF (Draco)...\n");
+            } else
+            {
+                printf("Writing GLTF...\n");
+            }
+
+            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], false, conway::exportDraco, fileNameGltf, NormalizeMat);
         }
 
 
         if (conway::exportGlbs && conway::exportIndividualGeometryFiles)
         {
-            printf("Writing GLB...\n");
-            conwayGeometryProcessor.GeometryToGltf(geometry, true, fileNameGltf, NormalizeMat);
+            if (conway::exportDraco)
+            {
+                printf("Writing GLB (Draco)\n");
+            } else
+            {
+                printf("Writing GLB...\n");
+            }
+
+            
+            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], true, conway::exportDraco, fileNameGltf, NormalizeMat);
         }
 
         if (conway::exportObjs && conway::exportIndividualGeometryFiles)
@@ -816,11 +845,23 @@ void genIndexIfc()
         }
 
         std::string fileNameGltf = "./index_ifc_full_conway";
+        if (conway::exportDraco)
+        {
+        
+            fileNameGltf += "_draco";
+        }
 
         if (conway::exportGltfs)
         {
-            printf("Writing Complete GLTF...\n");
-            if ( !conwayGeometryProcessor.GeometryToGltf(fullGeometry, false, fileNameGltf, NormalizeMat) ) 
+            if (conway::exportDraco)
+            {
+                printf("Writing Complete GLTF (Draco)...\n");
+            } else
+            {
+                printf("Writing Complete GLTF...\n");
+            }
+
+            if ( !conwayGeometryProcessor.GeometryToGltf(fullGeometry, false, conway::exportDraco, fileNameGltf, NormalizeMat) ) 
             {
                 printf("Error writing GLTF.");
             }
@@ -828,8 +869,15 @@ void genIndexIfc()
 
         if (conway::exportGlbs)
         {
-            printf("Writing Complete GLB...\n");
-            if (!conwayGeometryProcessor.GeometryToGltf(fullGeometry, true, fileNameGltf, NormalizeMat) )
+            if (conway::exportDraco)
+            {
+                printf("Writing Complete GLB (Draco)...\n");
+            } else
+            {
+                printf("Writing Complete GLB...\n");
+            }
+
+            if (!conwayGeometryProcessor.GeometryToGltf(fullGeometry, true, conway::exportDraco, fileNameGltf, NormalizeMat) )
             {
                 printf("Error writing GLB.");
             }
@@ -882,6 +930,10 @@ int main(int argc, char *argv[])
         {
             conway::exportGlbs = true;
         }
+        else if (arg == "-draco")
+        {
+            conway::exportDraco = true;
+        }
         else if (arg == "-full")
         {
             conway::exportSingleGeometry = true;
@@ -896,6 +948,7 @@ int main(int argc, char *argv[])
             "\n\t-obj   - Outputs geometry from index.ifc to obj file(s)" << 
             "\n\t-gltf  - Outputs geometry from index.ifc to gltf file(s)" <<
             "\n\t-glb   - Outputs geometry from index.ifc to glb file(s)" <<
+            "\n\t-draco - Applies default Draco compression" <<
             "\n\t-full  - Outputs geometry from index.ifc to a single geometry file" <<
             "\n\t(-full is the default if -full and -split not specified)" <<
             "\n\t-split - Outputs geometry from index.ifc to individual geometry files" << 
@@ -906,6 +959,11 @@ int main(int argc, char *argv[])
             std::cerr << "Error: invalid argument " << arg << std::endl;
             return 1;
         }
+    }
+
+    if (conway::exportDraco && (!conway::exportGltfs && !conway::exportGlbs) )
+    {
+        std::cout << "Must choose -gltf or -glb with -draco switch." << std::endl;
     }
 
     if (!conway::exportIndividualGeometryFiles && !conway::exportSingleGeometry)

@@ -83,6 +83,8 @@
         "functional": "cpp",
         "iterator": "cpp",
         "utility": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "cinttypes": "cpp",
+        "condition_variable": "cpp"
     }
 }

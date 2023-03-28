@@ -36,6 +36,27 @@ solution "conway_geom"
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
         glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
+        DracoSourceFiles      = {"external/draco/src/draco/animation/*.cc",
+                                "external/draco/src/draco/attributes/*.cc",
+                                "external/draco/src/draco/compression/*.cc",
+                                "external/draco/src/draco/compression/attributes/*.cc",
+                                "external/draco/src/draco/compression/attributes/prediction_schemes/*.cc",
+                                "external/draco/src/draco/compression/bit_coders/*.cc",
+                                "external/draco/src/draco/compression/config/*.cc",
+                                "external/draco/src/draco/compression/entropy/*.cc",
+                                "external/draco/src/draco/compression/mesh/*.cc",
+                                "external/draco/src/draco/compression/mesh/traverser/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/algorithms/*.cc",
+                                "external/draco/src/draco/core/*.cc",
+                                "external/draco/src/draco/io/*.cc",
+                                "external/draco/src/draco/material/*.cc",
+                                "external/draco/src/draco/mesh/*.cc",
+                                "external/draco/src/draco/meshdata/*.cc",
+                                "external/draco/src/draco/metadata/*.cc",
+                                "external/draco/src/draco/point_cloud/*.cc",
+                                "external/draco/src/draco/scene/*.cc",
+                                "external/draco/src/draco/texture/*.cc"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -48,8 +69,9 @@ solution "conway_geom"
                     ManifoldSrcFiles,
                     WebIfcTestSourceFiles,
                     glTFSDKSrcFiles,
-                     ConwayTestingMain
-                    }
+                    DracoSourceFiles,
+                    ConwayTestingMain
+                }
 
         configuration {"gmake and not macosx"}
         linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
@@ -74,16 +96,47 @@ solution "conway_geom"
             "external/manifold/src/third_party/graphlite/include",
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
-            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
+            "external/draco/src"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
         }    
 
-        excludes { "external/manifold/src/third_party/glm/test/**.*",
+        excludes 
+        { 
+        --Manifold Test files 
+        "external/manifold/src/third_party/glm/test/**.*",
         "external/manifold/src/third_party/thrust/examples/**.*",
         "external/manifold/src/third_party/thrust/dependencies/cub/test/**.*",
-        "external/manifold/src/third_party/glm/test/gtc/**.*" }     
+        "external/manifold/src/third_party/glm/test/gtc/**.*",
+        --Draco Source Files
+        "external/draco/src/draco/javascript/**.*",
+        "external/draco/src/draco/maya/**.*",
+        "external/draco/src/draco/tools/**.*",
+        "external/draco/src/draco/unity/**.*",
+        --Draco Test Files
+        "external/draco/src/draco/animation/*test*cc",
+        "external/draco/src/draco/attributes/*test*cc",
+        "external/draco/src/draco/core/*test*cc",
+        "external/draco/src/draco/io/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/mesh/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/point_cloud/*test*cc",
+        "external/draco/src/draco/scene/*test*cc",
+        "external/draco/src/draco/texture/*test*cc",
+        "external/draco/src/draco/metadata/*test*cc",
+        "external/draco/src/draco/compression/*test*cc",
+        "external/draco/src/draco/compression/attributes/*test*cc",
+        "external/draco/src/draco/compression/attributes/prediction_schemes/*test*cc",
+        "external/draco/src/draco/compression/bit_coders/*test*cc",
+        "external/draco/src/draco/compression/config/*test*cc",
+        "external/draco/src/draco/compression/entropy/*test*cc",
+        "external/draco/src/draco/compression/mesh/*test*cc",
+        "external/draco/src/draco/compression/mesh/traverser/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}     
 
         configuration { "Debug" }
 
@@ -194,6 +247,27 @@ solution "conway_geom"
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
         glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
+        DracoSourceFiles      = {"external/draco/src/draco/animation/*.cc",
+                                "external/draco/src/draco/attributes/*.cc",
+                                "external/draco/src/draco/compression/*.cc",
+                                "external/draco/src/draco/compression/attributes/*.cc",
+                                "external/draco/src/draco/compression/attributes/prediction_schemes/*.cc",
+                                "external/draco/src/draco/compression/bit_coders/*.cc",
+                                "external/draco/src/draco/compression/config/*.cc",
+                                "external/draco/src/draco/compression/entropy/*.cc",
+                                "external/draco/src/draco/compression/mesh/*.cc",
+                                "external/draco/src/draco/compression/mesh/traverser/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/algorithms/*.cc",
+                                "external/draco/src/draco/core/*.cc",
+                                "external/draco/src/draco/io/*.cc",
+                                "external/draco/src/draco/material/*.cc",
+                                "external/draco/src/draco/mesh/*.cc",
+                                "external/draco/src/draco/meshdata/*.cc",
+                                "external/draco/src/draco/metadata/*.cc",
+                                "external/draco/src/draco/point_cloud/*.cc",
+                                "external/draco/src/draco/scene/*.cc",
+                                "external/draco/src/draco/texture/*.cc"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -204,7 +278,8 @@ solution "conway_geom"
                     WebIfcParsingFiles,
                     WebIfcSourceFiles,
                     ManifoldSrcFiles,
-                    glTFSDKSrcFiles
+                    glTFSDKSrcFiles,
+                    DracoSourceFiles,
                     --WebIfcTestSourceFiles,
                     -- WebIfcTestingMain
                     }
@@ -232,16 +307,47 @@ solution "conway_geom"
             "external/manifold/src/third_party/graphlite/include",
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
-            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
+            "external/draco/src"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
         }    
 
-        excludes { "external/manifold/src/third_party/glm/test/**.*",
+        excludes 
+        { 
+        --Manifold Test files 
+        "external/manifold/src/third_party/glm/test/**.*",
         "external/manifold/src/third_party/thrust/examples/**.*",
         "external/manifold/src/third_party/thrust/dependencies/cub/test/**.*",
-        "external/manifold/src/third_party/glm/test/gtc/**.*" }     
+        "external/manifold/src/third_party/glm/test/gtc/**.*",
+        --Draco Source Files
+        "external/draco/src/draco/javascript/**.*",
+        "external/draco/src/draco/maya/**.*",
+        "external/draco/src/draco/tools/**.*",
+        "external/draco/src/draco/unity/**.*",
+        --Draco Test Files
+        "external/draco/src/draco/animation/*test*cc",
+        "external/draco/src/draco/attributes/*test*cc",
+        "external/draco/src/draco/core/*test*cc",
+        "external/draco/src/draco/io/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/mesh/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/point_cloud/*test*cc",
+        "external/draco/src/draco/scene/*test*cc",
+        "external/draco/src/draco/texture/*test*cc",
+        "external/draco/src/draco/metadata/*test*cc",
+        "external/draco/src/draco/compression/*test*cc",
+        "external/draco/src/draco/compression/attributes/*test*cc",
+        "external/draco/src/draco/compression/attributes/prediction_schemes/*test*cc",
+        "external/draco/src/draco/compression/bit_coders/*test*cc",
+        "external/draco/src/draco/compression/config/*test*cc",
+        "external/draco/src/draco/compression/entropy/*test*cc",
+        "external/draco/src/draco/compression/mesh/*test*cc",
+        "external/draco/src/draco/compression/mesh/traverser/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}        
 
         configuration { "Debug" }
 
@@ -277,6 +383,27 @@ solution "conway_geom"
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
         glTFSDKSrcFiles       = {"external/gltf-sdk/GLTFSDK/source/**.*"}
+        DracoSourceFiles      = {"external/draco/src/draco/animation/*.cc",
+                                "external/draco/src/draco/attributes/*.cc",
+                                "external/draco/src/draco/compression/*.cc",
+                                "external/draco/src/draco/compression/attributes/*.cc",
+                                "external/draco/src/draco/compression/attributes/prediction_schemes/*.cc",
+                                "external/draco/src/draco/compression/bit_coders/*.cc",
+                                "external/draco/src/draco/compression/config/*.cc",
+                                "external/draco/src/draco/compression/entropy/*.cc",
+                                "external/draco/src/draco/compression/mesh/*.cc",
+                                "external/draco/src/draco/compression/mesh/traverser/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/*.cc",
+                                "external/draco/src/draco/compression/point_cloud/algorithms/*.cc",
+                                "external/draco/src/draco/core/*.cc",
+                                "external/draco/src/draco/io/*.cc",
+                                "external/draco/src/draco/material/*.cc",
+                                "external/draco/src/draco/mesh/*.cc",
+                                "external/draco/src/draco/meshdata/*.cc",
+                                "external/draco/src/draco/metadata/*.cc",
+                                "external/draco/src/draco/point_cloud/*.cc",
+                                "external/draco/src/draco/scene/*.cc",
+                                "external/draco/src/draco/texture/*.cc"}
 
         configuration { "linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-pthread", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
@@ -287,7 +414,8 @@ solution "conway_geom"
                     WebIfcParsingFiles,
                     WebIfcSourceFiles,
                     ManifoldSrcFiles,
-                    glTFSDKSrcFiles
+                    glTFSDKSrcFiles,
+                    DracoSourceFiles,
                     --WebIfcTestSourceFiles,
                     --WebIfcTestingMain
                     }
@@ -315,16 +443,47 @@ solution "conway_geom"
             "external/manifold/src/third_party/graphlite/include",
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
-            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include"
+            "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
+            "external/draco/src"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
         } 
 
-        excludes { "external/manifold/src/third_party/glm/test/**.*",
+        excludes 
+        { 
+        --Manifold Test files 
+        "external/manifold/src/third_party/glm/test/**.*",
         "external/manifold/src/third_party/thrust/examples/**.*",
         "external/manifold/src/third_party/thrust/dependencies/cub/test/**.*",
-        "external/manifold/src/third_party/glm/test/gtc/**.*" }       
+        "external/manifold/src/third_party/glm/test/gtc/**.*",
+        --Draco Source Files
+        "external/draco/src/draco/javascript/**.*",
+        "external/draco/src/draco/maya/**.*",
+        "external/draco/src/draco/tools/**.*",
+        "external/draco/src/draco/unity/**.*",
+        --Draco Test Files
+        "external/draco/src/draco/animation/*test*cc",
+        "external/draco/src/draco/attributes/*test*cc",
+        "external/draco/src/draco/core/*test*cc",
+        "external/draco/src/draco/io/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/mesh/*test*cc",
+        "external/draco/src/draco/material/*test*cc",
+        "external/draco/src/draco/point_cloud/*test*cc",
+        "external/draco/src/draco/scene/*test*cc",
+        "external/draco/src/draco/texture/*test*cc",
+        "external/draco/src/draco/metadata/*test*cc",
+        "external/draco/src/draco/compression/*test*cc",
+        "external/draco/src/draco/compression/attributes/*test*cc",
+        "external/draco/src/draco/compression/attributes/prediction_schemes/*test*cc",
+        "external/draco/src/draco/compression/bit_coders/*test*cc",
+        "external/draco/src/draco/compression/config/*test*cc",
+        "external/draco/src/draco/compression/entropy/*test*cc",
+        "external/draco/src/draco/compression/mesh/*test*cc",
+        "external/draco/src/draco/compression/mesh/traverser/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/*test*cc",
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}          
 
         configuration { "Debug" }
 

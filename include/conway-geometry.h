@@ -28,6 +28,15 @@
 #include "web-ifc.h"
 #include "conway-util.h"
 
+//draco
+#include <draco/compression/config/compression_shared.h>
+#include <draco/compression/encode.h>
+#include <draco/compression/expert_encode.h>
+#include <draco/core/cycle_timer.h>
+#include <draco/io/file_utils.h>
+#include <draco/io/mesh_io.h>
+#include <draco/io/point_cloud_io.h>
+
 //GLTFSDK
 #include <GLTFSDK/GLTF.h>
 #include <GLTFSDK/BufferBuilder.h>
@@ -111,6 +120,23 @@ struct GeometryStatistics
 
 namespace conway
 {
+
+	 struct DracoOptions
+        {
+            bool        isPointCloud               = false;
+            int         posQuantizationBits        = 11;
+            int         texCoordsQuantizationBits  = 8;
+            bool        texCoordsDeleted           = false;
+            int         normalsQuantizationBits    = 8;
+            bool        normalsDeleted             = false;
+            int         genericQuantizationBits    = 8;
+            bool        genericDeleted             = false;
+            int         compressionLevel           = 7;
+            bool        preservePolygons           = false;
+            bool        useMetadata                = false;
+            bool        deduplicateInputValues     = true;
+        };
+
     struct ComposedMesh
 	{
 		glm::dvec4 color;
@@ -2677,13 +2703,175 @@ namespace conway
 			}
 		}
 
-		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, std::string filePath, glm::dmat4 transform = glm::dmat4(1))
+		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, bool outputDraco, std::string filePath, glm::dmat4 transform = glm::dmat4(1))
 		{
+
+			// Encode the geometry.
+			draco::EncoderBuffer buffer;
+
+			//create a mesh object
+			std::unique_ptr< draco::Mesh > dracoMesh( new draco::Mesh() );
 
 			try 
 			{
+				int32_t              pos_att_id      = -1;
+				int32_t              tex_att_id      = -1;
+				int32_t              material_att_id = -1;
+
+				//this internally populates the vertex float array, current storage type is double 
+				geom.GetVertexData();
+
+				if ( outputDraco )
+				{
+					DracoOptions dracoOptions;
+
+					//get number of faces
+					uint32_t numFaces = 0;
+					numFaces = geom.GetIndexDataSize() / 3;
+
+					if ( numFaces > 0 )
+					{
+						//set number of faces
+						dracoMesh->SetNumFaces( numFaces );
+
+						//set number of indices
+						dracoMesh->set_num_points( 3 * numFaces );
+					}
+
+					uint32_t numPositions = 0;
+					numPositions          = geom.numPoints;
+
+					// Add attributes if they are present in the input data.
+					if ( numPositions > 0 )
+					{
+						draco::GeometryAttribute va;
+						va.Init( draco::GeometryAttribute::POSITION, nullptr, 3, draco::DT_FLOAT32, false, sizeof( float ) * 3, 0 );
+						pos_att_id = dracoMesh->AddAttribute( va, false, numPositions );
+					}
+
+					//TODO: support multiple materials at some point when we add that
+					int32_t numMaterials = 1;
+					int32_t numTexCoords = 0;
+
+					//populate position attribute
+					float   vertexVal[ 3 ];
+					int32_t vertexCount = 0;
+
+					for (uint32_t i = 0; i < geom.numPoints; i++)
+					{
+						glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
+						vertexVal[0] = (float)t.x;
+						vertexVal[1] = (float)t.y;
+						vertexVal[2] = (float)t.z;
+						dracoMesh->attribute( pos_att_id )->SetAttributeValue( draco::AttributeValueIndex( i ), vertexVal );
+					}
+
+					//no textures, just map vertices to face indices
+					for ( size_t triangleIndex = 0; triangleIndex < numFaces; ++triangleIndex )
+					{
+						const uint32_t* triangle = &( geom.indexData.data()[ triangleIndex * 3 ] );
+
+						uint32_t triangle0 = triangle[ 0 ];
+						uint32_t triangle1 = triangle[ 1 ];
+						uint32_t triangle2 = triangle[ 2 ];
+
+						const draco::PointIndex vert_id_0( 3 * triangleIndex );
+						const draco::PointIndex vert_id_1( 3 * triangleIndex + 1 );
+						const draco::PointIndex vert_id_2( 3 * triangleIndex + 2 );
+						const int               triangulated_index = 0;
+
+						//map vertex to face index
+						dracoMesh->attribute( pos_att_id )
+							->SetPointMapEntry( vert_id_0, draco::AttributeValueIndex( triangle0 ) );
+						dracoMesh->attribute( pos_att_id )
+							->SetPointMapEntry( vert_id_1, draco::AttributeValueIndex( triangle1 ) );
+						dracoMesh->attribute( pos_att_id )
+							->SetPointMapEntry( vert_id_2, draco::AttributeValueIndex( triangle2 ) );
+					}
+
+					// Add faces with identity mapping between vertex and corner indices.
+					// Duplicate vertices will get removed below.
+					draco::Mesh::Face face;
+					for ( draco::FaceIndex i( 0 ); i < numFaces; ++i )
+					{
+						for ( int c = 0; c < 3; ++c )
+						{
+							face[ c ] = 3 * i.value() + c;
+						}
+						dracoMesh->SetFace( i, face );
+					}
+
+		#ifdef DRACO_ATTRIBUTE_VALUES_DEDUPLICATION_SUPPORTED
+					if ( dracoOptions.deduplicateInputValues )
+					{
+						dracoMesh->DeduplicateAttributeValues();
+					}
+		#endif
+
+		#ifdef DRACO_ATTRIBUTE_INDICES_DEDUPLICATION_SUPPORTED
+					dracoMesh->DeduplicatePointIds();
+		#endif
+
+					// Convert compression level to speed (that 0 = slowest, 10 = fastest).
+					const int32_t dracoCompressionSpeed = 10 - dracoOptions.compressionLevel;
+
+					//set up Draco Encoder
+					draco::Encoder encoder;
+
+					// Setup encoder options.
+					if ( dracoOptions.posQuantizationBits > 0 )
+					{
+						encoder.SetAttributeQuantization( draco::GeometryAttribute::POSITION, 11);//dracoOptions.posQuantizationBits );
+					}
+					if ( dracoOptions.texCoordsQuantizationBits > 0 )
+					{
+						encoder.SetAttributeQuantization( draco::GeometryAttribute::TEX_COORD, 8);//dracoOptions.texCoordsQuantizationBits );
+					}
+					if ( dracoOptions.normalsQuantizationBits > 0 )
+					{
+						encoder.SetAttributeQuantization( draco::GeometryAttribute::NORMAL, 8);//dracoOptions.normalsQuantizationBits );
+					}
+					if ( dracoOptions.genericQuantizationBits > 0 )
+					{
+						encoder.SetAttributeQuantization( draco::GeometryAttribute::GENERIC, 8);//dracoOptions.genericQuantizationBits );
+					}
+
+					encoder.SetSpeedOptions( dracoCompressionSpeed, dracoCompressionSpeed );
+
+					// Convert to ExpertEncoder that allows us to set per-attribute options.
+					std::unique_ptr< draco::ExpertEncoder > expert_encoder;
+					expert_encoder.reset( new draco::ExpertEncoder( *dracoMesh ) );
+					expert_encoder->Reset( encoder.CreateExpertEncoderOptions( *dracoMesh ) );
+
+					//set up timer
+					draco::CycleTimer timer;
+
+					timer.Start();
+
+					const draco::Status status = expert_encoder->EncodeToBuffer( &buffer );
+
+					timer.Stop();
+
+					if ( !status.ok() )
+					{
+						printf( "Failed to encode the mesh: %s", status.error_msg() );
+						return false;
+					}
+
+					printf("Encoded To Draco in %lld ms\n", timer.GetInMs());
+				}
+
+
 				//The Document instance represents the glTF JSON manifest
 				Microsoft::glTF::Document document;
+
+				if ( outputDraco )
+				{
+					document.extensionsRequired.insert( "KHR_draco_mesh_compression" );
+					document.extensionsUsed.insert( "KHR_draco_mesh_compression" );
+				}
+
+				std::string base_filename = filePath.substr(filePath.find_last_of("/\\") + 1);
 
 				//Create a Buffer - it will be the 'current' Buffer that all the BufferViews
 				//created by this BufferBuilder will automatically reference
@@ -2725,7 +2913,7 @@ namespace conway
 				}
 				else
 				{
-					bufferId = std::filesystem::path(filePath).filename().c_str();
+					bufferId = base_filename.c_str();
 				}
 
 				// Create a Buffer - it will be the 'current' Buffer that all the BufferViews
@@ -2738,9 +2926,6 @@ namespace conway
 
 				std::vector< float > minValues( 3U, std::numeric_limits< float >::max() );
 				std::vector< float > maxValues( 3U, std::numeric_limits< float >::lowest() );
-
-				//this internally populates the vertex float array, current storage type is double 
-				geom.GetVertexData();
 
 				const size_t positionCount = positions.size();
 
@@ -2760,19 +2945,46 @@ namespace conway
 					maxValues[ j ] = std::max( positions[ i ], maxValues[ j ] );
 				}
 
-				// Create a BufferView with a target of ELEMENT_ARRAY_BUFFER (as it will reference index
-				// data) - it will be the 'current' BufferView that all the Accessors created by this
-				// BufferBuilder will automatically reference
-				bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ELEMENT_ARRAY_BUFFER );
+				if (outputDraco)
+				{
+					Microsoft::glTF::Accessor positionsAccessor;
+					positionsAccessor.min           = minValues;
+					positionsAccessor.max           = maxValues;
+					positionsAccessor.count         = dracoMesh->num_points();
+					positionsAccessor.componentType = Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
+					positionsAccessor.type          = Microsoft::glTF::AccessorType::TYPE_VEC3;
+					positionsAccessor.id            = "0";
+					accessorIdPositions             = positionsAccessor.id;
+					dracoMeshCompression.attributes.emplace( "POSITION", dracoMesh->attribute( pos_att_id )->unique_id() );
 
-				// Copy the Accessor's id - subsequent calls to AddAccessor may invalidate the returned reference
-				accessorIdIndices = bufferBuilder.AddAccessor( geom.indexData, { Microsoft::glTF::TYPE_SCALAR, Microsoft::glTF::COMPONENT_UNSIGNED_INT } ).id;
+					Microsoft::glTF::Accessor indicesAccessor;
+					indicesAccessor.count         = dracoMesh->num_faces() * 3;
+					indicesAccessor.componentType = Microsoft::glTF::COMPONENT_UNSIGNED_INT;
+					indicesAccessor.type          = Microsoft::glTF::TYPE_SCALAR;
+					indicesAccessor.id            = "1";
+					accessorIdIndices             = indicesAccessor.id;
 
-				// Create a BufferView with target ARRAY_BUFFER (as it will reference vertex attribute data)
-				bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ARRAY_BUFFER );
+					//add position accessor first here
+					document.accessors.Append( positionsAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty );
+					document.accessors.Append( indicesAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty );
+				}
+				else
+				{
+					// Create a BufferView with a target of ELEMENT_ARRAY_BUFFER (as it will reference index
+					// data) - it will be the 'current' BufferView that all the Accessors created by this
+					// BufferBuilder will automatically reference
+					bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ELEMENT_ARRAY_BUFFER );
+				
 
-				//Add positions accessor
-				accessorIdPositions = bufferBuilder.AddAccessor( positions, { Microsoft::glTF::TYPE_VEC3, Microsoft::glTF::COMPONENT_FLOAT, false, std::move( minValues ), std::move( maxValues ) } ).id;
+					// Copy the Accessor's id - subsequent calls to AddAccessor may invalidate the returned reference
+					accessorIdIndices = bufferBuilder.AddAccessor( geom.indexData, { Microsoft::glTF::TYPE_SCALAR, Microsoft::glTF::COMPONENT_UNSIGNED_INT } ).id;
+
+					// Create a BufferView with target ARRAY_BUFFER (as it will reference vertex attribute data)
+					bufferBuilder.AddBufferView( Microsoft::glTF::BufferViewTarget::ARRAY_BUFFER );
+
+					//Add positions accessor
+					accessorIdPositions = bufferBuilder.AddAccessor( positions, { Microsoft::glTF::TYPE_VEC3, Microsoft::glTF::COMPONENT_FLOAT, false, std::move( minValues ), std::move( maxValues ) } ).id;
+				}
 
 				// Construct a Material
 				Microsoft::glTF::Material    material;
@@ -2789,12 +3001,33 @@ namespace conway
 				Microsoft::glTF::MeshPrimitive meshPrimitive;
 				meshPrimitive.materialId = materialId;
 
-				meshPrimitive.indicesAccessorId                                = accessorIdIndices;
-				meshPrimitive.attributes[ Microsoft::glTF::ACCESSOR_POSITION ] = accessorIdPositions;
+				if (outputDraco)
+				{
+					// Finally put the encoded data in place.
+					auto bufferView                   = bufferBuilder.AddBufferView( buffer.data(), buffer.size() );
+					dracoMeshCompression.bufferViewId = bufferView.id;
 
-				// Add all of the Buffers, BufferViews and Accessors that were created using BufferBuilder to
-				// the Document. Note that after this point, no further calls should be made to BufferBuilder
-				bufferBuilder.Output( document );
+					// Add all of the Buffers, BufferViews and Accessors that were created using BufferBuilder to
+					// the Document. Note that after this point, no further calls should be made to BufferBuilder
+					bufferBuilder.Output( document );
+
+					//dracoMeshCompression.bufferViewId = bufferView.id;
+					const auto  extensionSerializer                                = Microsoft::glTF::KHR::GetKHRExtensionSerializer();
+					std::string strDracoMesh                                       = Microsoft::glTF::KHR::MeshPrimitives::SerializeDracoMeshCompression( dracoMeshCompression, document, extensionSerializer );
+					meshPrimitive.extensions[ "KHR_draco_mesh_compression" ]       = strDracoMesh;
+					meshPrimitive.indicesAccessorId                                = accessorIdIndices;
+					meshPrimitive.attributes[ Microsoft::glTF::ACCESSOR_POSITION ] = accessorIdPositions;
+
+				}
+				else 
+				{
+					meshPrimitive.indicesAccessorId                                = accessorIdIndices;
+					meshPrimitive.attributes[ Microsoft::glTF::ACCESSOR_POSITION ] = accessorIdPositions;
+
+					// Add all of the Buffers, BufferViews and Accessors that were created using BufferBuilder to
+					// the Document. Note that after this point, no further calls should be made to BufferBuilder
+					bufferBuilder.Output( document );
+				}
 
 				// Construct a Mesh and add the MeshPrimitive as a child
 				Microsoft::glTF::Mesh mesh;
@@ -2833,26 +3066,28 @@ namespace conway
 
 				if ( isGlb )
 				{
+					
 					auto glbResourceWriter = static_cast< Microsoft::glTF::GLBResourceWriter* >( &genericResourceWriter );
 
 					filePath += ".glb";
+					printf("Writing glb: %s\n", filePath.c_str());
 
 					glbResourceWriter->Flush( manifest, filePath ); // A GLB container isn't created until the GLBResourceWriter::Flush member function is called
 				}
 				else
 				{
 					filePath += ".gltf";
+					printf("Writing gltf: %s\n", filePath.c_str());
 					genericResourceWriter.WriteExternal( filePath, manifest ); // Binary resources have already been written, just need to write the manifest
 				}
+
+				return true;
 			}
 			catch ( const std::exception& ex )
 			{
 				printf( "Couldn't write GLB file: %s", ex.what() );
 				return false;
 			}
-
-			return true;
-
 		}
 
 		std::string GeometryToObj(const IfcGeometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1))

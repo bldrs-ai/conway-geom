@@ -31,6 +31,7 @@ namespace conway
 	bool exportObjs 			        = false;
     bool exportSingleGeometry 	        = false;
     bool exportIndividualGeometryFiles  = false;
+    bool exportDraco                    = false;
 
 	bool MatrixFlipsTriangles(const glm::dmat4 &mat)
 	{

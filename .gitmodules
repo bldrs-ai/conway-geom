@@ -21,3 +21,6 @@
 [submodule "external/gltf-sdk"]
 	path = external/gltf-sdk
 	url = https://github.com/nickcastel50/glTF-SDK.git
+[submodule "external/draco"]
+	path = external/draco
+	url = https://github.com/nickcastel50/draco.git
