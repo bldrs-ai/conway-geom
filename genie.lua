@@ -115,6 +115,8 @@ solution "conway_geom"
         "external/draco/src/draco/maya/**.*",
         "external/draco/src/draco/tools/**.*",
         "external/draco/src/draco/unity/**.*",
+		"external/draco/src/draco/animation/**.*",
+		"external/draco/src/draco/io/**.*",
         --Draco Test Files
         "external/draco/src/draco/animation/*test*cc",
         "external/draco/src/draco/attributes/*test*cc",
@@ -136,7 +138,9 @@ solution "conway_geom"
         "external/draco/src/draco/compression/mesh/*test*cc",
         "external/draco/src/draco/compression/mesh/traverser/*test*cc",
         "external/draco/src/draco/compression/point_cloud/*test*cc",
-        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}     
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
+		--glTF-SDK Source Files
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}     
 
         configuration { "Debug" }
 
@@ -283,13 +287,22 @@ solution "conway_geom"
                     --WebIfcTestSourceFiles,
                     -- WebIfcTestingMain
                     }
+					
+		configuration {"windows"}
+		prelinkcommands {"$(eval NEWLINKOBJS=$(LINKOBJS)_) $(eval NEWOBJRESP=$(OBJRESP)_) $(eval LINKCMD=$(CXX) -o $(TARGET) $(NEWLINKOBJS) $(RESOURCES) $(ARCH) $(ALL_LDFLAGS) $(LIBS))",
+		"$(if $(wildcard $(NEWOBJRESP)), $(shell del $(subst /,\\,$(NEWOBJRESP))))" ,
+		"$(foreach string,$(OBJECTS),\
+		$(file >> $(NEWOBJRESP),$(string) )\
+		)"}
 
         configuration {"gmake"}
         linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
+		
         configuration {}
         libdirs {  }
         links {  }
-        flags { "Symbols", "FullSymbols" }
+        flags { "Symbols", "FullSymbols", "UseObjectResponseFile" }
+		
 
         includedirs { 
             "external/tinynurbs/include", 
@@ -326,6 +339,8 @@ solution "conway_geom"
         "external/draco/src/draco/maya/**.*",
         "external/draco/src/draco/tools/**.*",
         "external/draco/src/draco/unity/**.*",
+		"external/draco/src/draco/animation/**.*",
+		"external/draco/src/draco/io/**.*",
         --Draco Test Files
         "external/draco/src/draco/animation/*test*cc",
         "external/draco/src/draco/attributes/*test*cc",
@@ -347,7 +362,9 @@ solution "conway_geom"
         "external/draco/src/draco/compression/mesh/*test*cc",
         "external/draco/src/draco/compression/mesh/traverser/*test*cc",
         "external/draco/src/draco/compression/point_cloud/*test*cc",
-        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}        
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
+		--glTF-SDK Source Files
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}         
 
         configuration { "Debug" }
 
@@ -419,13 +436,20 @@ solution "conway_geom"
                     --WebIfcTestSourceFiles,
                     --WebIfcTestingMain
                     }
+					
+		configuration {"windows"}
+		prelinkcommands {"$(eval NEWLINKOBJS=$(LINKOBJS)_) $(eval NEWOBJRESP=$(OBJRESP)_) $(eval LINKCMD=$(CXX) -o $(TARGET) $(NEWLINKOBJS) $(RESOURCES) $(ARCH) $(ALL_LDFLAGS) $(LIBS))",
+		"$(if $(wildcard $(NEWOBJRESP)), $(shell del $(subst /,\\,$(NEWOBJRESP))))" ,
+		"$(foreach string,$(OBJECTS),\
+		$(file >> $(NEWOBJRESP),$(string) )\
+		)"}
 
         configuration { "gmake" }
         linkoptions { "-pthread", "-s PTHREAD_POOL_SIZE=navigator.hardwareConcurrency", "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
         configuration {}
         libdirs {  }
         links {  }
-        flags { "Symbols", "FullSymbols" }
+        flags { "Symbols", "FullSymbols", "UseObjectResponseFile" }
 
         includedirs { 
             "external/tinynurbs/include", 
@@ -462,6 +486,8 @@ solution "conway_geom"
         "external/draco/src/draco/maya/**.*",
         "external/draco/src/draco/tools/**.*",
         "external/draco/src/draco/unity/**.*",
+		"external/draco/src/draco/animation/**.*",
+		"external/draco/src/draco/io/**.*",
         --Draco Test Files
         "external/draco/src/draco/animation/*test*cc",
         "external/draco/src/draco/attributes/*test*cc",
@@ -483,7 +509,9 @@ solution "conway_geom"
         "external/draco/src/draco/compression/mesh/*test*cc",
         "external/draco/src/draco/compression/mesh/traverser/*test*cc",
         "external/draco/src/draco/compression/point_cloud/*test*cc",
-        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc"}          
+        "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
+		--glTF-SDK Source Files
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}         
 
         configuration { "Debug" }
 

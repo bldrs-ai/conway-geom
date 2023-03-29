@@ -909,11 +909,12 @@ int main(int argc, char *argv[])
             "\n\t-obj   - Outputs geometry from index.ifc to obj file(s)" << 
             "\n\t-gltf  - Outputs geometry from index.ifc to gltf file(s)" <<
             "\n\t-glb   - Outputs geometry from index.ifc to glb file(s)" <<
+            "\n\t-draco - Applies default Draco compression" <<
             "\n\t-full  - Outputs geometry from index.ifc to a single geometry file" <<
             "\n\t(-full is the default if -full and -split not specified)" <<
             "\n\t-split - Outputs geometry from index.ifc to individual geometry files" << 
             "\n\t-h     - Displays help\n";
-        return 0;
+            return 0;
     }
 
     for (int i = 1; i < argc; i++) {

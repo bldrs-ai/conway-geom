@@ -46,7 +46,7 @@ namespace conway
 	void writeFile(std::wstring filename, std::string data)
 	{
 //#ifdef _MSC_VER
-		std::ofstream out(filename);
+		std::ofstream out(filename.c_str());
 		out << data;
 		out.close();
 //#endif

@@ -18,6 +18,8 @@
 
 #include <tinynurbs/tinynurbs.h>
 
+#include <stdarg.h>
+
 #define CONST_PI 3.141592653589793238462643383279502884L
 
 namespace webifc
@@ -89,7 +91,7 @@ namespace webifc
 	void writeFile(std::wstring filename, std::string data)
 	{
 //#ifdef _MSC_VER
-		std::ofstream out(filename);
+		std::ofstream out(filename.c_str());
 		out << data;
 		out.close();
 //#endif
