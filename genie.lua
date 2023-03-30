@@ -244,7 +244,7 @@ solution "conway_geom"
         WebIfcCoreFiles       = { "include/*.h" }
         WebIfcMathFiles       = { "include/math/*.h" }
         WebIfcParsingFiles    = { "include/parsing/*.h" }
-        WebIfcSourceFiles     = { "web-ifc-api.cpp" }
+        ConwaySourceFiles     = { "conway-api.cpp" }
         WebIfcTestSourceFiles = { "test/*.cpp" }
         WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
@@ -280,12 +280,10 @@ solution "conway_geom"
             files { WebIfcCoreFiles,
                     WebIfcMathFiles,
                     WebIfcParsingFiles,
-                    WebIfcSourceFiles,
+                    ConwaySourceFiles,
                     ManifoldSrcFiles,
                     glTFSDKSrcFiles,
                     DracoSourceFiles,
-                    --WebIfcTestSourceFiles,
-                    -- WebIfcTestingMain
                     }
 					
 		configuration {"windows"}
@@ -393,7 +391,7 @@ solution "conway_geom"
         WebIfcCoreFiles       = { "include/*.h" }
         WebIfcMathFiles       = { "include/math/*.h" }
         WebIfcParsingFiles    = { "include/parsing/*.h" }
-        WebIfcSourceFiles     = { "web-ifc-api.cpp" }
+        ConwaySourceFiles     = { "conway-api.cpp" }
         WebIfcTestSourceFiles = { "test/*.cpp" }
         WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
@@ -429,7 +427,7 @@ solution "conway_geom"
             files { WebIfcCoreFiles,
                     WebIfcMathFiles,
                     WebIfcParsingFiles,
-                    WebIfcSourceFiles,
+                    ConwaySourceFiles,
                     ManifoldSrcFiles,
                     glTFSDKSrcFiles,
                     DracoSourceFiles,
