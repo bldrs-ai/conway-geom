@@ -11,11 +11,7 @@
 #include <map>
 
 #include <emscripten/bind.h>
-
-#include "include/web-ifc.h"
 #include "include/conway-geometry.h"
-
-#include "version.h"
 
 std::map<uint32_t, std::unique_ptr<conway::ConwayGeometryProcessor> > processors;
 
@@ -27,14 +23,25 @@ uint32_t GLOBAL_MODEL_ID_COUNTER = 0;
     constexpr bool MT_ENABLED = false;
 #endif
 
-bool shown_version_header = false;
-
 // use to construct API placeholders
 int main() 
 {
     processors.emplace();
 
     return 0;
+}
+
+//taken from web ifc obj dump code 
+    glm::dmat4 NormalizeMat(
+    glm::dvec4(1, 0, 0, 0),
+    glm::dvec4(0, 0, -1, 0),
+    glm::dvec4(0, 1, 0, 0),
+    glm::dvec4(0, 0, 0, 1));
+
+std::string GeometryToObj(uint32_t modelID, conway::IfcGeometry geom, size_t offset)
+{
+    auto& conwayProcessor = processors[modelID];
+    return conwayProcessor->GeometryToObj(geom, offset, NormalizeMat);
 }
 
 conway::IfcGeometry GetGeometry(uint32_t modelID, conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet parameters)
@@ -52,11 +59,19 @@ uint32_t InitializeGeometryProcessor()
     return modelID;
 }
 
+std::vector<glm::vec3> myTestFunction(std::vector<glm::vec3> testParam)
+{
+    return testParam;
+}
+
 bool FreeGeometryProcessor(uint32_t modelID)
 {
     processors.erase(modelID);
     return true;
 }
+
+typedef glm::vec3 glmVec3;
+typedef std::vector<glm::vec3> glmVec3Array;
 
 EMSCRIPTEN_BINDINGS(my_module) {
 
@@ -66,6 +81,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .function("GetVertexDataSize", &conway::IfcGeometry::GetVertexDataSize)
         .function("GetIndexData", &conway::IfcGeometry::GetIndexData)
         .function("GetIndexDataSize", &conway::IfcGeometry::GetIndexDataSize)
+        .function("AddGeometry", &conway::IfcGeometry::AddGeometry)
         ;
 
 
@@ -74,6 +90,23 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .field("y", &glm::dvec4::y)
         .field("z", &glm::dvec4::z)
         .field("w", &glm::dvec4::w)
+        ;
+
+    emscripten::value_object<glm::vec3>("glmVec3")
+        .field("x", &glm::vec3::x)
+        .field("y", &glm::vec3::y)
+        .field("z", &glm::vec3::z)
+        ;
+
+    emscripten::register_vector<glm::vec3>("glmVec3Array");
+
+    emscripten::value_object<conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet>("ParamsPolygonalFaceSet")
+        .field("numPoints", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numPoints)
+        .field("numIndices", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numIndices)
+        .field("indicesPerFace", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indicesPerFace)
+        .field("indexedPolygonalFaceWithVoids", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indexedPolygonalFaceWithVoids)
+        .field("points", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::points)
+        .field("indices", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indices)
         ;
 
     emscripten::value_array<std::array<double, 16>>("array_double_16")
@@ -100,4 +133,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::function("GetGeometry", &GetGeometry);
     emscripten::function("InitializeGeometryProcessor", &InitializeGeometryProcessor);
     emscripten::function("FreeGeometryProcessor", &FreeGeometryProcessor);
+    emscripten::function("GeometryToObj", &GeometryToObj);
+
+    //testfunction 
+    emscripten::function("myTestFunction", &myTestFunction);
 }

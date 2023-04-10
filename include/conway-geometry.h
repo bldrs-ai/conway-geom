@@ -1913,7 +1913,7 @@ namespace conway
 			size_t numPoints;
 			size_t numIndices;
 			bool indexedPolygonalFaceWithVoids;
-			glm::dvec3* points;
+			glm::vec3* points;
 			uint32_t* indices;
 		};
 
@@ -3119,8 +3119,8 @@ namespace conway
 			size_t numIndices;
 			uint32_t indicesPerFace;
 			bool indexedPolygonalFaceWithVoids;
-			glm::dvec3* points;
-			uint32_t* indices;
+			std::vector<glm::vec3> points;
+			std::vector<uint32_t> indices;
 		};
 		IfcGeometry getPolygonalFaceSetGeometry(ParamsPolygonalFaceSet parameters)
 		{
@@ -3130,7 +3130,7 @@ namespace conway
 			ParamsReadIndexedPolygonalFace readIndexedPolygonalFaceParameters;
 			readIndexedPolygonalFaceParameters.numIndices = parameters.indicesPerFace;
 			readIndexedPolygonalFaceParameters.indexedPolygonalFaceWithVoids = parameters.indexedPolygonalFaceWithVoids;
-			readIndexedPolygonalFaceParameters.points = parameters.points;
+			readIndexedPolygonalFaceParameters.points = parameters.points.data();
 
 			for (size_t faceIndex = 0; faceIndex < parameters.numIndices / parameters.indicesPerFace; faceIndex++)
 			{

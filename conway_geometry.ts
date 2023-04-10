@@ -1,22 +1,70 @@
-let ConwayWasm: any;
 
-//@ts-ignore
-if (typeof self !== 'undefined' && self.crossOriginIsolated) {
-    ConwayWasm = require("./conway_geom_wasm-mt");
-}
-else {
-    ConwayWasm = require("./conway_geom_wasm");
-}
+import {default as conway_geom_wasm} from "./conway_geom_wasm.js";
 
 
-export interface IfcGeometry {
-    GetVertexData(): number;
-    GetVertexDataSize(): number;
-    GetIndexData(): number;
-    GetIndexDataSize(): number;
-}
+
+export interface GeometryObject {
+    GetVertexData: () => any;
+    GetVertexDataSize: () => number;
+    GetIndexData: () => any;
+    GetIndexDataSize: () => number;
+    AddGeometry(parameter:GeometryObject): void
+  }
+
+export interface ParamsPolygonalFaceSet {
+    numPoints: number;
+    numIndices: number;
+    indicesPerFace: number;
+    indexedPolygonalFaceWithVoids: boolean;
+    points: any;
+    indices: number[];
+  }
+
+export type LocateFileHandlerFn = (path: string, prefix: string) => string;
 
 export class ConwayGeometry {
+    modelId: number = -1;
+    //private module: any;
 
+    public wasmModule: undefined | any = undefined;
+    fs: undefined | any = undefined;
+    wasmPath: string = "";
+    isWasmPathAbsolute = false;
+    initialized = false;
+  
+    constructor() {
+    }
+
+    async initialize() {
+        this.wasmModule = await new conway_geom_wasm();
+        console.log(this.wasmModule);
+        this.modelId = this.wasmModule.InitializeGeometryProcessor();
+
+        console.log("modelId: " + this.modelId);
+
+        this.initialized = true;
+    }
+
+    addGeometry(parameter: GeometryObject) {
+        this.wasmModule.AddGeometry(parameter);
+    }
+  
+    getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
+
+        const result = this.wasmModule.GetGeometry(this.modelId, parameters);
+        return result;
+    }
+
+    toObj(geometry:GeometryObject) : string {
+        return this.wasmModule.GeometryToObj(this.modelId, geometry, 0);
+    }
+
+    myTestFunction(param: any) : any {
+        return this.wasmModule.myTestFunction(param);
+    }
+    
+    destroy() {
+    this.wasmModule._FreeGeometryProcessor(this.modelId);
+    }
 }
 

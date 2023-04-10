@@ -212,7 +212,7 @@ void genIndexIfc()
 
     conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet parametersPolygonalFaceset;
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 76.0000;
     parametersPolygonalFaceset.points[0].y = -11.4504;
     parametersPolygonalFaceset.points[0].z = 0.0000;
@@ -247,7 +247,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -283,12 +283,12 @@ void genIndexIfc()
 
     geometryVec.push_back(geometry);
 
-    //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    //clear
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 48.0000;
     parametersPolygonalFaceset.points[0].y = -11.4504;
     parametersPolygonalFaceset.points[0].z = 0.0000;
@@ -323,7 +323,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -360,12 +360,12 @@ void genIndexIfc()
     geometryVec.push_back(geometry2);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 0.0000;
     parametersPolygonalFaceset.points[0].y = -11.4504;
     parametersPolygonalFaceset.points[0].z = 0.0000;
@@ -400,7 +400,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -437,11 +437,11 @@ void genIndexIfc()
     geometryVec.push_back(geometry3);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 0.00232305;
     parametersPolygonalFaceset.points[0].y = -12.647637;
     parametersPolygonalFaceset.points[0].z = 0.000000;
@@ -476,7 +476,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -513,12 +513,12 @@ void genIndexIfc()
     geometryVec.push_back(geometry4);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 24.0000;
     parametersPolygonalFaceset.points[0].y = -11.4504;
     parametersPolygonalFaceset.points[0].z = 0.0000;
@@ -553,7 +553,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -591,12 +591,12 @@ void genIndexIfc()
     geometryVec.push_back(geometry5);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 47.859639;
     parametersPolygonalFaceset.points[0].y = 0.973380;
     parametersPolygonalFaceset.points[0].z = 0.000000;
@@ -631,7 +631,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -668,11 +668,11 @@ void genIndexIfc()
     geometryVec.push_back(geometry6);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
     parametersPolygonalFaceset.numPoints = 8;
-    parametersPolygonalFaceset.points = new glm::dvec3[parametersPolygonalFaceset.numPoints];
+    parametersPolygonalFaceset.points.resize(parametersPolygonalFaceset.numPoints);
     parametersPolygonalFaceset.points[0].x = 62.0000;
     parametersPolygonalFaceset.points[0].y = -11.4504;
     parametersPolygonalFaceset.points[0].z = 0.0000;
@@ -707,7 +707,7 @@ void genIndexIfc()
 
     parametersPolygonalFaceset.indicesPerFace = 4;
     parametersPolygonalFaceset.numIndices = 6 * parametersPolygonalFaceset.indicesPerFace;
-    parametersPolygonalFaceset.indices = new uint32_t[parametersPolygonalFaceset.numIndices];
+    parametersPolygonalFaceset.indices.resize(parametersPolygonalFaceset.numIndices);
     //IFCINDEXEDPOLYGONALFACE
     parametersPolygonalFaceset.indices[0] = 1;
     parametersPolygonalFaceset.indices[1] = 2;
@@ -744,8 +744,8 @@ void genIndexIfc()
     geometryVec.push_back(geometry7);
 
     //free memory 
-    delete parametersPolygonalFaceset.points;
-    delete parametersPolygonalFaceset.indices;
+    parametersPolygonalFaceset.points.clear();
+    parametersPolygonalFaceset.indices.clear();
 
     auto time = webifc::ms() - start;
 
