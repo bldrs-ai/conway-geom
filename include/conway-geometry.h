@@ -53,7 +53,7 @@ namespace
     // interface(s) and the C++ stream-based I/O library. This allows the glTF SDK to be used in
     // sandboxed environments, such as WebAssembly modules and UWP apps, where any file I/O code
     // must be platform or use-case specific.
-    class StreamWriter : public Microsoft::glTF::IStreamWriter
+	class StreamWriter : public Microsoft::glTF::IStreamWriter
     {
       public:
         StreamWriter( std::filesystem::path pathBase )
@@ -62,31 +62,22 @@ namespace
             assert( m_pathBase.has_root_path() );
         }
 
+		const std::vector<std::string> getUris() const
+		{
+			return uris;
+		}
+
         // Resolves the relative URIs of any external resources declared in the glTF manifest
         std::shared_ptr< std::ostream > GetOutputStream( const std::string& filename ) const override
         {
-            // In order to construct a valid stream:
-            // 1. The filename argument will be encoded as UTF-8 so use filesystem::u8path to
-            //    correctly construct a path instance.
-            // 2. Generate an absolute path by concatenating m_pathBase with the specified filename
-            //    path. The filesystem::operator/ uses the platform's preferred directory separator
-            //    if appropriate.
-            // 3. Always open the file stream in binary mode. The glTF SDK will handle any text
-            //    encoding issues for us.
-            auto streamPath = m_pathBase / std::filesystem::u8path( filename );
-            auto stream     = std::make_shared< std::ofstream >( streamPath, std::ios_base::binary );
-
-            // Check if the stream has no errors and is ready for I/O operations
-            if ( !stream || !( *stream ) )
-            {
-                throw std::runtime_error( "Unable to create a valid output stream for uri: " + filename );
-            }
-
-            return stream;
+            auto stream = std::make_shared<std::ostringstream>();
+			uris.push_back(filename);
+        	return stream;
         }
 
       private:
         std::filesystem::path m_pathBase;
+		mutable std::vector<std::string> uris;
     };
 } // namespace
 
@@ -2703,7 +2694,7 @@ namespace conway
 			}
 		}
 
-		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, bool outputDraco, std::string filePath, glm::dmat4 transform = glm::dmat4(1))
+		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, bool outputDraco, std::string filePath, bool outputFile, glm::dmat4 transform = glm::dmat4(1))
 		{
 
 			// Encode the geometry.
@@ -2711,6 +2702,8 @@ namespace conway
 
 			//create a mesh object
 			std::unique_ptr< draco::Mesh > dracoMesh( new draco::Mesh() );
+
+			std::vector<std::string> bufferUris;
 
 			try 
 			{
@@ -2914,6 +2907,11 @@ namespace conway
 				else
 				{
 					bufferId = base_filename.c_str();
+
+					std::string bufferIdCopy = std::string(bufferId);
+					bufferIdCopy +=  ".";
+					bufferIdCopy += Microsoft::glTF::BUFFER_EXTENSION;
+					bufferUris.push_back(bufferIdCopy);
 				}
 
 				// Create a Buffer - it will be the 'current' Buffer that all the BufferViews
@@ -3070,15 +3068,115 @@ namespace conway
 					auto glbResourceWriter = static_cast< Microsoft::glTF::GLBResourceWriter* >( &genericResourceWriter );
 
 					filePath += ".glb";
-					printf("Writing glb: %s\n", filePath.c_str());
+					printf("Writing: %s\n", filePath.c_str());
 
 					glbResourceWriter->Flush( manifest, filePath ); // A GLB container isn't created until the GLBResourceWriter::Flush member function is called
+
+					//get GLB string from ostringstream
+					std::shared_ptr<std::ostream> stream_ = glbResourceWriter->GetOutputBuffer(filePath);
+					std::ostream* stream_ptr = stream_.get();
+					std::ostringstream* oss_ptr = (std::ostringstream*)(stream_ptr);
+
+					//write file 
+					if (outputFile)
+					{
+						std::ofstream outfile(filePath); // Open the file for writing
+
+						if (outfile.is_open()) 
+						{
+							// Write the data from the stream to the file
+							outfile << oss_ptr->str();
+
+							// Check if the file was written to successfully
+							if (outfile.fail()) 
+							{
+								throw std::runtime_error("Failed to write to file " + filePath);
+							} else
+							{
+								std::cout << "Data written to file " << filePath << " successfully." << std::endl;
+							}
+
+							// Close the file
+							outfile.close();
+						} 
+						else 
+						{
+							printf("Unable to open file %s", filePath.c_str());
+						}
+					}
 				}
 				else
 				{
 					filePath += ".gltf";
-					printf("Writing gltf: %s\n", filePath.c_str());
-					genericResourceWriter.WriteExternal( filePath, manifest ); // Binary resources have already been written, just need to write the manifest
+					
+
+					//with the new StreamWriter, we must grab each output buffer (ostringstream) and write
+					//it to the disk
+					for (int bufferUrlIndex = 0; bufferUrlIndex < bufferUris.size(); bufferUrlIndex++)
+					{
+						std::string bufferUri_ = bufferUris[bufferUrlIndex];
+
+						std::shared_ptr<std::ostream> stream_ = genericResourceWriter.GetOutputBuffer(bufferUri_);
+						std::ostream* streamPtr_ = stream_.get();
+						std::ostringstream* ossPtr_ = (std::ostringstream*)(streamPtr_);
+
+						std::ofstream outfile(bufferUri_); // Open the file for writing
+
+						if (outfile.is_open()) 
+						{
+
+							printf("Writing: %s\n", bufferUri_.c_str());
+
+							// Write the data from the stream to the file
+							outfile << ossPtr_->str();
+
+							// Check if the file was written to successfully
+							if (outfile.fail()) 
+							{
+								throw std::runtime_error("Failed to write to file " + bufferUri_);
+							} else
+							{
+								std::cout << "Data written to file " << bufferUri_ << " successfully." << std::endl;
+							}
+
+							// Close the file
+							outfile.close();
+						} 
+						else 
+						{
+							throw std::runtime_error("Unable to open file " + filePath);
+						}
+					}
+
+					//write file 
+					if (outputFile)
+					{
+						printf("Writing: %s\n", filePath.c_str());
+
+						std::ofstream outfile(filePath); // Open the file for writing
+
+						if (outfile.is_open()) 
+						{
+							// Write the data from the stream to the file
+							outfile << manifest.c_str();
+
+							// Check if the file was written to successfully
+							if (outfile.fail()) 
+							{
+								throw std::runtime_error("Failed to write to file " + filePath);
+							} else
+							{
+								std::cout << "Data written to file " << filePath << " successfully." << std::endl;
+							}
+
+							// Close the file
+							outfile.close();
+						} 
+						else 
+						{
+							printf("Unable to open file %s", filePath.c_str());
+						}
+					}
 				}
 
 				return true;
