@@ -32,39 +32,49 @@ export class ConwayGeometry {
     isWasmPathAbsolute = false;
     initialized = false;
   
-    constructor() {
+    constructor() 
+    {
     }
 
-    async initialize() {
-        this.wasmModule = await new conway_geom_wasm();
-        console.log(this.wasmModule);
+    async initialize() 
+    {
+        if (!this.wasmModule)
+        {
+            this.wasmModule = await new conway_geom_wasm();
+        }
+        //console.log(this.wasmModule);
         this.modelId = this.wasmModule.InitializeGeometryProcessor();
 
-        console.log("modelId: " + this.modelId);
+        //console.log("modelId: " + this.modelId);
 
         this.initialized = true;
     }
 
-    addGeometry(parameter: GeometryObject) {
+    addGeometry(parameter: GeometryObject) 
+    {
         this.wasmModule.AddGeometry(parameter);
     }
   
-    getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
-
+    getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject 
+    {
         const result = this.wasmModule.GetGeometry(this.modelId, parameters);
         return result;
     }
 
-    toObj(geometry:GeometryObject) : string {
+    toObj(geometry:GeometryObject) : string 
+    {
         return this.wasmModule.GeometryToObj(this.modelId, geometry, 0);
     }
 
-    myTestFunction(param: any) : any {
+    myTestFunction(param: any) : any 
+    {
         return this.wasmModule.myTestFunction(param);
     }
     
-    destroy() {
-    this.wasmModule._FreeGeometryProcessor(this.modelId);
+    destroy() 
+    {
+        this.wasmModule.FreeGeometryProcessor(this.modelId);
+        this.modelId = -1;
     }
 }
 
