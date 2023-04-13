@@ -800,7 +800,13 @@ void genIndexIfc()
                 printf("Writing GLTF...\n");
             }
 
-            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], false, conway::exportDraco, fileNameGltf, true, NormalizeMat);
+            conway::ConwayGeometryProcessor::ResultsGltf results = 
+            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], false, 
+            conway::exportDraco, fileNameGltf, true, NormalizeMat);
+
+            if (!results.success ) {
+                printf("Error writing GLTF...");
+            }
         }
 
 
@@ -814,8 +820,13 @@ void genIndexIfc()
                 printf("Writing GLB...\n");
             }
 
-            
-            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], true, conway::exportDraco, fileNameGltf, true, NormalizeMat);
+            conway::ConwayGeometryProcessor::ResultsGltf results = 
+            conwayGeometryProcessor.GeometryToGltf(geometryVec[geometryIndex], true, 
+            conway::exportDraco, fileNameGltf, true, NormalizeMat);
+
+            if (!results.success ) {
+                printf("Error writing GLTF...");
+            }
         }
 
         if (conway::exportObjs && conway::exportIndividualGeometryFiles)
@@ -861,9 +872,12 @@ void genIndexIfc()
                 printf("Writing Complete GLTF...\n");
             }
 
-            if ( !conwayGeometryProcessor.GeometryToGltf(fullGeometry, false, conway::exportDraco, fileNameGltf, true, NormalizeMat) ) 
-            {
-                printf("Error writing GLTF.");
+            conway::ConwayGeometryProcessor::ResultsGltf results = 
+            conwayGeometryProcessor.GeometryToGltf(fullGeometry, false, 
+            conway::exportDraco, fileNameGltf, true, NormalizeMat);
+
+            if (!results.success ) {
+                printf("Error writing GLTF...");
             }
         }
 
@@ -877,7 +891,10 @@ void genIndexIfc()
                 printf("Writing Complete GLB...\n");
             }
 
-            if (!conwayGeometryProcessor.GeometryToGltf(fullGeometry, true, conway::exportDraco, fileNameGltf, true, NormalizeMat) )
+            conway::ConwayGeometryProcessor::ResultsGltf results = 
+            conwayGeometryProcessor.GeometryToGltf(fullGeometry, true, conway::exportDraco, fileNameGltf, true, NormalizeMat);
+
+            if (!results.success )
             {
                 printf("Error writing GLB.");
             }

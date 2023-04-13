@@ -20,6 +20,12 @@ export interface ParamsPolygonalFaceSet {
     indices: number[];
   }
 
+export interface ResultsGltf {
+    success: boolean;
+    bufferUris: any;
+    buffers:any;
+}
+
 export type LocateFileHandlerFn = (path: string, prefix: string) => string;
 
 export class ConwayGeometry {
@@ -59,6 +65,10 @@ export class ConwayGeometry {
     {
         const result = this.wasmModule.GetGeometry(this.modelId, parameters);
         return result;
+    }
+
+    toGltf(geometry:GeometryObject, isGlb:boolean, outputDraco:boolean, fileUri:string): ResultsGltf {
+        return this.wasmModule.GeometryToGltf(this.modelId, geometry, isGlb, outputDraco, fileUri);
     }
 
     toObj(geometry:GeometryObject) : string 

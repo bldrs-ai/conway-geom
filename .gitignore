@@ -3,3 +3,4 @@ gmake/
 conway_geom_wasm.js
 conway_geom_wasm_mt.js
 conway_geom_wasm_mt.worker.js
+conway_geom_wasm_mt.wasm

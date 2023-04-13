@@ -2694,16 +2694,20 @@ namespace conway
 			}
 		}
 
-		bool GeometryToGltf(conway::IfcGeometry geom, bool isGlb, bool outputDraco, std::string filePath, bool outputFile, glm::dmat4 transform = glm::dmat4(1))
+		struct ResultsGltf {
+			bool success = false;
+			std::vector<std::string> bufferUris;
+			std::vector<std::vector<uint8_t>> buffers;
+		};
+		ResultsGltf GeometryToGltf(conway::IfcGeometry geom, bool isGlb, bool outputDraco, std::string filePath, bool outputFile, glm::dmat4 transform = glm::dmat4(1))
 		{
 
+			ResultsGltf results;
 			// Encode the geometry.
 			draco::EncoderBuffer buffer;
 
 			//create a mesh object
 			std::unique_ptr< draco::Mesh > dracoMesh( new draco::Mesh() );
-
-			std::vector<std::string> bufferUris;
 
 			try 
 			{
@@ -2848,7 +2852,8 @@ namespace conway
 					if ( !status.ok() )
 					{
 						printf( "Failed to encode the mesh: %s", status.error_msg() );
-						return false;
+						results.success = false;
+						return results;
 					}
 
 					printf("Encoded To Draco in %lld ms\n", timer.GetInMs());
@@ -2911,7 +2916,7 @@ namespace conway
 					std::string bufferIdCopy = std::string(bufferId);
 					bufferIdCopy +=  ".";
 					bufferIdCopy += Microsoft::glTF::BUFFER_EXTENSION;
-					bufferUris.push_back(bufferIdCopy);
+					results.bufferUris.push_back(bufferIdCopy);
 				}
 
 				// Create a Buffer - it will be the 'current' Buffer that all the BufferViews
@@ -3068,14 +3073,21 @@ namespace conway
 					auto glbResourceWriter = static_cast< Microsoft::glTF::GLBResourceWriter* >( &genericResourceWriter );
 
 					filePath += ".glb";
-					printf("Writing: %s\n", filePath.c_str());
 
 					glbResourceWriter->Flush( manifest, filePath ); // A GLB container isn't created until the GLBResourceWriter::Flush member function is called
 
 					//get GLB string from ostringstream
 					std::shared_ptr<std::ostream> stream_ = glbResourceWriter->GetOutputBuffer(filePath);
-					std::ostream* stream_ptr = stream_.get();
-					std::ostringstream* oss_ptr = (std::ostringstream*)(stream_ptr);
+					std::ostream* streamPtr_ = stream_.get();
+					std::ostringstream* ossPtr_ = (std::ostringstream*)(streamPtr_);
+
+					std::string str = ossPtr_->str();
+					std::string fileNameOnly = std::filesystem::path(filePath).filename().string();
+					results.bufferUris.push_back(fileNameOnly);
+
+					std::vector<uint8_t> glbBuffer(str.length());
+					memcpy(glbBuffer.data(), str.c_str(), str.length());
+					results.buffers.push_back(glbBuffer);
 
 					//write file 
 					if (outputFile)
@@ -3085,7 +3097,7 @@ namespace conway
 						if (outfile.is_open()) 
 						{
 							// Write the data from the stream to the file
-							outfile << oss_ptr->str();
+							outfile << str;
 
 							// Check if the file was written to successfully
 							if (outfile.fail()) 
@@ -3112,41 +3124,58 @@ namespace conway
 
 					//with the new StreamWriter, we must grab each output buffer (ostringstream) and write
 					//it to the disk
-					for (int bufferUrlIndex = 0; bufferUrlIndex < bufferUris.size(); bufferUrlIndex++)
+					for (int bufferUrlIndex = 0; bufferUrlIndex < results.bufferUris.size(); bufferUrlIndex++)
 					{
-						std::string bufferUri_ = bufferUris[bufferUrlIndex];
+						std::string bufferUri_ = results.bufferUris[bufferUrlIndex];
 
 						std::shared_ptr<std::ostream> stream_ = genericResourceWriter.GetOutputBuffer(bufferUri_);
 						std::ostream* streamPtr_ = stream_.get();
 						std::ostringstream* ossPtr_ = (std::ostringstream*)(streamPtr_);
+						
+						std::string str = ossPtr_->str();
+						std::vector<uint8_t> gltfBuffer(str.length());
+						memcpy(gltfBuffer.data(), str.c_str(), str.length());
 
-						std::ofstream outfile(bufferUri_); // Open the file for writing
+						results.buffers.push_back(gltfBuffer);
 
-						if (outfile.is_open()) 
+						if (outputFile)
 						{
+							std::ofstream outfile(bufferUri_); // Open the file for writing
 
-							printf("Writing: %s\n", bufferUri_.c_str());
-
-							// Write the data from the stream to the file
-							outfile << ossPtr_->str();
-
-							// Check if the file was written to successfully
-							if (outfile.fail()) 
+							if (outfile.is_open()) 
 							{
-								throw std::runtime_error("Failed to write to file " + bufferUri_);
-							} else
+
+								printf("Writing: %s\n", bufferUri_.c_str());
+
+								// Write the data from the stream to the file
+								outfile << str;
+
+								// Check if the file was written to successfully
+								if (outfile.fail()) 
+								{
+									throw std::runtime_error("Failed to write to file " + bufferUri_);
+								} else
+								{
+									std::cout << "Data written to file " << bufferUri_ << " successfully." << std::endl;
+								}
+
+								// Close the file
+								outfile.close();
+							} 
+							else 
 							{
-								std::cout << "Data written to file " << bufferUri_ << " successfully." << std::endl;
+								throw std::runtime_error("Unable to open file " + filePath);
 							}
-
-							// Close the file
-							outfile.close();
-						} 
-						else 
-						{
-							throw std::runtime_error("Unable to open file " + filePath);
 						}
 					}
+
+					//push back the name of the manifest (.gltf)
+					std::string fileNameOnly = std::filesystem::path(filePath).filename().string();
+					results.bufferUris.push_back(fileNameOnly);
+
+					std::vector<uint8_t> gltfManifest(manifest.length());
+					memcpy(gltfManifest.data(), manifest.c_str(), manifest.length());
+					results.buffers.push_back(gltfManifest);
 
 					//write file 
 					if (outputFile)
@@ -3178,13 +3207,14 @@ namespace conway
 						}
 					}
 				}
-
-				return true;
+				results.success = true;
+				return results;
 			}
 			catch ( const std::exception& ex )
 			{
 				printf( "Couldn't write GLB file: %s", ex.what() );
-				return false;
+				results.success = false;
+				return results;
 			}
 		}
 

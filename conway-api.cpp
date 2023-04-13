@@ -38,20 +38,28 @@ int main()
     glm::dvec4(0, 1, 0, 0),
     glm::dvec4(0, 0, 0, 1));
 
-std::string GeometryToObj(uint32_t modelID, conway::IfcGeometry geom, size_t offset)
-{
+conway::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(uint32_t modelID, conway::IfcGeometry geom,
+bool isGlb, bool outputDraco, std::string filePath) {
+    auto& conwayProcessor = processors[modelID];
+
+    conway::ConwayGeometryProcessor::ResultsGltf results = 
+    conwayProcessor->GeometryToGltf(geom, isGlb, outputDraco, filePath, false, NormalizeMat);
+
+
+    return results;
+}
+
+std::string GeometryToObj(uint32_t modelID, conway::IfcGeometry geom, size_t offset) {
     auto& conwayProcessor = processors[modelID];
     return conwayProcessor->GeometryToObj(geom, offset, NormalizeMat);
 }
 
-conway::IfcGeometry GetGeometry(uint32_t modelID, conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet parameters)
-{
+conway::IfcGeometry GetGeometry(uint32_t modelID, conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet parameters) {
     auto& conwayProcessor = processors[modelID];
     return conwayProcessor->getPolygonalFaceSetGeometry(parameters);
 }
 
-uint32_t InitializeGeometryProcessor()
-{
+uint32_t InitializeGeometryProcessor(){
     uint32_t modelID = GLOBAL_MODEL_ID_COUNTER++;
     auto conwayProcessor = std::make_unique<conway::ConwayGeometryProcessor>();
     processors.emplace(modelID, std::move(conwayProcessor));
@@ -59,15 +67,20 @@ uint32_t InitializeGeometryProcessor()
     return modelID;
 }
 
-std::vector<glm::vec3> myTestFunction(std::vector<glm::vec3> testParam)
-{
+std::vector<glm::vec3> myTestFunction(std::vector<glm::vec3> testParam) {
     return testParam;
 }
 
-bool FreeGeometryProcessor(uint32_t modelID)
-{
+bool FreeGeometryProcessor(uint32_t modelID) {
     processors.erase(modelID);
     return true;
+}
+
+emscripten::val GetUint8Array(std::vector<uint8_t>& buffer) {
+
+    return emscripten::val(
+       emscripten::typed_memory_view(buffer.size(),
+                                     buffer.data()));
 }
 
 typedef glm::vec3 glmVec3;
@@ -100,6 +113,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::register_vector<glm::vec3>("glmVec3Array");
 
+    //conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet
     emscripten::value_object<conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet>("ParamsPolygonalFaceSet")
         .field("numPoints", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numPoints)
         .field("numIndices", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numIndices)
@@ -107,6 +121,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .field("indexedPolygonalFaceWithVoids", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indexedPolygonalFaceWithVoids)
         .field("points", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::points)
         .field("indices", &conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indices)
+        ;
+
+    // Define the ResultsGltf object
+    emscripten::value_object<conway::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
+        .field("success", &conway::ConwayGeometryProcessor::ResultsGltf::success)
+        .field("bufferUris", &conway::ConwayGeometryProcessor::ResultsGltf::bufferUris)
+        .field("buffers", &conway::ConwayGeometryProcessor::ResultsGltf::buffers)
         ;
 
     emscripten::value_array<std::array<double, 16>>("array_double_16")
@@ -130,10 +151,14 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
     emscripten::register_vector<std::string>("stringVector");
     emscripten::register_vector<uint32_t>("UintVector");
+    emscripten::register_vector<uint8_t>("VectorUint8");
+    emscripten::register_vector<std::vector<uint8_t>>("VectorVectorUint8");
     emscripten::function("GetGeometry", &GetGeometry);
     emscripten::function("InitializeGeometryProcessor", &InitializeGeometryProcessor);
     emscripten::function("FreeGeometryProcessor", &FreeGeometryProcessor);
     emscripten::function("GeometryToObj", &GeometryToObj);
+    emscripten::function("GeometryToGltf", &GeometryToGltf);
+    emscripten::function("GetUint8Array", &GetUint8Array, emscripten::allow_raw_pointers());
 
     //testfunction 
     emscripten::function("myTestFunction", &myTestFunction);
