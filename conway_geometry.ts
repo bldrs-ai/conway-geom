@@ -70,10 +70,6 @@ export class ConwayGeometry {
         return this.wasmModule.GeometryToObj(this.modelId, geometry, 0)
     }
 
-    myTestFunction(param: any): any {
-        return this.wasmModule.myTestFunction(param)
-    }
-
     destroy() {
         this.wasmModule.FreeGeometryProcessor(this.modelId)
         this.modelId = -1

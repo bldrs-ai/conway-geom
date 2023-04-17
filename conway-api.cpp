@@ -68,10 +68,6 @@ uint32_t InitializeGeometryProcessor() {
   return modelID;
 }
 
-std::vector<glm::vec3> myTestFunction(std::vector<glm::vec3> testParam) {
-  return testParam;
-}
-
 bool FreeGeometryProcessor(uint32_t modelID) {
   processors.erase(modelID);
   return true;
@@ -165,7 +161,4 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("GeometryToGltf", &GeometryToGltf);
   emscripten::function("GetUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
-
-  // testfunction
-  emscripten::function("myTestFunction", &myTestFunction);
 }
