@@ -73,6 +73,7 @@ export class ConwayGeometry {
     destroy() {
         this.wasmModule.FreeGeometryProcessor(this.modelId)
         this.modelId = -1
+        this.initialized = false;
     }
 }
 
