@@ -14,7 +14,6 @@ cd gmake
 	make config=debug64 conway_geom_native
 	make config=debug64 webifc_native
 	make config=debugemscripten conway_geom_wasm
-	make config=debugemscripten conway_geom_wasm_mt
 	
 	cd ..
 )
@@ -24,7 +23,6 @@ if "%1" == "release" (
 	make config=release64 conway_geom_native
 	make config=release64 webifc_native
 	make config=releaseemscripten conway_geom_wasm
-	make config=releaseemscripten conway_geom_wasm_mt
 	
 	cd ..
 ))
