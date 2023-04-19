@@ -2,15 +2,34 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-#include <iostream>
-#include <fstream>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 
-#include "include/web-ifc.h"
-//#include "include/conway-geometry.h"
-#include "include/web-ifc-geometry.h"
-#include "include/math/triangulate-with-boundaries.h"
-#include "include/ifc-schema.h"
+// #include "include/web-ifc.h"
+// #include "include/conway-geometry.h"
+// #include "include/ifc-schema.h"
+// #include "include/math/triangulate-with-boundaries.h"
+// #include "include/web-ifc-geometry.h"
+#include "fuzzy/obj-exporter.h"
+#include "geometry/IfcGeometryProcessor.h"
+#include "parsing/IfcLoader.h"
+#include "schema/IfcSchemaManager.h"
+#include "utility/LoaderSettings.h"
+#include "utility/Logging.h"
+#include "utility/ifcStatistics.h"
+// using namespace webifc::io;
+
+webifc::schema::IfcSchemaManager schema;
+
+long long ms() {
+  using namespace std::chrono;
+  milliseconds millis =
+      duration_cast<milliseconds>(system_clock::now().time_since_epoch());
+
+  return millis.count();
+}
 
 std::string ReadFile(std::string filename) {
   std::ifstream t(filename);
@@ -19,59 +38,91 @@ std::string ReadFile(std::string filename) {
   return buffer.str();
 }
 
-void SpecificLoadTest(webifc::IfcLoader &loader,
-                      webifc::IfcGeometryLoader &geometryLoader, uint64_t num) {
-  auto walls = loader.GetExpressIDsWithType(ifc::IFCSLAB);
+std::string GeometryToObj(const fuzzybools::Geometry &geom, size_t &offset,
+                          glm::dmat4 transform = glm::dmat4(1)) {
+  std::string obj;
+  obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
 
-  bool writeFiles = true;
+  const char *vFormat = "v %.6f %.6f %.6f\n";
+  const char *fFormat = "f %zu// %zu// %zu//\n";
 
-  auto mesh = geometryLoader.GetMesh(num);
-
-  if (writeFiles) {
-    geometryLoader.DumpMesh(mesh, L"TEST.obj");
+  for (uint32_t i = 0; i < geom.numPoints; ++i) {
+    glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
+    char vBuffer[64];
+    snprintf(vBuffer, sizeof(vBuffer), vFormat, t.x, t.y, t.z);
+    obj.append(vBuffer);
   }
+
+  for (uint32_t i = 0; i < geom.numFaces; ++i) {
+    size_t f1 = geom.indexData[i * 3 + 0] + 1 + offset;
+    size_t f2 = geom.indexData[i * 3 + 1] + 1 + offset;
+    size_t f3 = geom.indexData[i * 3 + 2] + 1 + offset;
+    char fBuffer[64];
+    snprintf(fBuffer, sizeof(fBuffer), fFormat, f1, f2, f3);
+    obj.append(fBuffer);
+  }
+
+  offset += geom.numPoints;
+
+  return obj;
 }
 
-std::vector<webifc::IfcFlatMesh> LoadAllTest(
-    webifc::IfcLoader &loader, webifc::IfcGeometryLoader &geometryLoader) {
-  std::vector<webifc::IfcFlatMesh> meshes;
+void writeFile(std::wstring filename, std::string data) {
+  std::ofstream out(filename.c_str());
+  out << data;
+  out.close();
+}
 
-  if (webifc::exportObjs) {
-    std::cout << "Dumping Meshes...\n";
-  }
-  int count = 0;
+glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
+                          glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
+void DumpGeom(const fuzzybools::Geometry &geom,
+                         std::wstring filename) {
+  size_t offset = 0;
+  writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
+}
 
-  for (auto type : ifc::IfcElements) {
+std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
+    webifc::parsing::IfcLoader &loader,
+    webifc::geometry::IfcGeometryProcessor &geometryLoader) {
+  std::vector<webifc::geometry::IfcFlatMesh> meshes;
+
+  for (auto type : schema.GetIfcElementList()) {
     auto elements = loader.GetExpressIDsWithType(type);
 
-    for (int i = 0; i < elements.size(); i++) {
+    for (unsigned int i = 0; i < elements.size(); i++) {
       auto mesh = geometryLoader.GetFlatMesh(elements[i]);
 
-      if (webifc::exportObjs) {
-        auto composedMesh = geometryLoader.GetMesh(elements[i]);
+      if (webifc::statistics::exportObjs) {
 
-        std::string fileName = "./";
-        fileName += std::to_string(i);
-        fileName += "_webifc.obj";
+        for (auto& geom : mesh.geometries)
+        {
+            auto ifc_geom = geometryLoader.GetGeometry(geom.geometryExpressID);
+            fuzzybools::Geometry fbGeom;
+            std::string fileName = "./";
+            fileName += std::to_string(i);
+            fileName += "_webifc.obj";
 
-        std::wstring wsTmp(fileName.begin(), fileName.end());
-        geometryLoader.DumpMesh(composedMesh, wsTmp);
+             std::wstring wsTmp(fileName.begin(), fileName.end());
 
-        std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+            for (size_t j = 0; j < ifc_geom.numFaces; j++) {
+            const webifc::geometry::Face &f = ifc_geom.GetFace(j);
+
+            auto a = ifc_geom.GetPoint(f.i0);
+            auto b = ifc_geom.GetPoint(f.i1);
+            auto c = ifc_geom.GetPoint(f.i2);
+
+            fbGeom.AddFace(a, b, c);
+            }
+
+            DumpGeom(fbGeom, wsTmp);
+
+            std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+        }
       }
 
-      /*
-      for (auto& geom : mesh.geometries)
-      {
-          if (!geometryLoader.HasCachedGeometry(geom.geometryExpressID))
-          {
-              printf("asdf");
-          }
-          auto flatGeom =
-      geometryLoader.GetCachedGeometry(geom.geometryExpressID);
-          flatGeom.GetVertexData();
-      }
-      */
+      /*for (auto &geom : mesh.geometries) {
+        auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
+      }*/
 
       meshes.push_back(mesh);
     }
@@ -80,299 +131,24 @@ std::vector<webifc::IfcFlatMesh> LoadAllTest(
   return meshes;
 }
 
-void DumpRefs(std::unordered_map<uint32_t, std::vector<uint32_t>> &refs) {
-  std::ofstream of("refs.txt");
-
-  int32_t prev = 0;
-  for (auto &it : refs) {
-    if (!it.second.empty()) {
-      for (auto &i : it.second) {
-        of << (((int32_t)i) - (prev));
-        prev = i;
-      }
-    }
-  }
-}
-
-struct BenchMarkResult {
-  std::string file;
-  long long timeMS;
-  long long sizeBytes;
-};
-
-void Benchmark() {
-  std::vector<BenchMarkResult> results;
-  std::string path = "../../../benchmark/ifcfiles";
-  for (const auto &entry : std::filesystem::directory_iterator(path)) {
-    if (entry.path().extension().string() != ".ifc") {
-      continue;
-    }
-
-    std::string filePath = entry.path().string();
-    std::string filename = entry.path().filename().string();
-
-    std::string content = ReadFile(filePath);
-
-    webifc::IfcLoader loader;
-    auto start = webifc::ms();
-    {
-      // loader.LoadFile(content);
-    }
-    auto time = webifc::ms() - start;
-
-    BenchMarkResult result;
-    result.file = filename;
-    result.timeMS = time;
-    result.sizeBytes = entry.file_size();
-    results.push_back(result);
-
-    std::cout << "Reading " << result.file << " took " << time << "ms"
-              << std::endl;
-  }
-
-  std::cout << std::endl;
-  std::cout << std::endl;
-  std::cout << "Results:" << std::endl;
-
-  double avgMBsec = 0;
-  for (auto &result : results) {
-    double MBsec = result.sizeBytes / 1000.0 / result.timeMS;
-    avgMBsec += MBsec;
-    std::cout << result.file << ": " << MBsec << " MB/sec" << std::endl;
-  }
-
-  avgMBsec /= results.size();
-
-  std::cout << std::endl;
-  std::cout << "Average: " << avgMBsec << " MB/sec" << std::endl;
-
-  std::cout << std::endl;
-  std::cout << std::endl;
-}
-
-void TestTriangleDecompose() {
-  const int NUM_TESTS = 100;
-  const int PTS_PER_TEST = 100;
-  const int EDGE_PTS_PER_TEST = 10;
-
-  const double scaleX = 650;
-  const double scaleY = 1;
-
-  glm::dvec2 a(0, 0);
-  glm::dvec2 b(scaleX, 0);
-  glm::dvec2 c(0, scaleY);
-
-  for (int i = 0; i < NUM_TESTS; i++) {
-    srand(i);
-
-    std::vector<glm::dvec2> points;
-
-    // random points
-    for (int j = 0; j < PTS_PER_TEST; j++) {
-      points.push_back(
-          {webifc::RandomDouble(0, scaleX), webifc::RandomDouble(0, scaleY)});
-    }
-
-    // points along the edges
-    for (int j = 0; j < EDGE_PTS_PER_TEST; j++) {
-      glm::dvec2 e1 = b - a;
-      glm::dvec2 e2 = c - a;
-      glm::dvec2 e3 = b - c;
-
-      points.push_back(a + e1 * webifc::RandomDouble(0, 1));
-      points.push_back(a + e2 * webifc::RandomDouble(0, 1));
-      points.push_back(c + e3 * webifc::RandomDouble(0, 1));
-    }
-
-    std::vector<webifc::Loop> loops;
-
-    for (auto &pt : points) {
-      // if (pt.x > scaleX / 2)
-      {
-        webifc::Loop l;
-        l.hasOne = true;
-        l.v1 = pt;
-        loops.push_back(l);
-      }
-    }
-
-    std::cout << "Start test " << i << std::endl;
-
-    bool swapped = false;
-    auto triangles = webifc::triangulate(a, b, c, loops, swapped);
-
-    // webifc::IsValidTriangulation(triangles, points);
-
-    std::vector<webifc::Point> pts;
-
-    for (auto &pt : points) {
-      webifc::Point p;
-      p.x = pt.x;
-      p.y = pt.y;
-      pts.push_back(p);
-    }
-
-    webifc::DumpSVGTriangles(triangles, webifc::Point(), webifc::Point(),
-                             L"triangles.svg", pts);
-  }
-}
-
-uint32_t openSerialized(std::vector<std::string> paths,
-                        webifc::LoaderSettings settings) {
-  std::map<uint32_t, std::unique_ptr<webifc::IfcLoader>> loaders;
-  std::map<uint32_t, std::unique_ptr<webifc::IfcGeometryLoader>> geomLoaders;
-
-  uint32_t modelID = 0;
-
-  auto loader = std::make_unique<webifc::IfcLoader>(settings);
-  loaders.emplace(modelID, std::move(loader));
-  auto geomLoader =
-      std::make_unique<webifc::IfcGeometryLoader>(*loaders[modelID]);
-  geomLoaders.emplace(modelID, std::move(geomLoader));
-
-  for (int i(0); i < paths.size(); ++i) {
-    std::cout << paths[i] << std::endl;
-  }
-
-  loaders[modelID]->ActivateSerializer();
-  loaders[modelID]->SetBinPaths(paths);
-  uint32_t numLines = loaders[modelID]->loadMetadata();
-
-  // Continue opening
-  loaders[modelID]->LoadSerializedFileData(numLines);
-
-  // Ensure IsOpen will return true upon successful load.
-  loaders[modelID]->SetOpen();
-
-  ////////////
-
-  std::vector<webifc::IfcFlatMesh> meshes;
-
-  for (auto type : ifc::IfcElements) {
-    auto elements = loaders[modelID]->GetExpressIDsWithType(type);
-
-    for (int i = 0; i < elements.size(); i++) {
-      auto mesh = geomLoaders[modelID]->GetFlatMesh(elements[i]);
-      meshes.push_back(mesh);
-    }
-  }
-
-  loaders[modelID]->DisableSerializer();
-
-  ////////////
-
-  return modelID;
-}
-
-void serialize(std::vector<std::string> filePaths, std::string serializedName) {
-  auto settings = webifc::LoaderSettings();
-  auto loader = std::make_unique<webifc::IfcLoader>(settings);
-
-  loader->ActivateSerializer();
-  loader->SetSerializedFileName(serializedName);
-
-  uint32_t numLines = 0;
-
-  for (uint32_t fi = 0; fi < filePaths.size(); fi++) {
-    std::ifstream bigFile(filePaths[fi], std::ios::binary | std::ios::ate);
-    int fileSize = bigFile.tellg();
-    bigFile.seekg(0);
-    constexpr size_t bufferSize = 5000;
-    std::array<char, bufferSize> buffer;
-
-    bool inText = false;
-    std::string prevStringChunk = "";
-    std::string content = "";
-
-    if (bigFile.fail()) {
-      std::cout << "ERROR, Could not open " << filePaths[fi] << std::endl;
-      exit(1);
-    }
-
-    uint32_t count = 0;
-    uint32_t update = 0;
-
-    while (bigFile) {
-      content.clear();  // You must clean string this way, otherwise memory
-                        // leaks in chrome
-      for (int i(0); i < bufferSize; ++i) buffer[i] = '\0';
-      bigFile.read(buffer.data(), bufferSize);
-      content = buffer.data();
-
-      if (content.size() > bufferSize) {
-        content.erase(bufferSize, content.size() - bufferSize);
-      }
-
-      // keep record of quotations
-      for (int j = 0; j < content.size(); j++) {
-        if (content[j] == '\'') {
-          inText = !inText;
-        }
-      }
-
-      // Add the preovious uncomplete string chunk
-      content = prevStringChunk + content;
-
-      bool doit = true;
-      prevStringChunk.clear();  // You must clean string this way, otherwise
-                                // memory leaks in chrome
-      uint32_t i = 1;
-      bool inText2 = inText;
-
-      while (true) {
-        uint32_t idx = content.size() - i;
-        // Negative idx is not suposed to happen
-
-        if (content.size() < i) {
-          doit = false;
-          break;
-        }
-        if (content[idx] == '\'') {
-          inText2 = !inText2;
-        }
-        // Only if you are not in a text the ';' indicates end of line
-        if (content[idx] == ';' && !inText2) {
-          break;
-        } else {
-          // All the incomplete text is keep in the prevStringChunk
-          prevStringChunk.push_back(content[idx]);
-        }
-        i++;
-      }
-
-      // Reverse the uncomplete string line
-      reverse(prevStringChunk.begin(), prevStringChunk.end());
-
-      if (doit) {
-        // Remove uncomplete last line
-        content.erase(content.size() - prevStringChunk.size(),
-                      prevStringChunk.size());
-        content = content + " ";
-
-        size_t contentOffset = 0;
-        numLines += loader->readFilePart([&](char *dest, size_t destSize) {
-          uint32_t length = std::min(content.size() - contentOffset, destSize);
-          memcpy(dest, &content[contentOffset], length);
-
-          contentOffset += length;
-
-          return length;
-        });
-      }
-
-      count++;
-      update++;
-    }
-    bigFile.close();
-  }
-
-  loader->storeLastChunk();
-  loader->storeMetadata(numLines);
-  loader->DisableSerializer();
-}
-
 int main(int argc, char *argv[]) {
   std::cout << "Hello web IFC test!\n";
+
+  if (argc < 2) {
+    std::cout
+        << "webifc_native Usage\n\tLaunching executable with no arguments "
+           "loads index.ifc from repository root and parses"
+        << " ifc type information.\n\t-i /Path/To/IFC.ifc - Loads external "
+           "ifc files and parses ifc type information"
+        << "\n\t-objs - Outputs geometry from ifc to individudal obj files"
+        << "\n\t-stats - Outputs currently supported ifc type coverage for a "
+           "given ifc file"
+        << "\n\t-statsv - Outputs currently supported ifc type coverage + "
+           "prints type name info for a given ifc file"
+        << "\n\t-t - Traces and prints IFC type information gathered from "
+           "parsing a given ifc file"
+        << "\n\t-h - Displays help\n";
+  }
 
   std::string file_path;
 
@@ -388,19 +164,17 @@ int main(int argc, char *argv[]) {
         std::cerr << "Error: file path not provided" << std::endl;
         return 1;
       }
-    } else if (arg == "-c") {
-      webifc::shouldPrintCodeGen = true;
     } else if (arg == "-objs") {
-      webifc::exportObjs = true;
+      webifc::statistics::exportObjs = true;
     } else if (arg == "-stats") {
-      webifc::collectStats = true;
-      webifc::uniqueTypeDefs.clear();
+      webifc::statistics::collectStats = true;
+      webifc::statistics::uniqueTypeDefs.clear();
     } else if (arg == "-statsv") {
-      webifc::collectStats = true;
-      webifc::verboseStats = true;
-      webifc::uniqueTypeDefs.clear();
+      webifc::statistics::collectStats = true;
+      webifc::statistics::verboseStats = true;
+      webifc::statistics::uniqueTypeDefs.clear();
     } else if (arg == "-t") {
-      webifc::shouldPrintTypeInfo = true;
+      webifc::statistics::shouldPrintTypeInfo = true;
     } else if (arg == "-h") {
       std::cout
           << "webifc_native Usage\n\tLaunching executable with no arguments "
@@ -414,9 +188,7 @@ int main(int argc, char *argv[]) {
              "prints type name info for a given ifc file"
           << "\n\t-t - Traces and prints IFC type information gathered from "
              "parsing a given ifc file"
-          << "\n\t-c - Prints generated code for conway geometry processor "
-             "(Internal only - used for debugging / development - WIP)"
-             "\n\t-h - Displays help\n";
+          << "\n\t-h - Displays help\n";
       return 0;
     } else {
       std::cerr << "Error: invalid argument " << arg << std::endl;
@@ -453,48 +225,40 @@ int main(int argc, char *argv[]) {
   // from inside debugger
   // std::string content = ReadFile("index.ifc");
 
-  if (webifc::shouldPrintTypeInfo) {
+  if (webifc::statistics::shouldPrintTypeInfo) {
     std::cout << "Tracing IFC Schema for input file...\n";
   }
 
-  webifc::LoaderSettings set;
+  webifc::utility::LoaderSettings set;
   set.COORDINATE_TO_ORIGIN = true;
-  set.DUMP_CSG_MESHES = false;
   set.USE_FAST_BOOLS = true;
 
-  webifc::IfcLoader loader(set);
+  webifc::utility::LoaderErrorHandler errorHandler;
+  webifc::schema::IfcSchemaManager schemaManager;
+  webifc::parsing::IfcLoader loader(set.TAPE_SIZE, set.MEMORY_LIMIT,
+                                    errorHandler, schemaManager);
 
-  auto start = webifc::ms();
-  size_t contentOffset = 0;
-  loader.LoadFile([&](char *dest, size_t destSize) {
-    uint32_t length = std::min(content.size() - contentOffset, destSize);
-    memcpy(dest, &content[contentOffset], length);
-
-    contentOffset += length;
+  auto start = ms();
+  loader.LoadFile([&](char *dest, size_t sourceOffset, size_t destSize) {
+    uint32_t length = std::min(content.size() - sourceOffset, destSize);
+    memcpy(dest, &content[sourceOffset], length);
 
     return length;
   });
 
-  // std::ofstream outputStream(L"D:/web-ifc/benchmark/ifcfiles/output.ifc");
-  // outputStream << loader.DumpAsIFC();
-  // exit(0);
-  auto time = webifc::ms() - start;
+  auto time = ms() - start;
 
   std::cout << "Reading took " << time << "ms" << std::endl;
 
-  // std::ofstream outputFile("output.ifc");
-  // outputFile << loader.DumpSingleObjectAsIFC(14363);
-  // outputFile.close();
+  webifc::geometry::IfcGeometryProcessor geometryLoader(
+      loader, errorHandler, schemaManager, set.CIRCLE_SEGMENTS_HIGH,
+      set.COORDINATE_TO_ORIGIN);
 
-  webifc::IfcGeometryLoader geometryLoader(loader);
-
-  start = webifc::ms();
+  start = ms();
   // SpecificLoadTest(loader, geometryLoader, 2591);
   auto meshes = LoadAllTest(loader, geometryLoader);
-  auto trans =
-      webifc::FlattenTransformation(geometryLoader.GetCoordinationMatrix());
-
-  auto errors = loader.GetAndClearErrors();
+  auto errors = errorHandler.GetErrors();
+  errorHandler.ClearErrors();
 
   for (auto error : errors) {
     std::cout << error.expressID << " " << error.ifcType << " "
@@ -502,49 +266,49 @@ int main(int argc, char *argv[]) {
               << std::endl;
   }
 
-  time = webifc::ms() - start;
+  time = ms() - start;
 
   std::cout << "Generating geometry took " << time << "ms" << std::endl;
 
-  if (webifc::collectStats) {
+  if (webifc::statistics::collectStats) {
     std::vector<uint32_t> currentlySupportedTypes = {
-        ifc::IFCPLANE,
-        ifc::IFCBSPLINESURFACE,
-        ifc::IFCBSPLINESURFACEWITHKNOTS,
-        ifc::IFCRATIONALBSPLINESURFACEWITHKNOTS,
-        ifc::IFCAXIS2PLACEMENT2D,
-        ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2D,
-        ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM,
-        ifc::IFCPOLYLINE,
-        ifc::IFCLINE,
-        ifc::IFCINDEXEDPOLYCURVE,
-        ifc::IFCCIRCLE,
-        ifc::IFCELLIPSE,
-        ifc::IFCBSPLINECURVE,
-        ifc::IFCBSPLINECURVEWITHKNOTS,
-        ifc::IFCRATIONALBSPLINECURVEWITHKNOTS,
-        ifc::IFCAXIS1PLACEMENT,
-        ifc::IFCAXIS2PLACEMENT3D,
-        ifc::IFCLOCALPLACEMENT,
-        ifc::IFCCARTESIANTRANSFORMATIONOPERATOR3D,
-        ifc::IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM,
-        ifc::IFCCONNECTEDFACESET,
-        ifc::IFCCLOSEDSHELL,
-        ifc::IFCOPENSHELL,
-        ifc::IFCFACE,
-        ifc::IFCADVANCEDFACE,
-        ifc::IFCPOLYLOOP,
-        ifc::IFCINDEXEDPOLYGONALFACE,
-        ifc::IFCPOLYGONALFACESET,
-        ifc::IFCMAPPEDITEM,
-        ifc::IFCBOOLEANCLIPPINGRESULT,
-        ifc::IFCBOOLEANRESULT,
-        ifc::IFCHALFSPACESOLID,
-        ifc::IFCPOLYGONALBOUNDEDHALFSPACE,
-        ifc::IFCFACEBASEDSURFACEMODEL,
-        ifc::IFCSHELLBASEDSURFACEMODEL};
+        webifc::schema::IFCPLANE,
+        webifc::schema::IFCBSPLINESURFACE,
+        webifc::schema::IFCBSPLINESURFACEWITHKNOTS,
+        webifc::schema::IFCRATIONALBSPLINESURFACEWITHKNOTS,
+        webifc::schema::IFCAXIS2PLACEMENT2D,
+        webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2D,
+        webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM,
+        webifc::schema::IFCPOLYLINE,
+        webifc::schema::IFCLINE,
+        webifc::schema::IFCINDEXEDPOLYCURVE,
+        webifc::schema::IFCCIRCLE,
+        webifc::schema::IFCELLIPSE,
+        webifc::schema::IFCBSPLINECURVE,
+        webifc::schema::IFCBSPLINECURVEWITHKNOTS,
+        webifc::schema::IFCRATIONALBSPLINECURVEWITHKNOTS,
+        webifc::schema::IFCAXIS1PLACEMENT,
+        webifc::schema::IFCAXIS2PLACEMENT3D,
+        webifc::schema::IFCLOCALPLACEMENT,
+        webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR3D,
+        webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM,
+        webifc::schema::IFCCONNECTEDFACESET,
+        webifc::schema::IFCCLOSEDSHELL,
+        webifc::schema::IFCOPENSHELL,
+        webifc::schema::IFCFACE,
+        webifc::schema::IFCADVANCEDFACE,
+        webifc::schema::IFCPOLYLOOP,
+        webifc::schema::IFCINDEXEDPOLYGONALFACE,
+        webifc::schema::IFCPOLYGONALFACESET,
+        webifc::schema::IFCMAPPEDITEM,
+        webifc::schema::IFCBOOLEANCLIPPINGRESULT,
+        webifc::schema::IFCBOOLEANRESULT,
+        webifc::schema::IFCHALFSPACESOLID,
+        webifc::schema::IFCPOLYGONALBOUNDEDHALFSPACE,
+        webifc::schema::IFCFACEBASEDSURFACEMODEL,
+        webifc::schema::IFCSHELLBASEDSURFACEMODEL};
 
-    uint32_t uniqueTypeDefsSize = webifc::uniqueTypeDefs.size();
+    uint32_t uniqueTypeDefsSize = webifc::statistics::uniqueTypeDefs.size();
     std::vector<std::pair<unsigned int, unsigned int>> supportedTypes;
     std::vector<std::pair<unsigned int, unsigned int>> unsupportedTypes;
 
@@ -554,20 +318,21 @@ int main(int argc, char *argv[]) {
 
     // Copy the elements of the map into a vector
     std::vector<std::pair<unsigned int, unsigned int>> vectorUniqueTypeDefs(
-        webifc::uniqueTypeDefs.begin(), webifc::uniqueTypeDefs.end());
+        webifc::statistics::uniqueTypeDefs.begin(),
+        webifc::statistics::uniqueTypeDefs.end());
 
     // Sort the vector in descending order by the second value
     std::sort(vectorUniqueTypeDefs.begin(), vectorUniqueTypeDefs.end(),
               [](const auto &a, const auto &b) { return a.second > b.second; });
 
-    if (webifc::verboseStats) {
+    if (webifc::statistics::verboseStats) {
       std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
     }
 
     for (const auto &ifcType : vectorUniqueTypeDefs) {
-      if (webifc::verboseStats) {
+      if (webifc::statistics::verboseStats) {
         std::cout << ifcType.second << "\t\t\t\t\t"
-                  << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
+                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
 
       if (std::find(currentlySupportedTypes.begin(),
@@ -582,21 +347,21 @@ int main(int argc, char *argv[]) {
     uint32_t supportedSize = supportedTypes.size();
     uint32_t unsupportedSize = unsupportedTypes.size();
     std::cout << "\nSupported Types: " << supportedSize << std::endl;
-    if (webifc::verboseStats) {
+    if (webifc::statistics::verboseStats) {
       std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
 
       for (const auto &ifcType : supportedTypes) {
         std::cout << ifcType.second << "\t\t\t\t\t"
-                  << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
+                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 
     std::cout << "\nUnsupported Types: " << unsupportedSize << std::endl;
-    if (webifc::verboseStats) {
+    if (webifc::statistics::verboseStats) {
       std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
       for (const auto &ifcType : unsupportedTypes) {
         std::cout << ifcType.second << "\t\t\t\t\t"
-                  << GetReadableNameFromTypeCode(ifcType.first) << std::endl;
+                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 
