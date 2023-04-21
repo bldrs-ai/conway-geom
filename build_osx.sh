@@ -53,7 +53,7 @@ fi
 
 ( cd gmake && \
     make config=${native_config} conway_geom_native webifc_native && \
-    make config=${wasm_config} conway_geom_wasm
+    make config=${wasm_config} conway_geom_wasm conway_geom_wasm_mt
 )
 if [ $? -ne 0 ]; then
     echo "! Build failed" 1>&2

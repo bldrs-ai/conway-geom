@@ -6,17 +6,33 @@
 #include <fstream>
 #include <iostream>
 
-#include "include/conway-geometry.h"
+/*#include "include/conway-geometry.h"
 #include "include/web-ifc.h"
-// #include "include/web-ifc-geometry.h"
-#include "include/ifc-schema.h"
-#include "include/math/triangulate-with-boundaries.h"
+// #include "include/web-ifc-geometry.h"*/
+#include "conway_geometry/ConwayGeometryProcessor.h"
+//#include "include/ifc-schema.h"
+//#include "include/math/triangulate-with-boundaries.h"
+
+namespace conway::statistics {
+bool exportGltfs = false;
+bool exportGlbs = false;
+bool exportObjs = false;
+bool exportSingleGeometry = false;
+bool exportIndividualGeometryFiles = false;
+bool exportDraco = false;
+}  // namespace conway::statistics
 
 std::string ReadFile(std::string filename) {
   std::ifstream t(filename);
   std::stringstream buffer;
   buffer << t.rdbuf();
   return buffer.str();
+}
+
+void writeFile(std::wstring filename, std::string data) {
+  std::ofstream out(filename.c_str());
+  out << data;
+  out.close();
 }
 
 void DumpRefs(std::unordered_map<uint32_t, std::vector<uint32_t>> &refs) {
@@ -39,125 +55,16 @@ struct BenchMarkResult {
   long long sizeBytes;
 };
 
-void Benchmark() {
-  std::vector<BenchMarkResult> results;
-  std::string path = "../../../benchmark/ifcfiles";
-  for (const auto &entry : std::filesystem::directory_iterator(path)) {
-    if (entry.path().extension().string() != ".ifc") {
-      continue;
-    }
+long long ms() {
+  using namespace std::chrono;
+  milliseconds millis =
+      duration_cast<milliseconds>(system_clock::now().time_since_epoch());
 
-    std::string filePath = entry.path().string();
-    std::string filename = entry.path().filename().string();
-
-    std::string content = ReadFile(filePath);
-
-    webifc::IfcLoader loader;
-    auto start = webifc::ms();
-    {
-      // loader.LoadFile(content);
-    }
-    auto time = webifc::ms() - start;
-
-    BenchMarkResult result;
-    result.file = filename;
-    result.timeMS = time;
-    result.sizeBytes = entry.file_size();
-    results.push_back(result);
-
-    std::cout << "Reading " << result.file << " took " << time << "ms"
-              << std::endl;
-  }
-
-  std::cout << std::endl;
-  std::cout << std::endl;
-  std::cout << "Results:" << std::endl;
-
-  double avgMBsec = 0;
-  for (auto &result : results) {
-    double MBsec = result.sizeBytes / 1000.0 / result.timeMS;
-    avgMBsec += MBsec;
-    std::cout << result.file << ": " << MBsec << " MB/sec" << std::endl;
-  }
-
-  avgMBsec /= results.size();
-
-  std::cout << std::endl;
-  std::cout << "Average: " << avgMBsec << " MB/sec" << std::endl;
-
-  std::cout << std::endl;
-  std::cout << std::endl;
-}
-
-void TestTriangleDecompose() {
-  const int NUM_TESTS = 100;
-  const int PTS_PER_TEST = 100;
-  const int EDGE_PTS_PER_TEST = 10;
-
-  const double scaleX = 650;
-  const double scaleY = 1;
-
-  glm::dvec2 a(0, 0);
-  glm::dvec2 b(scaleX, 0);
-  glm::dvec2 c(0, scaleY);
-
-  for (int i = 0; i < NUM_TESTS; i++) {
-    srand(i);
-
-    std::vector<glm::dvec2> points;
-
-    // random points
-    for (int j = 0; j < PTS_PER_TEST; j++) {
-      points.push_back(
-          {webifc::RandomDouble(0, scaleX), webifc::RandomDouble(0, scaleY)});
-    }
-
-    // points along the edges
-    for (int j = 0; j < EDGE_PTS_PER_TEST; j++) {
-      glm::dvec2 e1 = b - a;
-      glm::dvec2 e2 = c - a;
-      glm::dvec2 e3 = b - c;
-
-      points.push_back(a + e1 * webifc::RandomDouble(0, 1));
-      points.push_back(a + e2 * webifc::RandomDouble(0, 1));
-      points.push_back(c + e3 * webifc::RandomDouble(0, 1));
-    }
-
-    std::vector<webifc::Loop> loops;
-
-    for (auto &pt : points) {
-      // if (pt.x > scaleX / 2)
-      {
-        webifc::Loop l;
-        l.hasOne = true;
-        l.v1 = pt;
-        loops.push_back(l);
-      }
-    }
-
-    std::cout << "Start test " << i << std::endl;
-
-    bool swapped = false;
-    auto triangles = webifc::triangulate(a, b, c, loops, swapped);
-
-    // webifc::IsValidTriangulation(triangles, points);
-
-    std::vector<webifc::Point> pts;
-
-    for (auto &pt : points) {
-      webifc::Point p;
-      p.x = pt.x;
-      p.y = pt.y;
-      pts.push_back(p);
-    }
-
-    webifc::DumpSVGTriangles(triangles, webifc::Point(), webifc::Point(),
-                             L"triangles.svg", pts);
-  }
+  return millis.count();
 }
 
 void genIndexIfc() {
-  std::vector<conway::IfcGeometry> geometryVec;
+  std::vector<conway::geometry::IfcGeometry> geometryVec;
 
   // taken from web ifc obj dump code
   glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
@@ -166,13 +73,13 @@ void genIndexIfc() {
   // from outside debugger
   // std::string content = ReadFile("../../../index.ifc");
 
-  auto start = webifc::ms();
+  auto start = ms();
 
-  conway::ConwayGeometryProcessor conwayGeometryProcessor =
-      conway::ConwayGeometryProcessor();
+  conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
+      conway::geometry::ConwayGeometryProcessor();
 
   // generated from webifc_geom output
-  conway::ConwayGeometryProcessor::ParamsAxis2Placement3D
+  conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
       parametersAxis2Placement3D;
   parametersAxis2Placement3D.zAxisRef.x = 0.000;
   parametersAxis2Placement3D.zAxisRef.y = 0.000;
@@ -207,7 +114,7 @@ void genIndexIfc() {
   localPlacementMatrix[3][2], localPlacementMatrix[3][3]);
   */
 
-  conway::ConwayGeometryProcessor::ParamsPolygonalFaceSet
+  conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet
       parametersPolygonalFaceset;
   parametersPolygonalFaceset.numPoints = 8;
   parametersPolygonalFaceset.points.resize(
@@ -280,7 +187,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 8;
   parametersPolygonalFaceset.indices[23] = 7;
 
-  conway::IfcGeometry geometry =
+  conway::geometry::IfcGeometry geometry =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -361,7 +268,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 7;
   parametersPolygonalFaceset.indices[23] = 6;
 
-  conway::IfcGeometry geometry2 =
+  conway::geometry::IfcGeometry geometry2 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -442,7 +349,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 6;
   parametersPolygonalFaceset.indices[23] = 5;
 
-  conway::IfcGeometry geometry3 =
+  conway::geometry::IfcGeometry geometry3 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -523,7 +430,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 5;
   parametersPolygonalFaceset.indices[23] = 8;
 
-  conway::IfcGeometry geometry4 =
+  conway::geometry::IfcGeometry geometry4 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -604,7 +511,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 8;
   parametersPolygonalFaceset.indices[23] = 7;
 
-  conway::IfcGeometry geometry5 =
+  conway::geometry::IfcGeometry geometry5 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -685,7 +592,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 6;
   parametersPolygonalFaceset.indices[23] = 5;
 
-  conway::IfcGeometry geometry6 =
+  conway::geometry::IfcGeometry geometry6 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -766,7 +673,7 @@ void genIndexIfc() {
   parametersPolygonalFaceset.indices[22] = 8;
   parametersPolygonalFaceset.indices[23] = 7;
 
-  conway::IfcGeometry geometry7 =
+  conway::geometry::IfcGeometry geometry7 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersPolygonalFaceset);
 
@@ -776,24 +683,24 @@ void genIndexIfc() {
   parametersPolygonalFaceset.points.clear();
   parametersPolygonalFaceset.indices.clear();
 
-  auto time = webifc::ms() - start;
+  auto time = ms() - start;
 
   std::cout << "Processing geometry took " << time << "ms" << std::endl;
 
-  if (conway::exportObjs) {
+  if (conway::statistics::exportObjs) {
     std::cout << "Testing OBJ export..." << std::endl;
   }
 
-  if (conway::exportGltfs) {
-    if (conway::exportDraco) {
+  if (conway::statistics::exportGltfs) {
+    if (conway::statistics::exportDraco) {
       std::cout << "Testing GLTF export (Draco)..." << std::endl;
     } else {
       std::cout << "Testing GLTF export..." << std::endl;
     }
   }
 
-  if (conway::exportGlbs) {
-    if (conway::exportDraco) {
+  if (conway::statistics::exportGlbs) {
+    if (conway::statistics::exportDraco) {
       std::cout << "Testing GLB export (Draco)..." << std::endl;
     } else {
       std::cout << "Testing GLB export..." << std::endl;
@@ -811,33 +718,36 @@ void genIndexIfc() {
     fileNameGltf += std::to_string(geometryIndex);
     fileNameGltf += "_conway";
 
-    if (conway::exportGltfs && conway::exportIndividualGeometryFiles) {
-      if (conway::exportDraco) {
+    if (conway::statistics::exportGltfs &&
+        conway::statistics::exportIndividualGeometryFiles) {
+      if (conway::statistics::exportDraco) {
         printf("Writing GLTF (Draco)...\n");
       } else {
         printf("Writing GLTF...\n");
       }
 
-      conway::ConwayGeometryProcessor::ResultsGltf results =
+      conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec[geometryIndex], false, conway::exportDraco,
-              fileNameGltf, true, NormalizeMat);
+              geometryVec[geometryIndex], false,
+              conway::statistics::exportDraco, fileNameGltf, true,
+              NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
       }
     }
 
-    if (conway::exportGlbs && conway::exportIndividualGeometryFiles) {
-      if (conway::exportDraco) {
+    if (conway::statistics::exportGlbs &&
+        conway::statistics::exportIndividualGeometryFiles) {
+      if (conway::statistics::exportDraco) {
         printf("Writing GLB (Draco)\n");
       } else {
         printf("Writing GLB...\n");
       }
 
-      conway::ConwayGeometryProcessor::ResultsGltf results =
+      conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec[geometryIndex], true, conway::exportDraco,
+              geometryVec[geometryIndex], true, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
@@ -845,7 +755,8 @@ void genIndexIfc() {
       }
     }
 
-    if (conway::exportObjs && conway::exportIndividualGeometryFiles) {
+    if (conway::statistics::exportObjs &&
+        conway::statistics::exportIndividualGeometryFiles) {
       // filthy but just testing quick
       std::string fileNameObj = "./";
       fileNameObj += std::to_string(geometryIndex);
@@ -854,15 +765,15 @@ void genIndexIfc() {
       std::wstring wsTmp(fileNameObj.begin(), fileNameObj.end());
 
       printf("Writing OBJ...\n");
-      webifc::writeFile(wsTmp, singleObj);
+      writeFile(wsTmp, singleObj);
     }
   }
 
   std::string completeObj = "";
   size_t offset = 0;
 
-  if (conway::exportSingleGeometry) {
-    conway::IfcGeometry fullGeometry;
+  if (conway::statistics::exportSingleGeometry) {
+    conway::geometry::IfcGeometry fullGeometry;
 
     for (int geometryIndex = 0; geometryIndex < geometryVec.size();
          geometryIndex++) {
@@ -870,45 +781,45 @@ void genIndexIfc() {
     }
 
     std::string fileNameGltf = "./index_ifc_full_conway";
-    if (conway::exportDraco) {
+    if (conway::statistics::exportDraco) {
       fileNameGltf += "_draco";
     }
 
-    if (conway::exportGltfs) {
-      if (conway::exportDraco) {
+    if (conway::statistics::exportGltfs) {
+      if (conway::statistics::exportDraco) {
         printf("Writing Complete GLTF (Draco)...\n");
       } else {
         printf("Writing Complete GLTF...\n");
       }
 
-      conway::ConwayGeometryProcessor::ResultsGltf results =
+      conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              fullGeometry, false, conway::exportDraco, fileNameGltf, true,
-              NormalizeMat);
+              fullGeometry, false, conway::statistics::exportDraco,
+              fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
       }
     }
 
-    if (conway::exportGlbs) {
-      if (conway::exportDraco) {
+    if (conway::statistics::exportGlbs) {
+      if (conway::statistics::exportDraco) {
         printf("Writing Complete GLB (Draco)...\n");
       } else {
         printf("Writing Complete GLB...\n");
       }
 
-      conway::ConwayGeometryProcessor::ResultsGltf results =
+      conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              fullGeometry, true, conway::exportDraco, fileNameGltf, true,
-              NormalizeMat);
+              fullGeometry, true, conway::statistics::exportDraco, fileNameGltf,
+              true, NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLB.");
       }
     }
 
-    if (conway::exportObjs) {
+    if (conway::statistics::exportObjs) {
       std::cout << "Writing Complete OBJ..." << std::endl;
       completeObj = conwayGeometryProcessor.GeometryToObj(fullGeometry, offset,
                                                           NormalizeMat);
@@ -917,7 +828,7 @@ void genIndexIfc() {
 
       std::wstring wsTmp(fileName.begin(), fileName.end());
 
-      webifc::writeFile(wsTmp, completeObj);
+      writeFile(wsTmp, completeObj);
     }
   }
 
@@ -947,17 +858,17 @@ int main(int argc, char *argv[]) {
     std::string arg = argv[i];
 
     if (arg == "-gltf") {
-      conway::exportGltfs = true;
+      conway::statistics::exportGltfs = true;
     } else if (arg == "-obj") {
-      conway::exportObjs = true;
+      conway::statistics::exportObjs = true;
     } else if (arg == "-glb") {
-      conway::exportGlbs = true;
+      conway::statistics::exportGlbs = true;
     } else if (arg == "-draco") {
-      conway::exportDraco = true;
+      conway::statistics::exportDraco = true;
     } else if (arg == "-full") {
-      conway::exportSingleGeometry = true;
+      conway::statistics::exportSingleGeometry = true;
     } else if (arg == "-split") {
-      conway::exportIndividualGeometryFiles = true;
+      conway::statistics::exportIndividualGeometryFiles = true;
     } else if (arg == "-h") {
       std::cout
           << "conway_geom_native Usage\n\tLaunching executable with no "
@@ -979,12 +890,14 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (conway::exportDraco && (!conway::exportGltfs && !conway::exportGlbs)) {
+  if (conway::statistics::exportDraco &&
+      (!conway::statistics::exportGltfs && !conway::statistics::exportGlbs)) {
     std::cout << "Must choose -gltf or -glb with -draco switch." << std::endl;
   }
 
-  if (!conway::exportIndividualGeometryFiles && !conway::exportSingleGeometry) {
-    conway::exportSingleGeometry = true;
+  if (!conway::statistics::exportIndividualGeometryFiles &&
+      !conway::statistics::exportSingleGeometry) {
+    conway::statistics::exportSingleGeometry = true;
   }
 
   // generate simple index.ifc geometry

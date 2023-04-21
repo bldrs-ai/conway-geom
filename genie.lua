@@ -23,11 +23,7 @@ solution "conway_geom"
         kind "ConsoleApp"
         files {}
 
-        --targetextension ".js"
-
-        WebIfcCoreFiles       = { "include/*.h" }
-        WebIfcMathFiles       = { "include/math/*.h" }
-        WebIfcParsingFiles    = { "include/parsing/*.h" }
+        ConwayCoreFiles       = { "conway_geometry/*.h", "conway_geometry/*.cpp", "conway_geometry/operations/**.*", "conway_geometry/representation/**.*"}
         WebIfcSourceFiles     = { "web-ifc-api.cpp" }
         WebIfcTestSourceFiles = { "test/*.cpp" }
         WebIfcTestingMain     = { "web-ifc-test.cpp" }
@@ -62,12 +58,8 @@ solution "conway_geom"
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
 
         configuration { "windows or macosx or linux"}
-            files { WebIfcCoreFiles,
-                    WebIfcMathFiles,
-                    WebIfcParsingFiles,
-                    --WebIfcSourceFiles,
+            files { ConwayCoreFiles,
                     ManifoldSrcFiles,
-                    WebIfcTestSourceFiles,
                     glTFSDKSrcFiles,
                     DracoSourceFiles,
                     ConwayTestingMain
@@ -97,7 +89,9 @@ solution "conway_geom"
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
-            "external/draco/src"
+            "external/draco/src",
+            "external/fuzzy-bools",
+            "external/fuzzy-bools/deps/cdt"
             --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
             
             --"$(EMSDK)/upstream/emscripten/system/include"
@@ -140,7 +134,8 @@ solution "conway_geom"
         "external/draco/src/draco/compression/point_cloud/*test*cc",
         "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
 		--glTF-SDK Source Files
-		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}     
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp",
+        "external/fuzzy-bools/fuzzy/main.cpp"}     
 
         configuration { "Debug" }
 
@@ -228,12 +223,8 @@ solution "conway_geom"
 
         targetextension ".js"
 
-        WebIfcCoreFiles       = { "include/*.h" }
-        WebIfcMathFiles       = { "include/math/*.h" }
-        WebIfcParsingFiles    = { "include/parsing/*.h" }
+        ConwayCoreFiles       = { "conway_geometry/*.h", "conway_geometry/*.cpp", "conway_geometry/operations/**.*", "conway_geometry/representation/**.*"}
         ConwaySourceFiles     = { "conway-api.cpp" }
-        WebIfcTestSourceFiles = { "test/*.cpp" }
-        WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
@@ -264,9 +255,7 @@ solution "conway_geom"
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
 
         configuration { "windows or macosx or linux"}
-            files { WebIfcCoreFiles,
-                    WebIfcMathFiles,
-                    WebIfcParsingFiles,
+            files { ConwayCoreFiles,
                     ConwaySourceFiles,
                     ManifoldSrcFiles,
                     glTFSDKSrcFiles,
@@ -306,10 +295,9 @@ solution "conway_geom"
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
-            "external/draco/src"
-            --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
-            
-            --"$(EMSDK)/upstream/emscripten/system/include"
+            "external/draco/src",
+            "external/fuzzy-bools",
+            "external/fuzzy-bools/deps/cdt"
         }    
 
         excludes 
@@ -349,7 +337,8 @@ solution "conway_geom"
         "external/draco/src/draco/compression/point_cloud/*test*cc",
         "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
 		--glTF-SDK Source Files
-		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}         
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp",
+        "external/fuzzy-bools/fuzzy/main.cpp"}         
 
         configuration { "Debug" }
 
@@ -375,12 +364,8 @@ solution "conway_geom"
         targetextension ".js"
 
 
-        WebIfcCoreFiles       = { "include/*.h" }
-        WebIfcMathFiles       = { "include/math/*.h" }
-        WebIfcParsingFiles    = { "include/parsing/*.h" }
+        ConwayCoreFiles       = { "conway_geometry/*.h", "conway_geometry/*.cpp", "conway_geometry/operations/**.*", "conway_geometry/representation/**.*"}
         ConwaySourceFiles     = { "conway-api.cpp" }
-        WebIfcTestSourceFiles = { "test/*.cpp" }
-        WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", 
         "external/manifold/src/collider/include/*.h", 
         "external/manifold/src/utilities/include/*.h"}
@@ -411,15 +396,11 @@ solution "conway_geom"
         buildoptions_cpp { "-O3", "-DNDEBUG", "-pthread", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
 
         configuration { "windows or macosx or linux"}
-            files { WebIfcCoreFiles,
-                    WebIfcMathFiles,
-                    WebIfcParsingFiles,
+            files { ConwayCoreFiles,
                     ConwaySourceFiles,
                     ManifoldSrcFiles,
                     glTFSDKSrcFiles,
                     DracoSourceFiles,
-                    --WebIfcTestSourceFiles,
-                    --WebIfcTestingMain
                     }
 					
 		configuration {"windows"}
@@ -453,10 +434,9 @@ solution "conway_geom"
             "external/manifold/src/third_party/glm",
             "external/gltf-sdk/GLTFSDK/Inc",
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
-            "external/draco/src"
-            --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
-            
-            --"$(EMSDK)/upstream/emscripten/system/include"
+            "external/draco/src",
+            "external/fuzzy-bools",
+            "external/fuzzy-bools/deps/cdt"
         } 
 
         excludes 
@@ -496,7 +476,8 @@ solution "conway_geom"
         "external/draco/src/draco/compression/point_cloud/*test*cc",
         "external/draco/src/draco/compression/point_cloud/algorithms/*test*cc",
 		--glTF-SDK Source Files
-		"external/gltf-sdk/GLTFSDK/source/Version.cpp"}         
+		"external/gltf-sdk/GLTFSDK/source/Version.cpp",
+        "external/fuzzy-bools/fuzzy/main.cpp"}         
 
         configuration { "Debug" }
 
