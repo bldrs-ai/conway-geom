@@ -38,13 +38,10 @@
 #include <GLTFSDK/IStreamWriter.h>
 #include <GLTFSDK/Serialize.h>
 
-
-namespace fuzzybools
-{
-  struct Geometry;
+namespace fuzzybools {
+struct Geometry;
 }
 
-// Note - A new IStreamWriter will need to be written for emscripten builds.
 namespace {
 // The glTF SDK is decoupled from all file I/O by the IStreamWriter (and
 // IStreamReader) interface(s) and the C++ stream-based I/O library. This allows
@@ -76,6 +73,7 @@ class StreamWriter : public Microsoft::glTF::IStreamWriter {
 }  // namespace
 
 namespace conway::geometry {
+// TODO: Pass these into Geometry to GLTF + GLB as a parameter
 struct DracoOptions {
   bool isPointCloud = false;
   int posQuantizationBits = 11;
@@ -243,157 +241,6 @@ class ConwayGeometryProcessor {
   };
 
   glm::dmat3 GetAxis2Placement2D(ParamsGetAxis2Placement2D parameters);
-
-  // case ifc::IFCPOLYLINE
-
-  /*void ComputePolylineCurve(IfcCurve &curve,
-                            glm::vec<DIM, glm::f64> points, bool edge,
-                            int sameSense = -1);
-
-  // case ifc::IFCCOMPOSITECURVE
-
-  void ComputeCompositeCurve(IfcCurve &curve,
-                             glm::vec<DIM, glm::f64> points, bool edge,
-                             int sameSense = -1);
-
-  // case ifc::IFCCOMPOSITECURVESEGMENT
-
-  void ComputeCompositeCurveSegment(IfcCurve &curve,
-                                    glm::vec<DIM, glm::f64> points, bool edge,
-                                    int sameSense = -1);
-
-  IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
-                          const glm::dvec2 &p3);
-
-  struct TrimmingSelect {
-    bool hasParam = false;
-    bool hasPos = false;
-    double param;
-    glm::dvec2 pos;
-    glm::dvec3 pos3D;
-  };
-
-  struct TrimmingArguments {
-    bool exist = false;
-    glm::dvec2 position;
-    glm::dvec3 direction;
-    TrimmingSelect start;
-    TrimmingSelect end;
-  };
-
-  // case ifc::IFCLINE
-
-  void ComputeCurveLine(IfcCurve &curve, bool edge, TrimmingArguments trim,
-                        int sameSense = -1);
-
-  // case ifc::IFCTRIMMEDCURVE
-
-  void ComputeTrimmedCurve(IfcCurve &curve, glm::vec<DIM, glm::f64> points,
-                           bool edge, int sameSense = -1);
-
-  enum CurveType {
-    lineIndex = 0,
-    arcIndex = 1,
-  };
-
-  struct CurveSegmentIndex {
-    uint32_t curveType;
-    size_t indicesCount;
-    uint32_t *indices;
-  };
-
-  // case ifc::IFCINDEXEDPOLYCURVE
-
-  void ComputeIndexedPolycurve(IfcCurve &curve,
-                               std::vector<glm::dvec2> points,
-                               uint32_t numSegments,
-                               CurveSegmentIndex *segments, bool curveLineIndex,
-                               bool selfIntersects);
-
-  // case ifc::IFCCIRCLE
-  // TODO: Rework this parameter list, I really don't like it. Probably should
-  // split all 2D and 3D functions and get rid of the DIM template.
-
-  void ComputeCircleCurve(IfcCurve &curve, glm::mat4 placementMat4,
-                          glm::mat3 placementMat3, double radius,
-                          bool selfIntersects, TrimmingArguments trim,
-                          int trimSense = -1, int sameSense = -1);
-
-  // case ifc::IFCELLIPSE
-  // TODO: Rework this parameter list, I really don't like it. Probably should
-  // split all 2D and 3D functions and get rid of the DIM template.
-
-  void ComputeEllipseCurve(IfcCurve &curve, glm::mat4 placementMat4,
-                           glm::mat3 placementMat3, double radius1,
-                           double radius2, TrimmingArguments trim,
-                           int trimSense = -1, int sameSense = -1);
-
-  // case ifc::IFCBSPLINECURVE
-
-  void ComputeBsplineCurve(IfcCurve &curve,
-                           std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-                           std::vector<glm::f64> knots,
-                           std::vector<glm::f64> weights, double degree,
-                           bool edge, int sameSense = -1);
-
-  /*
-  * The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-  functions for which the knot values are explicitly given.
-  * This is the type of b-spline curve for which the knot values are explicitly
-  given. This subtype shall be used to represent non-uniform B-spline curves and
-  may be used for other knot types.
-  * Let L denote the number of distinct values amongst the d+k+2 knots in the
-  knot list; L will be referred to as the ‘upper index on knots’. Let mj denote
-  the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
-
-  * All knot multiplicities except the first and the last shall be in the range
-  1,...,d; the first and last may have a maximum value of d + 1. In evaluating
-  the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a
-  sequence u, u, u,; in the knot array.
-  * @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
-  * @param knotMultiplicities == The multiplicities of the knots. This list
-  defines the number of times each knot in the knots list is to be repeated in
-  constructing the knot array.
-  * @param distinctKnots == The list of distinct knots used to define the
-  B-spline basis functions.
-  */
-  // case ifc::IFCBSPLINECURVEWITHKNOTS
-
-  /*void ComputeBsplineCurveWithKnots(
-      IfcCurve &curve, std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-      std::vector<glm::f64> knotMultiplicities,
-      std::vector<glm::f64> distinctKnots, double degree, bool edge,
-      int sameSense = -1);
-
-  /*
-  * The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-  functions for which the knot values are explicitly given.
-  * This is the type of b-spline curve for which the knot values are explicitly
-  given. This subtype shall be used to represent non-uniform B-spline curves and
-  may be used for other knot types.
-  * Let L denote the number of distinct values amongst the d+k+2 knots in the
-  knot list; L will be referred to as the ‘upper index on knots’. Let mj denote
-  the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
-
-  * All knot multiplicities except the first and the last shall be in the range
-  1,...,d; the first and last may have a maximum value of d + 1. In evaluating
-  the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a
-  sequence u, u, u,; in the knot array.
-  * @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
-  * @param knotMultiplicities == The multiplicities of the knots. This list
-  defines the number of times each knot in the knots list is to be repeated in
-  constructing the knot array.
-  * @param distinctKnots == The list of distinct knots used to define the
-  B-spline basis functions.
-  * @param weights == list double
-  */
-  // case ifc::IFCRATIONALBSPLINECURVEWITHKNOTS
-
-  /*void ComputeRationalBsplineCurveWithKnots(
-       IfcCurve &curve, std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-       std::vector<glm::f64> knotMultiplicities,
-       std::vector<glm::f64> distinctKnots, std::vector<glm::f64> weights,
-       double degree, bool edge, int sameSense = -1);*/
 
   // case ifc::IFCAXIS1PLACEMENT:
   struct ParamsAxis1Placement3D {

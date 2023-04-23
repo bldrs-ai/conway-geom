@@ -2,11 +2,11 @@
 
 #include <glm/glm.hpp>
 
-#include "representation/geometry.h"
-#include "operations/geometryutils.h"
-#include "operations/curve-utils.h"
-#include "operations/mesh_utils.h"
 #include "fuzzy/fuzzy-bools.h"
+#include "operations/curve-utils.h"
+#include "operations/geometryutils.h"
+#include "operations/mesh_utils.h"
+#include "representation/geometry.h"
 
 namespace conway::geometry {
 IfcComposedMesh ConwayGeometryProcessor::getMappedItem(
@@ -18,122 +18,110 @@ IfcComposedMesh ConwayGeometryProcessor::getMappedItem(
   return mesh;
 }
 
-fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(const IfcGeometry& geom)
-    {
-        fuzzybools::Geometry fbGeom;
+fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
+    const IfcGeometry &geom) {
+  fuzzybools::Geometry fbGeom;
 
-        for (size_t i = 0; i < geom.numFaces; i++)
-        {
-            const Face& f = geom.GetFace(i);
+  for (size_t i = 0; i < geom.numFaces; i++) {
+    const Face &f = geom.GetFace(i);
 
-            auto a = geom.GetPoint(f.i0);
-            auto b = geom.GetPoint(f.i1);
-            auto c = geom.GetPoint(f.i2);
+    auto a = geom.GetPoint(f.i0);
+    auto b = geom.GetPoint(f.i1);
+    auto c = geom.GetPoint(f.i2);
 
-            fbGeom.AddFace(a, b, c);
-        }
+    fbGeom.AddFace(a, b, c);
+  }
 
-        return fbGeom;
+  return fbGeom;
+}
+
+IfcGeometry ConwayGeometryProcessor::FBGeomToGeom(
+    const fuzzybools::Geometry &fbGeom) {
+  IfcGeometry geom;
+
+  for (size_t i = 0; i < fbGeom.numFaces; i++) {
+    const fuzzybools::Face &f = fbGeom.GetFace(i);
+
+    auto a = fbGeom.GetPoint(f.i0);
+    auto b = fbGeom.GetPoint(f.i1);
+    auto c = fbGeom.GetPoint(f.i2);
+
+    geom.AddFace(a, b, c);
+  }
+
+  return geom;
+}
+
+IfcGeometry ConwayGeometryProcessor::BoolSubtract(
+    const std::vector<IfcGeometry> &firstGroups,
+    std::vector<IfcGeometry> &secondGroups) {
+  std::vector<IfcGeometry> results;
+
+  std::vector<IfcGeometry> firstGeoms;
+  for (auto &firsts : firstGroups) {
+    if (firsts.components.size() < 2) {
+      firstGeoms.push_back(firsts);
+    } else {
+      firstGeoms.insert(firstGeoms.end(), firsts.components.begin(),
+                        firsts.components.end());
     }
+  }
 
-    IfcGeometry ConwayGeometryProcessor::FBGeomToGeom(const fuzzybools::Geometry& fbGeom)
-    {
-        IfcGeometry geom;
-
-        for (size_t i = 0; i < fbGeom.numFaces; i++)
-        {
-            const fuzzybools::Face& f = fbGeom.GetFace(i);
-
-            auto a = fbGeom.GetPoint(f.i0);
-            auto b = fbGeom.GetPoint(f.i1);
-            auto c = fbGeom.GetPoint(f.i2);
-
-            geom.AddFace(a, b, c);
-        }
-
-        return geom;
+  std::vector<IfcGeometry> secondGeoms;
+  for (auto &seconds : secondGroups) {
+    if (seconds.components.size() < 2) {
+      secondGeoms.push_back(seconds);
+    } else {
+      secondGeoms.insert(secondGeoms.end(), seconds.components.begin(),
+                         seconds.components.end());
     }
+  }
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &firstGroups, std::vector<IfcGeometry> &secondGroups)
-    {
-        std::vector<IfcGeometry> results;
+  for (auto &firstGeom : firstGeoms) {
+    IfcGeometry result = firstGeom;
+    for (auto &secondGeom : secondGeoms) {
+      bool doit = true;
+      glm::dvec3 center;
+      glm::dvec3 extents;
+      result.GetCenterExtents(center, extents);
 
-        std::vector<IfcGeometry> firstGeoms;
-        for (auto &firsts : firstGroups)
-        {
-            if (firsts.components.size() < 2)
-            {
-                firstGeoms.push_back(firsts);
-            }
-            else
-            {
-                firstGeoms.insert(firstGeoms.end(), firsts.components.begin(), firsts.components.end());
-            }
-        }
+      glm::dvec3 s_center;
+      glm::dvec3 s_extents;
+      secondGeom.GetCenterExtents(s_center, s_extents);
 
-        std::vector<IfcGeometry> secondGeoms;
-        for (auto &seconds : secondGroups)
-        {
-            if (seconds.components.size() < 2)
-            {
-                secondGeoms.push_back(seconds);
-            }
-            else
-            {
-                secondGeoms.insert(secondGeoms.end(), seconds.components.begin(), seconds.components.end());
-            }
-        }
+      if (secondGeom.numFaces == 0) {
+        printf("bool aborted due to empty source or target");
 
-        for (auto &firstGeom : firstGeoms)
-        {
-            IfcGeometry result = firstGeom;
-            for (auto &secondGeom : secondGeoms)
-            {
-                bool doit = true;
-                glm::dvec3 center;
-                glm::dvec3 extents;
-                result.GetCenterExtents(center, extents);
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        doit = false;
+      }
 
-                glm::dvec3 s_center;
-                glm::dvec3 s_extents;
-                secondGeom.GetCenterExtents(s_center, s_extents);
+      if (result.numFaces == 0) {
+        printf("bool aborted due to empty source or target");
 
-                if (secondGeom.numFaces == 0)
-                {
-                    printf("bool aborted due to empty source or target");
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        break;
+      }
 
-                        // bail out because we will get strange meshes
-                        // if this happens, probably there's an issue parsing the mesh that occurred earlier
-                    doit = false;
-                }
+      if (doit) {
+        auto fb1 = GeomToFBGeom(result);
+        auto fb2 = GeomToFBGeom(secondGeom);
 
-                if (result.numFaces == 0)
-                {
-                    printf("bool aborted due to empty source or target");
-
-                        // bail out because we will get strange meshes
-                        // if this happens, probably there's an issue parsing the mesh that occurred earlier
-                    break;
-                }
-
-                if (doit)
-                {
-                   
-                    auto fb1 = GeomToFBGeom(result);
-                    auto fb2 = GeomToFBGeom(secondGeom);
-
-                    result = FBGeomToGeom(fuzzybools::Subtract(fb1, fb2));
-                }
-            }
-            results.push_back(result);
-        }
-
-        return flattenGeometry(results);
+        result = FBGeomToGeom(fuzzybools::Subtract(fb1, fb2));
+      }
     }
+    results.push_back(result);
+  }
+
+  return flattenGeometry(results);
+}
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
-
   IfcGeometry resultGeometry =
       BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
@@ -205,8 +193,9 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   profile.isConvex = false;
   profile.curve = parameters.curve;
 
-  conway::geometry::IfcGeometry geom = Extrude(profile, extrusionNormal, extrudeDistance,
-                                     localPlaneNormal, localPlanePos);
+  conway::geometry::IfcGeometry geom =
+      Extrude(profile, extrusionNormal, extrudeDistance, localPlaneNormal,
+              localPlanePos);
   // auto geom = Extrude(profile, surface.transformation, extrusionNormal,
   // EXTRUSION_DISTANCE_HALFSPACE);
 
@@ -220,9 +209,9 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
     }
   }
 
-  #ifdef DUMP_CSG_MESHES
-    DumpIfcGeometry(geom, L"pbhs.obj");
-  #endif
+#ifdef DUMP_CSG_MESHES
+  DumpIfcGeometry(geom, L"pbhs.obj");
+#endif
 
   return geom;
 }
@@ -457,513 +446,6 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 
   return glm::dmat3();
 }
-
-/*template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputePolylineCurve(IfcCurve<DIM> &curve,
-                            glm::vec<DIM, glm::f64> points, bool edge,
-                            int sameSense = -1) {
-    for (auto &point : points) {
-      curve.Add(point);
-    }
-
-    if (edge) {
-      if (sameSense == 1 || sameSense == -1) {
-        std::reverse(curve.points.begin(), curve.points.end());
-      }
-    }
-  }
-
-template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeCompositeCurve(IfcCurve<DIM> &curve,
-                             glm::vec<DIM, glm::f64> points, bool edge,
-                             int sameSense = -1) {
-    // todo: recursion
-  }
-
-template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeCompositeCurveSegment(IfcCurve<DIM>
-&curve, glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1) {
-    // todo: recursion
-  }
-
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeCurveLine(IfcCurve<DIM> &curve, bool
-edge, TrimmingArguments trim, int sameSense = -1) { bool condition = sameSense
-== 1 || sameSense == -1; if (edge) { condition = !condition;
-    }
-    if constexpr (DIM == 2) {
-      if (trim.start.hasPos && trim.end.hasPos) {
-        if (condition) {
-          curve.Add(trim.start.pos);
-          curve.Add(trim.end.pos);
-        } else {
-          curve.Add(trim.end.pos);
-          curve.Add(trim.start.pos);
-        }
-      } else if (trim.start.hasParam && trim.end.hasParam) {
-        glm::dvec3 placement = glm::dvec3(trim.position, 0);
-        glm::dvec3 vector = trim.direction;
-
-        if (condition) {
-          glm::dvec3 p1 = placement + vector * trim.start.param;
-          glm::dvec3 p2 = placement + vector * trim.end.param;
-          curve.Add(p1);
-          curve.Add(p2);
-        } else {
-          glm::dvec3 p2 = placement + vector * trim.start.param;
-          glm::dvec3 p1 = placement + vector * trim.end.param;
-          curve.Add(p1);
-          curve.Add(p2);
-        }
-      } else {
-        printf("Unsupported trimmingselect IFCLINE\n");
-      }
-    } else if constexpr (DIM == 3) {
-      if (trim.start.hasPos && trim.end.hasPos) {
-        if (condition) {
-          curve.Add(trim.start.pos3D);
-          curve.Add(trim.end.pos3D);
-        } else {
-          curve.Add(trim.end.pos3D);
-          curve.Add(trim.start.pos3D);
-        }
-      } else {
-        printf("Unsupported trimmingselect IFCLINE\n");
-      }
-    }
-  }
-
-  // case ifc::IFCTRIMMEDCURVE
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeTrimmedCurve(IfcCurve<DIM> &curve,
-glm::vec<DIM, glm::f64> points, bool edge, int sameSense = -1) {
-    // todo: recursion
-  }
-
-// case ifc::IFCINDEXEDPOLYCURVE
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeIndexedPolycurve(IfcCurve<DIM> &curve,
-                               std::vector<glm::dvec2> points,
-                               uint32_t numSegments,
-                               CurveSegmentIndex *segments, bool curveLineIndex,
-                               bool selfIntersects) {
-    if (selfIntersects) {
-      printf("Self intersecting ifcindexedpolycurve");
-      return;
-    }
-
-    if constexpr (DIM == 2) {
-      for (size_t segmentIndex = 0; segmentIndex < numSegments;
-           segmentIndex++) {
-        CurveSegmentIndex segment = segments[segmentIndex];
-        if (segment.curveType == CurveType::lineIndex) {
-          for (size_t currentIndex = 0; currentIndex < segment.indicesCount;
-               currentIndex++) {
-            curve.Add(points[segment.indices[currentIndex] - 1]);
-          }
-        } else if (segment.curveType == CurveType::arcIndex) {
-          IfcCurve<2> arc = BuildArc3Pt(points[segment.indices[0] - 1],
-                                        points[segment.indices[1] - 1],
-                                        points[segment.indices[2] - 1]);
-
-          for (auto &pt : arc.points) {
-            curve.Add(pt);
-          }
-        }
-      }
-    } else {
-      printf("Parsing ifcindexedpolycurve in 3D is not possible");
-    }
-  }
-
-  // case ifc::IFCCIRCLE
-  // TODO: Rework this parameter list, I really don't like it. Probably should
-  // split all 2D and 3D functions and get rid of the DIM template.
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeCircleCurve(IfcCurve<DIM> &curve,
-glm::mat4 placementMat4, glm::mat3 placementMat3, double radius, bool
-selfIntersects, TrimmingArguments trim, int trimSense = -1, int sameSense = -1)
-{ glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement; if constexpr
-(DIM == 2) { placement = placementMat3; } else { placement = placementMat4;
-    }
-
-    double startDegrees = 0;
-    double endDegrees = 360;
-
-    if (trim.exist) {
-      if (trim.start.hasParam && trim.end.hasParam) {
-        startDegrees = trim.start.param;
-        endDegrees = trim.end.param;
-      } else if (trim.start.hasPos && trim.end.hasPos) {
-        if constexpr (DIM == 2) {
-          double xx = placement[2].x - trim.start.pos.x;
-          double yy = placement[2].y - trim.start.pos.y;
-          startDegrees = VectorToAngle(xx, yy);
-          xx = placement[2].x - trim.end.pos.x;
-          yy = placement[2].y - trim.end.pos.y;
-          endDegrees = VectorToAngle(xx, yy);
-        } else if constexpr (DIM == 3) {
-          glm::dvec4 vecX = placement[0];
-          glm::dvec4 vecY = placement[1];
-          glm::dvec4 vecZ = placement[2];
-
-          glm::dvec3 v1 = glm::dvec3(trim.start.pos3D.x - placement[3].x,
-                                     trim.start.pos3D.y - placement[3].y,
-                                     trim.start.pos3D.z - placement[3].z);
-          glm::dvec3 v2 = glm::dvec3(trim.end.pos3D.x - placement[3].x,
-                                     trim.end.pos3D.y - placement[3].y,
-                                     trim.end.pos3D.z - placement[3].z);
-
-          double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
-          double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-          // double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
-
-          double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
-          double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-          // double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
-
-          endDegrees = VectorToAngle(dxS, dyS) - 90;
-          startDegrees = VectorToAngle(dxE, dyE) - 90;
-        }
-      }
-    }
-
-    double startRad = startDegrees / 180 * CONST_PI;
-    double endRad = endDegrees / 180 * CONST_PI;
-    double lengthDegrees = endDegrees - startDegrees;
-
-    // unset or true
-    if (trimSense == 1 || trimSense == -1) {
-      if (lengthDegrees < 0) {
-        lengthDegrees += 360;
-      }
-    } else {
-      if (lengthDegrees > 0) {
-        lengthDegrees -= 360;
-      }
-    }
-
-    double lengthRad = lengthDegrees / 180 * CONST_PI;
-
-    size_t startIndex = curve.points.size();
-
-    // const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-    const int numSegments = GeometryProcessorSettings::CIRCLE_SEGMENTS_HIGH;
-
-    for (int i = 0; i < numSegments; i++) {
-      double ratio = static_cast<double>(i) / (numSegments - 1);
-      double angle = startRad + ratio * lengthRad;
-
-      if (sameSense == 0) {
-        angle = endRad - ratio * lengthRad;
-      }
-
-      glm::vec<DIM, glm::f64> pos;
-      if constexpr (DIM == 2) {
-        glm::dvec2 vec(0);
-        vec[0] = radius * std::cos(angle);
-        vec[1] =
-            -radius *
-            std::sin(angle);  // not sure why we need this, but we apparently do
-        pos = placement * glm::dvec3(vec, 1);
-      } else {
-        glm::dvec3 vec(0);
-        vec[0] = radius * std::cos(angle);
-        vec[1] = -radius * std::sin(angle);  // negative or not???
-        pos = placement * glm::dvec4(glm::dvec3(vec), 1);
-      }
-      curve.Add(pos);
-    }
-
-    // without a trim, we close the circle
-    if (!trim.exist) {
-      curve.Add(curve.points[startIndex]);
-    }
-  }
-
-  // case ifc::IFCELLIPSE
-  // TODO: Rework this parameter list, I really don't like it. Probably should
-  // split all 2D and 3D functions and get rid of the DIM template.
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeEllipseCurve(IfcCurve<DIM> &curve,
-glm::mat4 placementMat4, glm::mat3 placementMat3, double radius1, double
-radius2, TrimmingArguments trim, int trimSense = -1, int sameSense = -1) {
-    glm::mat<DIM + 1, DIM + 1, glm::f64, glm::defaultp> placement;
-    if constexpr (DIM == 2) {
-      placement = placementMat3;
-    } else {
-      placement = placementMat4;
-    }
-
-    double startDegrees = 0;
-    double endDegrees = 360;
-
-    if (trim.exist) {
-      if (trim.start.hasParam && trim.end.hasParam) {
-        startDegrees = trim.start.param;
-        endDegrees = trim.end.param;
-      } else if (trim.start.hasPos && trim.end.hasPos) {
-        if constexpr (DIM == 2) {
-          double xx = placement[2].x - trim.start.pos.x;
-          double yy = placement[2].y - trim.start.pos.y;
-          startDegrees = VectorToAngle(xx, yy);
-          xx = placement[2].x - trim.end.pos.x;
-          yy = placement[2].y - trim.end.pos.y;
-          endDegrees = VectorToAngle(xx, yy);
-        } else if constexpr (DIM == 3) {
-          glm::dvec4 vecX = placement[0];
-          glm::dvec4 vecY = placement[1];
-          glm::dvec4 vecZ = placement[2];
-
-          glm::dvec3 v1 = glm::dvec3(trim.start.pos3D.x - placement[3].x,
-                                     trim.start.pos3D.y - placement[3].y,
-                                     trim.start.pos3D.z - placement[3].z);
-          glm::dvec3 v2 = glm::dvec3(trim.end.pos3D.x - placement[3].x,
-                                     trim.end.pos3D.y - placement[3].y,
-                                     trim.end.pos3D.z - placement[3].z);
-
-          double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
-          double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
-          // double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
-
-          double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
-          double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
-          // double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
-
-          endDegrees = VectorToAngle(dxS, dyS) - 90;
-          startDegrees = VectorToAngle(dxE, dyE) - 90;
-        }
-      }
-    }
-
-    double startRad = startDegrees / 180 * CONST_PI;
-    double endRad = endDegrees / 180 * CONST_PI;
-
-    // TODO: Because this is an ellipse you need to correct the angles
-
-    // startRad = atan((radius1 / radius2) * tan(startDegrees));
-    // endRad = atan((radius1 / radius2) * tan(endDegrees));
-
-    double lengthDegrees = endDegrees - startDegrees;
-
-    // unset or true
-    if (trimSense == 1 || trimSense == -1) {
-      if (lengthDegrees < 0) {
-        lengthDegrees += 360;
-      }
-    } else {
-      if (lengthDegrees > 0) {
-        lengthDegrees -= 360;
-      }
-    }
-
-    double lengthRad = lengthDegrees / 180 * CONST_PI;
-
-    size_t startIndex = curve.points.size();
-
-    // const int numSegments = _loader.GetSettings().CIRCLE_SEGMENTS_HIGH;
-    const int numSegments = GeometryProcessorSettings::CIRCLE_SEGMENTS_HIGH;
-
-    for (int i = 0; i < numSegments; i++) {
-      double ratio = static_cast<double>(i) / (numSegments - 1);
-      double angle = startRad + ratio * lengthRad;
-      if (sameSense == 0) {
-        angle = endRad - ratio * lengthRad;
-      }
-      glm::vec<DIM, glm::f64> pos;
-      if constexpr (DIM == 2) {
-        glm::dvec2 vec(0);
-        vec[0] = radius1 * std::cos(angle);
-        vec[1] = -radius2 * std::sin(angle);
-        pos = placement * glm::dvec3(vec, 1);
-      } else {
-        glm::dvec3 vec(0);
-        vec[0] = radius1 * std::cos(angle);
-        vec[1] = -radius2 * std::sin(angle);  // negative or not???
-        pos = placement * glm::dvec4(glm::dvec3(vec), 1);
-      }
-      curve.Add(pos);
-    }
-
-    // without a trim, we close the circle
-    if (!trim.exist) {
-      curve.Add(curve.points[startIndex]);
-    }
-  }
-
-  // case ifc::IFCBSPLINECURVE
-  template <uint32_t DIM>
-  void ConwayGeometryProcessor::ComputeBsplineCurve(IfcCurve<DIM> &curve,
-                           std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-                           std::vector<glm::f64> knots,
-                           std::vector<glm::f64> weights, double degree,
-                           bool edge, int sameSense = -1) {
-    bool condition = sameSense == 0;
-    if (edge) {
-      condition = !condition;
-    }
-
-    if (knots.size() != ctrolPts.size() + degree + 1) {
-      std::cout << "Error: Knots and control points do not match" << std::endl;
-    }
-
-    std::vector<glm::vec<DIM, glm::f64>> tempPoints =
-        GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-    for (int i = 0; i < tempPoints.size(); i++) {
-      curve.Add(tempPoints[i]);
-    }
-
-    if (condition) {
-      std::reverse(curve.points.begin(), curve.points.end());
-    }
-  }
-
-  /*
-  * The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-  functions for which the knot values are explicitly given.
-  * This is the type of b-spline curve for which the knot values are explicitly
-  given. This subtype shall be used to represent non-uniform B-spline curves and
-  may be used for other knot types.
-  * Let L denote the number of distinct values amongst the d+k+2 knots in the
-  knot list; L will be referred to as the ‘upper index on knots’. Let mj denote
-  the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
-
-  * All knot multiplicities except the first and the last shall be in the range
-  1,...,d; the first and last may have a maximum value of d + 1. In evaluating
-  the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a
-  sequence u, u, u,; in the knot array.
-  * @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
-  * @param knotMultiplicities == The multiplicities of the knots. This list
-  defines the number of times each knot in the knots list is to be repeated in
-  constructing the knot array.
-  * @param distinctKnots == The list of distinct knots used to define the
-  B-spline basis functions.
-  */
-// case ifc::IFCBSPLINECURVEWITHKNOTS
-/*template <uint32_t DIM>
-void ConwayGeometryProcessor::ComputeBsplineCurveWithKnots(
-    IfcCurve<DIM> &curve, std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-    std::vector<glm::f64> knotMultiplicities,
-    std::vector<glm::f64> distinctKnots, double degree, bool edge,
-    int sameSense = -1) {
-  bool condition = sameSense == 0;
-  if (edge) {
-    condition = !condition;
-  }
-
-  // The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-  // functions for which the knot values are explicitly given. This is the
-  // type of b-spline curve for which the knot values are explicitly given.
-  // This subtype shall be used to represent non-uniform B-spline curves and
-  // may be used for other knot types. Let L denote the number of distinct
-  // values amongst the d+k+2 knots in the knot list; L will be referred to as
-  // the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number
-  // of repetitions) of the _j_th distinct knot.
-
-  // All knot multiplicities except the first and the last shall be in the
-  // range 1,...,d; the first and last may have a maximum value of d + 1. In
-  // evaluating the basis functions, a knot u of, e.g., multiplicity 3 is
-  // interpreted as a sequence u, u, u,; in the knot array.
-  std::vector<glm::f64> knots;
-  std::vector<glm::f64> weights;
-
-  for (int k = 0; k < distinctKnots.size(); k++) {
-    double knot = distinctKnots[k];
-    for (int i = 0; i < knotMultiplicities[k]; i++) {
-      knots.push_back(knot);
-    }
-  }
-
-  if (knots.size() != ctrolPts.size() + degree + 1) {
-    std::cout << "Error: Knots and control points do not match" << std::endl;
-  }
-
-  // build default weights vector
-  for (int i = 0; i < ctrolPts.size(); i++) {
-    weights.push_back(1);
-  }
-
-  std::vector<glm::vec<DIM, glm::f64>> tempPoints =
-      GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-  for (int i = 0; i < tempPoints.size(); i++) {
-    curve.Add(tempPoints[i]);
-  }
-
-  if (condition) {
-    std::reverse(curve.points.begin(), curve.points.end());
-  }
-}
-
-/*
-* The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-functions for which the knot values are explicitly given.
-* This is the type of b-spline curve for which the knot values are explicitly
-given. This subtype shall be used to represent non-uniform B-spline curves and
-may be used for other knot types.
-* Let L denote the number of distinct values amongst the d+k+2 knots in the
-knot list; L will be referred to as the ‘upper index on knots’. Let mj denote
-the multiplicity (i.e., number of repetitions) of the _j_th distinct knot.
-
-* All knot multiplicities except the first and the last shall be in the range
-1,...,d; the first and last may have a maximum value of d + 1. In evaluating
-the basis functions, a knot u of, e.g., multiplicity 3 is interpreted as a
-sequence u, u, u,; in the knot array.
-* @param ctrolPts == list GetCartesianPoint<DIM>(pointId)
-* @param knotMultiplicities == The multiplicities of the knots. This list
-defines the number of times each knot in the knots list is to be repeated in
-constructing the knot array.
-* @param distinctKnots == The list of distinct knots used to define the
-B-spline basis functions.
-* @param weights == list double
-*/
-// case ifc::IFCRATIONALBSPLINECURVEWITHKNOTS
-/*template <uint32_t DIM>
-void ConwayGeometryProcessor::ComputeRationalBsplineCurveWithKnots(
-    IfcCurve<DIM> &curve, std::vector<glm::vec<DIM, glm::f64>> ctrolPts,
-    std::vector<glm::f64> knotMultiplicities,
-    std::vector<glm::f64> distinctKnots, std::vector<glm::f64> weights,
-    double degree, bool edge, int sameSense = -1) {
-  bool condition = sameSense == 0;
-  if (edge) {
-    condition = !condition;
-  }
-
-  // The IfcBSplineCurveWithKnots is a spline curve parameterized by spline
-  // functions for which the knot values are explicitly given. This is the
-  // type of b-spline curve for which the knot values are explicitly given.
-  // This subtype shall be used to represent non-uniform B-spline curves and
-  // may be used for other knot types. Let L denote the number of distinct
-  // values amongst the d+k+2 knots in the knot list; L will be referred to as
-  // the ‘upper index on knots’. Let mj denote the multiplicity (i.e., number
-  // of repetitions) of the _j_th distinct knot.
-
-  // All knot multiplicities except the first and the last shall be in the
-  // range 1,...,d; the first and last may have a maximum value of d + 1. In
-  // evaluating the basis functions, a knot u of, e.g., multiplicity 3 is
-  // interpreted as a sequence u, u, u,; in the knot array.
-  std::vector<glm::f64> knots;
-
-  for (int k = 0; k < distinctKnots.size(); k++) {
-    double knot = distinctKnots[k];
-    for (int i = 0; i < knotMultiplicities[k]; i++) {
-      knots.push_back(knot);
-    }
-  }
-
-  if (knots.size() != ctrolPts.size() + degree + 1) {
-    std::cout << "Error: Knots and control points do not match" << std::endl;
-  }
-
-  std::vector<glm::vec<DIM, glm::f64>> tempPoints =
-      GetRationalBSplineCurveWithKnots(degree, ctrolPts, knots, weights);
-  for (int i = 0; i < tempPoints.size(); i++) {
-    curve.Add(tempPoints[i]);
-  }
-
-  if (condition) {
-    std::reverse(curve.points.begin(), curve.points.end());
-  }
-}*/
 
 glm::dmat4 ConwayGeometryProcessor::GetAxis1Placement(
     ParamsAxis1Placement3D parameters) {
