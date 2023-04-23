@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <algorithm>
 #include <unordered_map>
+#include <optional>
 #include <glm/glm.hpp>
 
 #include "ConwayCurve.h"

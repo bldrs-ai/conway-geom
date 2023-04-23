@@ -38,6 +38,8 @@
 #include <GLTFSDK/IStreamWriter.h>
 #include <GLTFSDK/Serialize.h>
 
+#include <filesystem>
+
 namespace fuzzybools {
 struct Geometry;
 }

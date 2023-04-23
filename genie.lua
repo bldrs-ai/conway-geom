@@ -54,7 +54,7 @@ solution "conway_geom"
                                 "external/draco/src/draco/scene/*.cc",
                                 "external/draco/src/draco/texture/*.cc"}
 
-        configuration { "linux or macosx or ios or gmake" }
+        configuration { "windows or linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
 
         configuration { "windows or macosx or linux"}
@@ -65,7 +65,7 @@ solution "conway_geom"
                     ConwayTestingMain
                 }
 
-        configuration {"gmake and not macosx"}
+        configuration {"gmake and not macosx and not windows"}
         linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
         configuration {}
         libdirs {  }
@@ -163,13 +163,13 @@ solution "conway_geom"
         WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", "external/manifold/src/collider/include/*.h", "external/manifold/src/utilities/include/*.h"}
 
-        configuration { "linux or macosx or ios or gmake" }
+        configuration { "windows or linux or macosx or ios or gmake" }
         buildoptions_cpp { "-O3", "-DNDEBUG", "-Wall", "-fexceptions", "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP", "-std=c++17" }
 
         configuration { "windows or macosx or linux"}
             files { WebIfcCoreFiles, ManifoldSrcFiles, WebIfcTestSourceFiles, WebIfcTestingMain}
 
-        configuration {"gmake and not macosx"}
+        configuration {"gmake and not macosx and not windows"}
         linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
         configuration {}
         libdirs {  }

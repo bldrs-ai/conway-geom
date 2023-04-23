@@ -1,4 +1,7 @@
 #include <map>
+#include <cstdint>
+#include <stdarg.h>
+#include <stdio.h>
 
 namespace webifc::statistics {
 
