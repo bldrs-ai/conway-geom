@@ -96,24 +96,6 @@ void genIndexIfc() {
   glm::dmat4 localPlacementMatrix =
       conwayGeometryProcessor.GetAxis2Placement3D(parametersAxis2Placement3D);
 
-  /*printf("localPlacementMatrix[0][1] = %.3f, localPlacementMatrix[0][2] =
-  %.3f, localPlacementMatrix[0][3] = %.3f, localPlacementMatrix[0][4] =
-  %.3f,\n", localPlacementMatrix[0][0], localPlacementMatrix[0][1],
-  localPlacementMatrix[0][2], localPlacementMatrix[0][3]);
-  printf("localPlacementMatrix[1][1] = %.3f, localPlacementMatrix[1][2] = %.3f,
-  localPlacementMatrix[1][3] = %.3f, localPlacementMatrix[1][4] = %.3f,\n",
-  localPlacementMatrix[1][0], localPlacementMatrix[1][1],
-  localPlacementMatrix[1][2], localPlacementMatrix[1][3]);
-  printf("localPlacementMatrix[2][1] = %.3f, localPlacementMatrix[2][2] = %.3f,
-  localPlacementMatrix[2][3] = %.3f, localPlacementMatrix[2][4] = %.3f,\n",
-  localPlacementMatrix[2][0], localPlacementMatrix[2][1],
-  localPlacementMatrix[2][2], localPlacementMatrix[2][3]);
-  printf("localPlacementMatrix[3][1] = %.3f, localPlacementMatrix[3][2] = %.3f,
-  localPlacementMatrix[3][3] = %.3f, localPlacementMatrix[3][4] = %.3f,\n",
-  localPlacementMatrix[3][0], localPlacementMatrix[3][1],
-  localPlacementMatrix[3][2], localPlacementMatrix[3][3]);
-  */
-
   conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet
       parametersPolygonalFaceset;
   parametersPolygonalFaceset.numPoints = 8;
