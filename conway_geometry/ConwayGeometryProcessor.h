@@ -299,7 +299,7 @@ class ConwayGeometryProcessor {
   struct ParamsGetLoop {
     bool isEdgeLoop;
     size_t numPoints;
-    glm::dvec3 *points;
+    std::vector<glm::dvec3> points;
   };
 
   IfcCurve GetLoop(ParamsGetLoop parameters);
