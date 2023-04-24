@@ -1,6 +1,10 @@
 #!/bin/sh
 
 case "${1}" in
+    "test")
+        native_config=debug64
+        wasm_config=debugemscripten
+        ;;
     "clean")
         ( cd gmake && \
             gmake config=debug64 clean && \
@@ -18,7 +22,7 @@ case "${1}" in
         wasm_config=releaseemscripten
         ;;
     *)
-        echo "$0 <clean | debug | release>" 1>&2
+        echo "$0 <clean | debug | release | test>" 1>&2
         exit 1
         ;;
 esac
@@ -51,13 +55,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-( cd gmake && \
+if [ "$1" = "test" ]; then
+    # Your code for the 'test' case goes here
+    ( cd gmake && \
+    make config=${native_config} conway_geom_native_tests && \
+    ../bin/64/debug/conway_geom_native_tests
+    )
+    if [ $? -ne 0 ]; then
+        echo "! Build failed" 1>&2
+        exit 1
+    fi
+else
+    # Your code for other cases goes here
+    ( cd gmake && \
     make config=${native_config} conway_geom_native webifc_native && \
     make config=${wasm_config} conway_geom_wasm conway_geom_wasm_mt
-)
-if [ $? -ne 0 ]; then
-    echo "! Build failed" 1>&2
-    exit 1
+    )
+    if [ $? -ne 0 ]; then
+        echo "! Build failed" 1>&2
+        exit 1
+    fi
 fi
 
 echo "Finished."
