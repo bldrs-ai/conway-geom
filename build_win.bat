@@ -51,7 +51,7 @@ if /i "%1"=="clean" (
 )
 
 cd gmake && (
-    make config=!native_config! conway_geom_native webifc_native && make config=!wasm_config! conway_geom_wasm conway_geom_wasm_mt
+    make config=!native_config! conway_geom_native webifc_native && make config=!wasm_config! ConwayGeomWasm ConwayGeomWasm_mt
 )
 
 cd ..

@@ -69,7 +69,7 @@ else
     # Your code for other cases goes here
     ( cd gmake && \
     make config=${native_config} conway_geom_native webifc_native && \
-    make config=${wasm_config} conway_geom_wasm conway_geom_wasm_mt
+    make config=${wasm_config} ConwayGeomWasm ConwayGeomWasm_mt
     )
     if [ $? -ne 0 ]; then
         echo "! Build failed" 1>&2

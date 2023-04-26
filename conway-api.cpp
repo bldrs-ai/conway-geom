@@ -84,11 +84,11 @@ typedef std::vector<glm::vec3> glmVec3Array;
 EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
-      .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
-      .function("GetVertexDataSize", &conway::geometry::IfcGeometry::GetVertexDataSize)
-      .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
-      .function("GetIndexDataSize", &conway::geometry::IfcGeometry::GetIndexDataSize)
-      .function("AddGeometry", &conway::geometry::IfcGeometry::AddGeometry);
+      .function("getVertexData", &conway::geometry::IfcGeometry::GetVertexData)
+      .function("getVertexDataSize", &conway::geometry::IfcGeometry::GetVertexDataSize)
+      .function("getIndexData", &conway::geometry::IfcGeometry::GetIndexData)
+      .function("getIndexDataSize", &conway::geometry::IfcGeometry::GetIndexDataSize)
+      .function("addGeometry", &conway::geometry::IfcGeometry::AddGeometry);
 
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
@@ -153,12 +153,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<uint32_t>("UintVector");
   emscripten::register_vector<uint8_t>("VectorUint8");
   emscripten::register_vector<std::vector<uint8_t>>("VectorVectorUint8");
-  emscripten::function("GetGeometry", &GetGeometry);
-  emscripten::function("InitializeGeometryProcessor",
+  emscripten::function("getGeometry", &GetGeometry);
+  emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
-  emscripten::function("FreeGeometryProcessor", &FreeGeometryProcessor);
-  emscripten::function("GeometryToObj", &GeometryToObj);
-  emscripten::function("GeometryToGltf", &GeometryToGltf);
-  emscripten::function("GetUint8Array", &GetUint8Array,
+  emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);
+  emscripten::function("geometryToObj", &GeometryToObj);
+  emscripten::function("geometryToGltf", &GeometryToGltf);
+  emscripten::function("getUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
 }

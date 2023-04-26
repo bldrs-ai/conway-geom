@@ -1,14 +1,13 @@
 
-import { default as conway_geom_wasm } from "./conway_geom_wasm.js"
-
+import { default as ConwayGeomWasm } from './ConwayGeomWasm.js'
 
 
 export interface GeometryObject {
-    GetVertexData: () => any
-    GetVertexDataSize: () => number
-    GetIndexData: () => any
-    GetIndexDataSize: () => number
-    AddGeometry(parameter: GeometryObject): void
+    getVertexData: () => any
+    getVertexDataSize: () => number
+    getIndexData: () => any
+    getIndexDataSize: () => number
+    addGeometry(parameter: GeometryObject): void
 }
 
 export interface ParamsPolygonalFaceSet {
@@ -26,54 +25,78 @@ export interface ResultsGltf {
     buffers: any
 }
 
-export type LocateFileHandlerFn = (path: string, prefix: string) => string
-
+/**
+ * Internal interface for wasm module, geometry processing
+ * OBJ + GLTF + GLB (Draco) Conversions
+ */
 export class ConwayGeometry {
-    modelId: number = -1
-    //private module: any
+  modelId: number = -1
+  public wasmModule: undefined | any = undefined
+  initialized = false
 
-    public wasmModule: undefined | any = undefined
-    fs: undefined | any = undefined
-    wasmPath: string = ""
-    isWasmPathAbsolute = false
-    initialized = false
+  /**
+   *
+   * @param wasmModule_ - Pass loaded wasm module to this function if it's already loaded
+   */
+  constructor(wasmModule_?: any) {
+    if (typeof wasmModule_ !== 'undefined') {
+      this.wasmModule = wasmModule_
+    }
+  }
 
-    constructor() {
+  /**
+   *
+   * @return {Promise<number>} - modelId after initialization is done
+   */
+  async initialize(): Promise<number> {
+    if (!this.wasmModule) {
+      this.wasmModule = await new ConwayGeomWasm()
     }
 
-    async initialize() {
-        if (!this.wasmModule) {
-            this.wasmModule = await new conway_geom_wasm()
-        }
-        //console.log(this.wasmModule)
-        this.modelId = this.wasmModule.InitializeGeometryProcessor()
+    this.modelId = this.wasmModule.initializeGeometryProcessor()
+    this.initialized = true
+    return this.modelId
+  }
 
-        //console.log("modelId: " + this.modelId)
+  /**
+   *
+   * @param parameters - ParamsPolygonalFaceSet parsed from data model
+   * @return {GeometryObject} - Native geometry object
+   */
+  getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
+    const result = this.wasmModule.getGeometry(this.modelId, parameters)
+    return result
+  }
 
-        this.initialized = true
-    }
+  /**
+   *
+   * @param geometry - Native geometry object
+   * @param isGlb  - boolean if the output should be a single GLB file
+   * @param outputDraco - boolean should the output use Draco compression
+   * @param fileUri - string of base name for output files
+   * @return {ResultsGltf} - boolean success + buffers + file uris
+   */
+  toGltf(geometry: GeometryObject, isGlb: boolean, outputDraco: boolean, fileUri: string):
+  ResultsGltf {
+    return this.wasmModule.geometryToGltf(this.modelId, geometry, isGlb, outputDraco, fileUri)
+  }
 
-    addGeometry(parameter: GeometryObject) {
-        this.wasmModule.AddGeometry(parameter)
-    }
+  /**
+   *
+   * @param geometry - Native Geometry Object
+   * @return {string} - containing OBJ file contents
+   */
+  toObj(geometry: GeometryObject): string {
+    return this.wasmModule.geometryToObj(this.modelId, geometry, 0)
+  }
 
-    getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
-        const result = this.wasmModule.GetGeometry(this.modelId, parameters)
-        return result
-    }
-
-    toGltf(geometry: GeometryObject, isGlb: boolean, outputDraco: boolean, fileUri: string): ResultsGltf {
-        return this.wasmModule.GeometryToGltf(this.modelId, geometry, isGlb, outputDraco, fileUri)
-    }
-
-    toObj(geometry: GeometryObject): string {
-        return this.wasmModule.GeometryToObj(this.modelId, geometry, 0)
-    }
-
-    destroy() {
-        this.wasmModule.FreeGeometryProcessor(this.modelId)
-        this.modelId = -1
-        this.initialized = false;
-    }
+  /**
+   * Frees the geometry processor
+   */
+  destroy() {
+    this.wasmModule.freeGeometryProcessor(this.modelId)
+    this.modelId = -1
+    this.initialized = false
+  }
 }
 

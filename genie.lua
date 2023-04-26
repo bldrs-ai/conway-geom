@@ -198,7 +198,7 @@ solution "conway_geom"
                         }
         
                 configuration {"gmake and not macosx and not windows"}
-                linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
+                linkoptions { "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native_tests -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
                 configuration {}
                 libdirs {  }
                 links {  }
@@ -348,7 +348,7 @@ solution "conway_geom"
             flags { "EnableAVX2" }
 
 
-    project "conway_geom_wasm"
+    project "ConwayGeomWasm"
     language "C++"
         kind "ConsoleApp"
         files {}
@@ -402,7 +402,7 @@ solution "conway_geom"
 		)"}
 
         configuration {"gmake"}
-        linkoptions {"-O3", "--bind", "--dts", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_wasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
+        linkoptions {"-O3", "--bind", "--dts", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
 		
         configuration {}
         libdirs {  }
@@ -488,7 +488,7 @@ solution "conway_geom"
             flags { "EnableAVX2" }
 
 
-    project "conway_geom_wasm_mt"
+    project "ConwayGeomWasm_mt"
     language "C++"
         kind "ConsoleApp"
         files {}
@@ -543,7 +543,7 @@ solution "conway_geom"
 		)"}
 
         configuration { "gmake" }
-        linkoptions { "-pthread", "-s PTHREAD_POOL_SIZE=navigator.hardwareConcurrency", "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
+        linkoptions { "-pthread", "-s PTHREAD_POOL_SIZE=navigator.hardwareConcurrency", "--bind", "-03", "-flto", "--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm_mt -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"] -lworkerfs.js" }
         configuration {}
         libdirs {  }
         links {  }
