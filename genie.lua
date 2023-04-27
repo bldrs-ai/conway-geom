@@ -1,6 +1,6 @@
 
 solution "conway_geom"
-    configurations { "Debug", "Release"} --"WasmDebug", "WasmRelease" }
+    configurations { "Debug", "Release"}
     includedirs    { "include" }
     location       ( _ACTION )
 
@@ -92,9 +92,6 @@ solution "conway_geom"
             "external/draco/src",
             "external/fuzzy-bools",
             "external/fuzzy-bools/deps/cdt"
-            --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
-            
-            --"$(EMSDK)/upstream/emscripten/system/include"
         }    
 
         excludes 
@@ -159,7 +156,6 @@ solution "conway_geom"
         
                 ConwayCoreFiles       = { "conway_geometry/*.h", "conway_geometry/*.cpp", "conway_geometry/operations/**.*", "conway_geometry/representation/**.*"}
                 ConwayTestSourceFiles = { "test/*.cpp" }
-                --ConwayTestingMain     = { "conway-test.cpp"}
                 ManifoldSrcFiles      = { "external/manifold/src/**.*", 
                 "external/manifold/src/collider/include/*.h", 
                 "external/manifold/src/utilities/include/*.h"}
@@ -224,9 +220,6 @@ solution "conway_geom"
                     "external/draco/src",
                     "external/fuzzy-bools",
                     "external/fuzzy-bools/deps/cdt"
-                    --"/Users/soar/Documents/GitHub/emsdk/upstream/emscripten/system/include"
-                    
-                    --"$(EMSDK)/upstream/emscripten/system/include"
                 }    
         
                 excludes 
@@ -291,7 +284,6 @@ solution "conway_geom"
 
         WebIfcCoreFiles       = { "geometry/**.*", "parsing/**.*", "utility/**.*", "schema/**.*" }
         WebIfcSourceFiles     = { "web-ifc-api.cpp" }
-        --WebIfcTestSourceFiles = { "test/*.cpp" }
         WebIfcTestingMain     = { "web-ifc-test.cpp" }
         ManifoldSrcFiles      = { "external/manifold/src/**.*", "external/manifold/src/collider/include/*.h", "external/manifold/src/utilities/include/*.h"}
 
