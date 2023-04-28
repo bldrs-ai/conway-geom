@@ -9,3 +9,5 @@ ConwayGeomWasm_mt.worker.js
 ConwayGeomWasm_mt.js
 ConwayGeomWasm.js
 .vscode/
+.DS_Store
+**/.DS_Store
