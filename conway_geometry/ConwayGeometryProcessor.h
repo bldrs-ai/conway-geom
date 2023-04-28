@@ -102,7 +102,7 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCMAPPEDITEM:
   struct ParamsGetMappedItem {
-    glm::dmat4 transformation;
+    glm::dmat4 transformation = glm::dmat4();
     IfcComposedMesh ifcPresentationMesh;
   };
 
@@ -113,16 +113,16 @@ class ConwayGeometryProcessor {
   // case ifc::IFCBOOLEANCLIPPINGRESULT:
   // case ifc::IFCBOOLEANRESULT:
   struct ParamsGetBooleanResult {
-    std::vector<IfcGeometry> &flatFirstMesh;
-    std::vector<IfcGeometry> &flatSecondMesh;
-    bool clippingResult;
+    std::vector<IfcGeometry> flatFirstMesh;
+    std::vector<IfcGeometry> flatSecondMesh;
+    bool clippingResult = false;
   };
   IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {
-    IfcSurface &surface;
-    bool flipWinding;
+    IfcSurface surface;
+    bool flipWinding = false;
     double optionalLinearScalingFactor = 1.0;
   };
 
@@ -130,10 +130,10 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
   struct ParamsGetPolygonalBoundedHalfspace {
-    IfcSurface &surface;
+    IfcSurface surface;
     glm::dmat4 position;
     conway::geometry::IfcCurve curve;
-    bool halfSpaceInPlaneDirection;  // agreement != "T"
+    bool halfSpaceInPlaneDirection = false;  // agreement != "T"
     double optionalLinearScalingFactor = 1.0;
   };
 
@@ -148,22 +148,22 @@ class ConwayGeometryProcessor {
   // case ifc::IFCOPENSHELL:
   // These cases are handled by getBrep()
   struct ParamsAddFaceToGeometry {
-    uint32_t boundsSize;
+    uint32_t boundsSize = 0;
     uint32_t *indices;
-    uint32_t indicesPerFace;
-    IfcBound3D *boundsArray;
-    bool advancedBrep;
-    IfcSurface *surface;
+    uint32_t indicesPerFace = 0;
+    std::vector<IfcBound3D> boundsArray;
+    bool advancedBrep = false;
+    IfcSurface surface;
   };
 
   struct ParamsGetBrep {
-    uint32_t boundsSize;
-    uint32_t indicesPerFace;
-    size_t numIndices;
-    uint32_t *indices;
-    IfcBound3D *boundsArray;
-    bool advancedBrep;
-    IfcSurface *surface;
+    uint32_t boundsSize = 0;
+    uint32_t indicesPerFace = 0;
+    size_t numIndices = 0;
+    std::vector<uint32_t> indices;
+    std::vector<IfcBound3D> boundsArray;
+    bool advancedBrep = false;
+    IfcSurface surface;
   };
 
   IfcGeometry getBrep(ParamsGetBrep parameters);
@@ -176,51 +176,46 @@ class ConwayGeometryProcessor {
   // case ifc::IFCFACEBASEDSURFACEMODEL:
   // case ifc::IFCSHELLBASEDSURFACEMODEL:
   struct ParamsGetSurfaceModel {
-    uint32_t numShellRefs;
-    ParamsGetBrep *shells;
+    uint32_t numShellRefs = 0;
+    std::vector<ParamsGetBrep> shells;
   };
 
-  struct ResponseGeometryArray {
-    uint32_t numRepresentations;
-    IfcGeometry *geometryArray;
-  };
-
-  ResponseGeometryArray GetSurfaceModel(ParamsGetSurfaceModel parameters);
+  std::vector<IfcGeometry> GetSurfaceModel(ParamsGetSurfaceModel parameters);
 
   // case ifc::IFCPLANE:
   // case ifc::IFCBSPLINESURFACE:
   // case ifc::IFCBSPLINESURFACEWITHKNOTS:
   // case ifc::IFCRATIONALBSPLINESURFACEWITHKNOTS:
   struct ParamsGetSurface {
-    bool isPlane;
+    bool isPlane = false;
     glm::dmat4 transformation;
-    bool isBsplineSurface;
-    double Udegree;
-    double Vdegree;
+    bool isBsplineSurface = false;
+    double Udegree = 0;
+    double Vdegree = 0;
     // TODO(nickcastel50): How do we pass these across?
     std::vector<std::vector<glm::vec<3, glm::f64>>> ctrolPts;
     std::string curveType;
     std::string closedU;
     std::string closedV;
     std::string selfIntersect;
-    bool isBsplineSurfaceWithKnots;
+    bool isBsplineSurfaceWithKnots = false;
     std::vector<glm::f64> UMultiplicity;
     std::vector<glm::f64> VMultiplicity;
     std::vector<glm::f64> UKnots;
     std::vector<glm::f64> VKnots;
-    bool isRationalBsplineSurfaceWithKnots;
+    bool isRationalBsplineSurfaceWithKnots = false;
     std::vector<std::vector<glm::f64>> weightPts;
-    bool isCylindricalSurface;
-    double radius;
-    bool isSurfaceOfRevolution;
+    bool isCylindricalSurface = false;
+    double radius = 0;
+    bool isSurfaceOfRevolution = false;
     glm::dmat4 revolutionDirection;
     IfcProfile3D revolutionProfile;
-    bool includeTransformation;
-    bool isSurfaceOfLinearExtrusion;
+    bool includeTransformation = false;
+    bool isSurfaceOfLinearExtrusion = false;
     glm::dvec3 extrusionDirection;
     IfcProfile extrusionProfile;
-    bool customLength;
-    double length;
+    bool customLength = false;
+    double length = 0;
   };
   IfcSurface GetSurface(ParamsGetSurface parameters);
 
@@ -228,18 +223,18 @@ class ConwayGeometryProcessor {
   // case ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2D:
   // case ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM:
   struct ParamsGetAxis2Placement2D {
-    bool isAxis2Placement2D;
-    bool isCartesianTransformationOperator2D;
-    bool isCartesianTransformationOperator2DNonUniform;
+    bool isAxis2Placement2D = false;
+    bool isCartesianTransformationOperator2D = false;
+    bool isCartesianTransformationOperator2DNonUniform = false;
     glm::dvec2 position2D;
-    bool customAxis1Ref;
+    bool customAxis1Ref = false;
     glm::dvec2 axis1Ref;
-    bool customAxis2Ref;
+    bool customAxis2Ref = false;
     glm::dvec2 axis2Ref;
-    bool customScale;
-    double scale1;
-    bool customScale2;
-    double scale2;
+    bool customScale = false;
+    double scale1 = 0;
+    bool customScale2 = false;
+    double scale2 = 0;
   };
 
   glm::dmat3 GetAxis2Placement2D(ParamsGetAxis2Placement2D parameters);
@@ -249,7 +244,7 @@ class ConwayGeometryProcessor {
     glm::dvec3 position;
     glm::dvec3 xAxisRef;
     glm::dvec3 zAxisRef;
-    bool normalizeZ;
+    bool normalizeZ = false;
   };
   glm::dmat4 GetAxis1Placement(ParamsAxis1Placement3D parameters);
 
@@ -258,8 +253,8 @@ class ConwayGeometryProcessor {
     glm::dvec3 position;
     glm::dvec3 xAxisRef;
     glm::dvec3 zAxisRef;
-    bool normalizeZ;
-    bool normalizeX;
+    bool normalizeZ = false;
+    bool normalizeX = false;
   };
   glm::dmat4 GetAxis2Placement3D(ParamsAxis2Placement3D parameters);
 
@@ -267,7 +262,7 @@ class ConwayGeometryProcessor {
   // This case just recursively calls GetLocalPlacement, not sure if needed. See
   // GetLocalPlacement
   struct ParamsLocalPlacement {
-    bool useRelPlacement;
+    bool useRelPlacement = false;
     glm::dmat4 axis2Placement;
     glm::dmat4 relPlacement;
   };
@@ -281,14 +276,14 @@ class ConwayGeometryProcessor {
     glm::dvec3 axis1Ref;
     glm::dvec3 axis2Ref;
     glm::dvec3 axis3Ref;
-    bool normalizeAxis1;
-    bool normalizeAxis2;
-    bool normalizeAxis3;
-    bool nonUniform;
-    bool realScale;
-    double scale1_;
-    double scale2_;
-    double scale3_;
+    bool normalizeAxis1 = false;
+    bool normalizeAxis2 = false;
+    bool normalizeAxis3 = false;
+    bool nonUniform = false;
+    bool realScale = false;
+    double scale1_ = 0;
+    double scale2_ = 0;
+    double scale3_ = 0;
   };
 
   glm::dmat4 GetCartesianTransformationOperator3D(
@@ -297,16 +292,16 @@ class ConwayGeometryProcessor {
   // case ifc::IFCPOLYLOOP:
   // case ifc::IFCEDGELOOP:
   struct ParamsGetLoop {
-    bool isEdgeLoop;
-    size_t numPoints;
+    bool isEdgeLoop = false;
+    size_t numPoints = 0;
     std::vector<glm::dvec3> points;
   };
 
   IfcCurve GetLoop(ParamsGetLoop parameters);
 
   struct ParamsGetBound {
-    bool isFaceOuterBound;
-    bool orient;
+    bool isFaceOuterBound = false;
+    bool orient = false;
     ParamsGetLoop parametersGetLoop;
   };
   IfcBound3D GetBound(ParamsGetBound parameters);
@@ -314,11 +309,11 @@ class ConwayGeometryProcessor {
   // case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
   // case ifc::IFCINDEXEDPOLYGONALFACE:
   struct ParamsReadIndexedPolygonalFace {
-    size_t numPoints;
-    size_t numIndices;
-    bool indexedPolygonalFaceWithVoids;
-    glm::vec3 *points;
-    uint32_t *indices;
+    size_t numPoints = 0;
+    size_t numIndices = 0;
+    bool indexedPolygonalFaceWithVoids = false;
+    glm::vec3 *points = nullptr;
+    uint32_t *indices = nullptr;
   };
   std::vector<IfcBound3D> ReadIndexedPolygonalFace(
       ParamsReadIndexedPolygonalFace parameters);
@@ -338,15 +333,15 @@ class ConwayGeometryProcessor {
                             glm::dmat4 transform = glm::dmat4(1));
 
   // case ifc::IFCPOLYGONALFACESET:
-  struct ParamsPolygonalFaceSet {
-    size_t numPoints;
-    size_t numIndices;
-    uint32_t indicesPerFace;
-    bool indexedPolygonalFaceWithVoids;
+  struct ParamsGetPolygonalFaceSetGeometry {
+    size_t numPoints = 0;
+    size_t numIndices = 0;
+    uint32_t indicesPerFace = 0;
+    bool indexedPolygonalFaceWithVoids = false;
     std::vector<glm::vec3> points;
     std::vector<uint32_t> indices;
   };
-  IfcGeometry getPolygonalFaceSetGeometry(ParamsPolygonalFaceSet parameters);
+  IfcGeometry getPolygonalFaceSetGeometry(ParamsGetPolygonalFaceSetGeometry parameters);
 
  private:
   fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);

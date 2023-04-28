@@ -255,14 +255,7 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
       bounds3D[i] = parameters.boundsArray[i];
     }
 
-    // auto surface = GetSurface(surfRef);
-
-    if (parameters.surface == nullptr) {
-      printf("surface was nullptr\n");
-      return;
-    }
-
-    auto surface = parameters.surface[0];
+    auto surface = parameters.surface;
 
     if (surface.BSplineSurface.Active) {
       TriangulateBspline(geometry, bounds3D, surface);
@@ -278,9 +271,8 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
   }
 }
 
-conway::geometry::ConwayGeometryProcessor::ResponseGeometryArray
-ConwayGeometryProcessor::GetSurfaceModel(ParamsGetSurfaceModel parameters) {
-  ResponseGeometryArray response;
+std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel
+(ParamsGetSurfaceModel parameters) {
   std::vector<IfcGeometry> geometryArray;
 
   for (uint32_t shellIndex = 0; shellIndex < parameters.numShellRefs;
@@ -288,10 +280,7 @@ ConwayGeometryProcessor::GetSurfaceModel(ParamsGetSurfaceModel parameters) {
     geometryArray.push_back(getBrep(parameters.shells[shellIndex]));
   }
 
-  response.numRepresentations = parameters.numShellRefs;
-  response.geometryArray = geometryArray.data();
-
-  return response;
+  return geometryArray;
 }
 
 IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
@@ -1201,7 +1190,7 @@ std::string ConwayGeometryProcessor::GeometryToObj(
 }
 
 IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
-    ParamsPolygonalFaceSet parameters) {
+    ParamsGetPolygonalFaceSetGeometry parameters) {
   IfcGeometry geom;
   std::vector<IfcBound3D> bounds;
 
