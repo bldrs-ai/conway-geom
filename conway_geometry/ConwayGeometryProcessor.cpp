@@ -264,7 +264,6 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
 
     auto surface = parameters.surface[0];
 
-    // TODO: place the face in the surface and tringulate
     if (surface.BSplineSurface.Active) {
       TriangulateBspline(geometry, bounds3D, surface);
     } else if (surface.CylinderSurface.Active) {
@@ -313,7 +312,7 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.ClosedV = parameters.closedV;
     surface.BSplineSurface.CurveType = parameters.curveType;
 
-    // TODO: Old implementation wasn't returning a surface for this case.
+    // TODO(nickcastel50): Old implementation wasn't returning a surface for this case.
     return surface;
   } else if (parameters.isBsplineSurfaceWithKnots ||
              parameters.isRationalBsplineSurfaceWithKnots) {
@@ -560,7 +559,7 @@ IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
       }
     }
   } else {
-    // TODO: Handle edge loop
+    // TODO(nickcastel50): Handle edge loop
     ;
     /*auto edges = _loader.GetSetArgument();
     int id = 0;
@@ -631,7 +630,7 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
   if (!parameters.indexedPolygonalFaceWithVoids)
     return bounds;
   else
-    // TODO: handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
+    // TODO(nickcastel50): handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
     ;
 
   return bounds;
@@ -684,7 +683,7 @@ ConwayGeometryProcessor::GeometryToGltf(conway::geometry::IfcGeometry geom,
         pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
       }
 
-      // TODO: support multiple materials at some point when we add that
+      // TODO(nickcastel50): support multiple materials at some point when we add that
       int32_t numMaterials = 1;
       int32_t numTexCoords = 0;
 

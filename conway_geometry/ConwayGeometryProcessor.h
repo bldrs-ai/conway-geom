@@ -75,7 +75,7 @@ class StreamWriter : public Microsoft::glTF::IStreamWriter {
 }  // namespace
 
 namespace conway::geometry {
-// TODO: Pass these into Geometry to GLTF + GLB as a parameter
+// TODO(nickcastel50): Pass these into Geometry to GLTF + GLB as a parameter
 struct DracoOptions {
   bool isPointCloud = false;
   int posQuantizationBits = 11;
@@ -141,7 +141,7 @@ class ConwayGeometryProcessor {
       ParamsGetPolygonalBoundedHalfspace parameters);
 
   // case ifc::IFCREPRESENTATIONMAP
-  // TODO: see if this is needed
+  // TODO(nickcastel50) : see if this is needed
 
   // case ifc::IFCCONNECTEDFACESET:
   // case ifc::IFCCLOSEDSHELL:
@@ -197,7 +197,7 @@ class ConwayGeometryProcessor {
     bool isBsplineSurface;
     double Udegree;
     double Vdegree;
-    // TODO: How do we pass these across?
+    // TODO(nickcastel50): How do we pass these across?
     std::vector<std::vector<glm::vec<3, glm::f64>>> ctrolPts;
     std::string curveType;
     std::string closedU;
