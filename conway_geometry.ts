@@ -1,5 +1,5 @@
 
-import { default as ConwayGeomWasm } from './ConwayGeomWasm.js'
+import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
 
 export interface GeometryObject {
