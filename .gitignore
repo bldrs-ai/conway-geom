@@ -8,3 +8,4 @@ conway_geom_wasm_mt.wasm
 ConwayGeomWasm_mt.worker.js
 ConwayGeomWasm_mt.js
 ConwayGeomWasm.js
+.vscode/
