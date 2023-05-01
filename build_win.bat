@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 if "%1"=="" (
-    echo Usage: %0 ^<clean ^| debug ^| release^>
+    echo Usage: %0 ^<clean ^| debug ^| release ^| test^>
     exit /b 1
 )
 
@@ -45,13 +45,32 @@ if /i "%1"=="clean" (
 ) else if /i "%1"=="release" (
     set native_config=release64
     set wasm_config=releaseemscripten
+) else if /i "%1"=="test" (
+    set native_config=debug64
+    set wasm_config=debugemscripten
 ) else (
     echo %0 ^<clean ^| debug ^| release^> 1>&2
     exit /b 1
 )
 
-cd gmake && (
+if "%1"=="test" (
+    rem Your code for the 'test' case goes here
+    cd gmake && (
+        make config=!native_config! conway_geom_native_tests && ..\bin\64\debug\conway_geom_native_tests
+    )
+    if errorlevel 1 (
+        echo ! Build failed 1>&2
+        exit /b 1
+    )
+) else (
+    rem Your code for other cases goes here
+   cd gmake && (
     make config=!native_config! conway_geom_native webifc_native && make config=!wasm_config! ConwayGeomWasm ConwayGeomWasm_mt
+    )
+    if errorlevel 1 (
+        echo ! Build failed 1>&2
+        exit /b 1
+    )
 )
 
 cd ..
