@@ -39,4 +39,4 @@ As part of the project, we are considering contributing their modified Web-IFC W
 
 ## Conclusion
 
-The proposed changes to the Web-IFC WASM module aim to create a more modular and efficient system that can handle the requirements of various projects. By decoupling IFC parsing and geometry processing, implementing a custom parsing and indexing system, extending the WASM module, and developing a querying system, the team will provide a more responsive and flexible solution for collaborative viewing and editing of 3D file formats.
+The proposed changes to the Web-IFC WASM module aim to create a more modular and efficient system that can handle the requirements of various projects. By decoupling IFC parsing and geometry processing, implementing a custom parsing and indexing system, extending the WASM module, and developing a querying system, we will provide a more responsive and flexible solution for collaborative viewing and editing of 3D file formats.

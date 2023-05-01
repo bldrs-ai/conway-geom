@@ -1,3 +1,7 @@
+/*
+* Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+*/
+
 #pragma once
 
 #include <tinynurbs/tinynurbs.h>
