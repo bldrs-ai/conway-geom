@@ -51,7 +51,7 @@ std::string GeometryToObj(uint32_t modelID, conway::geometry::IfcGeometry geom,
 
 conway::geometry::IfcGeometry GetGeometry(
     uint32_t modelID,
-    conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry parameters) {
   auto& conwayProcessor = processors[modelID];
   return conwayProcessor->getPolygonalFaceSetGeometry(parameters);
 }
@@ -99,25 +99,25 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::register_vector<glm::vec3>("glmVec3Array");
 
-  // conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
   emscripten::value_object<
-      conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet>(
-      "ParamsPolygonalFaceSet")
+      conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry>(
+      "ParamsGetPolygonalFaceSetGeometry")
       .field(
           "numPoints",
-          &conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numPoints)
+          &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::numPoints)
       .field(
           "numIndices",
-          &conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet::numIndices)
+          &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::numIndices)
       .field("indicesPerFace", &conway::geometry::ConwayGeometryProcessor::
-                                   ParamsPolygonalFaceSet::indicesPerFace)
+                                   ParamsGetPolygonalFaceSetGeometry::indicesPerFace)
       .field("indexedPolygonalFaceWithVoids",
-             &conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet::
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::
                  indexedPolygonalFaceWithVoids)
       .field("points",
-             &conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet::points)
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::points)
       .field("indices",
-             &conway::geometry::ConwayGeometryProcessor::ParamsPolygonalFaceSet::indices);
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::indices);
 
   // Define the ResultsGltf object
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ResultsGltf>(
