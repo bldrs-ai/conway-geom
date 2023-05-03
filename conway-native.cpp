@@ -2,12 +2,7 @@
 #include <fstream>
 #include <iostream>
 
-/*#include "include/conway-geometry.h"
-#include "include/web-ifc.h"
-// #include "include/web-ifc-geometry.h"*/
 #include "conway_geometry/ConwayGeometryProcessor.h"
-//#include "include/ifc-schema.h"
-//#include "include/math/triangulate-with-boundaries.h"
 
 namespace conway::statistics {
 bool exportGltfs = false;
