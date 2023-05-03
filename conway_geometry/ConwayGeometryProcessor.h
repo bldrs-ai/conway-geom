@@ -1,28 +1,26 @@
 /*
 * Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+* Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/IfcGeometryProcessor.cpp
 */
 
 #pragma once
-
-#include <tinynurbs/tinynurbs.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <deque>
 #include <fstream>
-#include <glm/glm.hpp>
-#include <glm/gtx/transform.hpp>
 #include <iostream>
-#include <mapbox/earcut.hpp>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <filesystem>
 
-#include "operations/geometryutils.h"
-#include "representation/IfcGeometry.h"
-#include "representation/geometry.h"
+#include <tinynurbs/tinynurbs.h>
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
+#include <mapbox/earcut.hpp>
 
 // draco
 #include <draco/compression/config/compression_shared.h>
@@ -42,7 +40,9 @@
 #include <GLTFSDK/IStreamWriter.h>
 #include <GLTFSDK/Serialize.h>
 
-#include <filesystem>
+#include "operations/geometryutils.h"
+#include "representation/IfcGeometry.h"
+#include "representation/geometry.h"
 
 namespace fuzzybools {
 struct Geometry;

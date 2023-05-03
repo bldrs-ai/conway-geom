@@ -1,8 +1,4 @@
-
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at https://mozilla.org/MPL/2.0/.  */
-
+/* MPL License: https://github.com/nickcastel50/conway-geom/blob/dea3fc7e0a79f1d69156253df08a78820c279a33/LICENSE.md */
 //Curve Implementation of a Curve
 
 #include <vector>
