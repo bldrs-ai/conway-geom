@@ -1,1 +1,1 @@
-All files in geometry/*, parsing/*, schema/*, and utility/LoaderError.cpp, utility/LoaderError.h, utility/LoaderSettings.h, utility/Logging.cpp, and utility/Logging.h are licensed under MPL, which is available at ./MPL.md.
+All files in geometry/*, parsing/Ifc*, schema/*, and utility/LoaderError.cpp, utility/LoaderError.h, utility/LoaderSettings.h, utility/Logging.cpp, and utility/Logging.h are licensed under MPL, which is available at ./MPL.md.
