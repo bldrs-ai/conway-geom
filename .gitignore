@@ -1,13 +1,5 @@
 bin/
 gmake/
-conway_geom_wasm.js
-conway_geom_wasm_mt.js
-conway_geom_wasm_mt.worker.js
-conway_geom_wasm_mt.wasm
-*.wasm
-ConwayGeomWasm_mt.worker.js
-ConwayGeomWasm_mt.js
-ConwayGeomWasm.js
 .vscode/
 .DS_Store
 **/.DS_Store
