@@ -1,4 +1,4 @@
-/* MPL License: https://github.com/nickcastel50/conway-geom/blob/dea3fc7e0a79f1d69156253df08a78820c279a33/LICENSE.md */
+/* MPL License: https://github.com/nickcastel50/conway-geom/blob/typescript_api/LICENSE.md */
 //Curve Implementation of a Curve
 
 #include <vector>
