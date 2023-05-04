@@ -271,8 +271,8 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
   }
 }
 
-std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel
-(ParamsGetSurfaceModel parameters) {
+std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel(
+    ParamsGetSurfaceModel parameters) {
   std::vector<IfcGeometry> geometryArray;
 
   for (uint32_t shellIndex = 0; shellIndex < parameters.numShellRefs;
@@ -301,7 +301,8 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.ClosedV = parameters.closedV;
     surface.BSplineSurface.CurveType = parameters.curveType;
 
-    // TODO(nickcastel50): Old implementation wasn't returning a surface for this case.
+    // TODO(nickcastel50): Old implementation wasn't returning a surface for
+    // this case.
     return surface;
   } else if (parameters.isBsplineSurfaceWithKnots ||
              parameters.isRationalBsplineSurfaceWithKnots) {
@@ -605,22 +606,37 @@ IfcBound3D ConwayGeometryProcessor::GetBound(ParamsGetBound parameters) {
 std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
     ParamsReadIndexedPolygonalFace parameters) {
   std::vector<IfcBound3D> bounds;
+
   bounds.emplace_back();
 
-  for (size_t index = 0; index < parameters.numIndices; index++) {
-    uint32_t currentIndex = parameters.indices[index];
+  //calculate loop upper bound 
+  size_t faceIndexUpperBound = 0;
+  if (parameters.face->face_starts.size() > 1) {
+    faceIndexUpperBound =
+        parameters.face->face_starts[1] - parameters.face->face_starts[0];
+  } else {
+    faceIndexUpperBound = parameters.face->indices.size();
+  }
 
-    glm::dvec3 point = parameters.points[currentIndex - 1];
+  printf("test\n");
+
+  for (size_t index = 0; index < faceIndexUpperBound; index++) {
+    uint32_t currentIndex = parameters.face->indices[index];
+
+    glm::dvec3 point = (*parameters.points)[currentIndex - 1];
 
     // I am not proud of this (I inherited this, will change - NC)
     bounds.back().curve.points.push_back(point);
   }
 
-  if (!parameters.indexedPolygonalFaceWithVoids)
+  if (!parameters.face->face_starts.size() <= 1) {
     return bounds;
-  else
+  } else {
     // TODO(nickcastel50): handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
+
+
     ;
+  }
 
   return bounds;
 }
@@ -672,7 +688,8 @@ ConwayGeometryProcessor::GeometryToGltf(conway::geometry::IfcGeometry geom,
         pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
       }
 
-      // TODO(nickcastel50): support multiple materials at some point when we add that
+      // TODO(nickcastel50): support multiple materials at some point when we
+      // add that
       int32_t numMaterials = 1;
       int32_t numTexCoords = 0;
 
@@ -1194,25 +1211,23 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
   IfcGeometry geom;
   std::vector<IfcBound3D> bounds;
 
-  ParamsReadIndexedPolygonalFace readIndexedPolygonalFaceParameters;
-  readIndexedPolygonalFaceParameters.numIndices = parameters.indicesPerFace;
-  readIndexedPolygonalFaceParameters.indexedPolygonalFaceWithVoids =
-      parameters.indexedPolygonalFaceWithVoids;
-  readIndexedPolygonalFaceParameters.points = parameters.points.data();
 
-  for (size_t faceIndex = 0;
-       faceIndex < parameters.numIndices / parameters.indicesPerFace;
-       faceIndex++) {
-    readIndexedPolygonalFaceParameters.indices =
-        &parameters.indices[faceIndex * parameters.indicesPerFace];
-    bounds = ReadIndexedPolygonalFace(readIndexedPolygonalFaceParameters);
+printf("getPolygonalFaceSetGeometry in\n");
+  for (size_t faceIndex = 0; faceIndex < parameters.faces.size(); faceIndex++) {
+    ParamsReadIndexedPolygonalFace params(parameters.points,
+                                          parameters.faces[faceIndex]);
+
+    bounds = ReadIndexedPolygonalFace(params);
 
     TriangulateBounds(geom, bounds);
 
     bounds.clear();
   }
 
+  printf("getPolygonalFaceSetGeometry out\n");
+
   return geom;
 }
+
 
 }  // namespace conway::geometry

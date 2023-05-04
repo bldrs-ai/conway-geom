@@ -10,7 +10,8 @@
 
 #include "conway_geometry/ConwayGeometryProcessor.h"
 
-std::map<uint32_t, std::unique_ptr<conway::geometry::ConwayGeometryProcessor>> processors;
+std::map<uint32_t, std::unique_ptr<conway::geometry::ConwayGeometryProcessor>>
+    processors;
 
 uint32_t GLOBAL_MODEL_ID_COUNTER = 0;
 
@@ -32,8 +33,8 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    uint32_t modelID, conway::geometry::IfcGeometry geom, bool isGlb, bool outputDraco,
-    std::string filePath) {
+    uint32_t modelID, conway::geometry::IfcGeometry geom, bool isGlb,
+    bool outputDraco, std::string filePath) {
   auto& conwayProcessor = processors[modelID];
 
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
@@ -51,14 +52,16 @@ std::string GeometryToObj(uint32_t modelID, conway::geometry::IfcGeometry geom,
 
 conway::geometry::IfcGeometry GetGeometry(
     uint32_t modelID,
-    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+        parameters) {
   auto& conwayProcessor = processors[modelID];
   return conwayProcessor->getPolygonalFaceSetGeometry(parameters);
 }
 
 uint32_t InitializeGeometryProcessor() {
   uint32_t modelID = GLOBAL_MODEL_ID_COUNTER++;
-  auto conwayProcessor = std::make_unique<conway::geometry::ConwayGeometryProcessor>();
+  auto conwayProcessor =
+      std::make_unique<conway::geometry::ConwayGeometryProcessor>();
   processors.emplace(modelID, std::move(conwayProcessor));
 
   return modelID;
@@ -81,9 +84,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
       .function("getVertexData", &conway::geometry::IfcGeometry::GetVertexData)
-      .function("getVertexDataSize", &conway::geometry::IfcGeometry::GetVertexDataSize)
+      .function("getVertexDataSize",
+                &conway::geometry::IfcGeometry::GetVertexDataSize)
       .function("getIndexData", &conway::geometry::IfcGeometry::GetIndexData)
-      .function("getIndexDataSize", &conway::geometry::IfcGeometry::GetIndexDataSize)
+      .function("getIndexDataSize",
+                &conway::geometry::IfcGeometry::GetIndexDataSize)
       .function("addGeometry", &conway::geometry::IfcGeometry::AddGeometry);
 
   emscripten::value_object<glm::dvec4>("dvec4")
@@ -99,33 +104,37 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::register_vector<glm::vec3>("glmVec3Array");
 
-  // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+  // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
-      conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry>(
+      conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
+      "IndexedPolygonalFace")
+      .field("indices", &conway::geometry::ConwayGeometryProcessor::
+                            IndexedPolygonalFace::indices)
+      .field("face_starts", &conway::geometry::ConwayGeometryProcessor::
+                                IndexedPolygonalFace::face_starts);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetPolygonalFaceSetGeometry>(
       "ParamsGetPolygonalFaceSetGeometry")
-      .field(
-          "numPoints",
-          &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::numPoints)
-      .field(
-          "numIndices",
-          &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::numIndices)
-      .field("indicesPerFace", &conway::geometry::ConwayGeometryProcessor::
-                                   ParamsGetPolygonalFaceSetGeometry::indicesPerFace)
-      .field("indexedPolygonalFaceWithVoids",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::
-                 indexedPolygonalFaceWithVoids)
-      .field("points",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::points)
-      .field("indices",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry::indices);
+      .field("indicesPerFace",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetPolygonalFaceSetGeometry::indicesPerFace)
+      .field("points", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetPolygonalFaceSetGeometry::points)
+      .field("faces", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetPolygonalFaceSetGeometry::faces);
 
   // Define the ResultsGltf object
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ResultsGltf>(
-      "ResultsGltf")
-      .field("success", &conway::geometry::ConwayGeometryProcessor::ResultsGltf::success)
-      .field("bufferUris",
-             &conway::geometry::ConwayGeometryProcessor::ResultsGltf::bufferUris)
-      .field("buffers", &conway::geometry::ConwayGeometryProcessor::ResultsGltf::buffers);
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
+      .field("success",
+             &conway::geometry::ConwayGeometryProcessor::ResultsGltf::success)
+      .field(
+          "bufferUris",
+          &conway::geometry::ConwayGeometryProcessor::ResultsGltf::bufferUris)
+      .field("buffers",
+             &conway::geometry::ConwayGeometryProcessor::ResultsGltf::buffers);
 
   emscripten::value_array<std::array<double, 16>>("array_double_16")
       .element(emscripten::index<0>())
@@ -149,6 +158,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<uint32_t>("UintVector");
   emscripten::register_vector<uint8_t>("VectorUint8");
   emscripten::register_vector<std::vector<uint8_t>>("VectorVectorUint8");
+  emscripten::register_vector<size_t>("ULongVector");
   emscripten::function("getGeometry", &GetGeometry);
   emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
