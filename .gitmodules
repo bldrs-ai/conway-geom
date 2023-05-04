@@ -24,3 +24,6 @@
 [submodule "external/draco"]
 	path = external/draco
 	url = https://github.com/nickcastel50/draco.git
+[submodule "external/fuzzy-bools"]
+	path = external/fuzzy-bools
+	url = https://github.com/nickcastel50/fuzzy-bools.git

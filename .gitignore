@@ -1,2 +1,6 @@
 bin/
 gmake/
+.vscode/
+.DS_Store
+**/.DS_Store
+Dist/
