@@ -609,7 +609,10 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
   bounds.emplace_back();
 
-  //calculate loop upper bound 
+  // printf("face_starts size (CPP): %i\n",
+  // parameters.face->face_starts.size());
+
+  // calculate loop upper bound
   size_t faceIndexUpperBound = 0;
   if (parameters.face->face_starts.size() > 1) {
     faceIndexUpperBound =
@@ -618,10 +621,12 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
     faceIndexUpperBound = parameters.face->indices.size();
   }
 
-  printf("test\n");
+  // printf("coordIndex (CPP): ");
 
   for (size_t index = 0; index < faceIndexUpperBound; index++) {
     uint32_t currentIndex = parameters.face->indices[index];
+
+    // printf("%i, ", currentIndex);
 
     glm::dvec3 point = (*parameters.points)[currentIndex - 1];
 
@@ -629,11 +634,38 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
     bounds.back().curve.points.push_back(point);
   }
 
-  if (!parameters.face->face_starts.size() <= 1) {
+  // printf("\ninnerCordIndex (CPP): ");
+
+  if (parameters.face->face_starts.size() <= 1) {
     return bounds;
   } else {
     // TODO(nickcastel50): handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
+    for (size_t i = 1; i < parameters.face->face_starts.size(); i++) {
+      bounds.emplace_back();
+      size_t startIdx = parameters.face->face_starts[i];
+      size_t endIdx = 0;
+      size_t faceVoidsSize = 0;
+      if (i + 1 >= parameters.face->face_starts.size()) {
+        endIdx = parameters.face->indices.size();
+        faceVoidsSize = endIdx - startIdx;
+      } else {
+        endIdx = parameters.face->face_starts[i + 1];
+        faceVoidsSize = endIdx - startIdx;
+      }
 
+      for (size_t index = startIdx; index < endIdx; index++) {
+        uint32_t currentIndex = parameters.face->indices[index];
+
+        // printf("%i, ", currentIndex);
+
+        glm::dvec3 point = (*parameters.points)[currentIndex - 1];
+
+        // I am not proud of this (I inherited this, will change - NC)
+        bounds.back().curve.points.push_back(point);
+      }
+
+      // printf("\n");
+    }
 
     ;
   }
@@ -1211,8 +1243,6 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
   IfcGeometry geom;
   std::vector<IfcBound3D> bounds;
 
-
-printf("getPolygonalFaceSetGeometry in\n");
   for (size_t faceIndex = 0; faceIndex < parameters.faces.size(); faceIndex++) {
     ParamsReadIndexedPolygonalFace params(parameters.points,
                                           parameters.faces[faceIndex]);
@@ -1224,10 +1254,7 @@ printf("getPolygonalFaceSetGeometry in\n");
     bounds.clear();
   }
 
-  printf("getPolygonalFaceSetGeometry out\n");
-
   return geom;
 }
-
 
 }  // namespace conway::geometry

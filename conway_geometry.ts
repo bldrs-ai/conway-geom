@@ -10,13 +10,15 @@ export interface GeometryObject {
     addGeometry(parameter: GeometryObject): void
 }
 
+export interface IndexedPolygonalFace {
+  indices: any
+  face_starts: any
+}
+
 export interface ParamsPolygonalFaceSet {
-    numPoints: number
-    numIndices: number
     indicesPerFace: number
-    indexedPolygonalFaceWithVoids: boolean
     points: any
-    indices: number[]
+    faces: any
 }
 
 export interface ResultsGltf {

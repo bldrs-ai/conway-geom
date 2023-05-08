@@ -26,6 +26,8 @@ inline constexpr int VERTEX_FORMAT_SIZE_FLOATS = 6;
 inline constexpr double EPS_SMALL = 1e-6;
 inline static constexpr double EPS_TINY = 1e-9;
 
+inline static int triangulateBoundsCount = 0;
+
 const static std::unordered_map<std::string, int> Horizontal_alignment_type{
     {"LINE", 1},
     {"CIRCULARARC", 2},

@@ -159,6 +159,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<uint8_t>("VectorUint8");
   emscripten::register_vector<std::vector<uint8_t>>("VectorVectorUint8");
   emscripten::register_vector<size_t>("ULongVector");
+  emscripten::register_vector<
+      conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
+      "VectorIndexedPolygonalFace");
   emscripten::function("getGeometry", &GetGeometry);
   emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
