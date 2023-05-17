@@ -213,4 +213,17 @@ uint32_t IfcGeometry::GetIndexData() { return (uint32_t)(size_t)&indexData[0]; }
 
 uint32_t IfcGeometry::GetIndexDataSize() { return (uint32_t)indexData.size(); }
 
+void IfcGeometry::ApplyTransform(glm::dmat4 transform) {
+  for (uint32_t index = 0; index < numPoints; ++index) {
+    glm::dvec4 t = transform * glm::dvec4(glm::dvec3(vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
+                    vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
+                    vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]), 1);
+
+
+    vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
+    vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;
+    vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2] = t.z;
+  }
+}
+
 }  // namespace conway::geometry

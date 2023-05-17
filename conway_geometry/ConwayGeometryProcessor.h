@@ -257,8 +257,8 @@ class ConwayGeometryProcessor {
   // case ifc::IFCAXIS2PLACEMENT3D:
   struct ParamsAxis2Placement3D {
     glm::dvec3 position;
-    glm::dvec3 xAxisRef;
     glm::dvec3 zAxisRef;
+    glm::dvec3 xAxisRef;
     bool normalizeZ = false;
     bool normalizeX = false;
   };
