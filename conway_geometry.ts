@@ -42,19 +42,29 @@ export interface ParamsAxis2Placement3D {
   normalizeX:boolean;
 }
 
-// Graph class
+/**
+ * Class for directed acyclic graph (dag) structure
+ */
 class IfcDag {
   adjacencyList: Map<number, number[]>
 
+  /**
+   * Initializes new instance of IfcDag + adjacency list
+   */
   constructor() {
     this.adjacencyList = new Map()
   }
 
-  addEdge(product: number, representation: number) {
-    if (!this.adjacencyList.has(product)) {
-      this.adjacencyList.set(product, [])
+  /**
+   *
+   * @param element - IfcElement
+   * @param edge - edge to be added to adjacency list
+   */
+  addEdge(element: number, edge: number) {
+    if (!this.adjacencyList.has(element)) {
+      this.adjacencyList.set(element, [])
     }
-    this.adjacencyList.get(product)!.push(representation)
+    this.adjacencyList.get(element)!.push(edge)
   }
 }
 
@@ -66,7 +76,7 @@ export class ConwayGeometry {
   modelId: number = -1
   public wasmModule: undefined | any = undefined
   initialized = false
-  //map localID of transformation to localID of 1 or more geometries 
+  // map localID of transformation to localID of 1 or more geometries
   public transformMapping = new Map<number, number[]>()
 
   public graph: IfcDag = new IfcDag()
@@ -118,14 +128,29 @@ export class ConwayGeometry {
     return this.wasmModule.geometryToGltf(this.modelId, geometry, isGlb, outputDraco, fileUri)
   }
 
+  /**
+   *
+   * @param parameters - ParamsAxis2Placement3D structure
+   * @return {any} - native Axis2Placement3D structure
+   */
   getAxis2Placement3D(parameters:ParamsAxis2Placement3D) {
     return this.wasmModule.getAxis2Placement3D(this.modelId, parameters)
   }
 
+  /**
+   *
+   * @param parameters - ParamsLocalPlacement structure
+   * @return {any} = native LocalPlacement structure
+   */
   getLocalPlacement(parameters:ParamsLocalPlacement) {
     return this.wasmModule.getLocalPlacement(this.modelId, parameters)
   }
 
+  /**
+   *
+   * @param graph - IfcDag class instance
+   * @return {number[] | null} - topographically sorted IFC localID array
+   */
   topologicalSort(graph: IfcDag): number[] | null {
     const result: number[] = []
     const visited = new Map<number, boolean>()
@@ -137,6 +162,12 @@ export class ConwayGeometry {
       }
     }
 
+    /**
+     * Depth-first search (DFS) algorithm on a directed graph
+     *
+     * @param node - graph node
+     * @return {boolean} - returns false if cycle detected
+     */
     function dfs(node: number): boolean {
       visiting.set(node, true)
 
