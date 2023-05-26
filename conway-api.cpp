@@ -74,23 +74,6 @@ glm::dmat4 GetAxis2Placement3D(
         parameters) {
   auto& conwayProcessor = processors[modelID];
 
-  /*printf("*********CROSSED WASM BOUNDARY (TS --> WASM) *********\n");
-   printf("parameters.normalizeX: %s\n", (parameters.normalizeX) ? "True" :
-   "False"); printf("parameters.normalizeZ: %s\n", (parameters.normalizeZ) ?
-   "True" : "False");
-
-   printf("parameters.position.x: %f\n", parameters.position.x);
-   printf("parameters.position.y: %f\n", parameters.position.y);
-   printf("parameters.position.z: %f\n", parameters.position.z);
-
-   printf("parameters.zAxisRef.x: %f\n", parameters.zAxisRef.x);
-   printf("parameters.zAxisRef.y: %f\n", parameters.zAxisRef.y);
-   printf("parameters.zAxisRef.z: %f\n", parameters.zAxisRef.z);
-
-   printf("parameters.xAxisRef.x: %f\n", parameters.xAxisRef.x);
-   printf("parameters.xAxisRef.y: %f\n", parameters.xAxisRef.y);
-   printf("parameters.xAxisRef.z: %f\n", parameters.xAxisRef.z);
-   printf("*********CROSSED WASM BOUNDARY (WASM --> TS) *********\n");*/
   return conwayProcessor->GetAxis2Placement3D(parameters);
 }
 
