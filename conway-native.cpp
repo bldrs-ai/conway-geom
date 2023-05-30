@@ -89,9 +89,8 @@ void genIndexIfc() {
 
   conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
       paramsGetPolygonalFaceSetGeometry;
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 76.0000;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -11.4504;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.0000;
@@ -125,40 +124,54 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.0000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+  printf("test1\n");
+
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
+  printf("test2\n");
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 3;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 7;
 
   conway::geometry::IfcGeometry geometry =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -168,11 +181,9 @@ void genIndexIfc() {
 
   // clear
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 48.0000;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -11.4504;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.0000;
@@ -206,40 +217,52 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.0000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+  printf("test2\n");
+
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 1;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 6;
 
   conway::geometry::IfcGeometry geometry2 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -249,11 +272,9 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 0.0000;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -11.4504;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.0000;
@@ -287,40 +308,52 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.0000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+
+printf("test3\n");
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
+   // IFCINDEXEDPOLYGONALFACE
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 1;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 1;
-  // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 5;
 
   conway::geometry::IfcGeometry geometry3 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -330,11 +363,9 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 0.00232305;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -12.647637;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.000000;
@@ -368,40 +399,52 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 15.000000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+
+printf("test4\n");
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 3;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 5;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 8;
 
   conway::geometry::IfcGeometry geometry4 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -411,11 +454,9 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 24.0000;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -11.4504;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.0000;
@@ -449,40 +490,52 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.0000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+
+printf("test5\n");
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 3;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 7;
 
   conway::geometry::IfcGeometry geometry5 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -492,11 +545,9 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 47.859639;
   paramsGetPolygonalFaceSetGeometry.points[0].y = 0.973380;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.000000;
@@ -530,40 +581,50 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.000000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+printf("test6\n");
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 1;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 5;
 
   conway::geometry::IfcGeometry geometry6 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -573,11 +634,9 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
-  paramsGetPolygonalFaceSetGeometry.numPoints = 8;
-  paramsGetPolygonalFaceSetGeometry.points.resize(
-      paramsGetPolygonalFaceSetGeometry.numPoints);
+  paramsGetPolygonalFaceSetGeometry.points.resize(8);
   paramsGetPolygonalFaceSetGeometry.points[0].x = 62.0000;
   paramsGetPolygonalFaceSetGeometry.points[0].y = -11.4504;
   paramsGetPolygonalFaceSetGeometry.points[0].z = 0.0000;
@@ -611,40 +670,51 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.points[7].z = 0.0000;
 
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
-  paramsGetPolygonalFaceSetGeometry.numIndices =
-      6 * paramsGetPolygonalFaceSetGeometry.indicesPerFace;
-  paramsGetPolygonalFaceSetGeometry.indices.resize(
-      paramsGetPolygonalFaceSetGeometry.numIndices);
+  paramsGetPolygonalFaceSetGeometry.faces.resize(6);
+
+printf("test7\n");
+  for (size_t faceIndex = 0;
+       faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
+       faceIndex++) {
+        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
+  }
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[0] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[1] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[2] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[3] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[0] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[4] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[5] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[6] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[7] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[1].indices[3] = 6;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[8] = 2;
-  paramsGetPolygonalFaceSetGeometry.indices[9] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[10] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[11] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[0] = 2;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[1] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[2].indices[3] = 3;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[12] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[13] = 3;
-  paramsGetPolygonalFaceSetGeometry.indices[14] = 7;
-  paramsGetPolygonalFaceSetGeometry.indices[15] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[0] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[1] = 3;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[2] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[3].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[16] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[17] = 1;
-  paramsGetPolygonalFaceSetGeometry.indices[18] = 4;
-  paramsGetPolygonalFaceSetGeometry.indices[19] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[0] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[1] = 1;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[2] = 4;
+  paramsGetPolygonalFaceSetGeometry.faces[4].indices[3] = 8;
+
   // IFCINDEXEDPOLYGONALFACE
-  paramsGetPolygonalFaceSetGeometry.indices[20] = 5;
-  paramsGetPolygonalFaceSetGeometry.indices[21] = 6;
-  paramsGetPolygonalFaceSetGeometry.indices[22] = 8;
-  paramsGetPolygonalFaceSetGeometry.indices[23] = 7;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[0] = 5;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[1] = 6;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[2] = 8;
+  paramsGetPolygonalFaceSetGeometry.faces[5].indices[3] = 7;
 
   conway::geometry::IfcGeometry geometry7 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
@@ -654,7 +724,7 @@ void genIndexIfc() {
 
   // free memory
   paramsGetPolygonalFaceSetGeometry.points.clear();
-  paramsGetPolygonalFaceSetGeometry.indices.clear();
+  paramsGetPolygonalFaceSetGeometry.faces.clear();
 
   auto time = ms() - start;
 

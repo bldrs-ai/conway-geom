@@ -1,26 +1,28 @@
 /*
-* Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
-* Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/IfcGeometryProcessor.cpp
-*/
+ * Decoupling:
+ * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+ * Ref:
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/IfcGeometryProcessor.cpp
+ */
 
 #pragma once
+
+#include <tinynurbs/tinynurbs.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <deque>
+#include <filesystem>
 #include <fstream>
+#include <glm/glm.hpp>
+#include <glm/gtx/transform.hpp>
 #include <iostream>
+#include <mapbox/earcut.hpp>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <filesystem>
-
-#include <tinynurbs/tinynurbs.h>
-#include <glm/glm.hpp>
-#include <glm/gtx/transform.hpp>
-#include <mapbox/earcut.hpp>
 
 // draco
 #include <draco/compression/config/compression_shared.h>
@@ -255,8 +257,8 @@ class ConwayGeometryProcessor {
   // case ifc::IFCAXIS2PLACEMENT3D:
   struct ParamsAxis2Placement3D {
     glm::dvec3 position;
-    glm::dvec3 xAxisRef;
     glm::dvec3 zAxisRef;
+    glm::dvec3 xAxisRef;
     bool normalizeZ = false;
     bool normalizeX = false;
   };
@@ -310,14 +312,20 @@ class ConwayGeometryProcessor {
   };
   IfcBound3D GetBound(ParamsGetBound parameters);
 
+  struct IndexedPolygonalFace {
+    std::vector<uint32_t> indices;
+    std::vector<size_t> face_starts;
+  };
+
   // case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
   // case ifc::IFCINDEXEDPOLYGONALFACE:
   struct ParamsReadIndexedPolygonalFace {
-    size_t numPoints = 0;
-    size_t numIndices = 0;
-    bool indexedPolygonalFaceWithVoids = false;
-    glm::vec3 *points = nullptr;
-    uint32_t *indices = nullptr;
+    std::vector<glm::vec3> *points;
+    IndexedPolygonalFace *face;
+
+    ParamsReadIndexedPolygonalFace(std::vector<glm::vec3> &points_ref,
+                                   IndexedPolygonalFace &face_ref)
+        : points(&points_ref), face(&face_ref) {}
   };
   std::vector<IfcBound3D> ReadIndexedPolygonalFace(
       ParamsReadIndexedPolygonalFace parameters);
@@ -338,14 +346,12 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
-    size_t numPoints = 0;
-    size_t numIndices = 0;
     uint32_t indicesPerFace = 0;
-    bool indexedPolygonalFaceWithVoids = false;
     std::vector<glm::vec3> points;
-    std::vector<uint32_t> indices;
+    std::vector<IndexedPolygonalFace> faces;
   };
-  IfcGeometry getPolygonalFaceSetGeometry(ParamsGetPolygonalFaceSetGeometry parameters);
+  IfcGeometry getPolygonalFaceSetGeometry(
+      ParamsGetPolygonalFaceSetGeometry parameters);
 
  private:
   fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);
