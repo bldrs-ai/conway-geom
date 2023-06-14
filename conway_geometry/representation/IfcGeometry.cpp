@@ -191,7 +191,7 @@ uint32_t IfcGeometry::GetVertexData() {
   return (uint32_t)(size_t)&fvertexData[0];
 }
 
-void IfcGeometry::AddGeometry(IfcGeometry geom) {
+void IfcGeometry::AppendGeometry(IfcGeometry geom) {
   uint32_t maxIndex = numPoints;
   numPoints += geom.numPoints;
   min = glm::min(min, geom.min);

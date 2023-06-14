@@ -7,7 +7,7 @@ export interface GeometryObject {
   getVertexDataSize: () => number
   getIndexData: () => any
   getIndexDataSize: () => number
-  addGeometry(parameter: GeometryObject): void
+  appendGeometry(parameter: GeometryObject): void
   applyTransform(parameter: any): void
 }
 

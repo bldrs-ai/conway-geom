@@ -183,8 +183,10 @@ void testGetSurfaceModel() {
 void testReadIndexedPolygonalFace() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
+  std::vector<glm::vec3> points;
+  conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace face;
   conway::geometry::ConwayGeometryProcessor::ParamsReadIndexedPolygonalFace
-      paramsReadIndexedPolygonalFace;
+      paramsReadIndexedPolygonalFace(points, face);
 
   conwayGeometryProcessor.ReadIndexedPolygonalFace(
       paramsReadIndexedPolygonalFace);
