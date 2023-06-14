@@ -820,7 +820,7 @@ printf("test7\n");
 
     for (int geometryIndex = 0; geometryIndex < geometryVec.size();
          geometryIndex++) {
-      fullGeometry.AddGeometry(geometryVec[geometryIndex]);
+      fullGeometry.AppendGeometry(geometryVec[geometryIndex]);
     }
 
     std::string fileNameGltf = "./index_ifc_full_conway";
