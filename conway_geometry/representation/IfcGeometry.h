@@ -42,7 +42,7 @@ struct IfcGeometry {
   IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;
   IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const;
   uint32_t GetVertexData();
-  void AddGeometry(IfcGeometry geom);
+  void AppendGeometry(IfcGeometry geom);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();

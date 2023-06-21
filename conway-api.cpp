@@ -128,7 +128,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("getIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
-      .function("addGeometry", &conway::geometry::IfcGeometry::AddGeometry)
+      .function("appendGeometry", &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform);
 
