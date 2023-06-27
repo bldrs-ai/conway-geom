@@ -13,12 +13,15 @@ bool shouldPrintTypeInfo = false;
 
 std::map<uint32_t, uint32_t> uniqueTypeDefs;
 int printTypeInfo(const char *format, ...) {
+  
   va_list args;
   va_start(args, format);
 
   if (shouldPrintTypeInfo) vprintf(format, args);
 
   va_end(args);
+
+  return 0;
 }
 
 void collectStatistics(uint32_t ifcLineType) {
