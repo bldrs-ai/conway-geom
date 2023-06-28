@@ -22,7 +22,7 @@ case "${1}" in
         wasm_config=releaseemscripten
         ;;
     *)
-        echo "$0 <clean | debug | release | test>" 1>&2
+        echo "$0 <clean | debug | release | test> <native | wasm>" 1>&2
         exit 1
         ;;
 esac
@@ -57,8 +57,8 @@ fi
 
 if [ "$1" = "test" ]; then
     # Your code for the 'test' case goes here
-    ( cd gmake && \
-    make config=${native_config} conway_geom_native_tests && \
+    ( cd gmake &&
+    make config=${native_config} conway_geom_native_tests &&
     ../bin/64/debug/conway_geom_native_tests
     )
     if [ $? -ne 0 ]; then
@@ -66,11 +66,28 @@ if [ "$1" = "test" ]; then
         exit 1
     fi
 else
-    # Your code for other cases goes here
-    ( cd gmake && \
-    make config=${native_config} conway_geom_native webifc_native && \
-    make config=${wasm_config} ConwayGeomWasm ConwayGeomWasm_mt
-    )
+    if [ -z "$2" ]; then
+        echo "No platform specified, building for native + wasm"
+        # Your code for other cases goes here
+        ( cd gmake &&
+        make config=${native_config} conway_geom_native webifc_native &&
+        make config=${wasm_config} draco ConwayGeomWasm )
+    else
+        echo $2
+        if [ "$2" = "native" ]; then
+            ( cd gmake &&
+            make config=${native_config} conway_geom_native webifc_native )
+        elif [ "$2" = "wasm" ]; then
+            ( cd gmake &&
+            make config=${wasm_config} ConwayGeomWasm )
+        else
+            echo "Platform invalid, building for native + wasm"
+            # Your code for other cases goes here
+           # ( cd gmake &&
+           # make config=${native_config} conway_geom_native webifc_native &&
+           # make config=${wasm_config} draco ConwayGeomWasm )
+        fi
+    fi
     if [ $? -ne 0 ]; then
         echo "! Build failed" 1>&2
         exit 1
