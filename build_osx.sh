@@ -71,7 +71,7 @@ else
         # Your code for other cases goes here
         ( cd gmake &&
         make config=${native_config} conway_geom_native webifc_native &&
-        make config=${wasm_config} draco ConwayGeomWasm )
+        make config=${wasm_config} ConwayGeomWasm )
     else
         echo $2
         if [ "$2" = "native" ]; then
@@ -83,9 +83,9 @@ else
         else
             echo "Platform invalid, building for native + wasm"
             # Your code for other cases goes here
-           # ( cd gmake &&
-           # make config=${native_config} conway_geom_native webifc_native &&
-           # make config=${wasm_config} draco ConwayGeomWasm )
+            ( cd gmake &&
+            make config=${native_config} conway_geom_native webifc_native &&
+            make config=${wasm_config} ConwayGeomWasm )
         fi
     fi
     if [ $? -ne 0 ]; then
