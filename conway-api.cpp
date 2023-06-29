@@ -10,10 +10,7 @@
 
 #include "conway_geometry/ConwayGeometryProcessor.h"
 
-std::map<uint32_t, std::unique_ptr<conway::geometry::ConwayGeometryProcessor>>
-    processors;
-
-uint32_t GLOBAL_MODEL_ID_COUNTER = 0;
+std::unique_ptr<conway::geometry::ConwayGeometryProcessor> processor;
 
 #ifdef __EMSCRIPTEN_PTHREADS__
 constexpr bool MT_ENABLED = true;
@@ -22,72 +19,77 @@ constexpr bool MT_ENABLED = false;
 #endif
 
 // use to construct API placeholders
-int main() {
-  processors.emplace();
-
-  return 0;
-}
+int main() { return 0; }
 
 // taken from web ifc obj dump code
 glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    uint32_t modelID, conway::geometry::IfcGeometry geom, bool isGlb,
+    conway::geometry::IfcGeometry geom, bool isGlb,
     bool outputDraco, std::string filePath) {
-  auto& conwayProcessor = processors[modelID];
-
-  conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
-      conwayProcessor->GeometryToGltf(geom, isGlb, outputDraco, filePath, false,
-                                      NormalizeMat);
+  conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
+  if (processor) {
+    results = processor->GeometryToGltf(geom, isGlb, outputDraco, filePath,
+                                        false, NormalizeMat);
+  }
 
   return results;
 }
 
-std::string GeometryToObj(uint32_t modelID, conway::geometry::IfcGeometry geom,
+std::string GeometryToObj(conway::geometry::IfcGeometry geom,
                           size_t offset) {
-  auto& conwayProcessor = processors[modelID];
-  return conwayProcessor->GeometryToObj(geom, offset, NormalizeMat);
+  std::string result;
+  if (processor) {
+    return processor->GeometryToObj(geom, offset, NormalizeMat);
+  } else {
+    return result;
+  }
 }
 
 conway::geometry::IfcGeometry GetGeometry(
-    uint32_t modelID,
     conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
         parameters) {
-  auto& conwayProcessor = processors[modelID];
-  return conwayProcessor->getPolygonalFaceSetGeometry(parameters);
+  conway::geometry::IfcGeometry geom;
+
+  if (processor) {
+    return processor->getPolygonalFaceSetGeometry(parameters);
+  } else {
+    return geom;
+  }
 }
 
 glm::dmat4 GetLocalPlacement(
-    uint32_t modelID,
     conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
         parameters) {
-  auto& conwayProcessor = processors[modelID];
-  // printf("parameters.useRelPlacement: %s", (parameters.useRelPlacement) ?
-  // "True" : "False");
-  return conwayProcessor->GetLocalPlacement(parameters);
+  glm::dmat4 resultMat;
+  if (processor) {
+    resultMat = processor->GetLocalPlacement(parameters);
+  }
+
+  return resultMat;
 }
 
 glm::dmat4 GetAxis2Placement3D(
-    uint32_t modelID,
     conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
         parameters) {
-  auto& conwayProcessor = processors[modelID];
 
-  return conwayProcessor->GetAxis2Placement3D(parameters);
+          glm::dmat4 resultMat;
+  if (processor) {
+    resultMat = processor->GetAxis2Placement3D(parameters);
+  }
+
+  return resultMat;
 }
 
-uint32_t InitializeGeometryProcessor() {
-  uint32_t modelID = GLOBAL_MODEL_ID_COUNTER++;
-  auto conwayProcessor =
-      std::make_unique<conway::geometry::ConwayGeometryProcessor>();
-  processors.emplace(modelID, std::move(conwayProcessor));
+bool InitializeGeometryProcessor() {
+  processor = std::make_unique<conway::geometry::ConwayGeometryProcessor>();
 
-  return modelID;
+  return true;
 }
 
-bool FreeGeometryProcessor(uint32_t modelID) {
-  processors.erase(modelID);
+bool FreeGeometryProcessor() {
+  processor.release();
   return true;
 }
 
@@ -128,9 +130,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("getIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
-      .function("appendGeometry", &conway::geometry::IfcGeometry::AppendGeometry)
+      .function("appendGeometry",
+                &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
-                &conway::geometry::IfcGeometry::ApplyTransform);
+                &conway::geometry::IfcGeometry::ApplyTransform)
+                .function("clone", 
+                &conway::geometry::IfcGeometry::Clone);
 
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
