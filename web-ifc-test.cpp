@@ -326,13 +326,14 @@ int main(int argc, char *argv[]) {
               [](const auto &a, const auto &b) { return a.second > b.second; });
 
     if (webifc::statistics::verboseStats) {
-      std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
+      std::cout << "Ifc Type\tFrequency\n" << std::endl;
     }
 
     for (const auto &ifcType : vectorUniqueTypeDefs) {
       if (webifc::statistics::verboseStats) {
-        std::cout << ifcType.second << "\t\t\t\t\t"
-                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+        std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
+       // std::cout << ifcType.second << "\t"
+           //       << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
 
       if (std::find(currentlySupportedTypes.begin(),
@@ -348,20 +349,22 @@ int main(int argc, char *argv[]) {
     uint32_t unsupportedSize = unsupportedTypes.size();
     std::cout << "\nSupported Types: " << supportedSize << std::endl;
     if (webifc::statistics::verboseStats) {
-      std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
+     std::cout << "Ifc Type\tFrequency\n" << std::endl;
 
       for (const auto &ifcType : supportedTypes) {
-        std::cout << ifcType.second << "\t\t\t\t\t"
-                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+         std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
+       // std::cout << ifcType.second << "\t"
+          //        << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 
     std::cout << "\nUnsupported Types: " << unsupportedSize << std::endl;
     if (webifc::statistics::verboseStats) {
-      std::cout << "Frequency\t\t|\t\tIfc Type\n" << std::endl;
+      std::cout << "Ifc Type\tFrequency\n" << std::endl;
       for (const auto &ifcType : unsupportedTypes) {
-        std::cout << ifcType.second << "\t\t\t\t\t"
-                  << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+         std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
+       // std::cout << ifcType.second << "\t"
+         //         << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 

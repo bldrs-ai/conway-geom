@@ -4,3 +4,6 @@ gmake/
 .DS_Store
 **/.DS_Store
 Dist/
+dependencies/libdraco.a
+dependencies/libgltfsdk.a
+dependencies/libmanifold.a

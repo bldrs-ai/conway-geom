@@ -16,6 +16,8 @@ targetdir "bin/release"
 
 configuration {}
 
+
+
 project "conway_geom_native"
 language "C++"
 kind "ConsoleApp"
@@ -373,35 +375,6 @@ ConwayCoreFiles = {
     "conway_geometry/representation/**.*"
 }
 ConwaySourceFiles = {"conway-api.cpp"}
-ManifoldSrcFiles = {
-    "external/manifold/src/**.*",
-    "external/manifold/src/collider/include/*.h",
-    "external/manifold/src/utilities/include/*.h"
-}
-glTFSDKSrcFiles = {"external/gltf-sdk/GLTFSDK/source/**.*"}
-DracoSourceFiles = {
-    "external/draco/src/draco/animation/*.cc",
-    "external/draco/src/draco/attributes/*.cc",
-    "external/draco/src/draco/compression/*.cc",
-    "external/draco/src/draco/compression/attributes/*.cc",
-    "external/draco/src/draco/compression/attributes/prediction_schemes/*.cc",
-    "external/draco/src/draco/compression/bit_coders/*.cc",
-    "external/draco/src/draco/compression/config/*.cc",
-    "external/draco/src/draco/compression/entropy/*.cc",
-    "external/draco/src/draco/compression/mesh/*.cc",
-    "external/draco/src/draco/compression/mesh/traverser/*.cc",
-    "external/draco/src/draco/compression/point_cloud/*.cc",
-    "external/draco/src/draco/compression/point_cloud/algorithms/*.cc",
-    "external/draco/src/draco/core/*.cc",
-    "external/draco/src/draco/io/*.cc",
-    "external/draco/src/draco/material/*.cc",
-    "external/draco/src/draco/mesh/*.cc",
-    "external/draco/src/draco/meshdata/*.cc",
-    "external/draco/src/draco/metadata/*.cc",
-    "external/draco/src/draco/point_cloud/*.cc",
-    "external/draco/src/draco/scene/*.cc",
-    "external/draco/src/draco/texture/*.cc"
-}
 
 configuration {"linux or macosx or ios or gmake"}
 buildoptions_cpp {
@@ -416,10 +389,7 @@ buildoptions_cpp {
 configuration {"windows or macosx or linux"}
 files {
     ConwayCoreFiles,
-    ConwaySourceFiles,
-    ManifoldSrcFiles,
-    glTFSDKSrcFiles,
-    DracoSourceFiles
+    ConwaySourceFiles
 }
 
 configuration {"windows"}
@@ -470,21 +440,15 @@ includedirs {
 
 excludes {
     --Manifold Test files
+    "external/**/**cc",
     "external/manifold/src/third_party/glm/test/**.*",
     "external/manifold/src/third_party/thrust/examples/**.*",
     "external/manifold/src/third_party/thrust/dependencies/cub/test/**.*",
     "external/manifold/src/third_party/glm/test/gtc/**.*",
     --Draco Source Files
-    "external/draco/src/draco/javascript/**.*",
-    "external/draco/src/draco/maya/**.*",
-    "external/draco/src/draco/tools/**.*",
-    "external/draco/src/draco/unity/**.*",
-    "external/draco/src/draco/animation/**.*",
-    "external/draco/src/draco/io/**.*",
-    --Draco Test Files
-    "external/draco/src/draco/**/*test*cc",
+    "external/draco/**/*cc",
     --glTF-SDK Source Files
-    "external/gltf-sdk/GLTFSDK/source/Version.cpp",
+    "external/gltf-sdk/**/**cpp",
     "external/fuzzy-bools/fuzzy/main.cpp"
 }
 
@@ -493,6 +457,8 @@ configuration {"Debug"}
 configuration {"Release", "gmake"}
 
 configuration "Release*"
+libdirs{"dependencies"}
+links{"draco", "manifold", "gltfsdk"}
 flags {"OptimizeSpeed", "NoIncrementalLink"}
 
 configuration {"x64", "Debug"}

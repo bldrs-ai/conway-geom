@@ -191,6 +191,10 @@ uint32_t IfcGeometry::GetVertexData() {
   return (uint32_t)(size_t)&fvertexData[0];
 }
 
+IfcGeometry IfcGeometry::Clone() {
+  return *this;
+}
+
 void IfcGeometry::AppendGeometry(IfcGeometry geom) {
   uint32_t maxIndex = numPoints;
   numPoints += geom.numPoints;

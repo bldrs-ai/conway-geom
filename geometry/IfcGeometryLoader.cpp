@@ -6,6 +6,8 @@
     #include "../test/io_helpers.h"
 #endif
 
+#include "../utility/ifcStatistics.h"
+
 
 namespace webifc::geometry
 {
@@ -22,6 +24,8 @@ namespace webifc::geometry
     {
       auto lineID = _loader.ExpressIDToLineID(expressID);
       auto &line = _loader.GetLine(lineID);
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
 
       switch (line.ifcType)
       {
@@ -143,6 +147,9 @@ namespace webifc::geometry
       auto &line = _loader.GetLine(lineID);
 
       IfcCurve alignmentCurve;
+
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
 
       switch (line.ifcType)
       {
@@ -499,6 +506,8 @@ namespace webifc::geometry
     {
       auto lineID = _loader.ExpressIDToLineID(expressID);
       auto &line = _loader.GetLine(lineID);
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
       switch (line.ifcType)
       {
       case schema::IFCPRESENTATIONSTYLEASSIGNMENT:
@@ -720,6 +729,8 @@ namespace webifc::geometry
     {
       auto lineID = _loader.ExpressIDToLineID(expressID);
       auto &line = _loader.GetLine(lineID);
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
 
       switch (line.ifcType)
       {
@@ -775,6 +786,9 @@ namespace webifc::geometry
     {
       auto lineID = _loader.ExpressIDToLineID(expressID);
       auto &line = _loader.GetLine(lineID);
+
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
 
       switch (line.ifcType)
       {
@@ -878,6 +892,9 @@ namespace webifc::geometry
     {
       auto edgeID = _loader.ExpressIDToLineID(expressID);
       auto &line = _loader.GetLine(edgeID);
+
+      webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
 
       switch (line.ifcType)
       {
@@ -1063,6 +1080,9 @@ namespace webifc::geometry
   {
     uint32_t lineID = _loader.ExpressIDToLineID(expressID);
     auto &line = _loader.GetLine(lineID);
+    webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
+    
     switch (line.ifcType)
     {
     case schema::IFCPOLYLINE:
@@ -1841,6 +1861,8 @@ IfcProfile IfcGeometryLoader::GetProfile(uint32_t expressID) const
 IfcProfile IfcGeometryLoader::GetProfileByLine(uint32_t lineID) const
 {
   auto &line = _loader.GetLine(lineID);
+  webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
   switch (line.ifcType)
   {
   case schema::IFCARBITRARYOPENPROFILEDEF:
@@ -2312,6 +2334,8 @@ IfcProfile IfcGeometryLoader::GetProfileByLine(uint32_t lineID) const
 IfcProfile3D IfcGeometryLoader::GetProfile3D(uint32_t lineID) const
 {
   auto &line = _loader.GetLine(lineID);
+  webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
   switch (line.ifcType)
   {
   case schema::IFCARBITRARYOPENPROFILEDEF:
@@ -2354,6 +2378,8 @@ glm::dmat3 IfcGeometryLoader::GetAxis2Placement2D(uint32_t expressID) const
 {
   uint32_t lineID = _loader.ExpressIDToLineID(expressID);
   auto &line = _loader.GetLine(lineID);
+  webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
   switch (line.ifcType)
   {
   case schema::IFCAXIS2PLACEMENT2D:
@@ -2446,6 +2472,8 @@ glm::dmat4 IfcGeometryLoader::GetLocalPlacement(uint32_t expressID) const
 {
   uint32_t lineID = _loader.ExpressIDToLineID(expressID);
   auto &line = _loader.GetLine(lineID);
+  webifc::statistics::collectStatistics(line.ifcType);
+    webifc::statistics::printTypeInfo("//%s\n", (_schemaManager.IfcTypeCodeToType(line.ifcType)).c_str());
   switch (line.ifcType)
   {
   case schema::IFCAXIS1PLACEMENT:

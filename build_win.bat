@@ -53,22 +53,37 @@ if /i "%1"=="clean" (
     exit /b 1
 )
 
-if "%1"=="test" (
-    rem Your code for the 'test' case goes here
-    cd gmake && (
-        make config=!native_config! conway_geom_native_tests && ..\bin\64\debug\conway_geom_native_tests
-    )
-    if errorlevel 1 (
-        echo ! Build failed 1>&2
+IF "%1"=="test" (
+    cd gmake
+    make config=%native_config% conway_geom_native_tests
+    ..\bin\64\debug\conway_geom_native_tests
+    if %errorlevel% neq 0 (
+        echo "! Build failed" >&2
         exit /b 1
     )
-) else (
-    rem Your code for other cases goes here
-   cd gmake && (
-    make config=!native_config! conway_geom_native webifc_native && make config=!wasm_config! ConwayGeomWasm ConwayGeomWasm_mt
+) ELSE (
+    IF "%2"=="" (
+        echo "No platform specified, building for native + wasm"
+        cd gmake
+        make config=%native_config% conway_geom_native webifc_native
+        make config=%wasm_config% ConwayGeomWasm
+    ) ELSE (
+        echo %2
+        IF "%2"=="native" (
+            cd gmake
+            make config=%native_config% conway_geom_native webifc_native
+        ) ELSE IF "%2"=="wasm" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasm
+        ) ELSE (
+            echo "Platform invalid, building for native + wasm"
+            cd gmake
+            make config=%native_config% conway_geom_native webifc_native
+            make config=%wasm_config% ConwayGeomWasm
+        )
     )
-    if errorlevel 1 (
-        echo ! Build failed 1>&2
+    if %errorlevel% neq 0 (
+        echo "! Build failed" >&2
         exit /b 1
     )
 )
