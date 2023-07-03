@@ -1262,7 +1262,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
   IfcCurve curve;
 
   if (parameters.dimensions == 2) {
-    if (parameters.segments.size() > 0 ) {
+    if (parameters.segments.size() > 0) {
       for (auto &sg : parameters.segments) {
         if (!sg.isArcType) {
           auto pts = parameters.points;
@@ -1289,6 +1289,23 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
   } else {
     printf("Parsing ifcindexedpolycurve in 3D is not possible\n");
   }
+
+  return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
+    ParamsGetCircleCurve parameters) {
+  IfcCurve curve;
+
+  double radius = parameters.radius;
+
+  glm::dmat3 placement(1);
+
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH, placement);
 
   return curve;
 }

@@ -69,6 +69,17 @@ conway::geometry::IfcCurve GetIndexedPolyCurve(
   }
 }
 
+conway::geometry::IfcCurve GetCircleCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve
+        parameters) {
+  conway::geometry::IfcCurve curve;
+  if (processor) {
+    return processor->getCircleCurve(parameters);
+  } else {
+    return curve;
+  }
+}
+
 glm::dmat4 GetLocalPlacement(
     conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
         parameters) {
@@ -165,16 +176,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("invert", &conway::geometry::IfcCurve::Invert)
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
 
-  /**
-   *  void Add(glm::dvec3 pt);
-void Add(glm::dvec2 pt);
-glm::dvec2 Get2d(size_t i) const;
-glm::dvec3 Get3d(size_t i) const;
-void Invert();
-bool IsCCW() const;
-
-  */
-
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
       .field("y", &glm::dvec4::y)
@@ -219,6 +220,17 @@ bool IsCCW() const;
              &conway::geometry::ConwayGeometryProcessor::Segment::isArcType)
       .field("indices",
              &conway::geometry::ConwayGeometryProcessor::Segment::indices);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve {
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve>(
+      "ParamsGetCircleCurve")
+      .field("radius", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetCircleCurve::radius)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetCircleCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetCircleCurve::placement);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
   emscripten::value_object<
@@ -343,6 +355,7 @@ bool IsCCW() const;
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
   emscripten::function("getGeometry", &GetGeometry);
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
+  emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);

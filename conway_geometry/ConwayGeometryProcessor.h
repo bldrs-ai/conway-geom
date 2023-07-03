@@ -367,6 +367,15 @@ struct ParamsGetIfcIndexedPolyCurve {
 
 conway::geometry::IfcCurve getIndexedPolyCurve(ParamsGetIfcIndexedPolyCurve parameters);
 
+//case ifc::CircleProfileDef
+struct ParamsGetCircleCurve {
+  uint32_t radius;
+  bool hasPlacement = true;
+  glm::dmat3 placement;
+};
+
+conway::geometry::IfcCurve getCircleCurve(ParamsGetCircleCurve parameters);
+
  private:
   fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);
   IfcGeometry FBGeomToGeom(const fuzzybools::Geometry &fbGeom);

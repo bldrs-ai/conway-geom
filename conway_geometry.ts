@@ -15,25 +15,31 @@ export interface GeometryObject {
 export interface CurveObject {
   add2d: () => void
   add3d: () => void
-  get2d: (index:number) => any
-  get3d: (index:number) => any
+  get2d: (index: number) => any
+  get3d: (index: number) => any
   invert: () => void
   isCCW: () => boolean
 }
 
+export interface ParamsGetCircleCurve {
+  radius: number
+  hasPlacement: boolean
+  placement: any
+}
+
 export interface ParamsGetAxis2Placement2D {
-  isAxis2Placement2D:boolean
-  isCartesianTransformationOperator2D:boolean
-  isCartesianTransformationOperator2DNonUniform:boolean
-  position2D:any
-  customAxis1Ref:boolean
-  axis1Ref:any
-  customAxis2Ref:boolean
-  axis2Ref:any
-  customScale:boolean
-  scale1:number
-  customScale2:boolean
-  scale2:number
+  isAxis2Placement2D: boolean
+  isCartesianTransformationOperator2D: boolean
+  isCartesianTransformationOperator2DNonUniform: boolean
+  position2D: any
+  customAxis1Ref: boolean
+  axis1Ref: any
+  customAxis2Ref: boolean
+  axis2Ref: any
+  customScale: boolean
+  scale1: number
+  customScale2: boolean
+  scale2: number
 };
 
 export interface Segment {
@@ -128,6 +134,16 @@ export class ConwayGeometry {
    */
   getIndexedPolyCurve(parameters: ParamsGetIfcIndexedPolyCurve): CurveObject {
     const result = this.wasmModule.getIndexedPolyCurve(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsGetCircleCurve parsed from data model
+   * @returns 
+   */
+  getCircleCurve(parameters: ParamsGetCircleCurve): CurveObject {
+    const result = this.wasmModule.getCircleCurve(parameters)
     return result
   }
 
