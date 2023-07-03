@@ -26,8 +26,8 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    conway::geometry::IfcGeometry geom, bool isGlb,
-    bool outputDraco, std::string filePath) {
+    conway::geometry::IfcGeometry geom, bool isGlb, bool outputDraco,
+    std::string filePath) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
   if (processor) {
     results = processor->GeometryToGltf(geom, isGlb, outputDraco, filePath,
@@ -37,8 +37,7 @@ conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
   return results;
 }
 
-std::string GeometryToObj(conway::geometry::IfcGeometry geom,
-                          size_t offset) {
+std::string GeometryToObj(conway::geometry::IfcGeometry geom, size_t offset) {
   std::string result;
   if (processor) {
     return processor->GeometryToObj(geom, offset, NormalizeMat);
@@ -59,6 +58,17 @@ conway::geometry::IfcGeometry GetGeometry(
   }
 }
 
+conway::geometry::IfcCurve GetIndexedPolyCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
+        parameters) {
+  conway::geometry::IfcCurve curve;
+  if (processor) {
+    return processor->getIndexedPolyCurve(parameters);
+  } else {
+    return curve;
+  }
+}
+
 glm::dmat4 GetLocalPlacement(
     conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
         parameters) {
@@ -73,8 +83,7 @@ glm::dmat4 GetLocalPlacement(
 glm::dmat4 GetAxis2Placement3D(
     conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
         parameters) {
-
-          glm::dmat4 resultMat;
+  glm::dmat4 resultMat;
   if (processor) {
     resultMat = processor->GetAxis2Placement3D(parameters);
   }
@@ -134,8 +143,27 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
-                .function("clone", 
-                &conway::geometry::IfcGeometry::Clone);
+      .function("clone", &conway::geometry::IfcGeometry::Clone);
+
+   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
+      .constructor<>()
+      .function("add2d", &conway::geometry::IfcCurve::Add2d)
+      .function("add3d", &conway::geometry::IfcCurve::Add3d)
+      .function("get2d", &conway::geometry::IfcCurve::Get2d)
+      .function("get3d", &conway::geometry::IfcCurve::Get3d)
+      .function("invert", &conway::geometry::IfcCurve::Invert)
+      .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
+
+      /**
+       *  void Add(glm::dvec3 pt);
+  void Add(glm::dvec2 pt);
+  glm::dvec2 Get2d(size_t i) const;
+  glm::dvec3 Get3d(size_t i) const;
+  void Invert();
+  bool IsCCW() const;
+
+      */
+
 
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
@@ -153,6 +181,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("y", &glm::dvec3::y)
       .field("z", &glm::dvec3::z);
 
+  emscripten::value_object<glm::vec2>("vec2")
+      .field("x", &glm::vec2::x)
+      .field("y", &glm::vec2::y);
+
+  emscripten::register_vector<glm::vec2>("vec2Array");
+
   emscripten::class_<glm::dmat4>("glmdmat4")
       .constructor<>()
       .function("getValues", &getMatrixValues)
@@ -168,6 +202,24 @@ EMSCRIPTEN_BINDINGS(my_module) {
                             IndexedPolygonalFace::indices)
       .field("face_starts", &conway::geometry::ConwayGeometryProcessor::
                                 IndexedPolygonalFace::face_starts);
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::Segment>(
+      "Segment")
+      .field("isArcType",
+             &conway::geometry::ConwayGeometryProcessor::Segment::isArcType)
+      .field("indices",
+             &conway::geometry::ConwayGeometryProcessor::Segment::indices);
+
+  //conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve>(
+      "ParamsGetIfcIndexedPolyCurve")
+      .field("dimensions",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetIfcIndexedPolyCurve::dimensions)
+      .field("segments", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcIndexedPolyCurve::segments)
+      .field("points", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetIfcIndexedPolyCurve::points);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
@@ -244,7 +296,10 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
       "VectorIndexedPolygonalFace");
+  emscripten::register_vector<
+      conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
   emscripten::function("getGeometry", &GetGeometry);
+  emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);

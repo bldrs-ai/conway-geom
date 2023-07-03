@@ -1257,4 +1257,40 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
   return geom;
 }
 
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
+    ParamsGetIfcIndexedPolyCurve parameters) {
+  IfcCurve curve;
+
+  if (parameters.dimensions == 2) {
+    if (parameters.segments.size() > 0 ) {
+      for (auto &sg : parameters.segments) {
+        if (!sg.isArcType) {
+          auto pts = parameters.points;
+          for (auto &pt : sg.indices) {
+            curve.Add2d(pts[pt - 1]);
+          }
+        }
+        if (sg.isArcType) {
+          auto pts = parameters.points;
+          IfcCurve arc =
+              BuildArc3Pt(pts[sg.indices[0] - 1], pts[sg.indices[1] - 1],
+                          pts[sg.indices[2] - 1], CIRCLE_SEGMENTS_MEDIUM);
+          for (auto &pt : arc.points) {
+            curve.Add2d(pt);
+          }
+        }
+      }
+    } else {
+      auto pts = parameters.points;
+      for (auto &pt : pts) {
+        curve.Add2d(pt);
+      }
+    }
+  } else {
+    printf("Parsing ifcindexedpolycurve in 3D is not possible\n");
+  }
+
+  return curve;
+}
+
 }  // namespace conway::geometry

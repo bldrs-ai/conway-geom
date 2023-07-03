@@ -12,6 +12,26 @@ export interface GeometryObject {
   applyTransform(parameter: any): void
 }
 
+export interface CurveObject {
+  add2d: () => void
+  add3d: () => void
+  get2d: () => any
+  get3d: () => any
+  invert: () => void
+  isCCW: () => boolean
+}
+
+export interface Segment {
+  isArcType: boolean
+  indices: any
+}
+
+export interface ParamsGetIfcIndexedPolyCurve {
+  dimensions: number
+  segments: any
+  points: any
+};
+
 export interface IndexedPolygonalFace {
   indices: any
   face_starts: any
@@ -36,11 +56,11 @@ export interface ParamsLocalPlacement {
 }
 
 export interface ParamsAxis2Placement3D {
-  position:any;
-  zAxisRef:any;
-  xAxisRef:any;
-  normalizeZ:boolean;
-  normalizeX:boolean;
+  position: any
+  zAxisRef: any
+  xAxisRef: any
+  normalizeZ: boolean
+  normalizeX: boolean
 }
 
 /**
@@ -56,7 +76,7 @@ export class ConwayGeometry {
    * @param wasmModule_ - Pass loaded wasm module to this function if it's already loaded
    */
   constructor(wasmModule_?: any) {
-    if ( wasmModule_ !== void 0 ) {
+    if (wasmModule_ !== void 0) {
       this.wasmModule = wasmModule_
     }
   }
@@ -66,7 +86,7 @@ export class ConwayGeometry {
    * @return {Promise<boolean>} - initialization status
    */
   async initialize(): Promise<boolean> {
-    if (this.wasmModule === void 0 ) {
+    if (this.wasmModule === void 0) {
       this.wasmModule = await new ConwayGeomWasm()
     }
 
@@ -83,6 +103,16 @@ export class ConwayGeometry {
    */
   getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
     const result = this.wasmModule.getGeometry(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters - ParamsGetIfcIndexedPolyCurve parsed from data model
+   * @returns 
+   */
+  getIndexedPolyCurve(parameters: ParamsGetIfcIndexedPolyCurve): CurveObject {
+    const result = this.wasmModule.getIndexedPolyCurve(parameters)
     return result
   }
 
@@ -104,7 +134,7 @@ export class ConwayGeometry {
    * @param parameters - ParamsAxis2Placement3D structure
    * @return {any} - native Axis2Placement3D structure
    */
-  getAxis2Placement3D(parameters:ParamsAxis2Placement3D): any {
+  getAxis2Placement3D(parameters: ParamsAxis2Placement3D): any {
     return this.wasmModule.getAxis2Placement3D(parameters)
   }
 
@@ -113,7 +143,7 @@ export class ConwayGeometry {
    * @param parameters - ParamsLocalPlacement structure
    * @return {any} = native LocalPlacement structure
    */
-  getLocalPlacement(parameters:ParamsLocalPlacement) {
+  getLocalPlacement(parameters: ParamsLocalPlacement) {
     return this.wasmModule.getLocalPlacement(parameters)
   }
 

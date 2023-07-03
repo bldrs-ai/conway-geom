@@ -353,6 +353,20 @@ class ConwayGeometryProcessor {
   IfcGeometry getPolygonalFaceSetGeometry(
       ParamsGetPolygonalFaceSetGeometry parameters);
 
+struct Segment {
+  bool isArcType = false;
+  std::vector<uint32_t> indices;
+};
+
+// case ifc::IFCINDEXEDPOLYCURVE
+struct ParamsGetIfcIndexedPolyCurve {
+  uint32_t dimensions = 2;
+  std::vector<Segment> segments;
+  std::vector<glm::vec2> points;
+};
+
+conway::geometry::IfcCurve getIndexedPolyCurve(ParamsGetIfcIndexedPolyCurve parameters);
+
  private:
   fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);
   IfcGeometry FBGeomToGeom(const fuzzybools::Geometry &fbGeom);

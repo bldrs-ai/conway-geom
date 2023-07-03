@@ -56,7 +56,7 @@ inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
     pointList = tempPointList;
   }
   IfcCurve curve;
-  for (uint32_t j = 0; j < pointList.size(); j++) curve.Add(pointList.at(j));
+  for (uint32_t j = 0; j < pointList.size(); j++) curve.Add2d(pointList.at(j));
   return curve;
 }
 
@@ -299,11 +299,11 @@ inline IfcCurve GetRectangleCurve(double xdim, double ydim,
   glm::dvec2 tr = placement * glm::dvec3(halfX, halfY, 1);
 
   IfcCurve c;
-  c.Add(bl);
-  c.Add(br);
-  c.Add(tr);
-  c.Add(tl);
-  c.Add(bl);
+  c.Add2d(bl);
+  c.Add2d(br);
+  c.Add2d(tr);
+  c.Add2d(tl);
+  c.Add2d(bl);
 
   if (MatrixFlipsTriangles(placement)) {
     c.Invert();
@@ -585,7 +585,7 @@ inline IfcCurve BuildArc(const glm::dvec3 &pos, const glm::dvec3 &axis,
 
   for (auto &pt2D : curve2D.points) {
     glm::dvec3 pt3D = pos + pt2D.x * right + pt2D.y * up;
-    curve.Add(pt3D);
+    curve.Add3d(pt3D);
   }
 
   return curve;

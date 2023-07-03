@@ -23,19 +23,19 @@ glm::dvec2 IfcCurve::Get2d(size_t i) const {
 
 glm::dvec3 IfcCurve::Get3d(size_t i) const { return points.at(i); }
 
-void IfcCurve::Add(glm::dvec3 pt) {
+void IfcCurve::Add3d(glm::dvec3 pt) {
   if (points.empty())
     points.push_back(pt);
   else if (!equals(pt, points.back(), EPS_TINY))
     points.push_back(pt);
 }
 
-void IfcCurve::Add(glm::dvec2 pt) {
+void IfcCurve::Add2d(glm::dvec2 pt) {
   glm::dvec3 point;
   point.x = pt.x;
   point.y = pt.y;
   point.z = 0;
-  Add(point);
+  Add3d(point);
 }
 
 void IfcCurve::Invert() { std::reverse(points.begin(), points.end()); }
