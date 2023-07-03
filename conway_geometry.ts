@@ -15,11 +15,26 @@ export interface GeometryObject {
 export interface CurveObject {
   add2d: () => void
   add3d: () => void
-  get2d: () => any
-  get3d: () => any
+  get2d: (index:number) => any
+  get3d: (index:number) => any
   invert: () => void
   isCCW: () => boolean
 }
+
+export interface ParamsGetAxis2Placement2D {
+  isAxis2Placement2D:boolean
+  isCartesianTransformationOperator2D:boolean
+  isCartesianTransformationOperator2DNonUniform:boolean
+  position2D:any
+  customAxis1Ref:boolean
+  axis1Ref:any
+  customAxis2Ref:boolean
+  axis2Ref:any
+  customScale:boolean
+  scale1:number
+  customScale2:boolean
+  scale2:number
+};
 
 export interface Segment {
   isArcType: boolean
@@ -127,6 +142,15 @@ export class ConwayGeometry {
   toGltf(geometry: GeometryObject, isGlb: boolean, outputDraco: boolean, fileUri: string):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, isGlb, outputDraco, fileUri)
+  }
+
+  /**
+   * 
+   * @param parameters - ParamsGetAxis2Placement2D structure
+   * @returns {any} - native Axis2Placement2D structure
+   */
+  getAxis2Placement2D(parameters: ParamsGetAxis2Placement2D): any {
+    return this.wasmModule.getAxis2Placement2D(parameters)
   }
 
   /**

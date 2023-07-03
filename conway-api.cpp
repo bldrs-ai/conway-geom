@@ -80,6 +80,17 @@ glm::dmat4 GetLocalPlacement(
   return resultMat;
 }
 
+glm::dmat3 GetAxis2Placement2D(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D
+        parameters) {
+  glm::dmat3 resultMat;
+  if (processor) {
+    resultMat = processor->GetAxis2Placement2D(parameters);
+  }
+
+  return resultMat;
+}
+
 glm::dmat4 GetAxis2Placement3D(
     conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
         parameters) {
@@ -145,7 +156,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::ApplyTransform)
       .function("clone", &conway::geometry::IfcGeometry::Clone);
 
-   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
+  emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
       .function("add2d", &conway::geometry::IfcCurve::Add2d)
       .function("add3d", &conway::geometry::IfcCurve::Add3d)
@@ -154,16 +165,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("invert", &conway::geometry::IfcCurve::Invert)
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
 
-      /**
-       *  void Add(glm::dvec3 pt);
-  void Add(glm::dvec2 pt);
-  glm::dvec2 Get2d(size_t i) const;
-  glm::dvec3 Get3d(size_t i) const;
-  void Invert();
-  bool IsCCW() const;
+  /**
+   *  void Add(glm::dvec3 pt);
+void Add(glm::dvec2 pt);
+glm::dvec2 Get2d(size_t i) const;
+glm::dvec3 Get3d(size_t i) const;
+void Invert();
+bool IsCCW() const;
 
-      */
-
+  */
 
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
@@ -210,16 +220,16 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("indices",
              &conway::geometry::ConwayGeometryProcessor::Segment::indices);
 
-  //conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve>(
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve>(
       "ParamsGetIfcIndexedPolyCurve")
-      .field("dimensions",
-             &conway::geometry::ConwayGeometryProcessor::
-                 ParamsGetIfcIndexedPolyCurve::dimensions)
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetIfcIndexedPolyCurve::dimensions)
       .field("segments", &conway::geometry::ConwayGeometryProcessor::
-                           ParamsGetIfcIndexedPolyCurve::segments)
+                             ParamsGetIfcIndexedPolyCurve::segments)
       .field("points", &conway::geometry::ConwayGeometryProcessor::
-                          ParamsGetIfcIndexedPolyCurve::points);
+                           ParamsGetIfcIndexedPolyCurve::points);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
@@ -232,6 +242,39 @@ EMSCRIPTEN_BINDINGS(my_module) {
                            ParamsGetPolygonalFaceSetGeometry::points)
       .field("faces", &conway::geometry::ConwayGeometryProcessor::
                           ParamsGetPolygonalFaceSetGeometry::faces);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement2D
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D>(
+      "ParamsAxis2Placement2D")
+      .field("isAxis2Placement2D",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetAxis2Placement2D::isAxis2Placement2D)
+      .field("isCartesianTransformationOperator2D",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetAxis2Placement2D::isCartesianTransformationOperator2D)
+      .field("isCartesianTransformationOperator2DNonUniform",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetAxis2Placement2D::
+                     isCartesianTransformationOperator2DNonUniform)
+      .field("position2D", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetAxis2Placement2D::position2D)
+      .field("customAxis1Ref", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetAxis2Placement2D::customAxis1Ref)
+      .field("axis1Ref", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsGetAxis2Placement2D::axis1Ref)
+      .field("customAxis2Ref", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetAxis2Placement2D::customAxis2Ref)
+      .field("axis2Ref", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsGetAxis2Placement2D::axis2Ref)
+      .field("customScale", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetAxis2Placement2D::customScale)
+      .field("scale1", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetAxis2Placement2D::scale1)
+      .field("customScale2", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetAxis2Placement2D::customScale2)
+      .field("scale2", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetAxis2Placement2D::scale2);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
   emscripten::value_object<
@@ -305,6 +348,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);
   emscripten::function("geometryToObj", &GeometryToObj);
   emscripten::function("geometryToGltf", &GeometryToGltf);
+  emscripten::function("getAxis2Placement2D", &GetAxis2Placement2D);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);
   emscripten::function("getUint8Array", &GetUint8Array,
