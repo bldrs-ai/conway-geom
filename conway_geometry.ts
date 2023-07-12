@@ -27,6 +27,20 @@ export interface ParamsGetCircleCurve {
   placement: any
 }
 
+export interface ParamsCreateNativeIfcProfile {
+  curve: CurveObject | undefined
+  holes: any | undefined //std::vector<conway::geometry::IfcCurve> 
+  isConvex: boolean
+  isComposite: boolean
+  profiles: any | undefined //std::vector<conway::geometry::IfcProfile>;
+}
+
+export interface ParamsGetExtrudedAreaSolid {
+  depth: number
+  dir: any //glm::dvec3
+  profile: any //IfcProfile 
+};
+
 export interface ParamsGetAxis2Placement2D {
   isAxis2Placement2D: boolean
   isCartesianTransformationOperator2D: boolean
@@ -144,6 +158,26 @@ export class ConwayGeometry {
    */
   getCircleCurve(parameters: ParamsGetCircleCurve): CurveObject {
     const result = this.wasmModule.getCircleCurve(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsCreateNativeIfcProfile parsed from data model
+   * @returns 
+   */
+  createNativeIfcProfile(parameters: ParamsCreateNativeIfcProfile): any {
+    const result = this.wasmModule.createNativeIfcProfile(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsGetExtrudedAreaSolid parsed from data model 
+   * @returns 
+   */
+  getExtrudedAreaSolid(parameters:ParamsGetExtrudedAreaSolid): GeometryObject {
+    const result = this.wasmModule.getExtrudedAreaSolid(parameters)
     return result
   }
 

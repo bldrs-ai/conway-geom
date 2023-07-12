@@ -1305,9 +1305,75 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
     placement = parameters.placement;
   }
 
-  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH, placement);
+  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
+                         placement);
 
   return curve;
+}
+
+conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
+    ParamsGetExtrudedAreaSolid parameters) {
+  conway::geometry::IfcGeometry geom;
+  double depth = parameters.depth;
+
+  conway::geometry::IfcProfile profile = parameters.profile;
+  if (!profile.isComposite) {
+    if (profile.curve.points.empty()) {
+      printf("empty curve, returning...\n");
+      return geom;
+    }
+  } else {
+    for (uint32_t i = 0; i < profile.profiles.size(); i++) {
+      if (profile.profiles[i].curve.points.empty()) {
+        printf("empty curve, returning...\n");
+        return geom;
+      }
+    }
+  }
+
+  glm::dvec3 dir = parameters.dir;
+
+  double dirDot = glm::dot(dir, glm::dvec3(0, 0, 1));
+  // TODO(nickcastel50): I believe it can be now...
+  // https://standards.buildingsmart.org/IFC/RELEASE/IFC2x3/TC1/HTML/ifcgeometricmodelresource/lexical/ifcextrudedareasolid.htm
+  bool flipWinding = dirDot < 0;  // can't be perp according to spec
+
+// TODO: correct dump in case of compositeProfile
+#ifdef CSG_DEBUG_OUTPUT
+  io::DumpSVGCurve(profile.curve.points, "IFCEXTRUDEDAREASOLID_curve.html");
+#endif
+
+  if (!profile.isComposite) {
+    geom = Extrude(profile, dir, depth);
+    if (flipWinding) {
+      for (uint32_t i = 0; i < geom.numFaces; i++) {
+        uint32_t temp = geom.indexData[i * 3 + 0];
+        temp = geom.indexData[i * 3 + 0];
+        geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
+        geom.indexData[i * 3 + 1] = temp;
+      }
+    }
+  } else {
+    for (uint32_t i = 0; i < profile.profiles.size(); i++) {
+      IfcGeometry geom_t = Extrude(profile.profiles[i], dir, depth);
+      if (flipWinding) {
+        for (uint32_t k = 0; k < geom_t.numFaces; k++) {
+          uint32_t temp = geom_t.indexData[k * 3 + 0];
+          temp = geom_t.indexData[k * 3 + 0];
+          geom_t.indexData[k * 3 + 0] = geom_t.indexData[k * 3 + 1];
+          geom_t.indexData[k * 3 + 1] = temp;
+        }
+      }
+      geom.AppendGeometry(geom_t);
+    }
+  }
+
+// TODO: correct dump in case of compositeProfile
+#ifdef CSG_DEBUG_OUTPUT
+  io::DumpIfcGeometry(geom, "IFCEXTRUDEDAREASOLID_geom.obj");
+#endif
+
+  return geom;
 }
 
 }  // namespace conway::geometry
