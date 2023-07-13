@@ -226,6 +226,25 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("invert", &conway::geometry::IfcCurve::Invert)
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
 
+  emscripten::class_<conway::geometry::IfcProfile>("IfcProfile")
+  .constructor<>()
+  .function("getType", &conway::geometry::IfcProfile::getType)
+  .function("getCurve", &conway::geometry::IfcProfile::getCurve)
+  .function("getHoles", &conway::geometry::IfcProfile::getHoles)
+  .function("isConvex", &conway::geometry::IfcProfile::getIsConvex)
+  .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
+  .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
+
+  emscripten::class_<glm::dmat4>("glmdmat4")
+      .constructor<>()
+      .function("getValues", &getMatrixValues4x4)
+      .function("setValues", &setMatrixValues4x4);
+
+  emscripten::class_<glm::dmat3>("glmdmat3")
+      .constructor<>()
+      .function("getValues", &getMatrixValues3x3)
+      .function("setValues", &setMatrixValues3x3);
+
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
       .field("y", &glm::dvec4::y)
@@ -245,23 +264,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::value_object<glm::vec2>("vec2")
       .field("x", &glm::vec2::x)
       .field("y", &glm::vec2::y);
-
-  emscripten::register_vector<glm::vec2>("vec2Array");
-
-  emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
-  emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
-
-  emscripten::class_<glm::dmat4>("glmdmat4")
-      .constructor<>()
-      .function("getValues", &getMatrixValues4x4)
-      .function("setValues", &setMatrixValues4x4);
-
-  emscripten::class_<glm::dmat3>("glmdmat3")
-      .constructor<>()
-      .function("getValues", &getMatrixValues3x3)
-      .function("setValues", &setMatrixValues3x3);
-
-  emscripten::register_vector<glm::vec3>("glmVec3Array");
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
@@ -383,6 +385,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("relPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsLocalPlacement::relPlacement);
 
+
+  //ParamsCreateNativeIfcProfile
+  emscripten::value_object<ParamsCreateNativeIfcProfile>("ParamsCreateNativeIfcProfile")
+  .field("curve", &ParamsCreateNativeIfcProfile::curve)
+  .field("holes", &ParamsCreateNativeIfcProfile::holes)
+  .field("isConvex", &ParamsCreateNativeIfcProfile::isConvex)
+  .field("isComposite", &ParamsCreateNativeIfcProfile::isComposite)
+  .field("profiles", &ParamsCreateNativeIfcProfile::profiles);
+
   // Define the ResultsGltf object
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
@@ -412,16 +423,21 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .element(emscripten::index<14>())
       .element(emscripten::index<15>());
 
+  emscripten::register_vector<glm::vec2>("vec2Array");
+  emscripten::register_vector<glm::vec3>("glmVec3Array");
   emscripten::register_vector<std::string>("stringVector");
   emscripten::register_vector<uint32_t>("UintVector");
   emscripten::register_vector<uint8_t>("VectorUint8");
   emscripten::register_vector<std::vector<uint8_t>>("VectorVectorUint8");
   emscripten::register_vector<size_t>("ULongVector");
+  emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
+  emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
       "VectorIndexedPolygonalFace");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
+
   emscripten::function("getGeometry", &GetGeometry);
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
