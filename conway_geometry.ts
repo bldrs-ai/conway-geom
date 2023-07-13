@@ -145,8 +145,8 @@ export class ConwayGeometry {
    * @param parameters - ParamsPolygonalFaceSet parsed from data model
    * @return {GeometryObject} - Native geometry object
    */
-  getGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
-    const result = this.wasmModule.getGeometry(parameters)
+  getPolygonalFaceSetGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
+    const result = this.wasmModule.getPolygonalFaceSetGeometry(parameters)
     return result
   }
 

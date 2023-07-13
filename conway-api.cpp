@@ -40,21 +40,21 @@ conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
 std::string GeometryToObj(conway::geometry::IfcGeometry geom, size_t offset) {
   if (processor) {
     return processor->GeometryToObj(geom, offset, NormalizeMat);
-  } else {
-    std::string result;
-    return result;
   }
+
+  std::string result;
+  return result;
 }
 
-conway::geometry::IfcGeometry GetGeometry(
+conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
     conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
         parameters) {
   if (processor) {
     return processor->getPolygonalFaceSetGeometry(parameters);
-  } else {
-    conway::geometry::IfcGeometry geom;
-    return geom;
   }
+
+  conway::geometry::IfcGeometry geom;
+  return geom;
 }
 
 conway::geometry::IfcCurve GetIndexedPolyCurve(
@@ -62,10 +62,10 @@ conway::geometry::IfcCurve GetIndexedPolyCurve(
         parameters) {
   if (processor) {
     return processor->getIndexedPolyCurve(parameters);
-  } else {
-    conway::geometry::IfcCurve curve;
-    return curve;
   }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
 }
 
 conway::geometry::IfcCurve GetCircleCurve(
@@ -73,10 +73,10 @@ conway::geometry::IfcCurve GetCircleCurve(
         parameters) {
   if (processor) {
     return processor->getCircleCurve(parameters);
-  } else {
-    conway::geometry::IfcCurve curve;
-    return curve;
   }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
 }
 
 conway::geometry::IfcGeometry GetExtrudedAreaSolid(
@@ -84,19 +84,20 @@ conway::geometry::IfcGeometry GetExtrudedAreaSolid(
         parameters) {
   if (processor) {
     return processor->getExtrudedAreaSolid(parameters);
-  } else {
-    conway::geometry::IfcGeometry geom;
-    return geom;
   }
+
+  conway::geometry::IfcGeometry geom;
+  return geom;
 }
 
 glm::dmat4 GetLocalPlacement(
     conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
         parameters) {
-  glm::dmat4 resultMat;
   if (processor) {
-    resultMat = processor->GetLocalPlacement(parameters);
+    return processor->GetLocalPlacement(parameters);
   }
+
+  glm::dmat4 resultMat;
 
   return resultMat;
 }
@@ -104,23 +105,33 @@ glm::dmat4 GetLocalPlacement(
 glm::dmat3 GetAxis2Placement2D(
     conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D
         parameters) {
-  glm::dmat3 resultMat;
   if (processor) {
-    resultMat = processor->GetAxis2Placement2D(parameters);
+    return processor->GetAxis2Placement2D(parameters);
   }
 
+  glm::dmat3 resultMat;
   return resultMat;
 }
 
 glm::dmat4 GetAxis2Placement3D(
     conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
         parameters) {
-  glm::dmat4 resultMat;
   if (processor) {
-    resultMat = processor->GetAxis2Placement3D(parameters);
+    return processor->GetAxis2Placement3D(parameters);
   }
 
+  glm::dmat4 resultMat;
   return resultMat;
+}
+
+conway::geometry::IfcGeometry GetBooleanResult(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult
+        parameters) {
+  if (processor) {
+    return processor->GetBooleanResult(parameters);
+  }
+  conway::geometry::IfcGeometry geometry;
+  return geometry;
 }
 
 bool InitializeGeometryProcessor() {
@@ -190,6 +201,7 @@ conway::geometry::IfcProfile createNativeIfcProfile(
     ParamsCreateNativeIfcProfile parameters) {
   conway::geometry::IfcProfile profile;
 
+  profile.type = "testType";
   profile.curve = parameters.curve;
   profile.holes = parameters.holes;
   profile.isConvex = parameters.isConvex;
@@ -198,9 +210,6 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 
   return profile;
 }
-
-typedef glm::vec3 glmVec3;
-typedef std::vector<glm::vec3> glmVec3Array;
 
 EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
@@ -227,13 +236,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
 
   emscripten::class_<conway::geometry::IfcProfile>("IfcProfile")
-  .constructor<>()
-  .function("getType", &conway::geometry::IfcProfile::getType)
-  .function("getCurve", &conway::geometry::IfcProfile::getCurve)
-  .function("getHoles", &conway::geometry::IfcProfile::getHoles)
-  .function("isConvex", &conway::geometry::IfcProfile::getIsConvex)
-  .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
-  .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
+      .constructor<>()
+      .function("getType", &conway::geometry::IfcProfile::getType)
+      .function("getCurve", &conway::geometry::IfcProfile::getCurve)
+      .function("getHoles", &conway::geometry::IfcProfile::getHoles)
+      .function("isConvex", &conway::geometry::IfcProfile::getIsConvex)
+      .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
+      .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
 
   emscripten::class_<glm::dmat4>("glmdmat4")
       .constructor<>()
@@ -261,7 +270,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("y", &glm::dvec3::y)
       .field("z", &glm::dvec3::z);
 
-  emscripten::value_object<glm::vec2>("vec2")
+  emscripten::value_object<glm::dvec2>("glmdVec2")
+      .field("x", &glm::dvec2::x)
+      .field("y", &glm::dvec2::y);
+
+  emscripten::value_object<glm::vec2>("glmVec2")
       .field("x", &glm::vec2::x)
       .field("y", &glm::vec2::y);
 
@@ -385,14 +398,24 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("relPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsLocalPlacement::relPlacement);
 
+  // ParamsCreateNativeIfcProfile
+  emscripten::value_object<ParamsCreateNativeIfcProfile>(
+      "ParamsCreateNativeIfcProfile")
+      .field("curve", &ParamsCreateNativeIfcProfile::curve)
+      .field("holes", &ParamsCreateNativeIfcProfile::holes)
+      .field("isConvex", &ParamsCreateNativeIfcProfile::isConvex)
+      .field("isComposite", &ParamsCreateNativeIfcProfile::isComposite)
+      .field("profiles", &ParamsCreateNativeIfcProfile::profiles);
 
-  //ParamsCreateNativeIfcProfile
-  emscripten::value_object<ParamsCreateNativeIfcProfile>("ParamsCreateNativeIfcProfile")
-  .field("curve", &ParamsCreateNativeIfcProfile::curve)
-  .field("holes", &ParamsCreateNativeIfcProfile::holes)
-  .field("isConvex", &ParamsCreateNativeIfcProfile::isConvex)
-  .field("isComposite", &ParamsCreateNativeIfcProfile::isComposite)
-  .field("profiles", &ParamsCreateNativeIfcProfile::profiles);
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
+      "ParamsGetBooleanResult")
+      .field("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsGetBooleanResult::flatFirstMesh)
+      .field("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetBooleanResult::flatSecondMesh)
+      .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetBooleanResult::operatorType);
 
   // Define the ResultsGltf object
   emscripten::value_object<
@@ -438,7 +461,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
 
-  emscripten::function("getGeometry", &GetGeometry);
+  emscripten::function("getPolygonalFaceSetGeometry",
+                       &GetPolygonalFaceSetGeometry);
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
@@ -453,4 +477,5 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getBooleanResult", &GetBooleanResult);
 }

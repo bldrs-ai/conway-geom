@@ -121,7 +121,7 @@ class ConwayGeometryProcessor {
   struct ParamsGetBooleanResult {
     std::vector<IfcGeometry> flatFirstMesh;
     std::vector<IfcGeometry> flatSecondMesh;
-    bool clippingResult = false;
+    int operatorType = 2;
   };
   IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
 
