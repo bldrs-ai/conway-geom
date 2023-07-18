@@ -252,6 +252,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("geometryToGltf", &GeometryToGltf);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);
+  emscripten::function("getCartesianTransformationOperator3D", &GetCartesianTransformationOperator3D );
   emscripten::function("getUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
 }
