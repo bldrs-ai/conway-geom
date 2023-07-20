@@ -370,7 +370,7 @@ class ConwayGeometryProcessor {
 
   // case ifc::CircleProfileDef
   struct ParamsGetCircleCurve {
-    uint32_t radius;
+    float radius;
     bool hasPlacement = true;
     glm::dmat3 placement;
   };

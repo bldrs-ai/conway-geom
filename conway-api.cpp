@@ -455,6 +455,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<size_t>("ULongVector");
   emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
+  emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
       "VectorIndexedPolygonalFace");

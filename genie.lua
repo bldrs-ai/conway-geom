@@ -217,7 +217,7 @@ linkoptions {
     "--bind",
     "-03",
     "-flto",
-    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native_tests -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
+    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -sSTACK_SIZE=5MB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native_tests -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
 }
 configuration {}
 libdirs {}
@@ -408,7 +408,7 @@ linkoptions {
     "--dts",
     "-03",
     "-flto",
-    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
+    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -sSTACK_SIZE=5MB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
 }
 
 configuration {}

@@ -107,6 +107,12 @@ export interface ParamsAxis2Placement3D {
   normalizeX: boolean
 }
 
+export interface ParamsGetBooleanResult {
+  flatFirstMesh:any //std::vector<IfcGeometry>
+  flatSecondMesh:any //std::vector<IfcGeometry>
+  operatorType:number
+}
+
 /**
  * Internal interface for wasm module, geometry processing
  * OBJ + GLTF + GLB (Draco) Conversions
@@ -187,6 +193,11 @@ export class ConwayGeometry {
    */
   getExtrudedAreaSolid(parameters: ParamsGetExtrudedAreaSolid): GeometryObject {
     const result = this.wasmModule.getExtrudedAreaSolid(parameters)
+    return result
+  }
+
+  getBooleanResult(parameters:ParamsGetBooleanResult): GeometryObject {
+    const result = this.wasmModule.getBooleanResult(parameters)
     return result
   }
 

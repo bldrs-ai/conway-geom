@@ -1,6 +1,8 @@
-/* 
- * Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md 
- * Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/operations/curve-utils.h
+/*
+ * Decoupling:
+ * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+ * Ref:
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/operations/curve-utils.h
  * */
 
 #pragma once
@@ -271,7 +273,8 @@ inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
   }
 
   // check for a closed curve
-  if (endRad == CONST_PI * 2 && startRad == 0) {
+  //NOTE* must cast here to double, check broken on wasm builds otherwise - nickcastel50
+  if (endRad == (double)CONST_PI * 2 && startRad == 0) {
     c.points.push_back(c.points[0]);
 
     if (MatrixFlipsTriangles(placement)) {
