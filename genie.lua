@@ -123,15 +123,27 @@ configuration {"Emscripten", "Release"}
 libdirs{"./dependencies/wasm"}
 links{"draco", "manifold", "gltfsdk"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
 libdirs{"./dependencies/macOS-arm64"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 libdirs{"./dependencies/macOS-arm64"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+libdirs{"./dependencies/win"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+libdirs{"./dependencies/win"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}
 
@@ -242,15 +254,27 @@ configuration {"Emscripten", "Release"}
 libdirs{"./dependencies/wasm"}
 links{"draco", "manifold", "gltfsdk"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
 libdirs{"./dependencies/macOS-arm64"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 libdirs{"./dependencies/macOS-arm64"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+libdirs{"./dependencies/win"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+libdirs{"./dependencies/win"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}
 
@@ -334,15 +358,27 @@ configuration {"Emscripten", "Release"}
 libdirs{"./dependencies/wasm"}
 links{"manifold"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
 libdirs{"./dependencies/macOS-arm64"}
 links{"manifold"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 libdirs{"./dependencies/macOS-arm64"}
+links{"manifold"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+libdirs{"./dependencies/win"}
+links{"manifold"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+libdirs{"./dependencies/win"}
 links{"manifold"}
 flags {"EnableAVX2"}
 
@@ -450,14 +486,26 @@ configuration {"Emscripten", "Release"}
 libdirs{"./dependencies/wasm"}
 links{"draco", "manifold", "gltfsdk"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
 libdirs{"./dependencies/macOS-arm64"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 libdirs{"./dependencies/macOS-arm64"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+libdirs{"./dependencies/win"}
+links{"draco", "manifold", "gltfsdk"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+libdirs{"./dependencies/win"}
 links{"draco", "manifold", "gltfsdk"}
 flags {"EnableAVX2"}

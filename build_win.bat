@@ -6,6 +6,17 @@ if "%1"=="" (
     exit /b 1
 )
 
+if /i "%1"=="clean" (
+    cd gmake && (
+        make config=debug64 clean && make config=debugemscripten clean && make config=release64 clean && make config=releaseemscripten clean
+    )
+    if errorlevel 1 (
+        exit /b 1
+    ) else (
+        exit /b 0
+    )
+)
+
 if not defined EMSDK (
     echo ! EMSDK environment variable not defined
     echo ! Did you forget to activate the emsdk environment?
@@ -30,16 +41,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if /i "%1"=="clean" (
-    cd gmake && (
-        make config=debug64 clean && make config=debugemscripten clean && make config=release64 clean && make config=releaseemscripten clean
-    )
-    if errorlevel 1 (
-        exit /b 1
-    ) else (
-        exit /b 0
-    )
-) else if /i "%1"=="debug" (
+if /i "%1"=="debug" (
     set native_config=debug64
     set wasm_config=debugemscripten
 ) else if /i "%1"=="release" (
@@ -68,7 +70,6 @@ IF "%1"=="test" (
         make config=%native_config% conway_geom_native webifc_native
         make config=%wasm_config% ConwayGeomWasm
     ) ELSE (
-        echo %2
         IF "%2"=="native" (
             cd gmake
             make config=%native_config% conway_geom_native webifc_native
@@ -76,10 +77,7 @@ IF "%1"=="test" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasm
         ) ELSE (
-            echo "Platform invalid, building for native + wasm"
-            cd gmake
-            make config=%native_config% conway_geom_native webifc_native
-            make config=%wasm_config% ConwayGeomWasm
+            echo "Platform invalid"
         )
     )
     if %errorlevel% neq 0 (

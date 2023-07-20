@@ -94,16 +94,24 @@ configuration {"Release", "gmake"}
 configuration {"Emscripten", "Release"}
 postbuildcommands {"cp ../bin/release/draco.bc ../wasm/libdraco.a"}
 
-configuration "Release*"
-flags {"OptimizeSpeed", "NoIncrementalLink"}
-
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libdraco.a ../macOS-arm64/libdraco.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 postbuildcommands {"cp ../bin/64/release/libdraco.a ../macOS-arm64/libdraco.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
 flags {"EnableAVX2"}
 
 project "manifold"
@@ -175,13 +183,24 @@ postbuildcommands {"cp ../bin/release/manifold.bc ../wasm/libmanifold.a"}
 configuration "Release*"
 flags {"OptimizeSpeed", "NoIncrementalLink"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libmanifold.a ../macOS-arm64/libmanifold.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 postbuildcommands {"cp ../bin/64/release/libmanifold.a ../macOS-arm64/libmanifold.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libmanifold.a ..\\win\\libmanifold.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libmanifold.a ..\\win\\libmanifold.a* /Y"}
 flags {"EnableAVX2"}
 
 project "gltfsdk"
@@ -206,16 +225,7 @@ files {
     glTFSDKSrcFiles
 }
 
-configuration {"windows"}
-prelinkcommands {
-    "$(eval NEWLINKOBJS=$(LINKOBJS)_) $(eval NEWOBJRESP=$(OBJRESP)_) $(eval LINKCMD=$(CXX) -o $(TARGET) $(NEWLINKOBJS) $(RESOURCES) $(ARCH) $(ALL_LDFLAGS) $(LIBS))",
-    "$(if $(wildcard $(NEWOBJRESP)), $(shell del $(subst /,\\,$(NEWOBJRESP))))",
-    "$(foreach string,$(OBJECTS),\
-        $(file >> $(NEWOBJRESP),$(string) )\
-        )"
-}
-
-configuration {"gmake"}
+configuration {"gmake", "Emscripten"}
 linkoptions {
     "-O3",
     "--bind",
@@ -250,11 +260,22 @@ postbuildcommands {"cp ../bin/release/gltfsdk.bc ../wasm/libgltfsdk.a"}
 configuration "Release*"
 flags {"OptimizeSpeed", "NoIncrementalLink"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libgltfsdk.a ../macOS-arm64/libgltfsdk.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 postbuildcommands {"cp ../bin/64/release/libgltfsdk.a ../macOS-arm64/libgltfsdk.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libgltfsdk.a ..\\win\\libgltfsdk.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libgltfsdk.a ..\\win\\libgltfsdk.a* /Y"}
 flags {"EnableAVX2"}

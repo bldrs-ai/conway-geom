@@ -13,3 +13,6 @@ dependencies/macOS-arm64/libmanifold.a
 dependencies/wasm/libdraco.a
 dependencies/wasm/libgltfsdk.a
 dependencies/wasm/libmanifold.a
+dependencies/win/libdraco.a
+dependencies/win/libgltfsdk.a
+dependencies/win/libmanifold.a

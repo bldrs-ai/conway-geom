@@ -68,7 +68,6 @@ if [ "$1" = "test" ]; then
 else
     if [ -z "$2" ]; then
         echo "No platform specified, building for native + wasm"
-        # Your code for other cases goes here
         ( cd gmake &&
         make config=${native_config} conway_geom_native webifc_native &&
         make config=${wasm_config} ConwayGeomWasm )
@@ -81,11 +80,7 @@ else
             ( cd gmake &&
             make config=${wasm_config} ConwayGeomWasm )
         else
-            echo "Platform invalid, building for native + wasm"
-            # Your code for other cases goes here
-            ( cd gmake &&
-            make config=${native_config} conway_geom_native webifc_native &&
-            make config=${wasm_config} ConwayGeomWasm )
+            echo "Platform invalid"
         fi
     fi
     if [ $? -ne 0 ]; then
