@@ -7,3 +7,9 @@ Dist/
 dependencies/libdraco.a
 dependencies/libgltfsdk.a
 dependencies/libmanifold.a
+dependencies/macOS-arm64/libdraco.a
+dependencies/macOS-arm64/libgltfsdk.a
+dependencies/macOS-arm64/libmanifold.a
+dependencies/wasm/libdraco.a
+dependencies/wasm/libgltfsdk.a
+dependencies/wasm/libmanifold.a

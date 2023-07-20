@@ -123,6 +123,16 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
 
+IfcGeometry resultGeometry;
+  if (parameters.flatFirstMesh.size() <= 0)
+  {
+    return resultGeometry;
+  }
+
+  if (parameters.flatSecondMesh.size() <= 0) {
+    return resultGeometry;
+  }
+
   glm::dvec3 originFirstMesh;
   // get origin
   if (parameters.flatFirstMesh[0].numFaces) {
@@ -173,7 +183,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
 
   
 
-  IfcGeometry resultGeometry =
+  resultGeometry =
       BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
