@@ -10,8 +10,10 @@
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "geometry.h"
+#include "material.h"
 
 namespace conway::geometry {
 
@@ -26,6 +28,9 @@ struct IfcGeometry {
 
   uint32_t numPoints = 0;
   uint32_t numFaces = 0;
+
+  uint32_t materialIndex      = 0;
+  bool     hasDefaultMaterial = true;
 
   glm::dvec3 GetExtent() const;
   void Normalize();

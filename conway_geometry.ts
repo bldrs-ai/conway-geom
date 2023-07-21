@@ -1,6 +1,20 @@
 
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
+export interface StdVector< T > {
+  delete(): unknown
+
+  resize( size: number, value?: T ): void
+
+  push_back( value: T ): void
+
+  size(): number
+
+  empty(): boolean
+
+  set( index: number, value: T ): void
+  get( index: number ): T
+}
 
 export interface GeometryObject {
   getVertexData: () => any
@@ -10,6 +24,54 @@ export interface GeometryObject {
   appendGeometry(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
+  materialIndex: number
+  hasDefaultMaterial: boolean
+}
+
+export interface Vector4 {
+  x: number
+  y: number
+  z: number
+  w: number
+}
+
+export enum BlendMode {
+  OPAQUE  = 0,
+  BLEND   = 1,
+  MASK    = 2,
+}
+
+export function toAlphaMode( wasmModule: any, blendMode: BlendMode ): any {
+
+  switch (blendMode) {
+    case BlendMode.OPAQUE:
+
+      return wasmModule.BlendMode.OPAQUE
+
+    case BlendMode.BLEND:
+      
+      return wasmModule.BlendMode.BLEND
+
+    case BlendMode.MASK:
+
+      return wasmModule.BlendMode.MASK
+  }
+ }
+
+export interface MaterialObject {
+
+  base: Vector4
+  metallic: number
+  roughness: number
+  alphaCutoff: number
+
+  ior: number
+
+  specular?: Vector4
+
+  alphaMode: any
+
+  doubleSided: boolean
 }
 
 export interface IndexedPolygonalFace {
@@ -32,7 +94,7 @@ export interface Vector3 {
 export interface ParamsCartesianTransformationOperator3D {
   position: Vector3
   axis1Ref: Vector3
-  axis2RefL: Vector3
+  axis2Ref: Vector3
   axis3Ref: Vector3
   normalizeAxis1: boolean
   normalizeAxis2: boolean
@@ -96,7 +158,7 @@ export class ConwayGeometry {
 
     return this.initialized
   }
-  
+
   /**
    *
    * @param parameters - ParamsPolygonalFaceSet parsed from data model
@@ -119,15 +181,20 @@ export class ConwayGeometry {
 
   /**
    *
-   * @param geometry - Native geometry object
+   * @param geometry - Vector of native geometry object
    * @param isGlb  - boolean if the output should be a single GLB file
    * @param outputDraco - boolean should the output use Draco compression
    * @param fileUri - string of base name for output files
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
-  toGltf(geometry: GeometryObject, isGlb: boolean, outputDraco: boolean, fileUri: string):
+  toGltf(
+      geometry: StdVector< GeometryObject >,
+      materials: StdVector< MaterialObject >,
+      isGlb: boolean,
+      outputDraco: boolean,
+      fileUri: string):
     ResultsGltf {
-    return this.wasmModule.geometryToGltf(geometry, isGlb, outputDraco, fileUri)
+    return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
 
   /**
