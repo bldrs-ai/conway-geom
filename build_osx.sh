@@ -80,7 +80,8 @@ else
             ( cd gmake &&
             make config=${wasm_config} ConwayGeomWasm )
         else
-            echo "Platform invalid"
+            echo "Platform invalid!" 1>&2
+            exit 1
         fi
     fi
     if [ $? -ne 0 ]; then

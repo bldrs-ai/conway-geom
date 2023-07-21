@@ -77,7 +77,8 @@ IF "%1"=="test" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasm
         ) ELSE (
-            echo "Platform invalid"
+            echo "Platform invalid" >&2
+            exit /b 1
         )
     )
     if %errorlevel% neq 0 (
