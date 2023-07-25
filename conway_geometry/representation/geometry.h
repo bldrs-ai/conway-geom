@@ -16,6 +16,7 @@
 #include <unordered_map>
 
 #include "ConwayCurve.h"
+#include "ConwayProfile.h"
 
 #define CONST_PI 3.141592653589793238462643383279502884L
 
@@ -62,15 +63,6 @@ struct Loop {
 struct IfcSegmentIndexSelect {
   std::string type;
   std::vector<uint32_t> indexs;
-};
-
-struct IfcProfile {
-  std::string type;
-  IfcCurve curve;
-  std::vector<IfcCurve> holes;
-  bool isConvex;
-  bool isComposite = false;
-  std::vector<IfcProfile> profiles;
 };
 
 struct IfcProfile3D {

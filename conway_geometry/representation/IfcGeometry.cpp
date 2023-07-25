@@ -5,6 +5,7 @@
 // Implementation for IfcGeometry
 
 #include "IfcGeometry.h"
+#include "fuzzy/aabb.h"
 
 namespace conway::geometry {
 
@@ -114,6 +115,23 @@ glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
                     vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
                     vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]);
 }
+
+fuzzybools::AABB IfcGeometry::GetFaceBox(uint32_t index) const
+		{
+			fuzzybools::AABB aabb;
+			aabb.index = index;
+			glm::dvec3 a = GetPoint(indexData[index * 3 + 0]);
+			glm::dvec3 b = GetPoint(indexData[index * 3 + 1]);
+			glm::dvec3 c = GetPoint(indexData[index * 3 + 2]);
+			aabb.min = glm::min(a, aabb.min);
+			aabb.min = glm::min(b, aabb.min);
+			aabb.min = glm::min(c, aabb.min);
+			aabb.max = glm::max(a, aabb.max);
+			aabb.max = glm::max(b, aabb.max);
+			aabb.max = glm::max(c, aabb.max);
+			aabb.center = (aabb.max + aabb.min) / 2.0;
+			return aabb;
+		}
 
 void IfcGeometry::GetCenterExtents(glm::dvec3 &center,
                                    glm::dvec3 &extents) const {
