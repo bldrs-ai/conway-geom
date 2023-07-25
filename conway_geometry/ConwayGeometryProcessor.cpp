@@ -2,7 +2,9 @@
 
 #include <glm/glm.hpp>
 
-#include "fuzzy/fuzzy-bools.h"
+// #include "fuzzy/fuzzy-bools.h"
+#include "legacy/math/bool-mesh-mesh.h"
+#include "legacy/math/intersect-mesh-mesh.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
@@ -50,6 +52,104 @@ IfcGeometry ConwayGeometryProcessor::FBGeomToGeom(
   }
 
   return geom;
+}
+
+double normalDiff(glm::dvec3 extents) {
+  double a = extents.x;
+
+  if (a < extents.y) {
+    a = extents.y;
+  }
+  if (a < extents.z) {
+    a = extents.z;
+  }
+
+  double b = extents.x;
+
+  if (b > extents.y) {
+    b = extents.y;
+  }
+  if (b > extents.z) {
+    b = extents.z;
+  }
+
+  if (a > 0) {
+    return b / a;
+  } else {
+    return 0;
+  }
+}
+
+IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
+  IfcGeometry result;
+
+  if (Geoms.size() == 0) {
+    return result;
+  } else if (Geoms.size() == 1) {
+    return Geoms[0];
+  } else {
+    bool first = true;
+    for (auto &geom : Geoms) {
+      if (first) {
+        first = false;
+        result = geom;
+      } else {
+        glm::dvec3 center;
+        glm::dvec3 extents;
+        result.GetCenterExtents(center, extents);
+
+        glm::dvec3 s_center;
+        glm::dvec3 s_extents;
+        geom.GetCenterExtents(s_center, s_extents);
+
+        if (normalDiff(extents) < EPS_BIG) {
+          result = geom;
+        } else if (normalDiff(s_extents) < EPS_BIG) {
+          // result = result;
+        } else if (result.numFaces > 0 && geom.numFaces > 0) {
+          auto first = result.Normalize(center, extents);
+          auto second = geom.Normalize(center, extents);
+
+          IfcGeometry r1;
+          IfcGeometry r2;
+
+          intersectMeshMesh(first, second, r1, r2);
+
+          result = (boolJoin(r1, r2)).DeNormalize(center, extents);
+        }
+      }
+    }
+    return result;
+  }
+}
+
+IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
+    const std::vector<IfcGeometry> &firstGeoms,
+    std::vector<IfcGeometry> &secondGeoms) {
+  IfcGeometry firstGeom = BoolJoinLegacy(firstGeoms);
+  IfcGeometry secondGeom = BoolJoinLegacy(secondGeoms);
+
+  IfcGeometry result;
+
+  /*IfcGeometry r1;
+  IfcGeometry r2;
+
+  intersectMeshMesh(firstGeom, secondGeom, r1, r2);
+
+  result = boolSubtract(r1, r2);*/
+
+  if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
+   printf("bool aborted due to empty source or target\n");
+
+    // bail out because we will get strange meshes
+    // if this happens, probably there's an issue parsing the mesh that occurred
+    // earlier
+    return firstGeom;
+  }
+
+  result = boolMultiOp_CSGJSCPP(firstGeom, secondGeoms);
+
+  return result;
 }
 
 IfcGeometry ConwayGeometryProcessor::BoolSubtract(
@@ -122,8 +222,73 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
-  IfcGeometry resultGeometry =
-      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+  IfcGeometry resultGeometry;
+  if (parameters.flatFirstMesh.size() <= 0) {
+    return resultGeometry;
+  }
+
+  if (parameters.flatSecondMesh.size() <= 0) {
+    return resultGeometry;
+  }
+
+  glm::dvec3 originFirstMesh;
+  // get origin
+  if (parameters.flatFirstMesh[0].numFaces) {
+    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+      Face f = parameters.flatFirstMesh[0].GetFace(i);
+      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
+      break;
+    }
+  }
+
+  // TODO: clean this up, remove origin translation
+  auto normalizeMat = glm::translate(-originFirstMesh);
+  glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
+  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
+  IfcGeometry newGeomFirstMesh;
+
+  for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+    Face f = parameters.flatFirstMesh[0].GetFace(i);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
+
+    if (transformationBreaksWinding) {
+      newGeomFirstMesh.AddFace(b, a, c);
+    } else {
+      newGeomFirstMesh.AddFace(a, b, c);
+    }
+  }
+
+  parameters.flatFirstMesh[0] = newGeomFirstMesh;
+  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
+  IfcGeometry newGeomSecondMesh;
+
+  for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
+    Face f = parameters.flatSecondMesh[0].GetFace(i);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
+
+    if (transformationBreaksWinding) {
+      newGeomSecondMesh.AddFace(b, a, c);
+    } else {
+      newGeomSecondMesh.AddFace(a, b, c);
+    }
+  }
+
+  parameters.flatSecondMesh[0] = newGeomSecondMesh;
+
+  resultGeometry =
+      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+
+  resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
 
   return resultGeometry;
 }
@@ -609,9 +774,6 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
   bounds.emplace_back();
 
-  // printf("face_starts size (CPP): %i\n",
-  // parameters.face->face_starts.size());
-
   // calculate loop upper bound
   size_t faceIndexUpperBound = 0;
   if (parameters.face->face_starts.size() > 1) {
@@ -621,20 +783,14 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
     faceIndexUpperBound = parameters.face->indices.size();
   }
 
-  // printf("coordIndex (CPP): ");
-
   for (size_t index = 0; index < faceIndexUpperBound; index++) {
     uint32_t currentIndex = parameters.face->indices[index];
-
-    // printf("%i, ", currentIndex);
 
     glm::dvec3 point = (*parameters.points)[currentIndex - 1];
 
     // I am not proud of this (I inherited this, will change - NC)
     bounds.back().curve.points.push_back(point);
   }
-
-  // printf("\ninnerCordIndex (CPP): ");
 
   if (parameters.face->face_starts.size() <= 1) {
     return bounds;
@@ -656,15 +812,11 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
       for (size_t index = startIdx; index < endIdx; index++) {
         uint32_t currentIndex = parameters.face->indices[index];
 
-        // printf("%i, ", currentIndex);
-
         glm::dvec3 point = (*parameters.points)[currentIndex - 1];
 
         // I am not proud of this (I inherited this, will change - NC)
         bounds.back().curve.points.push_back(point);
       }
-
-      // printf("\n");
     }
 
     ;
@@ -829,7 +981,7 @@ ConwayGeometryProcessor::GeometryToGltf(conway::geometry::IfcGeometry geom,
       timer.Stop();
 
       if (!status.ok()) {
-        printf("Failed to encode the mesh: %s", status.error_msg());
+        printf("Failed to encode the mesh: %s\n", status.error_msg());
         results.success = false;
         return results;
       }
@@ -1066,7 +1218,7 @@ ConwayGeometryProcessor::GeometryToGltf(conway::geometry::IfcGeometry geom,
       manifest = Serialize(document, Microsoft::glTF::SerializeFlags::Pretty);
     } catch (const Microsoft::glTF::GLTFException &ex) {
       std::stringstream ss;
-      printf("Microsoft::glTF::Serialize failed: %s", ex.what());
+      printf("Microsoft::glTF::Serialize failed: %s\n", ex.what());
     }
 
     auto &genericResourceWriter = bufferBuilder.GetResourceWriter();
@@ -1117,7 +1269,7 @@ ConwayGeometryProcessor::GeometryToGltf(conway::geometry::IfcGeometry geom,
           // Close the file
           outfile.close();
         } else {
-          printf("Unable to open file %s", filePath.c_str());
+          printf("Unable to open file %s\n", filePath.c_str());
         }
       }
     } else {
@@ -1253,6 +1405,126 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
 
     bounds.clear();
   }
+
+  return geom;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
+    ParamsGetIfcIndexedPolyCurve parameters) {
+  IfcCurve curve;
+
+  if (parameters.dimensions == 2) {
+    if (parameters.segments.size() > 0) {
+      for (auto &sg : parameters.segments) {
+        if (!sg.isArcType) {
+          auto pts = parameters.points;
+          for (auto &pt : sg.indices) {
+            curve.Add2d(pts[pt - 1]);
+          }
+        }
+        if (sg.isArcType) {
+          auto pts = parameters.points;
+          IfcCurve arc =
+              BuildArc3Pt(pts[sg.indices[0] - 1], pts[sg.indices[1] - 1],
+                          pts[sg.indices[2] - 1], CIRCLE_SEGMENTS_MEDIUM);
+          for (auto &pt : arc.points) {
+            curve.Add2d(pt);
+          }
+        }
+      }
+    } else {
+      auto pts = parameters.points;
+      for (auto &pt : pts) {
+        curve.Add2d(pt);
+      }
+    }
+  } else {
+    printf("Parsing ifcindexedpolycurve in 3D is not possible\n");
+  }
+
+  return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
+    ParamsGetCircleCurve parameters) {
+  IfcCurve curve;
+
+  double radius = parameters.radius;
+
+  glm::dmat3 placement(1);
+
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
+                         placement);
+
+  return curve;
+}
+
+conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
+    ParamsGetExtrudedAreaSolid parameters) {
+  conway::geometry::IfcGeometry geom;
+  double depth = parameters.depth;
+
+  conway::geometry::IfcProfile profile = parameters.profile;
+
+  if (!profile.isComposite) {
+    if (profile.curve.points.empty()) {
+      printf("empty curve, returning...\n");
+      return geom;
+    }
+  } else {
+    for (uint32_t i = 0; i < profile.profiles.size(); i++) {
+      if (profile.profiles[i].curve.points.empty()) {
+        printf("empty curve, returning...\n");
+        return geom;
+      }
+    }
+  }
+
+  glm::dvec3 dir = parameters.dir;
+
+  double dirDot = glm::dot(dir, glm::dvec3(0, 0, 1));
+  // TODO(nickcastel50): I believe it can be now...
+  // https://standards.buildingsmart.org/IFC/RELEASE/IFC2x3/TC1/HTML/ifcgeometricmodelresource/lexical/ifcextrudedareasolid.htm
+  bool flipWinding = dirDot < 0;  // can't be perp according to spec
+
+// TODO: correct dump in case of compositeProfile
+#ifdef CSG_DEBUG_OUTPUT
+  io::DumpSVGCurve(profile.curve.points, "IFCEXTRUDEDAREASOLID_curve.html");
+#endif
+
+  if (!profile.isComposite) {
+    geom = Extrude(profile, dir, depth);
+    if (flipWinding) {
+      for (uint32_t i = 0; i < geom.numFaces; i++) {
+        uint32_t temp = geom.indexData[i * 3 + 0];
+        temp = geom.indexData[i * 3 + 0];
+        geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
+        geom.indexData[i * 3 + 1] = temp;
+      }
+    }
+  } else {
+    for (uint32_t i = 0; i < profile.profiles.size(); i++) {
+      IfcGeometry geom_t = Extrude(profile.profiles[i], dir, depth);
+      if (flipWinding) {
+        for (uint32_t k = 0; k < geom_t.numFaces; k++) {
+          uint32_t temp = geom_t.indexData[k * 3 + 0];
+          temp = geom_t.indexData[k * 3 + 0];
+          geom_t.indexData[k * 3 + 0] = geom_t.indexData[k * 3 + 1];
+          geom_t.indexData[k * 3 + 1] = temp;
+        }
+      }
+      geom.AppendGeometry(geom_t);
+    }
+  }
+
+// TODO: correct dump in case of compositeProfile
+#ifdef CSG_DEBUG_OUTPUT
+  io::DumpIfcGeometry(geom, "IFCEXTRUDEDAREASOLID_geom.obj");
+#endif
 
   return geom;
 }

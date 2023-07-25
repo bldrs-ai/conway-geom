@@ -178,7 +178,7 @@ inline IfcGeometry Sweep(
         glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt,
                                            directrixSegmentNormal);
 
-        segmentForCurve.Add(proj);
+        segmentForCurve.Add3d(proj);
       }
     } else {
       // project previous curve onto the normal
@@ -189,7 +189,7 @@ inline IfcGeometry Sweep(
         glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt,
                                            directrixSegmentNormal);
 
-        segmentForCurve.Add(proj);
+        segmentForCurve.Add3d(proj);
       }
     }
 
@@ -342,7 +342,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
 
       glm::dvec2 proj(glm::dot(pt2, v12), glm::dot(pt2, v13));
 
-      test.Add(proj);
+      test.Add2d(proj);
     }
 
     // if the outer bound is clockwise under the current projection (v12,v13,n),
@@ -416,7 +416,7 @@ inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
         glm::dvec2 pt = hole.points[j];
         glm::dvec4 et = glm::dvec4(glm::dvec3(pt, 0) + dir * distance, 1);
 
-        profile.curve.Add(pt);
+        profile.curve.Add2d(pt);
         geom.AddPoint(et, normal);
         polygon[i + 1].push_back(
             {pt.x, pt.y});  // Index 0 is main profile; see earcut reference

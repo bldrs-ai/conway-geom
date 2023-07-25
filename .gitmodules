@@ -27,3 +27,6 @@
 [submodule "external/fuzzy-bools"]
 	path = external/fuzzy-bools
 	url = https://github.com/nickcastel50/fuzzy-bools.git
+[submodule "external/csgjs-cpp"]
+	path = external/csgjs-cpp
+	url = https://github.com/executionunit/csgjs-cpp.git
