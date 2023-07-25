@@ -17,6 +17,25 @@ targetdir "bin/release"
 configuration {}
 project "draco"
 language "C++"
+kind "StaticLib"solution "dependencies"
+configurations {"Debug", "Release"}
+includedirs {"include"}
+location(_ACTION)
+
+platforms {"x64", "Emscripten"}
+
+configuration {"vs*", "Debug"}
+buildoptions {"/bigobj"}
+
+configuration {"Debug*"}
+targetdir "bin/debug"
+
+configuration {"Release*"}
+targetdir "bin/release"
+
+configuration {}
+project "draco"
+language "C++"
 kind "StaticLib"
 files {}
 
@@ -91,16 +110,27 @@ configuration {"Debug"}
 
 configuration {"Release", "gmake"}
 
-configuration "Release*"
-flags {"OptimizeSpeed", "NoIncrementalLink"}
-postbuildcommands {"cp ../bin/release/draco.bc ../libdraco.a"}
+configuration {"Emscripten", "Release"}
+postbuildcommands {"cp ../bin/release/draco.bc ../wasm/libdraco.a"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libdraco.a ../macOS-arm64/libdraco.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"cp ../bin/64/release/libdraco.a ../macOS-arm64/libdraco.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
 flags {"EnableAVX2"}
 
 project "manifold"
@@ -134,7 +164,7 @@ linkoptions {
     "--bind",
     "-03",
     "-flto",
-    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=Draco -s MODULARIZE=1 -s SIDE_MODULE=1'
+    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=Manifold -s MODULARIZE=1 -s SIDE_MODULE=1'
 }
 configuration {}
 libdirs {}
@@ -166,16 +196,30 @@ configuration {"Debug"}
 
 configuration {"Release", "gmake"}
 
+configuration {"Emscripten", "Release"}
+postbuildcommands {"cp ../bin/release/manifold.bc ../wasm/libmanifold.a"}
+
 configuration "Release*"
 flags {"OptimizeSpeed", "NoIncrementalLink"}
-postbuildcommands {"cp ../bin/release/manifold.bc ../libmanifold.a"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libmanifold.a ../macOS-arm64/libmanifold.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"cp ../bin/64/release/libmanifold.a ../macOS-arm64/libmanifold.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libmanifold.a ..\\win\\libmanifold.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libmanifold.a ..\\win\\libmanifold.a* /Y"}
 flags {"EnableAVX2"}
 
 project "gltfsdk"
@@ -200,29 +244,20 @@ files {
     glTFSDKSrcFiles
 }
 
-configuration {"windows"}
-prelinkcommands {
-    "$(eval NEWLINKOBJS=$(LINKOBJS)_) $(eval NEWOBJRESP=$(OBJRESP)_) $(eval LINKCMD=$(CXX) -o $(TARGET) $(NEWLINKOBJS) $(RESOURCES) $(ARCH) $(ALL_LDFLAGS) $(LIBS))",
-    "$(if $(wildcard $(NEWOBJRESP)), $(shell del $(subst /,\\,$(NEWOBJRESP))))",
-    "$(foreach string,$(OBJECTS),\
-        $(file >> $(NEWOBJRESP),$(string) )\
-        )"
-}
-
-configuration {"gmake"}
+configuration {"gmake", "Emscripten"}
 linkoptions {
     "-O3",
     "--bind",
     "--dts",
     "-03",
     "-flto",
-    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
+    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=gltfsdk -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
 }
 
 configuration {}
 libdirs {}
 links {}
-flags {"Symbols", "FullSymbols", "UseObjectResponseFile"}
+flags {"Symbols", "FullSymbols"}
 
 includedirs {
     "../external/gltf-sdk/GLTFSDK/Inc",
@@ -238,14 +273,28 @@ configuration {"Debug"}
 
 configuration {"Release", "gmake"}
 
+configuration {"Emscripten", "Release"}
+postbuildcommands {"cp ../bin/release/gltfsdk.bc ../wasm/libgltfsdk.a"}
+
 configuration "Release*"
 flags {"OptimizeSpeed", "NoIncrementalLink"}
-postbuildcommands {"cp ../bin/release/gltfsdk.bc ../libgltfsdk.a"}
 
-configuration {"x64", "Debug"}
+configuration {"macosx", "x64", "Debug"}
 targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"cp ../bin/64/release/libgltfsdk.a ../macOS-arm64/libgltfsdk.a"}
 flags {"EnableAVX2"}
 
-configuration {"x64", "Release"}
+configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"cp ../bin/64/release/libgltfsdk.a ../macOS-arm64/libgltfsdk.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libgltfsdk.a ..\\win\\libgltfsdk.a* /Y"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Release"}
+targetdir(path.join("bin", "64", "release"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libgltfsdk.a ..\\win\\libgltfsdk.a* /Y"}
 flags {"EnableAVX2"}

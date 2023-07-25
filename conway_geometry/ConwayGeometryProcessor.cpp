@@ -681,10 +681,18 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
                                         glm::dmat4 transform) {
   ResultsGltf results;
 
+  if ( outputDraco ) {
+
+    printf( "Draco support currently disabled\n" );
+
+    results.success = false;
+
+    return results;
+  }
+
   try {
   
-
-    // Construct a Mesh and add the MeshPrimitive as a child
+      // Construct a Mesh and add the MeshPrimitive as a child
     Microsoft::glTF::Mesh mesh;
     // Construct a Scene
     Microsoft::glTF::Scene scene;
@@ -692,6 +700,8 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
     Microsoft::glTF::Document document;
     
     std::vector< std::string > materialIds;
+
+    int uniqueIdDraco = 0;
 
     for ( conway::geometry::Material& conwayMaterial : materials ) {
 
@@ -788,13 +798,27 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       document.extensionsUsed.insert("KHR_draco_mesh_compression");
     }
 
+
     for ( conway::geometry::IfcGeometry& geom : geoms ) {
+
+      // create a mesh object
+      std::unique_ptr<draco::Mesh> dracoMesh;
 
       // Encode the geometry.
       draco::EncoderBuffer buffer;
+    
+      // Convert to ExpertEncoder that allows us to set per-attribute options.
+      std::unique_ptr<draco::ExpertEncoder> expert_encoder;
 
-      // create a mesh object
-      std::unique_ptr<draco::Mesh> dracoMesh(new draco::Mesh());
+
+      DracoOptions dracoOptions;
+
+      // set up Draco Encoder
+      draco::Encoder encoder;
+    
+      // if Draco
+      std::unique_ptr< Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression >
+          dracoMeshCompression;
 
       int32_t pos_att_id = -1;
       int32_t tex_att_id = -1;
@@ -805,7 +829,8 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       geom.GetVertexData();
 
       if (outputDraco) {
-        DracoOptions dracoOptions;
+
+        dracoMesh.reset( new draco::Mesh() );
 
         // get number of faces
         uint32_t numFaces = 0;
@@ -825,6 +850,9 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         // Add attributes if they are present in the input data.
         if (numPositions > 0) {
           draco::GeometryAttribute va;
+
+          va.set_unique_id( uniqueIdDraco++ );
+
           va.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
                   draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
           pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
@@ -877,6 +905,7 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         // Add faces with identity mapping between vertex and corner indices.
         // Duplicate vertices will get removed below.
         draco::Mesh::Face face;
+
         for (draco::FaceIndex i(0); i < numFaces; ++i) {
           for (int c = 0; c < 3; ++c) {
             face[c] = 3 * i.value() + c;
@@ -897,8 +926,6 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         // Convert compression level to speed (that 0 = slowest, 10 = fastest).
         const int32_t dracoCompressionSpeed = 10 - dracoOptions.compressionLevel;
 
-        // set up Draco Encoder
-        draco::Encoder encoder;
 
         // Setup encoder options.
         if (dracoOptions.posQuantizationBits > 0) {
@@ -906,29 +933,31 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
               draco::GeometryAttribute::POSITION,
               11);  // dracoOptions.posQuantizationBits );
         }
+
         if (dracoOptions.texCoordsQuantizationBits > 0) {
           encoder.SetAttributeQuantization(
               draco::GeometryAttribute::TEX_COORD,
               8);  // dracoOptions.texCoordsQuantizationBits );
         }
+
         if (dracoOptions.normalsQuantizationBits > 0) {
           encoder.SetAttributeQuantization(
               draco::GeometryAttribute::NORMAL,
               8);  // dracoOptions.normalsQuantizationBits );
         }
+
         if (dracoOptions.genericQuantizationBits > 0) {
           encoder.SetAttributeQuantization(
               draco::GeometryAttribute::GENERIC,
               8);  // dracoOptions.genericQuantizationBits );
+
         }
 
         encoder.SetSpeedOptions(dracoCompressionSpeed, dracoCompressionSpeed);
 
-        // Convert to ExpertEncoder that allows us to set per-attribute options.
-        std::unique_ptr<draco::ExpertEncoder> expert_encoder;
         expert_encoder.reset(new draco::ExpertEncoder(*dracoMesh));
-        expert_encoder->Reset(encoder.CreateExpertEncoderOptions(*dracoMesh));
 
+        expert_encoder->Reset(encoder.CreateExpertEncoderOptions(*dracoMesh));
         // set up timer
         draco::CycleTimer timer;
 
@@ -953,9 +982,8 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       std::string accessorIdPositions;
       std::string accessorIdUVs;
 
-      // if Draco
-      Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression
-          dracoMeshCompression;
+
+      dracoMeshCompression.reset( new Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression() );
 
       // Add an Accessor for the indices and positions
       std::vector<float> positions;
@@ -981,6 +1009,9 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       }
 
       if (outputDraco) {
+
+        // bufferViewId = bufferBuilder.AddBufferView().id;
+
         Microsoft::glTF::Accessor positionsAccessor;
         positionsAccessor.min = minValues;
         positionsAccessor.max = maxValues;
@@ -988,23 +1019,27 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         positionsAccessor.componentType =
             Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
         positionsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
-        positionsAccessor.id = "0";
-        accessorIdPositions = positionsAccessor.id;
-        dracoMeshCompression.attributes.emplace(
+     //  positionsAccessor.id = "0";
+     //   accessorIdPositions = positionsAccessor.id;
+        dracoMeshCompression->attributes.emplace(
             "POSITION", dracoMesh->attribute(pos_att_id)->unique_id());
 
         Microsoft::glTF::Accessor indicesAccessor;
         indicesAccessor.count = dracoMesh->num_faces() * 3;
         indicesAccessor.componentType = Microsoft::glTF::COMPONENT_UNSIGNED_INT;
-        indicesAccessor.type = Microsoft::glTF::TYPE_SCALAR;
-        indicesAccessor.id = "1";
-        accessorIdIndices = indicesAccessor.id;
+        indicesAccessor.type = Microsoft::glTF::TYPE_SCALAR;      
+       // indicesAccessor.id = "1";
+      //  accessorIdIndices = indicesAccessor.id;
 
         // add position accessor first here
-        document.accessors.Append(
-            positionsAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty);
-        document.accessors.Append(
-            indicesAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty);
+        accessorIdPositions = 
+          document.accessors.Append(
+            positionsAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty).id;
+        
+        accessorIdIndices =
+          document.accessors.Append(
+            indicesAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty).id;
+
       } else {
 
         // Create a BufferView with a target of ELEMENT_ARRAY_BUFFER (as it will
@@ -1066,25 +1101,43 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       }
 
       if (outputDraco) {
+
         // Finally put the encoded data in place.
-        auto bufferView =
-            bufferBuilder.AddBufferView(buffer.data(), buffer.size());
-        dracoMeshCompression.bufferViewId = bufferView.id;
-
-        // Add all of the Buffers, BufferViews and Accessors that were created
-        // using BufferBuilder to the Document. Note that after this point, no
-        // further calls should be made to BufferBuilder
-        bufferBuilder.Output(document);
-
-        const auto extensionSerializer =
-            Microsoft::glTF::KHR::GetKHRExtensionSerializer();
-        std::string strDracoMesh =
-            Microsoft::glTF::KHR::MeshPrimitives::SerializeDracoMeshCompression(
-                dracoMeshCompression, document, extensionSerializer);
-        meshPrimitive.extensions["KHR_draco_mesh_compression"] = strDracoMesh;
+         auto bufferView =
+             bufferBuilder.AddBufferView(buffer.data(), buffer.size());
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
+
+        // Microsoft::glTF::Accessor encodedIndexAccessor(document.accessors[meshPrimitive.indicesAccessorId]);
+        // encodedIndexAccessor.count = encoder.num_encoded_faces() * 3;
+        // document.accessors.Replace(encodedIndexAccessor);
+
+        // for (const auto& dracoAttribute : dracoMeshCompression->attributes)
+        // {
+        //     auto accessorId = meshPrimitive.attributes.at(dracoAttribute.first);
+        //     Microsoft::glTF::Accessor encodedAccessor(document.accessors[accessorId]);
+        //     encodedAccessor.count = encoder.num_encoded_points();
+        //     document.accessors.Replace(encodedAccessor);
+        // }
+
+        dracoMeshCompression->bufferViewId = bufferView.id;
+        // const auto extensionSerializer =
+        //     Microsoft::glTF::KHR::GetKHRExtensionSerializer();
+
+   // Add all of the Buffers, BufferViews and Accessors that were created
+    // using BufferBuilder to the Document. Note that after this point, no
+    // further calls should be made to BufferBuilder
+ //   bufferBuilder.Output(document);
+        meshPrimitive.SetExtension(std::move(dracoMeshCompression));
+
+//       std::string strDracoMesh =
+//           Microsoft::glTF::KHR::MeshPrimitives::SerializeDracoMeshCompression(
+//               *dracoMeshCompression, document, extensionSerializer);
+
+// //        printf( "13c %s\n", strDracoMesh.c_str() );
+
+//         meshPrimitive.extensions["KHR_draco_mesh_compression"] = strDracoMesh;
 
       } else {
 
@@ -1101,6 +1154,11 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
     // using BufferBuilder to the Document. Note that after this point, no
     // further calls should be made to BufferBuilder
     bufferBuilder.Output(document);
+
+    if (outputDraco) {
+      document.extensionsUsed.emplace(Microsoft::glTF::KHR::MeshPrimitives::DRACOMESHCOMPRESSION_NAME);
+      document.extensionsRequired.emplace(Microsoft::glTF::KHR::MeshPrimitives::DRACOMESHCOMPRESSION_NAME);
+    }
     
       // Add it to the Document and store the generated ID
     auto meshId = document.meshes
@@ -1128,11 +1186,13 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
     std::string manifest;
 
     try {
+
       // Serialize the glTF Document into a JSON manifest
       manifest = Serialize(document, Microsoft::glTF::SerializeFlags::Pretty);
     } catch (const Microsoft::glTF::GLTFException &ex) {
-      std::stringstream ss;
       printf("Microsoft::glTF::Serialize failed: %s", ex.what());
+    } catch (...) {
+      printf("Microsoft::glTF::Serialize failed: <unknown>");
     }
 
     auto &genericResourceWriter = bufferBuilder.GetResourceWriter();
@@ -1265,7 +1325,9 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         }
       }
     }
+    
     results.success = true;
+
     return results;
   } catch (const std::exception &ex) {
     printf("Couldn't write GLB file: %s", ex.what());
