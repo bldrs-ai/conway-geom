@@ -128,6 +128,11 @@ targetdir(path.join("bin", "64", "debug"))
 postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
 flags {"EnableAVX2"}
 
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
+flags {"EnableAVX2"}
+
 configuration {"windows", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}

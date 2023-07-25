@@ -15,6 +15,11 @@
 #include "geometry.h"
 #include "material.h"
 
+namespace fuzzybools
+{
+    struct AABB; // Forward declaration for fuzzybools::AABB
+}
+
 namespace conway::geometry {
 
 struct IfcGeometry {
@@ -42,6 +47,7 @@ struct IfcGeometry {
   void ReverseFace(uint32_t index);
   void ReverseFaces();
   Face GetFace(uint32_t index) const;
+  fuzzybools::AABB GetFaceBox(uint32_t index) const;
   glm::dvec3 GetPoint(uint32_t index) const;
   void GetCenterExtents(glm::dvec3 &center, glm::dvec3 &extents) const;
   IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;

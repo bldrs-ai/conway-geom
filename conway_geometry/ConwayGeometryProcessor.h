@@ -115,13 +115,15 @@ class ConwayGeometryProcessor {
   IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
   IfcGeometry BoolSubtract(const std::vector<IfcGeometry> &firstGroups,
                            std::vector<IfcGeometry> &secondGroups);
+  IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry> &firstGeoms,
+                                 std::vector<IfcGeometry> &secondGeoms);
 
-  // case ifc::IFCBOOLEANCLIPPINGRESULT:
-  // case ifc::IFCBOOLEANRESULT:
-  struct ParamsGetBooleanResult {
+      // case ifc::IFCBOOLEANCLIPPINGRESULT:
+      // case ifc::IFCBOOLEANRESULT:
+      struct ParamsGetBooleanResult {
     std::vector<IfcGeometry> flatFirstMesh;
     std::vector<IfcGeometry> flatSecondMesh;
-    bool clippingResult = false;
+    int operatorType = 2;
   };
   IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
 
@@ -354,6 +356,40 @@ class ConwayGeometryProcessor {
   };
   IfcGeometry getPolygonalFaceSetGeometry(
       ParamsGetPolygonalFaceSetGeometry parameters);
+
+  struct Segment {
+    bool isArcType = false;
+    std::vector<uint32_t> indices;
+  };
+
+  // case ifc::IFCINDEXEDPOLYCURVE
+  struct ParamsGetIfcIndexedPolyCurve {
+    uint32_t dimensions = 2;
+    std::vector<Segment> segments;
+    std::vector<glm::vec2> points;
+  };
+
+  conway::geometry::IfcCurve getIndexedPolyCurve(
+      ParamsGetIfcIndexedPolyCurve parameters);
+
+  // case ifc::CircleProfileDef
+  struct ParamsGetCircleCurve {
+    float radius;
+    bool hasPlacement = true;
+    glm::dmat3 placement;
+  };
+
+  conway::geometry::IfcCurve getCircleCurve(ParamsGetCircleCurve parameters);
+
+  // case ifc::IFCEXTRUDEDAREASOLID:
+  struct ParamsGetExtrudedAreaSolid {
+    float depth = 0.0f;
+    glm::dvec3 dir;
+    IfcProfile profile;
+  };
+
+  conway::geometry::IfcGeometry getExtrudedAreaSolid(
+      ParamsGetExtrudedAreaSolid parameters);
 
  private:
   fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);
