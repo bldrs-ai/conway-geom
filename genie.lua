@@ -27,7 +27,8 @@ ConwayCoreFiles = {
     "conway_geometry/*.h",
     "conway_geometry/*.cpp",
     "conway_geometry/operations/**.*",
-    "conway_geometry/representation/**.*"
+    "conway_geometry/representation/**.*",
+    "conway_geomeetry/legacy/**.*"
 }
 WebIfcSourceFiles = {"web-ifc-api.cpp"}
 WebIfcTestSourceFiles = {"test/*.cpp"}
@@ -156,7 +157,8 @@ ConwayCoreFiles = {
     "conway_geometry/*.h",
     "conway_geometry/*.cpp",
     "conway_geometry/operations/**.*",
-    "conway_geometry/representation/**.*"
+    "conway_geometry/representation/**.*",
+    "conway_geomeetry/legacy/**.*"
 }
 ConwayTestSourceFiles = {"test/*.cpp"}
 
@@ -393,7 +395,8 @@ ConwayCoreFiles = {
     "conway_geometry/*.h",
     "conway_geometry/*.cpp",
     "conway_geometry/operations/**.*",
-    "conway_geometry/representation/**.*"
+    "conway_geometry/representation/**.*",
+    "conway_geomeetry/legacy/**.*"
 }
 ConwaySourceFiles = {"conway-api.cpp"}
 
@@ -456,7 +459,8 @@ includedirs {
     "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
     "external/draco/src",
     "external/fuzzy-bools",
-    "external/fuzzy-bools/deps/cdt"
+    "external/fuzzy-bools/deps/cdt",
+    "external/csgjs-cpp/"
 }
 
 excludes {

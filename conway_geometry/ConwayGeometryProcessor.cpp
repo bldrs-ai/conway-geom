@@ -2,7 +2,9 @@
 
 #include <glm/glm.hpp>
 
-#include "fuzzy/fuzzy-bools.h"
+// #include "fuzzy/fuzzy-bools.h"
+#include "legacy/math/bool-mesh-mesh.h"
+#include "legacy/math/intersect-mesh-mesh.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
@@ -50,6 +52,104 @@ IfcGeometry ConwayGeometryProcessor::FBGeomToGeom(
   }
 
   return geom;
+}
+
+double normalDiff(glm::dvec3 extents) {
+  double a = extents.x;
+
+  if (a < extents.y) {
+    a = extents.y;
+  }
+  if (a < extents.z) {
+    a = extents.z;
+  }
+
+  double b = extents.x;
+
+  if (b > extents.y) {
+    b = extents.y;
+  }
+  if (b > extents.z) {
+    b = extents.z;
+  }
+
+  if (a > 0) {
+    return b / a;
+  } else {
+    return 0;
+  }
+}
+
+IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
+  IfcGeometry result;
+
+  if (Geoms.size() == 0) {
+    return result;
+  } else if (Geoms.size() == 1) {
+    return Geoms[0];
+  } else {
+    bool first = true;
+    for (auto &geom : Geoms) {
+      if (first) {
+        first = false;
+        result = geom;
+      } else {
+        glm::dvec3 center;
+        glm::dvec3 extents;
+        result.GetCenterExtents(center, extents);
+
+        glm::dvec3 s_center;
+        glm::dvec3 s_extents;
+        geom.GetCenterExtents(s_center, s_extents);
+
+        if (normalDiff(extents) < EPS_BIG) {
+          result = geom;
+        } else if (normalDiff(s_extents) < EPS_BIG) {
+          // result = result;
+        } else if (result.numFaces > 0 && geom.numFaces > 0) {
+          auto first = result.Normalize(center, extents);
+          auto second = geom.Normalize(center, extents);
+
+          IfcGeometry r1;
+          IfcGeometry r2;
+
+          intersectMeshMesh(first, second, r1, r2);
+
+          result = (boolJoin(r1, r2)).DeNormalize(center, extents);
+        }
+      }
+    }
+    return result;
+  }
+}
+
+IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
+    const std::vector<IfcGeometry> &firstGeoms,
+    std::vector<IfcGeometry> &secondGeoms) {
+  IfcGeometry firstGeom = BoolJoinLegacy(firstGeoms);
+  IfcGeometry secondGeom = BoolJoinLegacy(secondGeoms);
+
+  IfcGeometry result;
+
+  /*IfcGeometry r1;
+  IfcGeometry r2;
+
+  intersectMeshMesh(firstGeom, secondGeom, r1, r2);
+
+  result = boolSubtract(r1, r2);*/
+
+  if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
+   printf("bool aborted due to empty source or target\n");
+
+    // bail out because we will get strange meshes
+    // if this happens, probably there's an issue parsing the mesh that occurred
+    // earlier
+    return firstGeom;
+  }
+
+  result = boolMultiOp_CSGJSCPP(firstGeom, secondGeoms);
+
+  return result;
 }
 
 IfcGeometry ConwayGeometryProcessor::BoolSubtract(
@@ -122,10 +222,8 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
-
-IfcGeometry resultGeometry;
-  if (parameters.flatFirstMesh.size() <= 0)
-  {
+  IfcGeometry resultGeometry;
+  if (parameters.flatFirstMesh.size() <= 0) {
     return resultGeometry;
   }
 
@@ -143,17 +241,20 @@ IfcGeometry resultGeometry;
     }
   }
 
-//TODO: clean this up, remove origin translation 
+  // TODO: clean this up, remove origin translation
   auto normalizeMat = glm::translate(-originFirstMesh);
   glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
-  bool transformationBreaksWinding = false;//MatrixFlipsTriangles(newMatrix);
+  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
   IfcGeometry newGeomFirstMesh;
 
   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
     Face f = parameters.flatFirstMesh[0].GetFace(i);
-    glm::dvec3 a = newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b = newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c = newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
 
     if (transformationBreaksWinding) {
       newGeomFirstMesh.AddFace(b, a, c);
@@ -163,14 +264,17 @@ IfcGeometry resultGeometry;
   }
 
   parameters.flatFirstMesh[0] = newGeomFirstMesh;
-  transformationBreaksWinding = false;// MatrixFlipsTriangles(newMatrix);
+  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
   IfcGeometry newGeomSecondMesh;
 
   for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
     Face f = parameters.flatSecondMesh[0].GetFace(i);
-    glm::dvec3 a = newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b = newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c = newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
 
     if (transformationBreaksWinding) {
       newGeomSecondMesh.AddFace(b, a, c);
@@ -181,10 +285,8 @@ IfcGeometry resultGeometry;
 
   parameters.flatSecondMesh[0] = newGeomSecondMesh;
 
-  
-
   resultGeometry =
-      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
 

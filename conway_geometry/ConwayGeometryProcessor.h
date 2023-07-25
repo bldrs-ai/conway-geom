@@ -115,10 +115,12 @@ class ConwayGeometryProcessor {
   IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
   IfcGeometry BoolSubtract(const std::vector<IfcGeometry> &firstGroups,
                            std::vector<IfcGeometry> &secondGroups);
+  IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry> &firstGeoms,
+                                 std::vector<IfcGeometry> &secondGeoms);
 
-  // case ifc::IFCBOOLEANCLIPPINGRESULT:
-  // case ifc::IFCBOOLEANRESULT:
-  struct ParamsGetBooleanResult {
+      // case ifc::IFCBOOLEANCLIPPINGRESULT:
+      // case ifc::IFCBOOLEANRESULT:
+      struct ParamsGetBooleanResult {
     std::vector<IfcGeometry> flatFirstMesh;
     std::vector<IfcGeometry> flatSecondMesh;
     int operatorType = 2;
