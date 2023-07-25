@@ -717,6 +717,8 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
           static_cast< float >( conwayMaterial.base.b ),
           static_cast< float >( conwayMaterial.base.a ) );
 
+      /* TODO - add support for specular colour and IOR here  */
+
       switch ( conwayMaterial.alphaMode ) {
       case BLEND_MODE::BLEND:
 
@@ -1325,7 +1327,7 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         }
       }
     }
-    
+
     results.success = true;
 
     return results;
