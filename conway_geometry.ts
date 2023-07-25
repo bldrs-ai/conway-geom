@@ -87,6 +87,27 @@ export interface ParamsPolygonalFaceSet {
   faces: any
 }
 
+export interface Vector3 {
+  x: number
+  y: number
+  z: number
+}
+
+export interface ParamsCartesianTransformationOperator3D {
+  position: Vector3
+  axis1Ref: Vector3
+  axis2RefL: Vector3
+  axis3Ref: Vector3
+  normalizeAxis1: boolean
+  normalizeAxis2: boolean
+  normalizeAxis3: boolean
+  nonUniform: boolean
+  realScale: boolean
+  scale1_: number
+  scale2_: number
+  scale3_: number
+}
+
 export interface ResultsGltf {
   success: boolean
   bufferUris: any
@@ -144,6 +165,16 @@ export class ConwayGeometry {
     this.initialized = this.wasmModule.initializeGeometryProcessor()
 
     return this.initialized
+  }
+  
+  /**
+   *
+   * @param parameters - ParamsPolygonalFaceSet parsed from data model
+   * @return {GeometryObject} - Native geometry object
+   */
+  getCartesianTransformationOperator3D( parameters: ParamsCartesianTransformationOperator3D ): any {
+    const result = this.wasmModule.getCartesianTransformationOperator3D( parameters )
+    return result
   }
 
   /**

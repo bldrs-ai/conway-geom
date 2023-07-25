@@ -294,7 +294,7 @@ class ConwayGeometryProcessor {
     double scale3_ = 0;
   };
 
-  glm::dmat4 GetCartesianTransformationOperator3D(
+  static glm::dmat4 GetCartesianTransformationOperator3D(
       ParamsCartesianTransformationOperator3D parameters);
 
   // case ifc::IFCPOLYLOOP:

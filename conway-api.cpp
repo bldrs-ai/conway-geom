@@ -474,6 +474,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getAxis2Placement2D", &GetAxis2Placement2D);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);
+  emscripten::function("getCartesianTransformationOperator3D", &conway::geometry::ConwayGeometryProcessor::GetCartesianTransformationOperator3D );
   emscripten::function("getUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
