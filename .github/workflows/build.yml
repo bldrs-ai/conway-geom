@@ -59,7 +59,8 @@ jobs:
       - name: Checkout
         id: checkout
         uses: actions/checkout@v3
-        submodules: recursive
+        with:
+          submodules: recursive
 
       - name: Download GENie
         id: download-genie
