@@ -219,7 +219,8 @@ includedirs {
     "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
     "external/draco/src",
     "external/fuzzy-bools",
-    "external/fuzzy-bools/deps/cdt"
+    "external/fuzzy-bools/deps/cdt",
+    "external/csgjs-cpp"
 }
 
 excludes {
@@ -338,7 +339,8 @@ includedirs {
     "external/manifold/src/sdf/include",
     "external/manifold/src/third_party/graphlite/include",
     "external/fuzzy-bools",
-    "external/fuzzy-bools/deps/cdt"
+    "external/fuzzy-bools/deps/cdt",
+    "external/csgjs-cpp"
 }
 
 excludes {
@@ -461,7 +463,7 @@ includedirs {
     "external/draco/src",
     "external/fuzzy-bools",
     "external/fuzzy-bools/deps/cdt",
-    "external/csgjs-cpp/"
+    "external/csgjs-cpp"
 }
 
 excludes {
