@@ -339,8 +339,7 @@ includedirs {
     "external/manifold/src/sdf/include",
     "external/manifold/src/third_party/graphlite/include",
     "external/fuzzy-bools",
-    "external/fuzzy-bools/deps/cdt",
-    "external/csgjs-cpp"
+    "external/fuzzy-bools/deps/cdt"
 }
 
 excludes {
