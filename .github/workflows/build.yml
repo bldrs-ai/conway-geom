@@ -90,7 +90,7 @@ jobs:
         run: |
           mkdir -p build/gltf-sdk
           cd build/gltf-sdk
-          cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang ../../external/gltf-sdk/
+          cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=ons../../external/gltf-sdk/
           make
 
       - name: Build Native Artifacts
