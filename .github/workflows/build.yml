@@ -70,7 +70,9 @@ jobs:
 
       - name: Generate Makefiles
         id: generate-makefiles
-        run: ./genie gmake
+        run: |
+          chmod +x ./genie
+          ./genie gmake
 
       - name: Build Draco
         id: build-draco
