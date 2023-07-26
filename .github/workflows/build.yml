@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{env.EMSDK_CACHE_FOLDER}}
-          key: emscripten-${{env.EMSDK_VERSION}}-${{ runner.os }}
+          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
 
       - name: Install Emscripten
         id: emscripten
