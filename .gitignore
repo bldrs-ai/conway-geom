@@ -6,3 +6,5 @@ gmake/
 Dist/
 dependencies/**/*.a
 /.vs
+build/
+cache/
