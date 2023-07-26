@@ -70,25 +70,25 @@ jobs:
       - name: Build Draco
         id: build-draco
         run: |
-          mkdir -p build/draco && \
-          cd build/draco && \
-          cmake ../../external/draco && \
+          mkdir -p build/draco
+          cd build/draco
+          cmake ../../external/draco
           make
 
       - name: Build Manifold
         id: build-manifold
         run: |
-          mkdir -p build/manifold && \
-          cd build/manifold && \
-          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold && \
+          mkdir -p build/manifold
+          cd build/manifold
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold
           make
 
       - name: Build glTF SDK
         id: build-gltf-sdk
         run: |
-          mkdir -p build/gltfsdk && \
-          cd build/gltfsdk && \
-          cmake ../../external/gltf-sdk/ && \
+          mkdir -p build/gltf-sdk
+          cd build/gltf-sdk
+          cmake ../../external/gltf-sdk/
           make
 
       - name: Build Native Artifacts
