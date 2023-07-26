@@ -1,8 +1,8 @@
 name: Development Build
 
 env:
-  EM_VERSION: 1.39.18
-  EM_CACHE_FOLDER: 'emsdk-cache'
+  EMSDK_VERSION: 1.39.18
+  EMSDK_CACHE_FOLDER: 'cache/emsdk'
 
 on:
   pull_request:
@@ -30,8 +30,8 @@ jobs:
         id: archive
         uses: actions/upload-artifact@v3
         with:
-          name: genie-platform-specific-distributable
-          path: bin/*/genie
+          name: genie
+          path: bin/linux/genie
           retention-days: 1
 
   build:
@@ -39,22 +39,22 @@ jobs:
     runs-on: ubuntu-latest
     needs: genie
     steps:
-      - name: Create Build Cache
+      - name: Create Build Cache Directory
         run: mkdir -p cache/
 
       - name: Enable Emscripten Build Cache
-        id: cache
-        uses: actions/cache@v2
+        id: emscripten-cache
+        uses: actions/cache@v3
         with:
-          path: ${{env.EM_CACHE_FOLDER}}
-          key: ${{env.EM_VERSION}}-${{ runner.os }}
+          path: ${{env.EMSDK_CACHE_FOLDER}}
+          key: emscripten-${{env.EMSDK_VERSION}}-${{ runner.os }}
 
       - name: Install Emscripten
         id: emscripten
-        uses: mymindstorm/setup-emsdk@v11
+        uses: mymindstorm/setup-emsdk@v12
         with:
-          version: ${{env.EM_VERSION}}
-          actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
+          version: ${{env.EMSDK_VERSION}}
+          actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
 
       - name: Checkout
         id: checkout
