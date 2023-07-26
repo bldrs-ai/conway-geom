@@ -27,8 +27,8 @@ jobs:
         id: archive
         uses: actions/upload-artifact@v3
         with:
-          name: genie-platform-specific-distributable
-          path: bin/*/genie
+          name: genie
+          path: bin/linux/genie
           retention-days: 1
 
   build:
