@@ -39,15 +39,15 @@ jobs:
         run: mkdir -p cache/
 
       - name: Enable Emscripten Build Cache
-        id: cache
-        uses: actions/cache@v2
+        id: emscripten-cache
+        uses: actions/cache@v3
         with:
           path: ${{env.EMSDK_CACHE_FOLDER}}
           key: emscripten-${{env.EMSDK_VERSION}}-${{ runner.os }}
 
       - name: Install Emscripten
         id: emscripten
-        uses: mymindstorm/setup-emsdk@v11
+        uses: mymindstorm/setup-emsdk@v12
         with:
           version: ${{env.EMSDK_VERSION}}
           actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
