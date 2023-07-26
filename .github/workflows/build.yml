@@ -1,0 +1,100 @@
+name: Development Build
+
+env:
+  EM_VERSION: 1.39.18
+  EM_CACHE_FOLDER: 'emsdk-cache'
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  genie:
+    name: Build GENie executable
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v3
+        with:
+          repository: bkaradzic/GENie
+
+      - name: Build
+        id: build
+        run: make
+
+      - name: Archive Build Artifact
+        id: archive
+        uses: actions/upload-artifact@v3
+        with:
+          name: genie-platform-specific-distributable
+          path: bin/*/genie
+          retention-days: 1
+
+  build:
+    name: Build Release
+    needs: genie
+    steps:
+      - name: Create Build Cache
+        run: mkdir -p cache/
+
+      - name: Enable Emscripten Build Cache
+        id: cache
+        uses: actions/cache@v2
+        with:
+          path: ${{env.EM_CACHE_FOLDER}}
+          key: ${{env.EM_VERSION}}-${{ runner.os }}
+
+      - name: Install Emscripten
+        id: emscripten
+        uses: mymindstorm/setup-emsdk@v11
+        with:
+          version: ${{env.EM_VERSION}}
+          actions-cache-folder: ${{env.EM_CACHE_FOLDER}}
+
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v3
+        submodules: recursive
+
+      - name: Download GENie
+        id: download-genie
+        uses: actions/download-artifact@v3
+        with:
+          name: genie-platform-specific-distributable
+
+      - name: Generate Makefiles
+        id: generate-makefiles
+        run: ./genie gmake
+
+      - name: Build Draco
+        id: build-draco
+        run: |
+          mkdir -p build/draco
+          cd build/draco
+          cmake ../../external/draco
+          make
+
+      - name: Build Manifold
+        id: build-manifold
+        run: |
+          mkdir -p build/manifold
+          cd build/manifold
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold
+          make
+
+      - name: Build glTF SDK
+        id: build-gltf-sdk
+        run: |
+          mkdir -p build/gltf-sdk
+          cd build/gltf-sdk
+          cmake ../../external/gltf-sdk/
+          make
+
+      - name: Build Native Artifacts
+        id: build-native
+        run: make config=release64 conway_geom_native webifc_native
+
+      - name: Build WASM
+        id: build-wasm
+        run: make config=releaseemscripten ConwayGeomWasm
