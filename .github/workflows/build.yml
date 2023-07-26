@@ -35,7 +35,7 @@ jobs:
     name: Build Release
     needs: genie
     steps:
-      - name: Create Build Cache
+      - name: Create Build Cache Directory
         run: mkdir -p cache/
 
       - name: Enable Emscripten Build Cache
