@@ -17,6 +17,25 @@ targetdir "bin/release"
 configuration {}
 project "draco"
 language "C++"
+kind "StaticLib"solution "dependencies"
+configurations {"Debug", "Release"}
+includedirs {"include"}
+location(_ACTION)
+
+platforms {"x64", "Emscripten"}
+
+configuration {"vs*", "Debug"}
+buildoptions {"/bigobj"}
+
+configuration {"Debug*"}
+targetdir "bin/debug"
+
+configuration {"Release*"}
+targetdir "bin/release"
+
+configuration {}
+project "draco"
+language "C++"
 kind "StaticLib"
 files {}
 
@@ -102,6 +121,11 @@ flags {"EnableAVX2"}
 configuration {"macosx", "x64", "Release"}
 targetdir(path.join("bin", "64", "release"))
 postbuildcommands {"cp ../bin/64/release/libdraco.a ../macOS-arm64/libdraco.a"}
+flags {"EnableAVX2"}
+
+configuration {"windows", "x64", "Debug"}
+targetdir(path.join("bin", "64", "debug"))
+postbuildcommands {"xcopy ..\\bin\\64\\release\\libdraco.a ..\\win\\libdraco.a* /Y"}
 flags {"EnableAVX2"}
 
 configuration {"windows", "x64", "Debug"}

@@ -1324,6 +1324,7 @@ namespace webifc::geometry
     IfcComposedMesh IfcGeometryProcessor::GetMesh(uint32_t expressID) 
     {
         auto foundMesh = _loader.ExpressIDToLineID(expressID);
+
         return GetMeshByLine(foundMesh);
     }
 

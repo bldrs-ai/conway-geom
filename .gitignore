@@ -5,6 +5,6 @@ gmake/
 **/.DS_Store
 Dist/
 dependencies/**/*.a
-
+/.vs
 build/
 cache/

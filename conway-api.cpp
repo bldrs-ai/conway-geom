@@ -26,14 +26,16 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    conway::geometry::IfcGeometry geom, bool isGlb, bool outputDraco,
-    std::string filePath) {
+    std::vector< conway::geometry::IfcGeometry >& geoms,
+    std::vector< conway::geometry::Material >& materials,
+    bool isGlb,
+    bool outputDraco, std::string filePath) {
+  conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
   if (processor) {
-    return processor->GeometryToGltf(geom, isGlb, outputDraco, filePath, false,
-                                     NormalizeMat);
+    results = processor->GeometryToGltf(geoms, materials, isGlb, outputDraco, filePath,
+                                        false, NormalizeMat);
   }
 
-  conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
   return results;
 }
 
@@ -224,7 +226,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
-      .function("clone", &conway::geometry::IfcGeometry::Clone);
+      .function("clone", &conway::geometry::IfcGeometry::Clone)
+      .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex )
+      .property("hasDefaultMaterial", &conway::geometry::IfcGeometry::hasDefaultMaterial );
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
@@ -254,6 +258,22 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getValues", &getMatrixValues3x3)
       .function("setValues", &setMatrixValues3x3);
 
+
+    emscripten::enum_< conway::geometry::BLEND_MODE >( "BlendMode" )
+      .value( "OPAQUE", conway::geometry::BLEND_MODE::BLEND_OPAQUE )
+      .value( "BLEND", conway::geometry::BLEND_MODE::BLEND )
+      .value( "MASK", conway::geometry::BLEND_MODE::MASK );
+
+    emscripten::value_object<conway::geometry::Material>("MaterialObject")
+      .field("base", &conway::geometry::Material::base )
+      .field("metallic", &conway::geometry::Material::metallic )
+      .field("roughness", &conway::geometry::Material::roughness )
+      .field("alphaCutoff", &conway::geometry::Material::alphaCutoff )
+      .field("ior", &conway::geometry::Material::ior )
+      .field("specular", &conway::geometry::Material::specular )
+      .field("alphaMode", &conway::geometry::Material::alphaMode )
+      .field("doubleSided", &conway::geometry::Material::doubleSided );
+
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
       .field("y", &glm::dvec4::y)
@@ -277,6 +297,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::value_object<glm::vec2>("glmVec2")
       .field("x", &glm::vec2::x)
       .field("y", &glm::vec2::y);
+  
+  emscripten::register_vector<conway::geometry::Material>("materialArray");
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
@@ -397,6 +419,32 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                    ParamsLocalPlacement::axis2Placement)
       .field("relPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsLocalPlacement::relPlacement);
+/*    glm::dvec3 position;
+    glm::dvec3 axis1Ref;
+    glm::dvec3 axis2Ref;
+    glm::dvec3 axis3Ref;
+    bool normalizeAxis1 = false;
+    bool normalizeAxis2 = false;
+    bool normalizeAxis3 = false;
+    bool nonUniform = false;
+    bool realScale = false;
+    double scale1_ = 0;
+    double scale2_ = 0;
+    double scale3_ = 0;*/
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D >( "ParamsCartesianTransformationOperator3D" )
+      .field("position", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::position )
+      .field("axis1Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis1Ref )
+      .field("axis2Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis2Ref )
+      .field("axis3Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis3Ref )
+      .field("normalizeAxis1", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis1 )
+      .field("normalizeAxis2", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis2 )
+      .field("normalizeAxis3", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis3 )
+      .field("nonUniform", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::nonUniform )
+      .field("realScale", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::realScale )
+      .field("scale1_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale1_ )
+      .field("scale2_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale2_ )
+      .field("scale3_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale3_ );
 
   // ParamsCreateNativeIfcProfile
   emscripten::value_object<ParamsCreateNativeIfcProfile>(
@@ -457,8 +505,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
   emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
   emscripten::register_vector<
-      conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
-      "VectorIndexedPolygonalFace");
+    conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
+    "VectorIndexedPolygonalFace");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
 
@@ -467,14 +515,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
-                       &InitializeGeometryProcessor);
+    &InitializeGeometryProcessor);
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);
   emscripten::function("geometryToObj", &GeometryToObj);
   emscripten::function("geometryToGltf", &GeometryToGltf);
   emscripten::function("getAxis2Placement2D", &GetAxis2Placement2D);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);
-  emscripten::function("getCartesianTransformationOperator3D", &conway::geometry::ConwayGeometryProcessor::GetCartesianTransformationOperator3D );
+  emscripten::function("getCartesianTransformationOperator3D", 
+    &conway::geometry::ConwayGeometryProcessor::GetCartesianTransformationOperator3D );
   emscripten::function("getUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
