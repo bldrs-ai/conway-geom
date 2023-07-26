@@ -33,6 +33,7 @@ jobs:
 
   build:
     name: Build Release
+    needs: genie
     steps:
       - name: Create Build Cache
         run: mkdir -p cache/
@@ -65,6 +66,30 @@ jobs:
       - name: Generate Makefiles
         id: generate-makefiles
         run: ./genie gmake
+
+      - name: Build Draco
+        id: build-draco
+        run: |
+          mkdir -p build/draco && \
+          cd build/draco && \
+          cmake ../../external/draco && \
+          make
+
+      - name: Build Manifold
+        id: build-manifold
+        run: |
+          mkdir -p build/manifold && \
+          cd build/manifold && \
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold && \
+          make
+
+      - name: Build glTF SDK
+        id: build-gltf-sdk
+        run: |
+          mkdir -p build/gltfsdk && \
+          cd build/gltfsdk && \
+          cmake ../../external/gltf-sdk/ && \
+          make
 
       - name: Build Native Artifacts
         id: build-native
