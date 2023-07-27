@@ -13,23 +13,32 @@ jobs:
   genie:
     name: Build GENie executable
     steps:
+      - name: Restore Cached Build Artifact
+        id: cache-genie-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: bin/linux/genie
+          key: genie-${{ runner.os }}
+
       - name: Checkout
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
         id: checkout
         uses: actions/checkout@v3
         with:
           repository: bkaradzic/GENie
 
       - name: Build
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
         id: build
         run: make
 
-      - name: Archive Build Artifact
-        id: archive
-        uses: actions/upload-artifact@v3
+      - name: Cache Build Artifact
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
+        id: cache-genie
+        uses: actions/cache/save@v3
         with:
-          name: genie
           path: bin/linux/genie
-          retention-days: 1
+          key: genie-${{ runner.os }}
 
   build:
     name: Build Release
@@ -38,7 +47,7 @@ jobs:
       - name: Create Build Cache Directory
         run: mkdir -p cache/
 
-      - name: Enable Emscripten Build Cache
+      - name: Enable Emscripten System Library Cache
         id: emscripten-cache
         uses: actions/cache@v3
         with:
@@ -85,17 +94,18 @@ jobs:
           path: build/gtlf-sdk/
           key: gltf-sdk-${{env.GLTFSDK_VERSION}}-${{ runner.os }}
 
-      - name: Download GENie
-        id: download-genie
-        uses: actions/download-artifact@v3
+      - name: Use cached GENie
+        id: use-cached-genie
+        uses: actions/cache/restore@v3
         with:
-          name: genie
+          path: bin/linux/genie
+          key: genie-${{ runner.os }}
 
       - name: Generate Makefiles
         id: generate-makefiles
         run: |
-          chmod +x ./genie
-          ./genie gmake
+          chmod +x ./bin/linux/genie
+          ./bin/linux/genie gmake
 
       - name: Build Draco
         id: build-draco
