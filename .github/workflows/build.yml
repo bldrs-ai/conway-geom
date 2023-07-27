@@ -14,7 +14,7 @@ on:
 jobs:
   genie:
     name: Build GENie executable
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Restore Cached Build Artifact
         id: cache-genie-restore
@@ -45,7 +45,7 @@ jobs:
 
   build:
     name: Build Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     needs: genie
     steps:
       - name: Create Build Cache Directory
