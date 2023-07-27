@@ -139,7 +139,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
   result = boolSubtract(r1, r2);*/
 
   if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
-   printf("bool aborted due to empty source or target\n");
+    printf("bool aborted due to empty source or target\n");
 
     // bail out because we will get strange meshes
     // if this happens, probably there's an issue parsing the mesh that occurred
@@ -826,83 +826,67 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 }
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
-ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeometry >& geoms,
-                                        std::vector< conway::geometry::Material >& materials,
-                                        bool isGlb, bool outputDraco,
-                                        std::string filePath, bool outputFile,
-                                        glm::dmat4 transform) {
+ConwayGeometryProcessor::GeometryToGltf(
+    std::vector<conway::geometry::IfcGeometry> &geoms,
+    std::vector<conway::geometry::Material> &materials, bool isGlb,
+    bool outputDraco, std::string filePath, bool outputFile,
+    glm::dmat4 transform) {
   ResultsGltf results;
 
-  if ( outputDraco ) {
-
-    printf( "Draco support currently disabled\n" );
-
-    results.success = false;
-
-    return results;
-  }
-
   try {
-  
-      // Construct a Mesh and add the MeshPrimitive as a child
+    // Construct a Mesh and add the MeshPrimitive as a child
     Microsoft::glTF::Mesh mesh;
     // Construct a Scene
     Microsoft::glTF::Scene scene;
     // The Document instance represents the glTF JSON manifest
     Microsoft::glTF::Document document;
-    
-    std::vector< std::string > materialIds;
+
+    std::vector<std::string> materialIds;
 
     int uniqueIdDraco = 0;
 
-    for ( conway::geometry::Material& conwayMaterial : materials ) {
-
+    for (conway::geometry::Material &conwayMaterial : materials) {
       Microsoft::glTF::Material material;
 
-      material.doubleSided                       = conwayMaterial.doubleSided;
-      material.metallicRoughness.metallicFactor  = conwayMaterial.metallic;
+      material.doubleSided = conwayMaterial.doubleSided;
+      material.metallicRoughness.metallicFactor = conwayMaterial.metallic;
       material.metallicRoughness.roughnessFactor = conwayMaterial.roughness;
-      material.metallicRoughness.baseColorFactor = 
-        Microsoft::glTF::Color4( 
-          static_cast< float >( conwayMaterial.base.r ),
-          static_cast< float >( conwayMaterial.base.g ),
-          static_cast< float >( conwayMaterial.base.b ),
-          static_cast< float >( conwayMaterial.base.a ) );
+      material.metallicRoughness.baseColorFactor =
+          Microsoft::glTF::Color4(static_cast<float>(conwayMaterial.base.r),
+                                  static_cast<float>(conwayMaterial.base.g),
+                                  static_cast<float>(conwayMaterial.base.b),
+                                  static_cast<float>(conwayMaterial.base.a));
 
       /* TODO - add support for specular colour and IOR here  */
 
-      switch ( conwayMaterial.alphaMode ) {
-      case BLEND_MODE::BLEND:
+      switch (conwayMaterial.alphaMode) {
+        case BLEND_MODE::BLEND:
 
-        material.alphaMode = Microsoft::glTF::AlphaMode::ALPHA_BLEND;
-        break;
+          material.alphaMode = Microsoft::glTF::AlphaMode::ALPHA_BLEND;
+          break;
 
-      case BLEND_MODE::MASK:
+        case BLEND_MODE::MASK:
 
-        material.alphaMode = Microsoft::glTF::AlphaMode::ALPHA_MASK;
-        break;
-
+          material.alphaMode = Microsoft::glTF::AlphaMode::ALPHA_MASK;
+          break;
       }
 
       // TODO - specular extension and IOR extension. - CS
 
       std::string materialId =
-        document.materials
+          document.materials
               .Append(std::move(material),
                       Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
               .id;
 
-      materialIds.push_back( materialId );
+      materialIds.push_back(materialId);
     }
-  
+
     Microsoft::glTF::Material defaultMaterial;
 
     defaultMaterial.doubleSided = true;
 
-    std::optional< std::string > defaultMaterialId;
-
-    // Create a Buffer - it will be the 'current' Buffer that all the
-    // BufferViews created by this BufferBuilder will automatically reference
+    std::optional<std::string> defaultMaterialId;
 
     // Pass the absolute path, without the filename, to the stream writer
     std::unique_ptr<StreamWriter> streamWriter = std::make_unique<StreamWriter>(
@@ -945,33 +929,33 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
 
     // Create a Buffer - it will be the 'current' Buffer that all the
     // BufferViews created by this BufferBuilder will automatically reference
-    bufferBuilder.AddBuffer(bufferId);    
+    bufferBuilder.AddBuffer(bufferId);
 
     if (outputDraco) {
       document.extensionsRequired.insert("KHR_draco_mesh_compression");
       document.extensionsUsed.insert("KHR_draco_mesh_compression");
     }
 
+    std::vector<Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression>
+        dracoPrimitives;
 
-    for ( conway::geometry::IfcGeometry& geom : geoms ) {
-
+    for (conway::geometry::IfcGeometry &geom : geoms) {
       // create a mesh object
       std::unique_ptr<draco::Mesh> dracoMesh;
 
       // Encode the geometry.
       draco::EncoderBuffer buffer;
-    
+
       // Convert to ExpertEncoder that allows us to set per-attribute options.
       std::unique_ptr<draco::ExpertEncoder> expert_encoder;
-
 
       DracoOptions dracoOptions;
 
       // set up Draco Encoder
       draco::Encoder encoder;
-    
+
       // if Draco
-      std::unique_ptr< Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression >
+      Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression
           dracoMeshCompression;
 
       int32_t pos_att_id = -1;
@@ -983,8 +967,7 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       geom.GetVertexData();
 
       if (outputDraco) {
-
-        dracoMesh.reset( new draco::Mesh() );
+        dracoMesh.reset(new draco::Mesh());
 
         // get number of faces
         uint32_t numFaces = 0;
@@ -1005,7 +988,7 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         if (numPositions > 0) {
           draco::GeometryAttribute va;
 
-          va.set_unique_id( uniqueIdDraco++ );
+          va.set_unique_id(uniqueIdDraco++);
 
           va.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
                   draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
@@ -1032,8 +1015,9 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
 
         // no textures, just map vertices to face indices
         for (size_t triangleIndex = 0; triangleIndex < numFaces;
-            ++triangleIndex) {
-          const uint32_t *triangle = &(geom.indexData.data()[triangleIndex * 3]);
+             ++triangleIndex) {
+          const uint32_t *triangle =
+              &(geom.indexData.data()[triangleIndex * 3]);
 
           uint32_t triangle0 = triangle[0];
           uint32_t triangle1 = triangle[1];
@@ -1047,13 +1031,13 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
           // map vertex to face index
           dracoMesh->attribute(pos_att_id)
               ->SetPointMapEntry(vert_id_0,
-                                draco::AttributeValueIndex(triangle0));
+                                 draco::AttributeValueIndex(triangle0));
           dracoMesh->attribute(pos_att_id)
               ->SetPointMapEntry(vert_id_1,
-                                draco::AttributeValueIndex(triangle1));
+                                 draco::AttributeValueIndex(triangle1));
           dracoMesh->attribute(pos_att_id)
               ->SetPointMapEntry(vert_id_2,
-                                draco::AttributeValueIndex(triangle2));
+                                 draco::AttributeValueIndex(triangle2));
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1067,19 +1051,19 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
           dracoMesh->SetFace(i, face);
         }
 
-  #ifdef DRACO_ATTRIBUTE_VALUES_DEDUPLICATION_SUPPORTED
+#ifdef DRACO_ATTRIBUTE_VALUES_DEDUPLICATION_SUPPORTED
         if (dracoOptions.deduplicateInputValues) {
           dracoMesh->DeduplicateAttributeValues();
         }
-  #endif
+#endif
 
-  #ifdef DRACO_ATTRIBUTE_INDICES_DEDUPLICATION_SUPPORTED
+#ifdef DRACO_ATTRIBUTE_INDICES_DEDUPLICATION_SUPPORTED
         dracoMesh->DeduplicatePointIds();
-  #endif
+#endif
 
         // Convert compression level to speed (that 0 = slowest, 10 = fastest).
-        const int32_t dracoCompressionSpeed = 10 - dracoOptions.compressionLevel;
-
+        const int32_t dracoCompressionSpeed =
+            10 - dracoOptions.compressionLevel;
 
         // Setup encoder options.
         if (dracoOptions.posQuantizationBits > 0) {
@@ -1104,7 +1088,6 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
           encoder.SetAttributeQuantization(
               draco::GeometryAttribute::GENERIC,
               8);  // dracoOptions.genericQuantizationBits );
-
         }
 
         encoder.SetSpeedOptions(dracoCompressionSpeed, dracoCompressionSpeed);
@@ -1121,23 +1104,20 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
 
         timer.Stop();
 
-      if (!status.ok()) {
-        printf("Failed to encode the mesh: %s\n", status.error_msg());
-        results.success = false;
-        return results;
-      }
+        if (!status.ok()) {
+          printf("Failed to encode the mesh: %s\n", status.error_msg());
+          results.success = false;
+          return results;
+        }
 
         if (outputFile) {
           printf("Encoded To Draco in %lld ms\n", timer.GetInMs());
         }
       }
-  
+
       std::string accessorIdIndices;
       std::string accessorIdPositions;
       std::string accessorIdUVs;
-
-
-      dracoMeshCompression.reset( new Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression() );
 
       // Add an Accessor for the indices and positions
       std::vector<float> positions;
@@ -1164,8 +1144,6 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
 
       if (outputDraco) {
 
-        // bufferViewId = bufferBuilder.AddBufferView().id;
-
         Microsoft::glTF::Accessor positionsAccessor;
         positionsAccessor.min = minValues;
         positionsAccessor.max = maxValues;
@@ -1173,29 +1151,28 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         positionsAccessor.componentType =
             Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
         positionsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
-     //  positionsAccessor.id = "0";
-     //   accessorIdPositions = positionsAccessor.id;
-        dracoMeshCompression->attributes.emplace(
+        dracoMeshCompression.attributes.emplace(
             "POSITION", dracoMesh->attribute(pos_att_id)->unique_id());
 
         Microsoft::glTF::Accessor indicesAccessor;
         indicesAccessor.count = dracoMesh->num_faces() * 3;
         indicesAccessor.componentType = Microsoft::glTF::COMPONENT_UNSIGNED_INT;
-        indicesAccessor.type = Microsoft::glTF::TYPE_SCALAR;      
-       // indicesAccessor.id = "1";
-      //  accessorIdIndices = indicesAccessor.id;
+        indicesAccessor.type = Microsoft::glTF::TYPE_SCALAR;
 
         // add position accessor first here
-        accessorIdPositions = 
-          document.accessors.Append(
-            positionsAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty).id;
-        
+        accessorIdPositions =
+            document.accessors
+                .Append(positionsAccessor,
+                        Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
+                .id;
+
         accessorIdIndices =
-          document.accessors.Append(
-            indicesAccessor, Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty).id;
+            document.accessors
+                .Append(indicesAccessor,
+                        Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
+                .id;
 
       } else {
-
         // Create a BufferView with a target of ELEMENT_ARRAY_BUFFER (as it will
         // reference index data) - it will be the 'current' BufferView that all
         // the Accessors created by this BufferBuilder will automatically
@@ -1208,7 +1185,7 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         accessorIdIndices =
             bufferBuilder
                 .AddAccessor(geom.indexData,
-                            {Microsoft::glTF::TYPE_SCALAR,
+                             {Microsoft::glTF::TYPE_SCALAR,
                               Microsoft::glTF::COMPONENT_UNSIGNED_INT})
                 .id;
 
@@ -1220,12 +1197,11 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
         // Add positions accessor
         accessorIdPositions =
             bufferBuilder
-                .AddAccessor(
-                    positions,
-                    {Microsoft::glTF::TYPE_VEC3, Microsoft::glTF::COMPONENT_FLOAT,
-                    false, std::move(minValues), std::move(maxValues)})
+                .AddAccessor(positions,
+                             {Microsoft::glTF::TYPE_VEC3,
+                              Microsoft::glTF::COMPONENT_FLOAT, false,
+                              std::move(minValues), std::move(maxValues)})
                 .id;
-
       }
 
       Microsoft::glTF::TextureInfo textureInfo;
@@ -1235,72 +1211,40 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
       // children of the Document. This is why they don't have an ID member.
       Microsoft::glTF::MeshPrimitive meshPrimitive;
 
-      if ( !geom.hasDefaultMaterial && size_t( geom.materialIndex ) < materialIds.size() ) {
-
-        meshPrimitive.materialId = materialIds[ geom.materialIndex ];
-      }
-      else
-      {
-        if ( !defaultMaterialId.has_value() ) {
-
+      if (!geom.hasDefaultMaterial &&
+          size_t(geom.materialIndex) < materialIds.size()) {
+        meshPrimitive.materialId = materialIds[geom.materialIndex];
+      } else {
+        if (!defaultMaterialId.has_value()) {
           // Add it to the Document and store the generated ID
           defaultMaterialId =
-            document.materials
-              .Append(std::move(defaultMaterial),
-                      Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
-              .id;
+              document.materials
+                  .Append(std::move(defaultMaterial),
+                          Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
+                  .id;
         }
 
         meshPrimitive.materialId = *defaultMaterialId;
       }
 
       if (outputDraco) {
-
         // Finally put the encoded data in place.
-         auto bufferView =
-             bufferBuilder.AddBufferView(buffer.data(), buffer.size());
+        auto bufferView =
+            bufferBuilder.AddBufferView(buffer.data(), buffer.size());
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
 
-        // Microsoft::glTF::Accessor encodedIndexAccessor(document.accessors[meshPrimitive.indicesAccessorId]);
-        // encodedIndexAccessor.count = encoder.num_encoded_faces() * 3;
-        // document.accessors.Replace(encodedIndexAccessor);
+        dracoMeshCompression.bufferViewId = bufferView.id;
 
-        // for (const auto& dracoAttribute : dracoMeshCompression->attributes)
-        // {
-        //     auto accessorId = meshPrimitive.attributes.at(dracoAttribute.first);
-        //     Microsoft::glTF::Accessor encodedAccessor(document.accessors[accessorId]);
-        //     encodedAccessor.count = encoder.num_encoded_points();
-        //     document.accessors.Replace(encodedAccessor);
-        // }
-
-        dracoMeshCompression->bufferViewId = bufferView.id;
-        // const auto extensionSerializer =
-        //     Microsoft::glTF::KHR::GetKHRExtensionSerializer();
-
-   // Add all of the Buffers, BufferViews and Accessors that were created
-    // using BufferBuilder to the Document. Note that after this point, no
-    // further calls should be made to BufferBuilder
- //   bufferBuilder.Output(document);
-        meshPrimitive.SetExtension(std::move(dracoMeshCompression));
-
-//       std::string strDracoMesh =
-//           Microsoft::glTF::KHR::MeshPrimitives::SerializeDracoMeshCompression(
-//               *dracoMeshCompression, document, extensionSerializer);
-
-// //        printf( "13c %s\n", strDracoMesh.c_str() );
-
-//         meshPrimitive.extensions["KHR_draco_mesh_compression"] = strDracoMesh;
+        dracoPrimitives.push_back(dracoMeshCompression);
 
       } else {
-
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
-
       }
-
+      
       mesh.primitives.push_back(std::move(meshPrimitive));
     }
 
@@ -1310,11 +1254,18 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
     bufferBuilder.Output(document);
 
     if (outputDraco) {
-      document.extensionsUsed.emplace(Microsoft::glTF::KHR::MeshPrimitives::DRACOMESHCOMPRESSION_NAME);
-      document.extensionsRequired.emplace(Microsoft::glTF::KHR::MeshPrimitives::DRACOMESHCOMPRESSION_NAME);
+      for (int i = 0; i < mesh.primitives.size(); i++) {
+        const auto extensionSerializer =
+            Microsoft::glTF::KHR::GetKHRExtensionSerializer();
+        std::string strDracoMesh =
+            Microsoft::glTF::KHR::MeshPrimitives::SerializeDracoMeshCompression(
+                dracoPrimitives[i], document, extensionSerializer);
+        mesh.primitives[i].extensions["KHR_draco_mesh_compression"] =
+            strDracoMesh;
+      }
     }
-    
-      // Add it to the Document and store the generated ID
+
+    // Add it to the Document and store the generated ID
     auto meshId = document.meshes
                       .Append(std::move(mesh),
                               Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
@@ -1340,7 +1291,6 @@ ConwayGeometryProcessor::GeometryToGltf(std::vector< conway::geometry::IfcGeomet
     std::string manifest;
 
     try {
-
       // Serialize the glTF Document into a JSON manifest
       manifest = Serialize(document, Microsoft::glTF::SerializeFlags::Pretty);
     } catch (const Microsoft::glTF::GLTFException &ex) {
