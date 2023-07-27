@@ -113,7 +113,7 @@ jobs:
         run: |
           mkdir -p build/draco
           cd build/draco
-          cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang ../../external/draco
+          cmake ../../external/draco
           make
 
       - name: Build Manifold
@@ -122,7 +122,7 @@ jobs:
         run: |
           mkdir -p build/manifold
           cd build/manifold
-          cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold
           make
 
       - name: Build glTF SDK
@@ -131,7 +131,7 @@ jobs:
         run: |
           mkdir -p build/gltf-sdk
           cd build/gltf-sdk
-          cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
+          cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
           make
 
       - name: Build Native Artifacts
