@@ -1593,6 +1593,18 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve ConwayGeometryProcessor::getTrimmedCurve(ParamsGetIfcTrimmedCurve parameters) {
+  IfcCurve curve;
+
+  IfcTrimmingSelect ts; 
+
+  
+
+
+
+  return curve;
+}
+
 conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
     ParamsGetExtrudedAreaSolid parameters) {
   conway::geometry::IfcGeometry geom;

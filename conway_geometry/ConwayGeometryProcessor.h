@@ -381,6 +381,20 @@ class ConwayGeometryProcessor {
 
   conway::geometry::IfcCurve getCircleCurve(ParamsGetCircleCurve parameters);
 
+
+// case ifc::GetIfcTrimmedCurve
+struct ParamsGetIfcTrimmedCurve {
+  IfcCurve basisCurve;
+  uint32_t masterRepresentation;
+  uint32_t dimensions;
+  bool senseAgreement;
+  std::vector<glm::dvec3> trim1Vec3;
+  std::vector<double> trim1VecDouble;
+  std::vector<glm::dvec3> trim2Vec3;
+  std::vector<double> trim2VecDouble;
+};
+  conway::geometry::IfcCurve getTrimmedCurve(ParamsGetIfcTrimmedCurve parameters);
+
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
     float depth = 0.0f;

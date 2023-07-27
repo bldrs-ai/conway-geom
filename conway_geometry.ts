@@ -75,8 +75,8 @@ export interface MaterialObject {
 }
 
 export interface CurveObject {
-  add2d: () => void
-  add3d: () => void
+  add2d: (coord2D: any) => void
+  add3d: (coord3D: any) => void
   get2d: (index: number) => any
   get3d: (index: number) => any
   invert: () => void
@@ -137,6 +137,17 @@ export interface ParamsGetIfcIndexedPolyCurve {
   segments: any
   points: any
 };
+
+export interface ParamsGetIfcTrimmedCurve {
+  basisCurve:CurveObject
+  masterRepresentation:number
+  dimensions:number
+  senseAgreement:boolean
+  trim1Vec3:any
+  trim1DoubleArray:any
+  trim2Vec3:any
+  trim2DoubleArray:any
+}
 
 export interface IndexedPolygonalFace {
   indices: any
@@ -236,7 +247,7 @@ export class ConwayGeometry {
 
   /**
    *
-   * @param parameters - ParamsPolygonalFaceSet parsed from data model
+   * @param parameters - ParamsCartesianTransformationOperator3D parsed from data model
    * @return {GeometryObject} - Native geometry object
    */
   getCartesianTransformationOperator3D( parameters: ParamsCartesianTransformationOperator3D ): any {
@@ -252,6 +263,16 @@ export class ConwayGeometry {
   getPolygonalFaceSetGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
     const result = this.wasmModule.getPolygonalFaceSetGeometry(parameters)
     return result
+  }
+
+  /**
+   * 
+   * @param parameters 
+   * @returns {CurveObject} - Native Curve Object
+   */
+  getTrimmedCurve(parameters:ParamsGetIfcTrimmedCurve): CurveObject {
+    const result = this.wasmModule.getIfcTrimmedCurve(parameters)
+    return result 
   }
 
   /**
