@@ -9,6 +9,8 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 jobs:
   genie:
     name: Build GENie executable
