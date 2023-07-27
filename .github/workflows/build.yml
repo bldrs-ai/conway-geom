@@ -57,6 +57,34 @@ jobs:
         uses: actions/checkout@v3
         submodules: recursive
 
+      - name: Identify dependency versions
+        id: dependency-versions
+        run: |
+          echo "DRACO_VERSION=$( cd external/draco/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+          echo "MANIFOLD_VERSION=$( cd external/manifold/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+          echo "GLTFSDK_VERSION=$( cd external/gltf-sdk/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+
+      - name: Load Draco from Build Cache
+        id: draco-cache
+        uses: actions/cache@v3
+        with:
+          path: build/draco/
+          key: draco-${{env.DRACO_VERSION}}-${{ runner.os }}
+
+      - name: Load Manifold from Build Cache
+        id: manifold-cache
+        uses: actions/cache@v3
+        with:
+          path: build/manifold/
+          key: manifold-${{env.MANIFOLD_VERSION}}-${{ runner.os }}
+
+      - name: Load glTF SDK from Build Cache
+        id: gltf-sdk-cache
+        uses: actions/cache@v3
+        with:
+          path: build/gtlf-sdk/
+          key: gltf-sdk-${{env.GLTFSDK_VERSION}}-${{ runner.os }}
+
       - name: Download GENie
         id: download-genie
         uses: actions/download-artifact@v3
@@ -71,6 +99,7 @@ jobs:
 
       - name: Build Draco
         id: build-draco
+        if: steps.draco-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/draco
           cd build/draco
@@ -79,6 +108,7 @@ jobs:
 
       - name: Build Manifold
         id: build-manifold
+        if: steps.manifold-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/manifold
           cd build/manifold
@@ -87,6 +117,7 @@ jobs:
 
       - name: Build glTF SDK
         id: build-gltf-sdk
+        if: steps.gltf-sdk-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/gltf-sdk
           cd build/gltf-sdk
