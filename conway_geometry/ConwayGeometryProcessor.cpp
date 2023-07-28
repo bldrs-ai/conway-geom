@@ -1143,7 +1143,6 @@ ConwayGeometryProcessor::GeometryToGltf(
       }
 
       if (outputDraco) {
-
         Microsoft::glTF::Accessor positionsAccessor;
         positionsAccessor.min = minValues;
         positionsAccessor.max = maxValues;
@@ -1244,7 +1243,7 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
       }
-      
+
       mesh.primitives.push_back(std::move(meshPrimitive));
     }
 
@@ -1539,6 +1538,108 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
 
   curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
                          placement);
+
+  return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
+    ParamsGetIfcCircle parameters) {
+  conway::geometry::IfcCurve curve;
+
+  double radius = parameters.radius;
+
+  double startDegrees = 0;
+  double endDegrees = 360;
+
+  if (parameters.paramsGetIfcTrimmedCurve.dimensions != 0) {
+    if (parameters.paramsGetIfcTrimmedCurve.trim1VecDouble.start.hasParam && trim.end.hasParam) {
+      startDegrees = trim.start.param;
+      endDegrees = trim.end.param;
+    } else if (trim.start.hasPos && trim.end.hasPos) {
+      if (dimensions == 2) {
+        glm::dmat3 placement = GetAxis2Placement2D(positionID);
+        double xx = placement[2].x - trim.start.pos.x;
+        double yy = placement[2].y - trim.start.pos.y;
+        startDegrees = VectorToAngle(xx, yy);
+        xx = placement[2].x - trim.end.pos.x;
+        yy = placement[2].y - trim.end.pos.y;
+        endDegrees = VectorToAngle(xx, yy);
+      } else if (dimensions == 3) {
+        glm::dmat4 placement = GetLocalPlacement(positionID);
+        glm::dvec4 vecX = placement[0];
+        glm::dvec4 vecY = placement[1];
+        glm::dvec4 vecZ = placement[2];
+
+        glm::dvec3 v1 = glm::dvec3(trim.start.pos3D.x - placement[3].x,
+                                   trim.start.pos3D.y - placement[3].y,
+                                   trim.start.pos3D.z - placement[3].z);
+        glm::dvec3 v2 = glm::dvec3(trim.end.pos3D.x - placement[3].x,
+                                   trim.end.pos3D.y - placement[3].y,
+                                   trim.end.pos3D.z - placement[3].z);
+
+        double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
+        double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
+        // double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
+
+        double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
+        double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
+        // double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
+
+        endDegrees = VectorToAngle(dxS, dyS) - 90;
+        startDegrees = VectorToAngle(dxE, dyE) - 90;
+      }
+    }
+  }
+
+  double startRad = startDegrees / 180 * CONST_PI;
+  double endRad = endDegrees / 180 * CONST_PI;
+  double lengthDegrees = endDegrees - startDegrees;
+
+  // unset or true
+  if (trimSense == 1 || trimSense == -1) {
+    if (lengthDegrees < 0) {
+      lengthDegrees += 360;
+    }
+  } else {
+    if (lengthDegrees > 0) {
+      lengthDegrees -= 360;
+    }
+  }
+
+  double lengthRad = lengthDegrees / 180 * CONST_PI;
+
+  size_t startIndex = curve.points.size();
+
+  for (int i = 0; i < _circleSegments; i++) {
+    double ratio = static_cast<double>(i) / (_circleSegments - 1);
+    double angle = startRad + ratio * lengthRad;
+
+    if (sameSense == 0) {
+      angle = endRad - ratio * lengthRad;
+    }
+
+    if (dimensions == 2) {
+      glm::dvec2 vec(0);
+      vec[0] = radius * std::cos(angle);
+      vec[1] =
+          -radius *
+          std::sin(angle);  // not sure why we need this, but we apparently do
+      glm::dvec2 pos = GetAxis2Placement2D(positionID) * glm::dvec3(vec, 1);
+      curve.Add(pos);
+    } else {
+      glm::dvec3 vec(0);
+      vec[0] = radius * std::cos(angle);
+      vec[1] = -radius * std::sin(angle);  // negative or not???
+      glm::dvec3 pos =
+          GetLocalPlacement(positionID) * glm::dvec4(glm::dvec3(vec), 1);
+      curve.Add(pos);
+    }
+  }
+
+  // without a trim, we close the circle
+  if (!trim.exist) {
+    curve.Add(curve.points[startIndex]);
+  }
 
   return curve;
 }
