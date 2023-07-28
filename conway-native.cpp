@@ -20,7 +20,13 @@ std::string ReadFile(std::string filename) {
   return buffer.str();
 }
 
-void writeFile(std::wstring filename, std::string data) {
+#ifdef _WIN32
+#define STRING_TYPE std::wstring
+#else
+#define STRING_TYPE std::string
+#endif
+
+void writeFile(STRING_TYPE filename, std::string data) {
   std::ofstream out(filename.c_str());
   out << data;
   out.close();
@@ -803,10 +809,13 @@ void genIndexIfc() {
       fileNameObj += std::to_string(geometryIndex);
       fileNameObj += "_conway.obj";
 
-      std::wstring wsTmp(fileNameObj.begin(), fileNameObj.end());
-
       printf("Writing OBJ...\n");
+#ifdef _WIN32
+      std::wstring wsTmp(fileNameObj.begin(), fileNameObj.end());
       writeFile(wsTmp, singleObj);
+#else
+      writeFile(fileNameObj, singleObj);
+#endif
     }
   }
 
@@ -869,9 +878,12 @@ void genIndexIfc() {
 
       std::string fileName = "./index_ifc_full_conway.obj";
 
+#ifdef _WIN32
       std::wstring wsTmp(fileName.begin(), fileName.end());
-
-      writeFile(wsTmp, completeObj);
+      writeFile(wsTmp, singleObj);
+#else
+      writeFile(fileName, completeObj);
+#endif
     }
   }
 
