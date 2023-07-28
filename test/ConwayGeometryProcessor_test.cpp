@@ -27,8 +27,16 @@ void testGeometryToGltf() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
   conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Material ifcMaterial;
+
+  std::vector<conway::geometry::IfcGeometry> geometries;
+  geometries.push_back(ifcGeometry);
+
+  std::vector<conway::geometry::Material> materials;
+  materials.push_back(ifcMaterial);
+  
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(ifcGeometry, false, false,
+  conwayGeometryProcessor.GeometryToGltf(geometries, materials, false, false,
                                          testFilePath, false);
 }
 
@@ -36,8 +44,16 @@ void testGeometryToGlb() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
   conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Material ifcMaterial;
+
+  std::vector<conway::geometry::IfcGeometry> geometries;
+  geometries.push_back(ifcGeometry);
+
+  std::vector<conway::geometry::Material> materials;
+  materials.push_back(ifcMaterial);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(ifcGeometry, true, false, testFilePath,
+  conwayGeometryProcessor.GeometryToGltf(geometries, materials, true, false, testFilePath,
                                          false);
 }
 
@@ -45,8 +61,16 @@ void testGeometryToGltfDraco() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
   conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Material ifcMaterial;
+
+  std::vector<conway::geometry::IfcGeometry> geometries;
+  geometries.push_back(ifcGeometry);
+
+  std::vector<conway::geometry::Material> materials;
+  materials.push_back(ifcMaterial);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(ifcGeometry, false, true, testFilePath,
+  conwayGeometryProcessor.GeometryToGltf(geometries, materials, false, true, testFilePath,
                                          false);
 }
 
@@ -54,8 +78,16 @@ void testGeometryToGlbDraco() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
   conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Material ifcMaterial;
+
+  std::vector<conway::geometry::IfcGeometry> geometries;
+  geometries.push_back(ifcGeometry);
+
+  std::vector<conway::geometry::Material> materials;
+  materials.push_back(ifcMaterial);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(ifcGeometry, true, true, testFilePath,
+  conwayGeometryProcessor.GeometryToGltf(geometries, materials, true, true, testFilePath,
                                          false);
 }
 
