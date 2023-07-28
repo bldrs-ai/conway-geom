@@ -224,7 +224,7 @@ void genIndexIfc() {
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
 
@@ -310,12 +310,11 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-
-printf("test3\n");
+  printf("test3\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
 
@@ -325,7 +324,7 @@ printf("test3\n");
   paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
   paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
 
-   // IFCINDEXEDPOLYGONALFACE
+  // IFCINDEXEDPOLYGONALFACE
   paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 2;
   paramsGetPolygonalFaceSetGeometry.faces[1].indices[1] = 1;
   paramsGetPolygonalFaceSetGeometry.faces[1].indices[2] = 5;
@@ -401,12 +400,11 @@ printf("test3\n");
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-
-printf("test4\n");
+  printf("test4\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
 
@@ -492,12 +490,11 @@ printf("test4\n");
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-
-printf("test5\n");
+  printf("test5\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
 
@@ -583,11 +580,11 @@ printf("test5\n");
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-printf("test6\n");
+  printf("test6\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
   // IFCINDEXEDPOLYGONALFACE
@@ -672,11 +669,11 @@ printf("test6\n");
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-printf("test7\n");
+  printf("test7\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
-        paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
+    paramsGetPolygonalFaceSetGeometry.faces[faceIndex].face_starts.push_back(0);
     paramsGetPolygonalFaceSetGeometry.faces[faceIndex].indices.resize(4);
   }
 
@@ -769,11 +766,11 @@ printf("test7\n");
         printf("Writing GLTF...\n");
       }
 
+      std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec[geometryIndex], false,
-              conway::statistics::exportDraco, fileNameGltf, true,
-              NormalizeMat);
+              geometryVec, materials, false, conway::statistics::exportDraco,
+              fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
@@ -788,9 +785,10 @@ printf("test7\n");
         printf("Writing GLB...\n");
       }
 
+      std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec[geometryIndex], true, conway::statistics::exportDraco,
+              geometryVec, materials, true, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
@@ -835,9 +833,10 @@ printf("test7\n");
         printf("Writing Complete GLTF...\n");
       }
 
+      std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              fullGeometry, false, conway::statistics::exportDraco,
+              geometryVec, materials, false, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
@@ -852,10 +851,11 @@ printf("test7\n");
         printf("Writing Complete GLB...\n");
       }
 
+      std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              fullGeometry, true, conway::statistics::exportDraco, fileNameGltf,
-              true, NormalizeMat);
+              geometryVec, materials, true, conway::statistics::exportDraco,
+              fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLB.");
