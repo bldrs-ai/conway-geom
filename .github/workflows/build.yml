@@ -141,8 +141,12 @@ jobs:
 
       - name: Build Native Artifacts
         id: build-native
-        run: make config=release64 conway_geom_native webifc_native
+        run: |
+          cd gmake
+          make config=release64 conway_geom_native webifc_native
 
       - name: Build WASM
         id: build-wasm
-        run: make config=releaseemscripten ConwayGeomWasm
+        run: |
+          cd gmake
+          make config=releaseemscripten ConwayGeomWasm
