@@ -102,6 +102,17 @@ conway::geometry::IfcGeometry GetExtrudedAreaSolid(
   return geom;
 }
 
+conway::geometry::IfcGeometry GetHalfSpaceSolid(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
+        parameters) {
+  if (processor) {
+    return processor->GetHalfSpaceSolid(parameters);
+  }
+
+  conway::geometry::IfcGeometry geom;
+  return geom;
+}
+
 glm::dmat4 GetLocalPlacement(
     conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
         parameters) {
@@ -224,6 +235,10 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
+
+  emscripten::class_<conway::geometry::IfcSurface>("IfcSurface")
+  .constructor<>();
+
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
       .function("getVertexData", &conway::geometry::IfcGeometry::GetVertexData)
@@ -245,6 +260,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .constructor<>()
       .function("add2d", &conway::geometry::IfcCurve::Add2d)
       .function("add3d", &conway::geometry::IfcCurve::Add3d)
+      .function("getPointsSize", &conway::geometry::IfcCurve::GetPointsSize)
       .function("get2d", &conway::geometry::IfcCurve::Get2d)
       .function("get3d", &conway::geometry::IfcCurve::Get3d)
       .function("invert", &conway::geometry::IfcCurve::Invert)
@@ -347,6 +363,16 @@ EMSCRIPTEN_BINDINGS(my_module) {
                         ParamsGetExtrudedAreaSolid::dir)
       .field("profile", &conway::geometry::ConwayGeometryProcessor::
                             ParamsGetExtrudedAreaSolid::profile);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid>(
+      "ParamsGetHalfspaceSolid")
+      .field("flipWinding", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetHalfspaceSolid::flipWinding)
+      .field("optionalLinearScalingFactor",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetHalfspaceSolid::optionalLinearScalingFactor);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
   emscripten::value_object<
@@ -486,9 +512,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   // ParamsGetIfcTrimmedCurve
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetIfcTrimmedCurve>(
-      "ParamsCreateNativeIfcProfile")
-      .field("basisCurve", &conway::geometry::ConwayGeometryProcessor::
-                               ParamsGetIfcTrimmedCurve::basisCurve)
+      "ParamsGetIfcTrimmedCurve")
       .field("masterRepresentation",
              &conway::geometry::ConwayGeometryProcessor::
                  ParamsGetIfcTrimmedCurve::masterRepresentation)
@@ -496,14 +520,18 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                ParamsGetIfcTrimmedCurve::dimensions)
       .field("senseAgreement", &conway::geometry::ConwayGeometryProcessor::
                                    ParamsGetIfcTrimmedCurve::senseAgreement)
-      .field("trim1Vec3", &conway::geometry::ConwayGeometryProcessor::
-                              ParamsGetIfcTrimmedCurve::trim1Vec3)
-      .field("trim1VecDouble", &conway::geometry::ConwayGeometryProcessor::
-                                   ParamsGetIfcTrimmedCurve::trim1VecDouble)
-      .field("trim2Vec3", &conway::geometry::ConwayGeometryProcessor::
-                              ParamsGetIfcTrimmedCurve::trim2Vec3)
-      .field("trim2VecDouble", &conway::geometry::ConwayGeometryProcessor::
-                                   ParamsGetIfcTrimmedCurve::trim2VecDouble);
+      .field("trim1Cartesian2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim1Cartesian2D)
+      .field("trim1Cartesian3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim1Cartesian3D)
+      .field("trim1Double", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetIfcTrimmedCurve::trim1Double)
+      .field("trim2Cartesian2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim2Cartesian2D)
+      .field("trim2Cartesian3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim2Cartesian3D)
+      .field("trim2Double", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetIfcTrimmedCurve::trim2Double);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle
   emscripten::value_object<
@@ -513,8 +541,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                ParamsGetIfcCircle::dimensions)
       .field("axis2Placement2D", &conway::geometry::ConwayGeometryProcessor::
                                      ParamsGetIfcCircle::axis2Placement2D)
-      .field("axis2Placemenet3D", &conway::geometry::ConwayGeometryProcessor::
-                                      ParamsGetIfcCircle::axis2Placemenet3D)
+      .field("axis2Placement3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcCircle::axis2Placement3D)
       .field("radius", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetIfcCircle::radius)
       .field("paramsGetIfcTrimmedCurve",
@@ -595,6 +623,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult);
   emscripten::function("getIfcCircle", &GetIfcCircle);
 }

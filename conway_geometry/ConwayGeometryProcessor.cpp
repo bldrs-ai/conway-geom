@@ -1542,6 +1542,8 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
   return curve;
 }
 
+enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
+
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
     ParamsGetIfcCircle parameters) {
   conway::geometry::IfcCurve curve;
@@ -1552,30 +1554,35 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   double endDegrees = 360;
 
   if (parameters.paramsGetIfcTrimmedCurve.dimensions != 0) {
-    if (parameters.paramsGetIfcTrimmedCurve.trim1VecDouble.start.hasParam && trim.end.hasParam) {
-      startDegrees = trim.start.param;
-      endDegrees = trim.end.param;
-    } else if (trim.start.hasPos && trim.end.hasPos) {
-      if (dimensions == 2) {
-        glm::dmat3 placement = GetAxis2Placement2D(positionID);
-        double xx = placement[2].x - trim.start.pos.x;
-        double yy = placement[2].y - trim.start.pos.y;
+    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+        IfcTrimmingPreference::PARAMETER) {
+      startDegrees = parameters.paramsGetIfcTrimmedCurve.trim1Double;
+      endDegrees = parameters.paramsGetIfcTrimmedCurve.trim2Double;
+    } else {
+      if (parameters.dimensions == 2) {
+        glm::dmat3 placement = parameters.axis2Placement2D;
+        double xx =
+            placement[2].x - parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x;
+        double yy =
+            placement[2].y - parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y;
         startDegrees = VectorToAngle(xx, yy);
-        xx = placement[2].x - trim.end.pos.x;
-        yy = placement[2].y - trim.end.pos.y;
+        xx = placement[2].x - parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x;
+        yy = placement[2].y - parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y;
         endDegrees = VectorToAngle(xx, yy);
-      } else if (dimensions == 3) {
-        glm::dmat4 placement = GetLocalPlacement(positionID);
+      } else if (parameters.dimensions == 3) {
+        glm::dmat4 placement = parameters.axis2Placement3D;
         glm::dvec4 vecX = placement[0];
         glm::dvec4 vecY = placement[1];
         glm::dvec4 vecZ = placement[2];
 
-        glm::dvec3 v1 = glm::dvec3(trim.start.pos3D.x - placement[3].x,
-                                   trim.start.pos3D.y - placement[3].y,
-                                   trim.start.pos3D.z - placement[3].z);
-        glm::dvec3 v2 = glm::dvec3(trim.end.pos3D.x - placement[3].x,
-                                   trim.end.pos3D.y - placement[3].y,
-                                   trim.end.pos3D.z - placement[3].z);
+        glm::dvec3 v1 = glm::dvec3(
+            parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.x - placement[3].x,
+            parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.y - placement[3].y,
+            parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.z - placement[3].z);
+        glm::dvec3 v2 = glm::dvec3(
+            parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.x - placement[3].x,
+            parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.y - placement[3].y,
+            parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.z - placement[3].z);
 
         double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
         double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
@@ -1596,6 +1603,9 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   double lengthDegrees = endDegrees - startDegrees;
 
   // unset or true
+  //TODO(nickcastel50): incorporate trimSense / sameSense as parameters
+  uint32_t trimSense = -1;
+  uint32_t sameSense = -1;
   if (trimSense == 1 || trimSense == -1) {
     if (lengthDegrees < 0) {
       lengthDegrees += 360;
@@ -1610,35 +1620,40 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
 
   size_t startIndex = curve.points.size();
 
-  for (int i = 0; i < _circleSegments; i++) {
-    double ratio = static_cast<double>(i) / (_circleSegments - 1);
+  for (int i = 0; i < CIRCLE_SEGMENTS_MEDIUM; i++) {
+    double ratio = static_cast<double>(i) / (CIRCLE_SEGMENTS_MEDIUM - 1);
     double angle = startRad + ratio * lengthRad;
 
     if (sameSense == 0) {
       angle = endRad - ratio * lengthRad;
     }
 
-    if (dimensions == 2) {
+    if (parameters.dimensions == 2) {
       glm::dvec2 vec(0);
       vec[0] = radius * std::cos(angle);
       vec[1] =
           -radius *
           std::sin(angle);  // not sure why we need this, but we apparently do
-      glm::dvec2 pos = GetAxis2Placement2D(positionID) * glm::dvec3(vec, 1);
-      curve.Add(pos);
+      glm::dvec2 pos = parameters.axis2Placement2D * glm::dvec3(vec, 1);
+      curve.Add2d(pos);
     } else {
       glm::dvec3 vec(0);
       vec[0] = radius * std::cos(angle);
       vec[1] = -radius * std::sin(angle);  // negative or not???
       glm::dvec3 pos =
-          GetLocalPlacement(positionID) * glm::dvec4(glm::dvec3(vec), 1);
-      curve.Add(pos);
+          parameters.axis2Placement3D * glm::dvec4(glm::dvec3(vec), 1);
+      curve.Add3d(pos);
     }
   }
 
   // without a trim, we close the circle
-  if (!trim.exist) {
-    curve.Add(curve.points[startIndex]);
+  if (parameters.paramsGetIfcTrimmedCurve.dimensions == 0) {
+
+    if (parameters.dimensions == 2) {
+      curve.Add2d(curve.points[startIndex]);
+    } else if (parameters.dimensions == 3) {
+      curve.Add3d(curve.points[startIndex]);
+    }
   }
 
   return curve;

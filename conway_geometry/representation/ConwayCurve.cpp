@@ -21,6 +21,15 @@ glm::dvec2 IfcCurve::Get2d(size_t i) const {
   return ret;
 }
 
+size_t IfcCurve::GetPointsSize() const {
+  if (points.empty())
+  {
+    return 0;
+  } else {
+    return points.size();
+  }
+}
+
 glm::dvec3 IfcCurve::Get3d(size_t i) const { return points.at(i); }
 
 void IfcCurve::Add3d(glm::dvec3 pt) {

@@ -129,7 +129,6 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {
-    IfcSurface surface;
     bool flipWinding = false;
     double optionalLinearScalingFactor = 1.0;
   };
@@ -382,15 +381,14 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCTRIMMEDCURVE
 struct ParamsGetIfcTrimmedCurve {
-    IfcCurve basisCurve;
     uint32_t masterRepresentation;
     uint32_t dimensions;
     bool senseAgreement;
-    glm::dvec2 trim1Vec2;
-    glm::dvec3 trim1Vec3;
+    glm::dvec2 trim1Cartesian2D;
+    glm::dvec3 trim1Cartesian3D;
     double trim1Double;
-    glm::dvec2 trim2Vec2;
-    glm::dvec3 trim3Vec3;
+    glm::dvec2 trim2Cartesian2D;
+    glm::dvec3 trim2Cartesian3D;
     double trim2Double;
   };
   conway::geometry::IfcCurve getTrimmedCurve(
@@ -400,7 +398,7 @@ struct ParamsGetIfcTrimmedCurve {
   struct ParamsGetIfcCircle {
     uint32_t dimensions;
     glm::dmat3 axis2Placement2D;
-    glm::dmat4 axis2Placemenet3D;
+    glm::dmat4 axis2Placement3D;
     double radius;
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
 

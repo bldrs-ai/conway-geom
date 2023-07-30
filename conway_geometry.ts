@@ -1,19 +1,19 @@
 
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
-export interface StdVector< T > {
+export interface StdVector<T> {
   delete(): unknown
 
-  resize( size: number, value?: T ): void
+  resize(size: number, value?: T): void
 
-  push_back( value: T ): void
+  push_back(value: T): void
 
   size(): number
 
   empty(): boolean
 
-  set( index: number, value?: T ): void
-  get( index: number ): T
+  set(index: number, value?: T): void
+  get(index: number): T
 }
 
 export interface GeometryObject {
@@ -28,6 +28,10 @@ export interface GeometryObject {
   hasDefaultMaterial: boolean
 }
 
+export interface SurfaceObject {
+
+}
+
 export interface Vector4 {
   x: number
   y: number
@@ -36,12 +40,12 @@ export interface Vector4 {
 }
 
 export enum BlendMode {
-  OPAQUE  = 0,
-  BLEND   = 1,
-  MASK    = 2,
+  OPAQUE = 0,
+  BLEND = 1,
+  MASK = 2,
 }
 
-export function toAlphaMode( wasmModule: any, blendMode: BlendMode ): any {
+export function toAlphaMode(wasmModule: any, blendMode: BlendMode): any {
 
   switch (blendMode) {
     case BlendMode.OPAQUE:
@@ -49,14 +53,14 @@ export function toAlphaMode( wasmModule: any, blendMode: BlendMode ): any {
       return wasmModule.BlendMode.OPAQUE
 
     case BlendMode.BLEND:
-      
+
       return wasmModule.BlendMode.BLEND
 
     case BlendMode.MASK:
 
       return wasmModule.BlendMode.MASK
   }
- }
+}
 
 export interface MaterialObject {
 
@@ -77,6 +81,7 @@ export interface MaterialObject {
 export interface CurveObject {
   add2d: (coord2D: any) => void
   add3d: (coord3D: any) => void
+  getPointsSize: () => number
   get2d: (index: number) => any
   get3d: (index: number) => any
   invert: () => void
@@ -112,6 +117,11 @@ export interface ParamsGetExtrudedAreaSolid {
   profile: ProfileObject //IfcProfile 
 };
 
+export interface ParamsGetHalfspaceSolid {
+  flipWinding: boolean,
+  optionalLinearScalingFactor: number,
+};
+
 export interface ParamsGetAxis2Placement2D {
   isAxis2Placement2D: boolean
   isCartesianTransformationOperator2D: boolean
@@ -139,23 +149,23 @@ export interface ParamsGetIfcIndexedPolyCurve {
 };
 
 export interface ParamsGetIfcCircle {
-  dimensions:number
-  axis2Placement2D:any 
-  axis2Placement3D:any
-  radius:number
-  paramsGetIfcTrimmedCurve:ParamsGetIfcTrimmedCurve
+  dimensions: number
+  axis2Placement2D: any
+  axis2Placement3D: any
+  radius: number
+  paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
 }
 
 export interface ParamsGetIfcTrimmedCurve {
-  masterRepresentation:number
-  dimensions:number
-  senseAgreement:boolean
-  trim1Cartesian2D:any
-  trim1Cartesian3D:any
-  trim1Double:number
-  trim2Cartesian2D:any
-  trim2Cartesian3D:any
-  trim2Double:number
+  masterRepresentation: number
+  dimensions: number
+  senseAgreement: boolean
+  trim1Cartesian2D: any
+  trim1Cartesian3D: any
+  trim1Double: number
+  trim2Cartesian2D: any
+  trim2Cartesian3D: any
+  trim2Double: number
 }
 
 export interface IndexedPolygonalFace {
@@ -216,9 +226,9 @@ export interface ParamsAxis2Placement3D {
 }
 
 export interface ParamsGetBooleanResult {
-  flatFirstMesh:any
-  flatSecondMesh:any
-  operatorType:number
+  flatFirstMesh: any
+  flatSecondMesh: any
+  operatorType: number
 }
 
 /**
@@ -259,8 +269,8 @@ export class ConwayGeometry {
    * @param parameters - ParamsCartesianTransformationOperator3D parsed from data model
    * @return {GeometryObject} - Native geometry object
    */
-  getCartesianTransformationOperator3D( parameters: ParamsCartesianTransformationOperator3D ): any {
-    const result = this.wasmModule.getCartesianTransformationOperator3D( parameters )
+  getCartesianTransformationOperator3D(parameters: ParamsCartesianTransformationOperator3D): any {
+    const result = this.wasmModule.getCartesianTransformationOperator3D(parameters)
     return result
   }
 
@@ -310,7 +320,17 @@ export class ConwayGeometry {
    * @returns 
    */
   createNativeIfcProfile(parameters: ParamsCreateNativeIfcProfile): ProfileObject {
-    const result:ProfileObject = this.wasmModule.createNativeIfcProfile(parameters)
+    const result: ProfileObject = this.wasmModule.createNativeIfcProfile(parameters)
+    return result
+  }
+
+  /**
+ * 
+ * @param parameters ParamsGetHalfspaceSolid parsed from data model 
+ * @returns 
+ */
+  GetHalfSpaceSolid(parameters: ParamsGetHalfspaceSolid): GeometryObject {
+    const result = this.wasmModule.getHalfSpaceSolid(parameters)
     return result
   }
 
@@ -324,7 +344,7 @@ export class ConwayGeometry {
     return result
   }
 
-  getBooleanResult(parameters:ParamsGetBooleanResult): GeometryObject {
+  getBooleanResult(parameters: ParamsGetBooleanResult): GeometryObject {
     const result = this.wasmModule.getBooleanResult(parameters)
     return result
   }
@@ -338,11 +358,11 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-      geometry: StdVector< GeometryObject >,
-      materials: StdVector< MaterialObject >,
-      isGlb: boolean,
-      outputDraco: boolean,
-      fileUri: string):
+    geometry: StdVector<GeometryObject>,
+    materials: StdVector<MaterialObject>,
+    isGlb: boolean,
+    outputDraco: boolean,
+    fileUri: string):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }

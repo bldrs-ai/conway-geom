@@ -17,6 +17,7 @@ struct IfcCurve {
   std::vector<uint16_t> indices;
   void Add3d(glm::dvec3 pt);
   void Add2d(glm::dvec2 pt);
+  size_t GetPointsSize() const;
   glm::dvec2 Get2d(size_t i) const;
   glm::dvec3 Get3d(size_t i) const;
   void Invert();
