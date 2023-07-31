@@ -155,9 +155,6 @@ class ConwayGeometryProcessor {
   // case ifc::IFCOPENSHELL:
   // These cases are handled by getBrep()
   struct ParamsAddFaceToGeometry {
-    uint32_t boundsSize = 0;
-    uint32_t *indices;
-    uint32_t indicesPerFace = 0;
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
@@ -173,7 +170,7 @@ class ConwayGeometryProcessor {
     IfcSurface surface;
   };
 
-  IfcGeometry getBrep(ParamsGetBrep parameters);
+  //IfcGeometry getBrep(ParamsGetBrep parameters);
 
   // case ifc::IFCFACE:
   // case ifc::IFCADVANCEDFACE:
@@ -187,7 +184,7 @@ class ConwayGeometryProcessor {
     std::vector<ParamsGetBrep> shells;
   };
 
-  std::vector<IfcGeometry> GetSurfaceModel(ParamsGetSurfaceModel parameters);
+ // std::vector<IfcGeometry> GetSurfaceModel(ParamsGetSurfaceModel parameters);
 
   // case ifc::IFCPLANE:
   // case ifc::IFCBSPLINESURFACE:
@@ -300,7 +297,6 @@ class ConwayGeometryProcessor {
   // case ifc::IFCEDGELOOP:
   struct ParamsGetLoop {
     bool isEdgeLoop = false;
-    size_t numPoints = 0;
     std::vector<glm::dvec3> points;
   };
 

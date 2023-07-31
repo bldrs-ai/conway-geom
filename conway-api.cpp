@@ -102,6 +102,53 @@ conway::geometry::IfcGeometry GetExtrudedAreaSolid(
   return geom;
 }
 
+conway::geometry::IfcCurve GetLoop(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetLoop parameters) {
+  if (processor) {
+    return processor->GetLoop(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+void AddFaceToGeometry(conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry parameters, conway::geometry::IfcGeometry &geometry) {
+  if (processor) {
+    return processor->AddFaceToGeometry(parameters, geometry);
+  }
+}
+
+struct ParamsCreateBound3D {
+  conway::geometry::IfcCurve curve;
+  bool orientation;
+  uint32_t type;
+};
+conway::geometry::IfcBound3D createBound3D(ParamsCreateBound3D parameters) {
+  conway::geometry::IfcBound3D bounds3D;
+  bounds3D.curve = parameters.curve;
+  bounds3D.orientation = parameters.orientation;
+
+  if (!bounds3D.orientation) {
+    std::reverse(bounds3D.curve.points.begin(), bounds3D.curve.points.end());
+  }
+
+  switch (parameters.type) {
+    case 0:
+      bounds3D.type = conway::geometry::IfcBoundType::OUTERBOUND;
+      break;
+    case 1:
+      bounds3D.type = conway::geometry::IfcBoundType::BOUND;
+      break;
+    default:
+      printf("Invalid value for IfcBoundType enum!\n");
+      // Handle the case when the uint32_t value doesn't correspond to any enum
+      // value. You might want to provide a default or throw an exception here.
+      break;
+  }
+
+  return bounds3D;
+}
+
 conway::geometry::IfcGeometry GetHalfSpaceSolid(
     conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
         parameters) {
@@ -235,9 +282,11 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
-
   emscripten::class_<conway::geometry::IfcSurface>("IfcSurface")
-  .constructor<>();
+      .constructor<>();
+
+  emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
+      .constructor<>();
 
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
@@ -455,18 +504,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                    ParamsLocalPlacement::axis2Placement)
       .field("relPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsLocalPlacement::relPlacement);
-  /*    glm::dvec3 position;
-      glm::dvec3 axis1Ref;
-      glm::dvec3 axis2Ref;
-      glm::dvec3 axis3Ref;
-      bool normalizeAxis1 = false;
-      bool normalizeAxis2 = false;
-      bool normalizeAxis3 = false;
-      bool nonUniform = false;
-      bool realScale = false;
-      double scale1_ = 0;
-      double scale2_ = 0;
-      double scale3_ = 0;*/
+
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
                                ParamsCartesianTransformationOperator3D>(
       "ParamsCartesianTransformationOperator3D")
@@ -559,6 +597,32 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetBooleanResult::operatorType);
 
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetLoop
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetLoop>("ParamsGetLoop")
+      .field(
+          "isEdgeLoop",
+          &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::isEdgeLoop)
+      .field("points",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::points);
+
+  // ParamsCreateBound3D
+  emscripten::value_object<ParamsCreateBound3D>("ParamsCreateBound3D")
+      .field("curve", &ParamsCreateBound3D::curve)
+      .field("orientation", &ParamsCreateBound3D::orientation)
+      .field("type", &ParamsCreateBound3D::type);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry>(
+      "ParamsAddFaceToGeometry")
+      .field("boundsArray", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsAddFaceToGeometry::boundsArray)
+      .field("advancedBrep", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsAddFaceToGeometry::advancedBrep)
+      .field("surface", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsAddFaceToGeometry::surface);
+
   // Define the ResultsGltf object
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
@@ -590,6 +654,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::register_vector<glm::vec2>("vec2Array");
   emscripten::register_vector<glm::vec3>("glmVec3Array");
+  emscripten::register_vector<glm::dvec3>("glmdVec3Array");
   emscripten::register_vector<std::string>("stringVector");
   emscripten::register_vector<uint32_t>("UintVector");
   emscripten::register_vector<uint8_t>("VectorUint8");
@@ -598,6 +663,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
   emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
+  emscripten::register_vector<conway::geometry::IfcBound3D>("bound3DArray");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
       "VectorIndexedPolygonalFace");
@@ -626,4 +692,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult);
   emscripten::function("getIfcCircle", &GetIfcCircle);
+  emscripten::function("getLoop", &GetLoop);
+  emscripten::function("createBound3D", &createBound3D);
+  emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
 }

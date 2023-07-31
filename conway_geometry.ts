@@ -32,6 +32,23 @@ export interface SurfaceObject {
 
 }
 
+export interface ParamsAddFaceToGeometry {
+  boundsArray: StdVector<Bound3DObject> // std::vector<IfcBound3D>
+  advancedBrep: boolean
+  surface: SurfaceObject // IfcSurface
+};
+
+export interface ParamsGetLoop {
+  isEdgeLoop: boolean
+  points: StdVector<Vector3> //std::vector<glm::dvec3>
+};
+
+export interface ParamsCreateBound3D {
+  curve: CurveObject // conway::geometry::IfcCurve
+  orientation: boolean
+  type: number // uint32_t
+};
+
 export interface Vector4 {
   x: number
   y: number
@@ -76,6 +93,10 @@ export interface MaterialObject {
   alphaMode: any
 
   doubleSided: boolean
+}
+
+export interface Bound3DObject {
+
 }
 
 export interface CurveObject {
@@ -265,6 +286,25 @@ export class ConwayGeometry {
   }
 
   /**
+   * 
+   * @param parameters ParamsGetLoop parsed from data model 
+   * @returns 
+   */
+  getLoop(parameters: ParamsGetLoop): CurveObject {
+    const result = this.wasmModule.getLoop(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsAddFaceToGeometry parsed from data model 
+   * @returns 
+   */
+  addFaceToGeometry(parameters: ParamsAddFaceToGeometry, geometry:GeometryObject): void {
+    this.wasmModule.addFaceToGeometry(parameters, geometry)
+  }
+
+  /**
    *
    * @param parameters - ParamsCartesianTransformationOperator3D parsed from data model
    * @return {GeometryObject} - Native geometry object
@@ -321,6 +361,16 @@ export class ConwayGeometry {
    */
   createNativeIfcProfile(parameters: ParamsCreateNativeIfcProfile): ProfileObject {
     const result: ProfileObject = this.wasmModule.createNativeIfcProfile(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsCreateBound3D parsed from data model 
+   * @returns 
+   */
+  createBound3D(parameters: ParamsCreateBound3D): Bound3DObject {
+    const result = this.wasmModule.createBound3D(parameters)
     return result
   }
 
