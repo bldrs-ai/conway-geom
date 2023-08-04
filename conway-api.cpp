@@ -112,7 +112,10 @@ conway::geometry::IfcCurve GetLoop(
   return curve;
 }
 
-void AddFaceToGeometry(conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry parameters, conway::geometry::IfcGeometry &geometry) {
+void AddFaceToGeometry(
+    conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+        parameters,
+    conway::geometry::IfcGeometry& geometry) {
   if (processor) {
     return processor->AddFaceToGeometry(parameters, geometry);
   }
@@ -202,6 +205,17 @@ conway::geometry::IfcGeometry GetBooleanResult(
   }
   conway::geometry::IfcGeometry geometry;
   return geometry;
+}
+
+conway::geometry::IfcCurve GetRectangleProfileCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
+        parameters) {
+  if (processor) {
+    return processor->GetRectangleProfileCurve(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
 }
 
 bool InitializeGeometryProcessor() {
@@ -623,6 +637,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("surface", &conway::geometry::ConwayGeometryProcessor::
                             ParamsAddFaceToGeometry::surface);
 
+  // ifc::IFCRECTANGLEPROFILEDEF
+  // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve>(
+      "ParamsGetRectangleProfileCurve")
+      .field("xDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::xDim)
+      .field("yDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::yDim)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("matrix", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::matrix);
+
   // Define the ResultsGltf object
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
@@ -695,4 +718,5 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getLoop", &GetLoop);
   emscripten::function("createBound3D", &createBound3D);
   emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
+  emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
 }

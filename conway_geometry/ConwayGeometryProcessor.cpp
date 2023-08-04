@@ -220,6 +220,22 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
   return flattenGeometry(results);
 }
 
+IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
+    ParamsGetRectangleProfileCurve parameters) {
+  IfcCurve curve;
+  double xdim = parameters.xDim;
+  double ydim = parameters.yDim;
+
+  if (parameters.hasPlacement) {
+    curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+  } else {
+    glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
+                                      glm::dvec3(0, 0, 1));
+    curve = GetRectangleCurve(xdim, ydim, placement);
+  }
+  return curve;
+}
+
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
   IfcGeometry resultGeometry;
@@ -416,7 +432,8 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
       if (surface.BSplineSurface.Active) {
         TriangulateBspline(geometry, parameters.boundsArray, surface);
       } else if (surface.CylinderSurface.Active) {
-        TriangulateCylindricalSurface(geometry, parameters.boundsArray, surface);
+        TriangulateCylindricalSurface(geometry, parameters.boundsArray,
+                                      surface);
       } else if (surface.RevolutionSurface.Active) {
         TriangulateRevolution(geometry, parameters.boundsArray, surface);
       } else if (surface.ExtrusionSurface.Active) {

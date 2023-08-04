@@ -138,6 +138,13 @@ export interface ParamsGetExtrudedAreaSolid {
   profile: ProfileObject //IfcProfile 
 };
 
+export interface ParamsGetRectangleProfileCurve {
+  xDim: number
+  yDim: number
+  hasPlacement: boolean
+  matrix: any // glm::dmat3
+};
+
 export interface ParamsGetHalfspaceSolid {
   flipWinding: boolean,
   optionalLinearScalingFactor: number,
@@ -300,7 +307,7 @@ export class ConwayGeometry {
    * @param parameters ParamsAddFaceToGeometry parsed from data model 
    * @returns 
    */
-  addFaceToGeometry(parameters: ParamsAddFaceToGeometry, geometry:GeometryObject): void {
+  addFaceToGeometry(parameters: ParamsAddFaceToGeometry, geometry: GeometryObject): void {
     this.wasmModule.addFaceToGeometry(parameters, geometry)
   }
 
@@ -381,6 +388,16 @@ export class ConwayGeometry {
  */
   GetHalfSpaceSolid(parameters: ParamsGetHalfspaceSolid): GeometryObject {
     const result = this.wasmModule.getHalfSpaceSolid(parameters)
+    return result
+  }
+
+/**
+ * 
+ * @param parameters ParamsGetRectangleProfileCurve parsed from data model 
+ * @returns {CurveObject}
+ */
+  getRectangleProfileCurve(parameters: ParamsGetRectangleProfileCurve): CurveObject {
+    const result = this.wasmModule.getRectangleProfileCurve(parameters)
     return result
   }
 
