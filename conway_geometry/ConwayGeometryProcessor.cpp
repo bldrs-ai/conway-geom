@@ -240,10 +240,12 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
   IfcGeometry resultGeometry;
   if (parameters.flatFirstMesh.size() <= 0) {
+    printf("first mesh zero\n");
     return resultGeometry;
   }
 
   if (parameters.flatSecondMesh.size() <= 0) {
+     printf("second mesh zero\n");
     return resultGeometry;
   }
 

@@ -661,10 +661,10 @@ namespace webifc::geometry
         for (auto &material : materials)
         {
           uint32_t materialID = _loader.GetRefArgument(material);
-          printf("[materialList]: material expressID: %i\n", materialID);
+        //  printf("[materialList]: material expressID: %i\n", materialID);
           auto foundColor = GetColor(materialID);
           if (foundColor) {
-            printf("FOUND COLOR FROM MATERIAL: %i\n", materialID);
+       //     printf("FOUND COLOR FROM MATERIAL: %i\n", materialID);
            return foundColor;
           }
         }
