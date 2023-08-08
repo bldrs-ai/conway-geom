@@ -26,14 +26,13 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    std::vector< conway::geometry::IfcGeometry >& geoms,
-    std::vector< conway::geometry::Material >& materials,
-    bool isGlb,
+    std::vector<conway::geometry::IfcGeometry>& geoms,
+    std::vector<conway::geometry::Material>& materials, bool isGlb,
     bool outputDraco, std::string filePath) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
   if (processor) {
-    results = processor->GeometryToGltf(geoms, materials, isGlb, outputDraco, filePath,
-                                        false, NormalizeMat);
+    results = processor->GeometryToGltf(geoms, materials, isGlb, outputDraco,
+                                        filePath, false, NormalizeMat);
   }
 
   return results;
@@ -81,11 +80,83 @@ conway::geometry::IfcCurve GetCircleCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve GetIfcCircle(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle parameters) {
+  if (processor) {
+    return processor->getIfcCircle(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+
+  return curve;
+}
+
 conway::geometry::IfcGeometry GetExtrudedAreaSolid(
     conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
         parameters) {
   if (processor) {
     return processor->getExtrudedAreaSolid(parameters);
+  }
+
+  conway::geometry::IfcGeometry geom;
+  return geom;
+}
+
+conway::geometry::IfcCurve GetLoop(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetLoop parameters) {
+  if (processor) {
+    return processor->GetLoop(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+void AddFaceToGeometry(
+    conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+        parameters,
+    conway::geometry::IfcGeometry& geometry) {
+  if (processor) {
+    return processor->AddFaceToGeometry(parameters, geometry);
+  }
+}
+
+struct ParamsCreateBound3D {
+  conway::geometry::IfcCurve curve;
+  bool orientation;
+  uint32_t type;
+};
+conway::geometry::IfcBound3D createBound3D(ParamsCreateBound3D parameters) {
+  conway::geometry::IfcBound3D bounds3D;
+  bounds3D.curve = parameters.curve;
+  bounds3D.orientation = parameters.orientation;
+
+  if (!bounds3D.orientation) {
+    std::reverse(bounds3D.curve.points.begin(), bounds3D.curve.points.end());
+  }
+
+  switch (parameters.type) {
+    case 0:
+      bounds3D.type = conway::geometry::IfcBoundType::OUTERBOUND;
+      break;
+    case 1:
+      bounds3D.type = conway::geometry::IfcBoundType::BOUND;
+      break;
+    default:
+      printf("Invalid value for IfcBoundType enum!\n");
+      // Handle the case when the uint32_t value doesn't correspond to any enum
+      // value. You might want to provide a default or throw an exception here.
+      break;
+  }
+
+  return bounds3D;
+}
+
+conway::geometry::IfcGeometry GetHalfSpaceSolid(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
+        parameters) {
+  if (processor) {
+    return processor->GetHalfSpaceSolid(parameters);
   }
 
   conway::geometry::IfcGeometry geom;
@@ -134,6 +205,17 @@ conway::geometry::IfcGeometry GetBooleanResult(
   }
   conway::geometry::IfcGeometry geometry;
   return geometry;
+}
+
+conway::geometry::IfcCurve GetRectangleProfileCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
+        parameters) {
+  if (processor) {
+    return processor->GetRectangleProfileCurve(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
 }
 
 bool InitializeGeometryProcessor() {
@@ -214,6 +296,12 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
+  emscripten::class_<conway::geometry::IfcSurface>("IfcSurface")
+      .constructor<>();
+
+  emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
+      .constructor<>();
+
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
       .function("getVertexData", &conway::geometry::IfcGeometry::GetVertexData)
@@ -227,13 +315,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
       .function("clone", &conway::geometry::IfcGeometry::Clone)
-      .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex )
-      .property("hasDefaultMaterial", &conway::geometry::IfcGeometry::hasDefaultMaterial );
+      .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
+      .property("hasDefaultMaterial",
+                &conway::geometry::IfcGeometry::hasDefaultMaterial);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
       .function("add2d", &conway::geometry::IfcCurve::Add2d)
       .function("add3d", &conway::geometry::IfcCurve::Add3d)
+      .function("getPointsSize", &conway::geometry::IfcCurve::GetPointsSize)
       .function("get2d", &conway::geometry::IfcCurve::Get2d)
       .function("get3d", &conway::geometry::IfcCurve::Get3d)
       .function("invert", &conway::geometry::IfcCurve::Invert)
@@ -248,31 +338,30 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
       .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
 
-  emscripten::class_<glm::dmat4>("glmdmat4")
+  emscripten::class_<glm::dmat4>("Glmdmat4")
       .constructor<>()
       .function("getValues", &getMatrixValues4x4)
       .function("setValues", &setMatrixValues4x4);
 
-  emscripten::class_<glm::dmat3>("glmdmat3")
+  emscripten::class_<glm::dmat3>("Glmdmat3")
       .constructor<>()
       .function("getValues", &getMatrixValues3x3)
       .function("setValues", &setMatrixValues3x3);
 
+  emscripten::enum_<conway::geometry::BLEND_MODE>("BlendMode")
+      .value("OPAQUE", conway::geometry::BLEND_MODE::BLEND_OPAQUE)
+      .value("BLEND", conway::geometry::BLEND_MODE::BLEND)
+      .value("MASK", conway::geometry::BLEND_MODE::MASK);
 
-    emscripten::enum_< conway::geometry::BLEND_MODE >( "BlendMode" )
-      .value( "OPAQUE", conway::geometry::BLEND_MODE::BLEND_OPAQUE )
-      .value( "BLEND", conway::geometry::BLEND_MODE::BLEND )
-      .value( "MASK", conway::geometry::BLEND_MODE::MASK );
-
-    emscripten::value_object<conway::geometry::Material>("MaterialObject")
-      .field("base", &conway::geometry::Material::base )
-      .field("metallic", &conway::geometry::Material::metallic )
-      .field("roughness", &conway::geometry::Material::roughness )
-      .field("alphaCutoff", &conway::geometry::Material::alphaCutoff )
-      .field("ior", &conway::geometry::Material::ior )
-      .field("specular", &conway::geometry::Material::specular )
-      .field("alphaMode", &conway::geometry::Material::alphaMode )
-      .field("doubleSided", &conway::geometry::Material::doubleSided );
+  emscripten::value_object<conway::geometry::Material>("MaterialObject")
+      .field("base", &conway::geometry::Material::base)
+      .field("metallic", &conway::geometry::Material::metallic)
+      .field("roughness", &conway::geometry::Material::roughness)
+      .field("alphaCutoff", &conway::geometry::Material::alphaCutoff)
+      .field("ior", &conway::geometry::Material::ior)
+      .field("specular", &conway::geometry::Material::specular)
+      .field("alphaMode", &conway::geometry::Material::alphaMode)
+      .field("doubleSided", &conway::geometry::Material::doubleSided);
 
   emscripten::value_object<glm::dvec4>("dvec4")
       .field("x", &glm::dvec4::x)
@@ -297,7 +386,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::value_object<glm::vec2>("glmVec2")
       .field("x", &glm::vec2::x)
       .field("y", &glm::vec2::y);
-  
+
   emscripten::register_vector<conway::geometry::Material>("materialArray");
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
@@ -337,6 +426,16 @@ EMSCRIPTEN_BINDINGS(my_module) {
                         ParamsGetExtrudedAreaSolid::dir)
       .field("profile", &conway::geometry::ConwayGeometryProcessor::
                             ParamsGetExtrudedAreaSolid::profile);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid>(
+      "ParamsGetHalfspaceSolid")
+      .field("flipWinding", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetHalfspaceSolid::flipWinding)
+      .field("optionalLinearScalingFactor",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetHalfspaceSolid::optionalLinearScalingFactor);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
   emscripten::value_object<
@@ -419,32 +518,39 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                    ParamsLocalPlacement::axis2Placement)
       .field("relPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsLocalPlacement::relPlacement);
-/*    glm::dvec3 position;
-    glm::dvec3 axis1Ref;
-    glm::dvec3 axis2Ref;
-    glm::dvec3 axis3Ref;
-    bool normalizeAxis1 = false;
-    bool normalizeAxis2 = false;
-    bool normalizeAxis3 = false;
-    bool nonUniform = false;
-    bool realScale = false;
-    double scale1_ = 0;
-    double scale2_ = 0;
-    double scale3_ = 0;*/
-  emscripten::value_object<
-      conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D >( "ParamsCartesianTransformationOperator3D" )
-      .field("position", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::position )
-      .field("axis1Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis1Ref )
-      .field("axis2Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis2Ref )
-      .field("axis3Ref", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::axis3Ref )
-      .field("normalizeAxis1", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis1 )
-      .field("normalizeAxis2", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis2 )
-      .field("normalizeAxis3", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::normalizeAxis3 )
-      .field("nonUniform", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::nonUniform )
-      .field("realScale", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::realScale )
-      .field("scale1_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale1_ )
-      .field("scale2_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale2_ )
-      .field("scale3_", &conway::geometry::ConwayGeometryProcessor::ParamsCartesianTransformationOperator3D::scale3_ );
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
+                               ParamsCartesianTransformationOperator3D>(
+      "ParamsCartesianTransformationOperator3D")
+      .field("position", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsCartesianTransformationOperator3D::position)
+      .field("axis1Ref", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsCartesianTransformationOperator3D::axis1Ref)
+      .field("axis2Ref", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsCartesianTransformationOperator3D::axis2Ref)
+      .field("axis3Ref", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsCartesianTransformationOperator3D::axis3Ref)
+      .field("normalizeAxis1",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsCartesianTransformationOperator3D::normalizeAxis1)
+      .field("normalizeAxis2",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsCartesianTransformationOperator3D::normalizeAxis2)
+      .field("normalizeAxis3",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsCartesianTransformationOperator3D::normalizeAxis3)
+      .field("nonUniform",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsCartesianTransformationOperator3D::nonUniform)
+      .field("realScale",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsCartesianTransformationOperator3D::realScale)
+      .field("scale1_", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsCartesianTransformationOperator3D::scale1_)
+      .field("scale2_", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsCartesianTransformationOperator3D::scale2_)
+      .field("scale3_", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsCartesianTransformationOperator3D::scale3_);
 
   // ParamsCreateNativeIfcProfile
   emscripten::value_object<ParamsCreateNativeIfcProfile>(
@@ -455,6 +561,46 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("isComposite", &ParamsCreateNativeIfcProfile::isComposite)
       .field("profiles", &ParamsCreateNativeIfcProfile::profiles);
 
+  // ParamsGetIfcTrimmedCurve
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIfcTrimmedCurve>(
+      "ParamsGetIfcTrimmedCurve")
+      .field("masterRepresentation",
+             &conway::geometry::ConwayGeometryProcessor::
+                 ParamsGetIfcTrimmedCurve::masterRepresentation)
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetIfcTrimmedCurve::dimensions)
+      .field("senseAgreement", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetIfcTrimmedCurve::senseAgreement)
+      .field("trim1Cartesian2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim1Cartesian2D)
+      .field("trim1Cartesian3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim1Cartesian3D)
+      .field("trim1Double", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetIfcTrimmedCurve::trim1Double)
+      .field("trim2Cartesian2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim2Cartesian2D)
+      .field("trim2Cartesian3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcTrimmedCurve::trim2Cartesian3D)
+      .field("trim2Double", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetIfcTrimmedCurve::trim2Double);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle>(
+      "ParamsGetIfcCircle")
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetIfcCircle::dimensions)
+      .field("axis2Placement2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcCircle::axis2Placement2D)
+      .field("axis2Placement3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcCircle::axis2Placement3D)
+      .field("radius", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcCircle::radius)
+      .field("paramsGetIfcTrimmedCurve",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
+                 paramsGetIfcTrimmedCurve);
+
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
@@ -464,6 +610,41 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                    ParamsGetBooleanResult::flatSecondMesh)
       .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetBooleanResult::operatorType);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetLoop
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetLoop>("ParamsGetLoop")
+      .field(
+          "isEdgeLoop",
+          &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::isEdgeLoop)
+      .field("points",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::points);
+
+  // ParamsCreateBound3D
+  emscripten::value_object<ParamsCreateBound3D>("ParamsCreateBound3D")
+      .field("curve", &ParamsCreateBound3D::curve)
+      .field("orientation", &ParamsCreateBound3D::orientation)
+      .field("type", &ParamsCreateBound3D::type);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry>(
+      "ParamsAddFaceToGeometry")
+      .field("boundsArray", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsAddFaceToGeometry::boundsArray)
+      .field("advancedBrep", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsAddFaceToGeometry::advancedBrep)
+      .field("surface", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsAddFaceToGeometry::surface);
+
+  // ifc::IFCRECTANGLEPROFILEDEF
+  // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve>(
+      "ParamsGetRectangleProfileCurve")
+      .field("xDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::xDim)
+      .field("yDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::yDim)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("matrix", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::matrix);
 
   // Define the ResultsGltf object
   emscripten::value_object<
@@ -496,6 +677,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::register_vector<glm::vec2>("vec2Array");
   emscripten::register_vector<glm::vec3>("glmVec3Array");
+  emscripten::register_vector<glm::dvec3>("glmdVec3Array");
   emscripten::register_vector<std::string>("stringVector");
   emscripten::register_vector<uint32_t>("UintVector");
   emscripten::register_vector<uint8_t>("VectorUint8");
@@ -504,9 +686,10 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
   emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
+  emscripten::register_vector<conway::geometry::IfcBound3D>("Bound3DArray");
   emscripten::register_vector<
-    conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
-    "VectorIndexedPolygonalFace");
+      conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
+      "VectorIndexedPolygonalFace");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
 
@@ -515,18 +698,25 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
-    &InitializeGeometryProcessor);
+                       &InitializeGeometryProcessor);
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);
   emscripten::function("geometryToObj", &GeometryToObj);
   emscripten::function("geometryToGltf", &GeometryToGltf);
   emscripten::function("getAxis2Placement2D", &GetAxis2Placement2D);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);
-  emscripten::function("getCartesianTransformationOperator3D", 
-    &conway::geometry::ConwayGeometryProcessor::GetCartesianTransformationOperator3D );
+  emscripten::function("getCartesianTransformationOperator3D",
+                       &conway::geometry::ConwayGeometryProcessor::
+                           GetCartesianTransformationOperator3D);
   emscripten::function("getUint8Array", &GetUint8Array,
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult);
+  emscripten::function("getIfcCircle", &GetIfcCircle);
+  emscripten::function("getLoop", &GetLoop);
+  emscripten::function("createBound3D", &createBound3D);
+  emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
+  emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
 }

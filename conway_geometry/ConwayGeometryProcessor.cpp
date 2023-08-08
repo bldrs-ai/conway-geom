@@ -220,14 +220,32 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
   return flattenGeometry(results);
 }
 
+IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
+    ParamsGetRectangleProfileCurve parameters) {
+  IfcCurve curve;
+  double xdim = parameters.xDim;
+  double ydim = parameters.yDim;
+
+  if (parameters.hasPlacement) {
+    curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+  } else {
+    glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
+                                      glm::dvec3(0, 0, 1));
+    curve = GetRectangleCurve(xdim, ydim, placement);
+  }
+  return curve;
+}
+
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult parameters) {
   IfcGeometry resultGeometry;
   if (parameters.flatFirstMesh.size() <= 0) {
+    printf("first mesh zero\n");
     return resultGeometry;
   }
 
   if (parameters.flatSecondMesh.size() <= 0) {
+     printf("second mesh zero\n");
     return resultGeometry;
   }
 
@@ -381,7 +399,7 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   return geom;
 }
 
-IfcGeometry ConwayGeometryProcessor::getBrep(ParamsGetBrep parameters) {
+/*IfcGeometry ConwayGeometryProcessor::getBrep(ParamsGetBrep parameters) {
   IfcGeometry geometry;
   // set parameters
   ParamsAddFaceToGeometry paramsAddFaceToGeometry;
@@ -401,42 +419,35 @@ IfcGeometry ConwayGeometryProcessor::getBrep(ParamsGetBrep parameters) {
   }
 
   return geometry;
-}
+}*/
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry parameters, IfcGeometry &geometry) {
   if (!parameters.advancedBrep) {
-    std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
-
-    for (int i = 0; i < parameters.boundsSize; i++) {
-      bounds3D[i] = parameters.boundsArray[i];
+    if (parameters.boundsArray.size() > 0) {
+      TriangulateBounds(geometry, parameters.boundsArray);
     }
-
-    TriangulateBounds(geometry, bounds3D);
   } else {
-    std::vector<IfcBound3D> bounds3D(parameters.boundsSize);
+    if (parameters.boundsArray.size() > 0) {
+      auto surface = parameters.surface;
 
-    for (int i = 0; i < parameters.boundsSize; i++) {
-      bounds3D[i] = parameters.boundsArray[i];
-    }
-
-    auto surface = parameters.surface;
-
-    if (surface.BSplineSurface.Active) {
-      TriangulateBspline(geometry, bounds3D, surface);
-    } else if (surface.CylinderSurface.Active) {
-      TriangulateCylindricalSurface(geometry, bounds3D, surface);
-    } else if (surface.RevolutionSurface.Active) {
-      TriangulateRevolution(geometry, bounds3D, surface);
-    } else if (surface.ExtrusionSurface.Active) {
-      TriangulateExtrusion(geometry, bounds3D, surface);
-    } else {
-      TriangulateBounds(geometry, bounds3D);
+      if (surface.BSplineSurface.Active) {
+        TriangulateBspline(geometry, parameters.boundsArray, surface);
+      } else if (surface.CylinderSurface.Active) {
+        TriangulateCylindricalSurface(geometry, parameters.boundsArray,
+                                      surface);
+      } else if (surface.RevolutionSurface.Active) {
+        TriangulateRevolution(geometry, parameters.boundsArray, surface);
+      } else if (surface.ExtrusionSurface.Active) {
+        TriangulateExtrusion(geometry, parameters.boundsArray, surface);
+      } else {
+        TriangulateBounds(geometry, parameters.boundsArray);
+      }
     }
   }
 }
 
-std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel(
+/*std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel(
     ParamsGetSurfaceModel parameters) {
   std::vector<IfcGeometry> geometryArray;
 
@@ -446,7 +457,7 @@ std::vector<IfcGeometry> ConwayGeometryProcessor::GetSurfaceModel(
   }
 
   return geometryArray;
-}
+}*/
 
 IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   if (parameters.isPlane) {
@@ -695,8 +706,9 @@ glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
 IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
   IfcCurve curve;
   if (!parameters.isEdgeLoop) {
-    if (parameters.numPoints > 0) {
-      curve.points.reserve(parameters.numPoints);
+    if (parameters.points.size() > 0) {
+      curve.points = parameters.points;
+      /*curve.points.reserve(parameters.numPoints);
 
       glm::dvec3 prevPoint = parameters.points[0];
 
@@ -711,7 +723,7 @@ IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
         }
 
         prevPoint = currentPoint;
-      }
+      }*/
     }
   } else {
     // TODO(nickcastel50): Handle edge loop
@@ -1143,7 +1155,6 @@ ConwayGeometryProcessor::GeometryToGltf(
       }
 
       if (outputDraco) {
-
         Microsoft::glTF::Accessor positionsAccessor;
         positionsAccessor.min = minValues;
         positionsAccessor.max = maxValues;
@@ -1244,7 +1255,7 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
       }
-      
+
       mesh.primitives.push_back(std::move(meshPrimitive));
     }
 
@@ -1539,6 +1550,130 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
 
   curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
                          placement);
+
+  return curve;
+}
+
+enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
+    ParamsGetIfcCircle parameters) {
+  conway::geometry::IfcCurve curve;
+
+  double radius = parameters.radius;
+
+  double startDegrees = 0;
+  double endDegrees = 360;
+
+  if (parameters.paramsGetIfcTrimmedCurve.dimensions != 0) {
+    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+        IfcTrimmingPreference::PARAMETER) {
+      startDegrees = parameters.paramsGetIfcTrimmedCurve.trim1Double;
+      endDegrees = parameters.paramsGetIfcTrimmedCurve.trim2Double;
+    } else {
+      if (parameters.dimensions == 2) {
+        glm::dmat3 placement = parameters.axis2Placement2D;
+        double xx = placement[2].x -
+                    parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x;
+        double yy = placement[2].y -
+                    parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y;
+        startDegrees = VectorToAngle(xx, yy);
+        xx = placement[2].x -
+             parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x;
+        yy = placement[2].y -
+             parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y;
+        endDegrees = VectorToAngle(xx, yy);
+      } else if (parameters.dimensions == 3) {
+        glm::dmat4 placement = parameters.axis2Placement3D;
+        glm::dvec4 vecX = placement[0];
+        glm::dvec4 vecY = placement[1];
+        glm::dvec4 vecZ = placement[2];
+
+        glm::dvec3 v1 =
+            glm::dvec3(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.x -
+                           placement[3].x,
+                       parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.y -
+                           placement[3].y,
+                       parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.z -
+                           placement[3].z);
+        glm::dvec3 v2 =
+            glm::dvec3(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.x -
+                           placement[3].x,
+                       parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.y -
+                           placement[3].y,
+                       parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D.z -
+                           placement[3].z);
+
+        double dxS = vecX.x * v1.x + vecX.y * v1.y + vecX.z * v1.z;
+        double dyS = vecY.x * v1.x + vecY.y * v1.y + vecY.z * v1.z;
+        // double dzS = vecZ.x * v1.x + vecZ.y * v1.y + vecZ.z * v1.z;
+
+        double dxE = vecX.x * v2.x + vecX.y * v2.y + vecX.z * v2.z;
+        double dyE = vecY.x * v2.x + vecY.y * v2.y + vecY.z * v2.z;
+        // double dzE = vecZ.x * v2.x + vecZ.y * v2.y + vecZ.z * v2.z;
+
+        endDegrees = VectorToAngle(dxS, dyS) - 90;
+        startDegrees = VectorToAngle(dxE, dyE) - 90;
+      }
+    }
+  }
+
+  double startRad = startDegrees / 180 * CONST_PI;
+  double endRad = endDegrees / 180 * CONST_PI;
+  double lengthDegrees = endDegrees - startDegrees;
+
+  // unset or true
+  // TODO(nickcastel50): incorporate trimSense / sameSense as parameters
+  uint32_t trimSense = -1;
+  uint32_t sameSense = -1;
+  if (trimSense == 1 || trimSense == -1) {
+    if (lengthDegrees < 0) {
+      lengthDegrees += 360;
+    }
+  } else {
+    if (lengthDegrees > 0) {
+      lengthDegrees -= 360;
+    }
+  }
+
+  double lengthRad = lengthDegrees / 180 * CONST_PI;
+
+  size_t startIndex = curve.points.size();
+
+  for (int i = 0; i < CIRCLE_SEGMENTS_MEDIUM; i++) {
+    double ratio = static_cast<double>(i) / (CIRCLE_SEGMENTS_MEDIUM - 1);
+    double angle = startRad + ratio * lengthRad;
+
+    if (sameSense == 0) {
+      angle = endRad - ratio * lengthRad;
+    }
+
+    if (parameters.dimensions == 2) {
+      glm::dvec2 vec(0);
+      vec[0] = radius * std::cos(angle);
+      vec[1] =
+          -radius *
+          std::sin(angle);  // not sure why we need this, but we apparently do
+      glm::dvec2 pos = parameters.axis2Placement2D * glm::dvec3(vec, 1);
+      curve.Add2d(pos);
+    } else {
+      glm::dvec3 vec(0);
+      vec[0] = radius * std::cos(angle);
+      vec[1] = -radius * std::sin(angle);  // negative or not???
+      glm::dvec3 pos =
+          parameters.axis2Placement3D * glm::dvec4(glm::dvec3(vec), 1);
+      curve.Add3d(pos);
+    }
+  }
+
+  // without a trim, we close the circle
+  if (parameters.paramsGetIfcTrimmedCurve.dimensions == 0) {
+    if (parameters.dimensions == 2) {
+      curve.Add2d(curve.points[startIndex]);
+    } else if (parameters.dimensions == 3) {
+      curve.Add3d(curve.points[startIndex]);
+    }
+  }
 
   return curve;
 }

@@ -772,10 +772,12 @@ void genIndexIfc() {
         printf("Writing GLTF...\n");
       }
 
+      std::vector<conway::geometry::IfcGeometry> geometrySingle;
+      geometrySingle.push_back(geometryVec[0]);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec, materials, false, conway::statistics::exportDraco,
+              geometrySingle, materials, false, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
@@ -791,10 +793,12 @@ void genIndexIfc() {
         printf("Writing GLB...\n");
       }
 
+      std::vector<conway::geometry::IfcGeometry> geometrySingle;
+      geometrySingle.push_back(geometryVec[0]);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec, materials, true, conway::statistics::exportDraco,
+              geometrySingle, materials, true, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
@@ -825,10 +829,10 @@ void genIndexIfc() {
   if (conway::statistics::exportSingleGeometry) {
     conway::geometry::IfcGeometry fullGeometry;
 
-    for (int geometryIndex = 0; geometryIndex < geometryVec.size();
+    /*for (int geometryIndex = 0; geometryIndex < geometryVec.size();
          geometryIndex++) {
       fullGeometry.AppendGeometry(geometryVec[geometryIndex]);
-    }
+    }*/
 
     std::string fileNameGltf = "./index_ifc_full_conway";
     if (conway::statistics::exportDraco) {

@@ -108,14 +108,17 @@ namespace webifc::geometry
             auto material = relMaterials.find(line.expressID);
             if (material != relMaterials.end())
             {
+              //  printf("found material for mesh: #%i\n", line.expressID);
                 auto &materials = material->second;
                 for (auto item : materials)
                 {
                     if (materialDefinitions.count(item.second) != 0)
                     {
+                     //   printf("item.second: #%i\n", item.second);
                         auto &defs = materialDefinitions.at(item.second);
                         for (auto def : defs)
                         {
+                       //     printf("materialDefinitions: def.second: #%i\n", def.second);
                             styledItemColor = _geometryLoader.GetColor(def.second);
                             if (styledItemColor) break;
                         }
@@ -124,6 +127,7 @@ namespace webifc::geometry
                         // if no color found, check material itself
                     if (!styledItemColor)
                     {
+                     //   printf("checking material itself, expressID: %i\n", item.second);
                         styledItemColor = _geometryLoader.GetColor(item.second);
                         if (styledItemColor) break;
                     }
@@ -546,7 +550,6 @@ namespace webifc::geometry
                     {
                         uint32_t faceID = _loader.GetRefArgument(face);
                         ReadIndexedPolygonalFace(faceID, bounds, points);
-
                         TriangulateBounds(geom, bounds,_errorHandler);
 
                         bounds.clear();
