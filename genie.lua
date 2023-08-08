@@ -427,7 +427,6 @@ prelinkcommands {
 		)"
 }
 
-print(_ARGS[1])
 if _ARGS[1] == "profile" then
     configuration {"gmake"}
     linkoptions {

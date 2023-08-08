@@ -35,7 +35,14 @@ if not exist ".git\modules" (
     )
 )
 
-.\windows_genie\genie gmake
+if "%~3"=="" (
+    .\windows_genie\genie gmake
+) else (
+    REM Check if the third argument is "profile"
+    if "%~3"=="profile" (
+        .\windows_genie\genie gmake profile
+    )
+)
 if errorlevel 1 (
     echo ! Could not generate makefiles
     exit /b 1
