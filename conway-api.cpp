@@ -338,12 +338,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
       .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
 
-  emscripten::class_<glm::dmat4>("glmdmat4")
+  emscripten::class_<glm::dmat4>("Glmdmat4")
       .constructor<>()
       .function("getValues", &getMatrixValues4x4)
       .function("setValues", &setMatrixValues4x4);
 
-  emscripten::class_<glm::dmat3>("glmdmat3")
+  emscripten::class_<glm::dmat3>("Glmdmat3")
       .constructor<>()
       .function("getValues", &getMatrixValues3x3)
       .function("setValues", &setMatrixValues3x3);
@@ -686,7 +686,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
   emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
-  emscripten::register_vector<conway::geometry::IfcBound3D>("bound3DArray");
+  emscripten::register_vector<conway::geometry::IfcBound3D>("Bound3DArray");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(
       "VectorIndexedPolygonalFace");

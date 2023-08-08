@@ -1,6 +1,7 @@
 
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
+
 export interface StdVector<T> {
   delete(): unknown
 
@@ -36,18 +37,18 @@ export interface ParamsAddFaceToGeometry {
   boundsArray: StdVector<Bound3DObject> // std::vector<IfcBound3D>
   advancedBrep: boolean
   surface: SurfaceObject // IfcSurface
-};
+}
 
 export interface ParamsGetLoop {
   isEdgeLoop: boolean
-  points: StdVector<Vector3> //std::vector<glm::dvec3>
-};
+  points: StdVector<Vector3> // std::vector<glm::dvec3>
+}
 
 export interface ParamsCreateBound3D {
   curve: CurveObject // conway::geometry::IfcCurve
   orientation: boolean
   type: number // uint32_t
-};
+}
 
 export interface Vector4 {
   x: number
@@ -56,12 +57,16 @@ export interface Vector4 {
   w: number
 }
 
+/* eslint-disable no-shadow,no-unused-vars,no-magic-numbers */
 export enum BlendMode {
   OPAQUE = 0,
   BLEND = 1,
   MASK = 2,
 }
 
+/**
+ * @return {any}
+ */
 export function toAlphaMode(wasmModule: any, blendMode: BlendMode): any {
 
   switch (blendMode) {
@@ -76,6 +81,8 @@ export function toAlphaMode(wasmModule: any, blendMode: BlendMode): any {
     case BlendMode.MASK:
 
       return wasmModule.BlendMode.MASK
+
+    default: console.log('Wrong argument passed to toAlphaMode()')
   }
 }
 
@@ -112,10 +119,10 @@ export interface CurveObject {
 export interface ProfileObject {
   getType: () => string
   getCurve: () => CurveObject
-  getHoles: () => any//CurveObject[];
+  getHoles: () => any// CurveObject[];
   isConvex: () => boolean
   isComposite: () => boolean
-  getProfiles: () => any//ProfileObject[];
+  getProfiles: () => any// ProfileObject[];
 }
 
 export interface ParamsGetCircleCurve {
@@ -126,29 +133,29 @@ export interface ParamsGetCircleCurve {
 
 export interface ParamsCreateNativeIfcProfile {
   curve: CurveObject | undefined
-  holes: any | undefined //std::vector<conway::geometry::IfcCurve> 
+  holes: any | undefined // std::vector<conway::geometry::IfcCurve>
   isConvex: boolean
   isComposite: boolean
-  profiles: any | undefined //std::vector<conway::geometry::IfcProfile>;
+  profiles: any | undefined // std::vector<conway::geometry::IfcProfile>;
 }
 
 export interface ParamsGetExtrudedAreaSolid {
   depth: number
-  dir: any //glm::dvec3
-  profile: ProfileObject //IfcProfile 
-};
+  dir: any // glm::dvec3
+  profile: ProfileObject // IfcProfile
+}
 
 export interface ParamsGetRectangleProfileCurve {
   xDim: number
   yDim: number
   hasPlacement: boolean
   matrix: any // glm::dmat3
-};
+}
 
 export interface ParamsGetHalfspaceSolid {
   flipWinding: boolean,
   optionalLinearScalingFactor: number,
-};
+}
 
 export interface ParamsGetAxis2Placement2D {
   isAxis2Placement2D: boolean
@@ -163,7 +170,7 @@ export interface ParamsGetAxis2Placement2D {
   scale1: number
   customScale2: boolean
   scale2: number
-};
+}
 
 export interface Segment {
   isArcType: boolean
@@ -174,7 +181,7 @@ export interface ParamsGetIfcIndexedPolyCurve {
   dimensions: number
   segments: any
   points: any
-};
+}
 
 export interface ParamsGetIfcCircle {
   dimensions: number
@@ -293,9 +300,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters ParamsGetLoop parsed from data model 
-   * @returns 
+   *
+   * @param parameters ParamsGetLoop parsed from data model
+   * @return {CurveObject}
    */
   getLoop(parameters: ParamsGetLoop): CurveObject {
     const result = this.wasmModule.getLoop(parameters)
@@ -303,9 +310,8 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters ParamsAddFaceToGeometry parsed from data model 
-   * @returns 
+   *
+   * @param parameters ParamsAddFaceToGeometry parsed from data model
    */
   addFaceToGeometry(parameters: ParamsAddFaceToGeometry, geometry: GeometryObject): void {
     this.wasmModule.addFaceToGeometry(parameters, geometry)
@@ -332,9 +338,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters 
-   * @returns {CurveObject} - Native Curve Object
+   *
+   * @param parameters
+   * @return {CurveObject} - Native Curve Object
    */
   getIfcCircle(parameters: ParamsGetIfcCircle): CurveObject {
     const result = this.wasmModule.getIfcCircle(parameters)
@@ -342,9 +348,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
+   *
    * @param parameters - ParamsGetIfcIndexedPolyCurve parsed from data model
-   * @returns 
+   * @return {CurveObject}
    */
   getIndexedPolyCurve(parameters: ParamsGetIfcIndexedPolyCurve): CurveObject {
     const result = this.wasmModule.getIndexedPolyCurve(parameters)
@@ -352,9 +358,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
+   *
    * @param parameters ParamsGetCircleCurve parsed from data model
-   * @returns 
+   * @return {CurveObject}
    */
   getCircleCurve(parameters: ParamsGetCircleCurve): CurveObject {
     const result = this.wasmModule.getCircleCurve(parameters)
@@ -362,9 +368,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
+   *
    * @param parameters ParamsCreateNativeIfcProfile parsed from data model
-   * @returns 
+   * @return {ProfileObject}
    */
   createNativeIfcProfile(parameters: ParamsCreateNativeIfcProfile): ProfileObject {
     const result: ProfileObject = this.wasmModule.createNativeIfcProfile(parameters)
@@ -372,9 +378,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters ParamsCreateBound3D parsed from data model 
-   * @returns 
+   *
+   * @param parameters ParamsCreateBound3D parsed from data model
+   * @return {Bound3DObject}
    */
   createBound3D(parameters: ParamsCreateBound3D): Bound3DObject {
     const result = this.wasmModule.createBound3D(parameters)
@@ -382,35 +388,40 @@ export class ConwayGeometry {
   }
 
   /**
- * 
- * @param parameters ParamsGetHalfspaceSolid parsed from data model 
- * @returns 
- */
-  GetHalfSpaceSolid(parameters: ParamsGetHalfspaceSolid): GeometryObject {
+   *
+   * @param parameters ParamsGetHalfspaceSolid parsed from data model
+   * @return {GeometryObject}
+   */
+  getHalfSpaceSolid(parameters: ParamsGetHalfspaceSolid): GeometryObject {
     const result = this.wasmModule.getHalfSpaceSolid(parameters)
     return result
   }
 
-/**
- * 
- * @param parameters ParamsGetRectangleProfileCurve parsed from data model 
- * @returns {CurveObject}
- */
+  /**
+   *
+   * @param parameters ParamsGetRectangleProfileCurve parsed from data model
+   * @return {CurveObject}
+   */
   getRectangleProfileCurve(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleProfileCurve(parameters)
     return result
   }
 
   /**
-   * 
-   * @param parameters ParamsGetExtrudedAreaSolid parsed from data model 
-   * @returns 
+   *
+   * @param parameters ParamsGetExtrudedAreaSolid parsed from data model
+   * @return {GeometryObject}
    */
   getExtrudedAreaSolid(parameters: ParamsGetExtrudedAreaSolid): GeometryObject {
     const result = this.wasmModule.getExtrudedAreaSolid(parameters)
     return result
   }
 
+  /**
+   *
+   * @param parameters
+   * @return {GeometryObject}
+   */
   getBooleanResult(parameters: ParamsGetBooleanResult): GeometryObject {
     const result = this.wasmModule.getBooleanResult(parameters)
     return result
@@ -425,19 +436,19 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-    geometry: StdVector<GeometryObject>,
-    materials: StdVector<MaterialObject>,
-    isGlb: boolean,
-    outputDraco: boolean,
-    fileUri: string):
+      geometry: StdVector<GeometryObject>,
+      materials: StdVector<MaterialObject>,
+      isGlb: boolean,
+      outputDraco: boolean,
+      fileUri: string):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
 
   /**
-   * 
+   *
    * @param parameters - ParamsGetAxis2Placement2D structure
-   * @returns {any} - native Axis2Placement2D structure
+   * @return {any} - native Axis2Placement2D structure
    */
   getAxis2Placement2D(parameters: ParamsGetAxis2Placement2D): any {
     return this.wasmModule.getAxis2Placement2D(parameters)
