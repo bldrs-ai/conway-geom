@@ -16,23 +16,32 @@ jobs:
     name: Build GENie executable
     runs-on: ubuntu-latest
     steps:
+      - name: Restore Cached Build Artifact
+        id: cache-genie-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: bin/linux/genie
+          key: genie-${{ runner.os }}
+
       - name: Checkout
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
         id: checkout
         uses: actions/checkout@v3
         with:
           repository: bkaradzic/GENie
 
       - name: Build
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
         id: build
         run: make
 
-      - name: Archive Build Artifact
-        id: archive
-        uses: actions/upload-artifact@v3
+      - name: Cache Build Artifact
+        if: steps.cache-genie-restore.outputs.cache-hit != 'true'
+        id: cache-genie
+        uses: actions/cache/save@v3
         with:
-          name: genie
           path: bin/linux/genie
-          retention-days: 1
+          key: genie-${{ runner.os }}
 
   build:
     name: Build Release
@@ -42,12 +51,12 @@ jobs:
       - name: Create Build Cache Directory
         run: mkdir -p cache/
 
-      - name: Enable Emscripten Build Cache
+      - name: Enable Emscripten System Library Cache
         id: emscripten-cache
         uses: actions/cache@v3
         with:
           path: ${{env.EMSDK_CACHE_FOLDER}}
-          key: emscripten-${{env.EMSDK_VERSION}}-${{ runner.os }}
+          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
 
       - name: Install Emscripten
         id: emscripten
@@ -62,20 +71,50 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Download GENie
-        id: download-genie
-        uses: actions/download-artifact@v3
+      - name: Identify dependency versions
+        id: dependency-versions
+        run: |
+          echo "DRACO_VERSION=$( cd external/draco/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+          echo "MANIFOLD_VERSION=$( cd external/manifold/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+          echo "GLTFSDK_VERSION=$( cd external/gltf-sdk/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
+
+      - name: Load Draco from Build Cache
+        id: draco-cache
+        uses: actions/cache@v3
         with:
-          name: genie
+          path: build/draco/
+          key: draco-${{env.DRACO_VERSION}}-${{ runner.os }}
+
+      - name: Load Manifold from Build Cache
+        id: manifold-cache
+        uses: actions/cache@v3
+        with:
+          path: build/manifold/
+          key: manifold-${{env.MANIFOLD_VERSION}}-${{ runner.os }}
+
+      - name: Load glTF SDK from Build Cache
+        id: gltf-sdk-cache
+        uses: actions/cache@v3
+        with:
+          path: build/gtlf-sdk/
+          key: gltf-sdk-${{env.GLTFSDK_VERSION}}-${{ runner.os }}
+
+      - name: Use cached GENie
+        id: use-cached-genie
+        uses: actions/cache/restore@v3
+        with:
+          path: bin/linux/genie
+          key: genie-${{ runner.os }}
 
       - name: Generate Makefiles
         id: generate-makefiles
         run: |
-          chmod +x ./genie
-          ./genie gmake
+          chmod +x ./bin/linux/genie
+          ./bin/linux/genie gmake
 
       - name: Build Draco
         id: build-draco
+        if: steps.draco-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/draco
           cd build/draco
@@ -84,6 +123,7 @@ jobs:
 
       - name: Build Manifold
         id: build-manifold
+        if: steps.manifold-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/manifold
           cd build/manifold
@@ -92,16 +132,21 @@ jobs:
 
       - name: Build glTF SDK
         id: build-gltf-sdk
+        if: steps.gltf-sdk-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p build/gltf-sdk
           cd build/gltf-sdk
-          cmake ../../external/gltf-sdk/
+          cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
           make
 
       - name: Build Native Artifacts
         id: build-native
-        run: make config=release64 conway_geom_native webifc_native
+        run: |
+          cd gmake
+          make config=release64 conway_geom_native webifc_native
 
       - name: Build WASM
         id: build-wasm
-        run: make config=releaseemscripten ConwayGeomWasm
+        run: |
+          cd gmake
+          make config=releaseemscripten ConwayGeomWasm

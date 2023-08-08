@@ -131,13 +131,6 @@ void testGetBound() {
   conwayGeometryProcessor.GetBound(paramsGetBound);
 }
 
-void testGetBrep() {
-  conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
-      conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::ConwayGeometryProcessor::ParamsGetBrep paramsGetBrep;
-  conwayGeometryProcessor.getBrep(paramsGetBrep);
-}
-
 void testGetCartesianTransformationOperator3D() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
@@ -204,14 +197,6 @@ void testGetIfcSurface() {
   conwayGeometryProcessor.GetSurface(paramsSurface);
 }
 
-void testGetSurfaceModel() {
-  conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
-      conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::ConwayGeometryProcessor::ParamsGetSurfaceModel
-      paramsGetSurfaceModel;
-  conwayGeometryProcessor.GetSurfaceModel(paramsGetSurfaceModel);
-}
-
 void testReadIndexedPolygonalFace() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
@@ -246,8 +231,6 @@ TEST(GetBooleanResultFunctionalTest) { testGetBooleanResult(); }
 
 TEST(GetBoundFunctionalTest) { testGetBound(); }
 
-TEST(GetBrepFunctionalTest) { testGetBrep(); }
-
 TEST(GetCartesianTransformationOperator3DFunctionalTest) {
   testGetCartesianTransformationOperator3D();
 }
@@ -269,7 +252,5 @@ TEST(GetPolygonalFaceSetGeometryFunctionalTest) {
 }
 
 TEST(GetSurfaceFunctionalTest) { testGetIfcSurface(); }
-
-TEST(GetSurfaceModelFunctionalTest) { testGetSurfaceModel(); }
 
 TEST(ReadIndexedPolygonalFaceFunctionalTest) { testReadIndexedPolygonalFace(); }

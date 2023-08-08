@@ -50,8 +50,8 @@ bool IfcGeometry::computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
 }
 
 void IfcGeometry::AddPoint(glm::dvec3 &pt, glm::dvec3 &n) {
-  auto const source = std::vector<double>{pt.x, pt.y, pt.z, n.x, n.y, n.z};
-  vertexData.insert(vertexData.end(), source.begin(), source.end());
+  //auto const source = std::vector<double>{pt.x, pt.y, pt.z, n.x, n.y, n.z};
+  vertexData.insert( vertexData.end(), { pt.x, pt.y, pt.z, n.x, n.y, n.z } );
 
   min = glm::min(min, pt);
   max = glm::max(max, pt);

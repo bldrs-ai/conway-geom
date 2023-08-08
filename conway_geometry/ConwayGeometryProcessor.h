@@ -118,9 +118,9 @@ class ConwayGeometryProcessor {
   IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry> &firstGeoms,
                                  std::vector<IfcGeometry> &secondGeoms);
 
-      // case ifc::IFCBOOLEANCLIPPINGRESULT:
-      // case ifc::IFCBOOLEANRESULT:
-      struct ParamsGetBooleanResult {
+  // case ifc::IFCBOOLEANCLIPPINGRESULT:
+  // case ifc::IFCBOOLEANRESULT:
+  struct ParamsGetBooleanResult {
     std::vector<IfcGeometry> flatFirstMesh;
     std::vector<IfcGeometry> flatSecondMesh;
     int operatorType = 2;
@@ -129,7 +129,6 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {
-    IfcSurface surface;
     bool flipWinding = false;
     double optionalLinearScalingFactor = 1.0;
   };
@@ -156,9 +155,6 @@ class ConwayGeometryProcessor {
   // case ifc::IFCOPENSHELL:
   // These cases are handled by getBrep()
   struct ParamsAddFaceToGeometry {
-    uint32_t boundsSize = 0;
-    uint32_t *indices;
-    uint32_t indicesPerFace = 0;
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
@@ -174,12 +170,23 @@ class ConwayGeometryProcessor {
     IfcSurface surface;
   };
 
-  IfcGeometry getBrep(ParamsGetBrep parameters);
+  // IfcGeometry getBrep(ParamsGetBrep parameters);
 
   // case ifc::IFCFACE:
   // case ifc::IFCADVANCEDFACE:
   void AddFaceToGeometry(ParamsAddFaceToGeometry parameters,
                          IfcGeometry &geometry);
+
+  // case ifc::IFCRECTANGLEPROFILEDEF:
+  // case ifc::IFCROUNDEDRECTANGLEPROFILEDEF:
+  struct ParamsGetRectangleProfileCurve {
+    double xDim = 0.0f;
+    double yDim = 0.0f;
+    bool hasPlacement = false;
+    glm::dmat3 matrix;
+  };
+
+  IfcCurve GetRectangleProfileCurve(ParamsGetRectangleProfileCurve parameters);
 
   // case ifc::IFCFACEBASEDSURFACEMODEL:
   // case ifc::IFCSHELLBASEDSURFACEMODEL:
@@ -188,7 +195,7 @@ class ConwayGeometryProcessor {
     std::vector<ParamsGetBrep> shells;
   };
 
-  std::vector<IfcGeometry> GetSurfaceModel(ParamsGetSurfaceModel parameters);
+  // std::vector<IfcGeometry> GetSurfaceModel(ParamsGetSurfaceModel parameters);
 
   // case ifc::IFCPLANE:
   // case ifc::IFCBSPLINESURFACE:
@@ -301,7 +308,6 @@ class ConwayGeometryProcessor {
   // case ifc::IFCEDGELOOP:
   struct ParamsGetLoop {
     bool isEdgeLoop = false;
-    size_t numPoints = 0;
     std::vector<glm::dvec3> points;
   };
 
@@ -337,10 +343,9 @@ class ConwayGeometryProcessor {
     std::vector<std::string> bufferUris;
     std::vector<std::vector<uint8_t>> buffers;
   };
-  ResultsGltf GeometryToGltf(std::vector< conway::geometry::IfcGeometry >& geom,
-                             std::vector< conway::geometry::Material >& materials,
-                             bool isGlb,
-                             bool outputDraco, std::string filePath,
+  ResultsGltf GeometryToGltf(std::vector<conway::geometry::IfcGeometry> &geom,
+                             std::vector<conway::geometry::Material> &materials,
+                             bool isGlb, bool outputDraco, std::string filePath,
                              bool outputFile,
                              glm::dmat4 transform = glm::dmat4(1));
 
@@ -372,7 +377,7 @@ class ConwayGeometryProcessor {
   conway::geometry::IfcCurve getIndexedPolyCurve(
       ParamsGetIfcIndexedPolyCurve parameters);
 
-  // case ifc::CircleProfileDef
+  // case ifc::CIRCLEPROFILEDEF
   struct ParamsGetCircleCurve {
     float radius;
     bool hasPlacement = true;
@@ -381,19 +386,31 @@ class ConwayGeometryProcessor {
 
   conway::geometry::IfcCurve getCircleCurve(ParamsGetCircleCurve parameters);
 
+  // case ifc::IFCTRIMMEDCURVE
+  struct ParamsGetIfcTrimmedCurve {
+    uint32_t masterRepresentation;
+    uint32_t dimensions;
+    bool senseAgreement;
+    glm::dvec2 trim1Cartesian2D;
+    glm::dvec3 trim1Cartesian3D;
+    double trim1Double;
+    glm::dvec2 trim2Cartesian2D;
+    glm::dvec3 trim2Cartesian3D;
+    double trim2Double;
+  };
+  conway::geometry::IfcCurve getTrimmedCurve(
+      ParamsGetIfcTrimmedCurve parameters);
 
-// case ifc::GetIfcTrimmedCurve
-struct ParamsGetIfcTrimmedCurve {
-  IfcCurve basisCurve;
-  uint32_t masterRepresentation;
-  uint32_t dimensions;
-  bool senseAgreement;
-  std::vector<glm::dvec3> trim1Vec3;
-  std::vector<double> trim1VecDouble;
-  std::vector<glm::dvec3> trim2Vec3;
-  std::vector<double> trim2VecDouble;
-};
-  conway::geometry::IfcCurve getTrimmedCurve(ParamsGetIfcTrimmedCurve parameters);
+  // case ifc::IFCCIRCLE
+  struct ParamsGetIfcCircle {
+    uint32_t dimensions;
+    glm::dmat3 axis2Placement2D;
+    glm::dmat4 axis2Placement3D;
+    double radius;
+    ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
+  };
+
+  conway::geometry::IfcCurve getIfcCircle(ParamsGetIfcCircle parameters);
 
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
