@@ -49,7 +49,11 @@ if [ ! -d ".git/modules" ]; then
     fi
 fi
 
-./macos_genie/genie-$(uname -m) gmake
+if [ -z "$3" ]; then
+    ./macos_genie/genie-$(uname -m) gmake
+elif [ "$3" = "profile" ]; then
+    ./macos_genie/genie-$(uname -m) gmake profile
+fi 
 if [ $? -ne 0 ]; then
     echo "! Could not generate makefiles" 1>&2
     exit 1

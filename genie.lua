@@ -427,15 +427,52 @@ prelinkcommands {
 		)"
 }
 
-configuration {"gmake"}
-linkoptions {
-    "-O3",
-    "--bind",
-    "--dts",
-    "-03",
-    "-flto",
-    '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -sSTACK_SIZE=5MB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
-}
+print(_ARGS[1])
+if _ARGS[1] == "profile" then
+    configuration {"gmake"}
+    linkoptions {
+        "-O3",
+        "--bind",
+        "--dts",
+        "-03",
+        "-flto",
+        "--define-macro=REAL_T_IS_DOUBLE",
+        "-s ALLOW_MEMORY_GROWTH=1",
+        "-s MAXIMUM_MEMORY=4GB",
+        "-s STACK_SIZE=5MB",
+        "-s FORCE_FILESYSTEM=1",
+        "-gsource-map",
+        "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s ENVIRONMENT=web",
+        "-s SINGLE_FILE=1",
+        "-s EXPORT_ES6=1",
+        "-s MODULARIZE=1",
+        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-lworkerfs.js"
+    }
+else 
+    configuration {"gmake"}
+    linkoptions {
+        "-O3",
+        "--bind",
+        "--dts",
+        "-03",
+        "-flto",
+        "--define-macro=REAL_T_IS_DOUBLE",
+        "-s ALLOW_MEMORY_GROWTH=1",
+        "-s MAXIMUM_MEMORY=4GB",
+        "-s STACK_SIZE=5MB",
+        "-s FORCE_FILESYSTEM=1",
+        --"-gsource-map",
+        "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s ENVIRONMENT=web",
+        "-s SINGLE_FILE=1",
+        "-s EXPORT_ES6=1",
+        "-s MODULARIZE=1",
+        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-lworkerfs.js"
+    }
+end
 
 configuration {}
 libdirs {}
