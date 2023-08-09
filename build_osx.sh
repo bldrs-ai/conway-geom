@@ -76,7 +76,6 @@ else
         make config=${native_config} conway_geom_native webifc_native &&
         make config=${wasm_config} ConwayGeomWasm )
     else
-        echo $2
         if [ "$2" = "native" ]; then
             ( cd gmake &&
             make config=${native_config} conway_geom_native webifc_native )
