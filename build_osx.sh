@@ -107,6 +107,9 @@ if [ -n "$3" ] && [ "$3" = "profile" ]; then
 
     # Prepend current working directory to paths that start with ../../
     sed -i.bak -e 's|"../../|"'"$(pwd)"'/|g' "$SOURCE_MAP" 
+
+    # Cleanup backup file
+    rm "$SOURCE_MAP.bak"
 fi 
 
 echo "Finished."
