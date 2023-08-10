@@ -290,7 +290,7 @@ export class ConwayGeometry {
    */
   async initialize(): Promise<boolean> {
     if (this.wasmModule === void 0) {
-      this.wasmModule = await new ConwayGeomWasm()
+      this.wasmModule = await ConwayGeomWasm()
     }
 
     this.initialized = false
@@ -436,11 +436,11 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-      geometry: StdVector<GeometryObject>,
-      materials: StdVector<MaterialObject>,
-      isGlb: boolean,
-      outputDraco: boolean,
-      fileUri: string):
+    geometry: StdVector<GeometryObject>,
+    materials: StdVector<MaterialObject>,
+    isGlb: boolean,
+    outputDraco: boolean,
+    fileUri: string):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
