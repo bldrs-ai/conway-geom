@@ -317,8 +317,8 @@ project "conway_geom_native_tests"
         }
         links {
             "draco",
-            "GLTFSDK"
-            "manifold",
+            "GLTFSDK",
+            "manifold"
         }
         flags {"EnableAVX2"}
 
