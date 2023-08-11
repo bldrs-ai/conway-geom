@@ -25,11 +25,6 @@ solution "conway_geom"
 
     configuration {}
 
-project "conway_geom_native"
-    language "C++"
-    kind "ConsoleApp"
-    files {}
-
     ConwayCoreFiles = {
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
@@ -37,10 +32,11 @@ project "conway_geom_native"
         "conway_geometry/representation/**.*",
         "conway_geomeetry/legacy/**.*"
     }
-    WebIfcSourceFiles = {"web-ifc-api.cpp"}
-    WebIfcTestSourceFiles = {"test/*.cpp"}
-    WebIfcTestingMain = {"web-ifc-test.cpp"}
-    ConwayNativeMain = {"conway-native.cpp"}
+
+project "conway_geom_native"
+    language "C++"
+    kind "ConsoleApp"
+    files {}
 
     configuration {"windows or linux or macosx or ios or gmake"}
         buildoptions_cpp {
@@ -53,6 +49,8 @@ project "conway_geom_native"
         }
 
     configuration {"windows or macosx or linux"}
+        ConwayNativeMain = {"conway-native.cpp"}
+
         files {
             ConwayCoreFiles,
             ConwayNativeMain
@@ -192,13 +190,6 @@ project "conway_geom_native_tests"
     kind "ConsoleApp"
     files {}
 
-    ConwayCoreFiles = {
-        "conway_geometry/*.h",
-        "conway_geometry/*.cpp",
-        "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
-    }
     ConwayTestSourceFiles = {"test/*.cpp"}
 
     configuration {"windows or linux or macosx or ios or gmake"}
@@ -470,13 +461,6 @@ project "ConwayGeomWasm"
 
     targetextension ".js"
 
-    ConwayCoreFiles = {
-        "conway_geometry/*.h",
-        "conway_geometry/*.cpp",
-        "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
-    }
     ConwaySourceFiles = {"conway-api.cpp"}
 
     configuration {"linux or macosx or ios or gmake"}
