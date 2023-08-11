@@ -7,10 +7,10 @@ case "${1}" in
         ;;
     "clean")
         ( cd gmake && \
-            gmake config=debug64 clean && \
-            gmake config=debugemscripten clean && \
-            gmake config=release64 clean && \
-            gmake config=releaseemscripten clean
+            make config=debug64 clean && \
+            make config=debugemscripten clean && \
+            make config=release64 clean && \
+            make config=releaseemscripten clean
         ) && exit 0 || exit 1
         ;;
     "debug")
