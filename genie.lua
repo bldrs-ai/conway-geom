@@ -364,7 +364,10 @@ project "webifc_native"
         }
 
     configuration {"windows or macosx or linux"}
-        files {WebIfcCoreFiles, WebIfcTestingMain}
+        files {
+            WebIfcCoreFiles,
+            WebIfcTestingMain
+        }
 
     configuration {"windows"}
         prelinkcommands {
