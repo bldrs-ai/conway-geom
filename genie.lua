@@ -147,21 +147,29 @@ project "conway_geom_native"
 
     configuration {"macosx", "x64", "Debug"}
         targetdir(path.join("bin", "64", "debug"))
-        libdirs {"./dependencies/macOS-arm64"}
+        libdirs {
+            "./build/draco",
+            "./build/gltf-sdk/GLTFSDK",
+            "./build/manifold/src/manifold"
+        }
         links {
             "draco",
-            "manifold",
-            "gltfsdk"
+            "GLTFSDK",
+            "manifold"
         }
         flags {"EnableAVX2"}
 
     configuration {"macosx", "x64", "Release"}
         targetdir(path.join("bin", "64", "release"))
-        libdirs {"./dependencies/macOS-arm64"}
+        libdirs {
+            "./build/draco",
+            "./build/gltf-sdk/GLTFSDK",
+            "./build/manifold/src/manifold"
+        }
         links {
             "draco",
-            "manifold",
-            "gltfsdk"
+            "GLTFSDK",
+            "manifold"
         }
         flags {"EnableAVX2"}
 
@@ -302,21 +310,15 @@ project "conway_geom_native_tests"
 
     configuration {"macosx", "x64", "Debug"}
         targetdir(path.join("bin", "64", "debug"))
-        libdirs {"./dependencies/macOS-arm64"}
-        links {
-            "draco",
-            "manifold",
-            "gltfsdk"
+        libdirs {
+            "./build/draco",
+            "./build/manifold/src/manifold",
+            "./build/gltf-sdk/GLTFSDK"
         }
-        flags {"EnableAVX2"}
-
-    configuration {"macosx", "x64", "Release"}
-        targetdir(path.join("bin", "64", "release"))
-        libdirs {"./dependencies/macOS-arm64"}
         links {
             "draco",
+            "GLTFSDK"
             "manifold",
-            "gltfsdk"
         }
         flags {"EnableAVX2"}
 
@@ -435,14 +437,22 @@ project "webifc_native"
 
     configuration {"macosx", "x64", "Debug"}
         targetdir(path.join("bin", "64", "debug"))
-        libdirs {"./dependencies/macOS-arm64"}
-        links {"manifold"}
+        libdirs {
+            "./build/manifold/src/manifold"
+        }
+        links {
+            "manifold"
+        }
         flags {"EnableAVX2"}
 
     configuration {"macosx", "x64", "Release"}
         targetdir(path.join("bin", "64", "release"))
-        libdirs {"./dependencies/macOS-arm64"}
-        links {"manifold"}
+        libdirs {
+            "./build/manifold/src/manifold"
+        }
+        links {
+            "manifold"
+        }
         flags {"EnableAVX2"}
 
     configuration {"windows", "x64", "Debug"}
