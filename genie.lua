@@ -427,6 +427,7 @@ prelinkcommands {
 		)"
 }
 
+
 if _ARGS[1] == "profile" then
     configuration {"gmake"}
     linkoptions {
@@ -451,9 +452,7 @@ if _ARGS[1] == "profile" then
         "-s EXPORT_NAME=ConwayGeomWasm",
        -- "-s SINGLE_FILE=1",
         "-s EXPORT_ES6=1",
-        "-s MODULARIZE=1",
-        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
-        "-lworkerfs.js"
+        "-s MODULARIZE=1"
     }
 else 
     configuration {"gmake"}
@@ -468,7 +467,6 @@ else
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
-        --"-gsource-map",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=web",
         "-s SINGLE_FILE=1",

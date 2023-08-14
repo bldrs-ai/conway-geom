@@ -35,12 +35,14 @@ if not exist ".git\modules" (
     )
 )
 
+REM Check if the third argument is empty
 if "%~3"=="" (
     .\windows_genie\genie gmake
 ) else (
     REM Check if the third argument is "profile"
     if "%~3"=="profile" (
-        .\windows_genie\genie gmake profile
+       SET compiled_path=file:///%CD%\..\..\compiled\dependencies\conway-geom\Dist\
+        .\windows_genie\genie gmake profile !compiled_path!
     )
 )
 if errorlevel 1 (
@@ -94,6 +96,12 @@ IF "%1"=="test" (
     )
 )
 
+REM Check if the third argument is "profile"
+IF "%~3" NEQ "" IF "%~3" == "profile" (
+    echo Remapping source map paths...
+    powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1"
+)
+
 cd ..
 
 if errorlevel 1 (
@@ -103,3 +111,5 @@ if errorlevel 1 (
     echo Finished.
     exit /b 0
 )
+
+endlocal
