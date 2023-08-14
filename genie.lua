@@ -428,7 +428,7 @@ prelinkcommands {
 }
 
 
-if _ARGS[1] == "profile" then
+if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
     linkoptions {
         "-g -O0",
@@ -436,7 +436,6 @@ if _ARGS[1] == "profile" then
         "-gpubnames",
         "--bind",
         "--dts",
-      -- "-sWASM_BIGINT",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ENVIRONMENT=web,node",
@@ -444,13 +443,10 @@ if _ARGS[1] == "profile" then
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
-        --"-s ERROR_ON_WASM_CHANGES_AFTER_LINK",
-        --"-g4",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
         --"-sASSERTIONS",
         "-s EXPORT_NAME=ConwayGeomWasm",
-       -- "-s SINGLE_FILE=1",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1"
     }
