@@ -290,7 +290,10 @@ project "conway_geom_native_tests"
     configuration {"Release", "gmake"}
 
     configuration "Release*"
-        flags {"OptimizeSpeed", "NoIncrementalLink"}
+        flags {
+            "OptimizeSpeed",
+            "NoIncrementalLink"
+        }
 
     configuration {"Emscripten", "Debug"}
         libdirs {"./dependencies/wasm"}
