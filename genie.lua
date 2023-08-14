@@ -569,19 +569,28 @@ project "ConwayGeomWasm"
         }
 
     configuration {"Emscripten", "Debug"}
-        libdirs {"./dependencies/wasm"}
+        libdirs {
+            "./build/draco",
+            "./build/gltf-sdk/GLTFSDK"
+        }
         links {
             "draco",
-            "manifold",
-            "gltfsdk"
+            "GLTFSDK"
         }
 
     configuration {"Emscripten", "Release"}
-        libdirs {"./dependencies/wasm"}
+        libdirs {
+            "./build/draco",
+            "./build/gltf-sdk/GLTFSDK",
+            "./build/manifold/src/manifold"
+        }
         links {
             "draco",
-            "manifold",
-            "gltfsdk"
+            "GLTFSDK",
+            "manifold"
+        }
+        linkoptions {
+            "-error-limit=0"
         }
 
     configuration {"macosx", "x64", "Debug"}
