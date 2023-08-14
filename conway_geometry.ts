@@ -489,4 +489,3 @@ export class ConwayGeometry {
     this.initialized = false
   }
 }
-
