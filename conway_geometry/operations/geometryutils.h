@@ -621,7 +621,7 @@ inline IfcGeometry flattenGeometry(std::vector<IfcGeometry> &geoms) {
       glm::dvec3 c = meshGeom.GetPoint(f.i2);
       newGeom.AddFace(a, b, c);
     }
-    newGeom.AddComponent(meshGeom);
+    newGeom.AddComponent(&meshGeom);
   }
 
   return newGeom;

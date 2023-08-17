@@ -360,7 +360,7 @@ class ConwayGeometryProcessor {
     std::vector<IndexedPolygonalFace> faces;
   };
   IfcGeometry getPolygonalFaceSetGeometry(
-      ParamsGetPolygonalFaceSetGeometry parameters);
+      ParamsGetPolygonalFaceSetGeometry& parameters);
 
   struct Segment {
     bool isArcType = false;

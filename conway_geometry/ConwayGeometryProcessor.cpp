@@ -152,74 +152,6 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
   return result;
 }
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtract(
-    const std::vector<IfcGeometry> &firstGroups,
-    std::vector<IfcGeometry> &secondGroups) {
-  std::vector<IfcGeometry> results;
-
-  std::vector<IfcGeometry> firstGeoms;
-  for (auto &firsts : firstGroups) {
-    if (firsts.components.size() < 2) {
-      firstGeoms.push_back(firsts);
-    } else {
-      firstGeoms.insert(firstGeoms.end(), firsts.components.begin(),
-                        firsts.components.end());
-    }
-  }
-
-  std::vector<IfcGeometry> secondGeoms;
-  for (auto &seconds : secondGroups) {
-    if (seconds.components.size() < 2) {
-      secondGeoms.push_back(seconds);
-    } else {
-      secondGeoms.insert(secondGeoms.end(), seconds.components.begin(),
-                         seconds.components.end());
-    }
-  }
-
-  for (auto &firstGeom : firstGeoms) {
-    IfcGeometry result = firstGeom;
-    for (auto &secondGeom : secondGeoms) {
-      bool doit = true;
-      glm::dvec3 center;
-      glm::dvec3 extents;
-      result.GetCenterExtents(center, extents);
-
-      glm::dvec3 s_center;
-      glm::dvec3 s_extents;
-      secondGeom.GetCenterExtents(s_center, s_extents);
-
-      if (secondGeom.numFaces == 0) {
-        printf("bool aborted due to empty source or target");
-
-        // bail out because we will get strange meshes
-        // if this happens, probably there's an issue parsing the mesh that
-        // occurred earlier
-        doit = false;
-      }
-
-      if (result.numFaces == 0) {
-        printf("bool aborted due to empty source or target");
-
-        // bail out because we will get strange meshes
-        // if this happens, probably there's an issue parsing the mesh that
-        // occurred earlier
-        break;
-      }
-
-      if (doit) {
-        auto fb1 = GeomToFBGeom(result);
-        auto fb2 = GeomToFBGeom(secondGeom);
-
-        result = FBGeomToGeom(fuzzybools::Subtract(fb1, fb2));
-      }
-    }
-    results.push_back(result);
-  }
-
-  return flattenGeometry(results);
-}
-
 IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
     ParamsGetRectangleProfileCurve parameters) {
   IfcCurve curve;
@@ -245,7 +177,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
   }
 
   if (parameters.flatSecondMesh.size() <= 0) {
-     printf("second mesh zero\n");
+    printf("second mesh zero\n");
     return resultGeometry;
   }
 
@@ -976,14 +908,22 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       // this internally populates the vertex float array, current storage type
       // is double
-      geom.GetVertexData();
+      // geom.GetVertexData();
 
       if (outputDraco) {
         dracoMesh.reset(new draco::Mesh());
 
-        // get number of faces
-        uint32_t numFaces = 0;
-        numFaces = geom.GetIndexDataSize() / 3;
+        // set the number of positions and faces
+        uint32_t numPositions = geom.numPoints;
+        uint32_t numFaces = geom.GetIndexDataSize() / 3;
+
+        for (uint32_t geometryComponentIndex = 0;
+             geometryComponentIndex < geom.components.size();
+             ++geometryComponentIndex) {
+          numPositions += geom.components[geometryComponentIndex]->numPoints;
+          numFaces +=
+              geom.components[geometryComponentIndex]->GetIndexDataSize() / 3;
+        }
 
         if (numFaces > 0) {
           // set number of faces
@@ -992,9 +932,6 @@ ConwayGeometryProcessor::GeometryToGltf(
           // set number of indices
           dracoMesh->set_num_points(3 * numFaces);
         }
-
-        uint32_t numPositions = 0;
-        numPositions = geom.numPoints;
 
         // Add attributes if they are present in the input data.
         if (numPositions > 0) {
@@ -1014,7 +951,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         // populate position attribute
         float vertexVal[3];
-        int32_t vertexCount = 0;
+        uint32_t vertexCount = 0;
 
         for (uint32_t i = 0; i < geom.numPoints; i++) {
           glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
@@ -1022,7 +959,37 @@ ConwayGeometryProcessor::GeometryToGltf(
           vertexVal[1] = (float)t.y;
           vertexVal[2] = (float)t.z;
           dracoMesh->attribute(pos_att_id)
-              ->SetAttributeValue(draco::AttributeValueIndex(i), vertexVal);
+              ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
+                                  vertexVal);
+        }
+
+        // populate geometry components position attribute
+        for (uint32_t geometryComponentIndex = 0;
+             geometryComponentIndex < geom.components.size();
+             ++geometryComponentIndex) {
+          for (uint32_t index = 0;
+               index < geom.components[geometryComponentIndex]->numPoints;
+               ++index) {
+            glm::dvec4 transformedPointMatrix =
+                geom.componentTransforms[geometryComponentIndex] *
+                glm::dvec4(
+                    glm::dvec3(
+                        geom.components[geometryComponentIndex]
+                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
+                        geom.components[geometryComponentIndex]
+                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
+                        geom.components[geometryComponentIndex]
+                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
+                                         2]),
+                    1);
+            glm::dvec4 t = transform * transformedPointMatrix;
+            vertexVal[0] = (float)t.x;
+            vertexVal[1] = (float)t.y;
+            vertexVal[2] = (float)t.z;
+            dracoMesh->attribute(pos_att_id)
+                ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
+                                    vertexVal);
+          }
         }
 
         // no textures, just map vertices to face indices
@@ -1050,6 +1017,13 @@ ConwayGeometryProcessor::GeometryToGltf(
           dracoMesh->attribute(pos_att_id)
               ->SetPointMapEntry(vert_id_2,
                                  draco::AttributeValueIndex(triangle2));
+        }
+
+        uint32_t totalPoints = geom.numPoints;
+        for (uint32_t geometryComponentIndex = 0;
+             geometryComponentIndex < geom.components.size();
+             ++geometryComponentIndex) {
+          
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1482,7 +1456,7 @@ std::string ConwayGeometryProcessor::GeometryToObj(
 }
 
 IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
-    ParamsGetPolygonalFaceSetGeometry parameters) {
+    ParamsGetPolygonalFaceSetGeometry &parameters) {
   IfcGeometry geom;
   std::vector<IfcBound3D> bounds;
 

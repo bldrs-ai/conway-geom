@@ -23,7 +23,8 @@ namespace fuzzybools
 namespace conway::geometry {
 
 struct IfcGeometry {
-  std::vector<IfcGeometry> components;
+  std::vector<IfcGeometry*> components;
+  std::vector<glm::dmat4x4> componentTransforms;
   std::vector<float> fvertexData;
   std::vector<double> vertexData;
   std::vector<uint32_t> indexData;
@@ -39,10 +40,12 @@ struct IfcGeometry {
 
   glm::dvec3 GetExtent() const;
   void Normalize();
-  void AddComponent(IfcGeometry &g);
-  void AddPoint(glm::dvec4 &pt, glm::dvec3 &n);
-  void AddPoint(glm::dvec3 &pt, glm::dvec3 &n);
-  void AddFace(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c);
+  void AddComponentTransform(glm::dmat4x4 transform);
+  void AddComponent(IfcGeometry *g);
+  void AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4 transform);
+  void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
+  void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
+  void AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c);
   void AddFace(uint32_t a, uint32_t b, uint32_t c);
   void ReverseFace(uint32_t index);
   void ReverseFaces();
@@ -53,7 +56,8 @@ struct IfcGeometry {
   IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;
   IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const;
   uint32_t GetVertexData();
-  void AppendGeometry(IfcGeometry geom);
+  void AppendGeometry(IfcGeometry &geom);
+  void AppendWithTransform(IfcGeometry &geom, glm::dmat4x4 transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();
