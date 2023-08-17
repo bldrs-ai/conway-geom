@@ -49,7 +49,13 @@ if [ ! -d ".git/modules" ]; then
     fi
 fi
 
-./macos_genie/genie-$(uname -m) gmake
+if [ -z "$3" ]; then
+    ./macos_genie/genie-$(uname -m) gmake
+elif [ "$3" = "profile" ]; then
+    work_dir="$(pwd)"
+    compiled_path="file://$work_dir/../../compiled/dependencies/conway-geom/Dist/"
+    ./macos_genie/genie-$(uname -m) gmake profile "$compiled_path"
+fi 
 if [ $? -ne 0 ]; then
     echo "! Could not generate makefiles" 1>&2
     exit 1
@@ -72,7 +78,6 @@ else
         make config=${native_config} conway_geom_native webifc_native &&
         make config=${wasm_config} ConwayGeomWasm )
     else
-        echo $2
         if [ "$2" = "native" ]; then
             ( cd gmake &&
             make config=${native_config} conway_geom_native webifc_native )
@@ -89,5 +94,22 @@ else
         exit 1
     fi
 fi
+
+if [ -n "$3" ] && [ "$3" = "profile" ]; then
+    echo "Remapping source map..."
+    SOURCE_MAP="./bin/release/ConwayGeomWasm.wasm.map"
+
+    # Use sed to replace the entire path up to and including /emsdk/ with $EMSDK
+    sed -i.bak -e 's|[^"]*\/emsdk\/|'"$EMSDK"'\/|g' "$SOURCE_MAP"
+
+    # Prepend current working directory to paths that start with ../../../
+    sed -i.bak -e 's|"../../../|"'"$(pwd)"'/|g' "$SOURCE_MAP"
+
+    # Prepend current working directory to paths that start with ../../
+    sed -i.bak -e 's|"../../|"'"$(pwd)"'/|g' "$SOURCE_MAP" 
+
+    # Cleanup backup file
+    rm "$SOURCE_MAP.bak"
+fi 
 
 echo "Finished."

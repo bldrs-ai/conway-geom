@@ -504,15 +504,50 @@ project "ConwayGeomWasm"
                 )"
         }
 
+if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
-        linkoptions {
-            "-O3",
-            "--bind",
-            "--dts",
-            "-03",
-            "-flto",
-            '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -sSTACK_SIZE=5MB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=ConwayGeomWasm -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
-        }
+    linkoptions {
+        "-g -O0",
+        "-gdwarf-5",
+        "-gpubnames",
+        "--bind",
+        "--dts",
+        "-flto",
+        "--define-macro=REAL_T_IS_DOUBLE",
+        "-s ENVIRONMENT=web,node",
+        "-s ALLOW_MEMORY_GROWTH=1",
+        "-s MAXIMUM_MEMORY=4GB",
+        "-s STACK_SIZE=5MB",
+        "-s FORCE_FILESYSTEM=1",
+        "-gsource-map",
+        "--source-map-base " .. _ARGS[2],
+        --"-sASSERTIONS",
+        "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s EXPORT_ES6=1",
+        "-s MODULARIZE=1"
+    }
+else 
+    configuration {"gmake"}
+    linkoptions {
+        "-O3",
+        "--bind",
+        "--dts",
+        "-03",
+        "-flto",
+        "--define-macro=REAL_T_IS_DOUBLE",
+        "-s ALLOW_MEMORY_GROWTH=1",
+        "-s MAXIMUM_MEMORY=4GB",
+        "-s STACK_SIZE=5MB",
+        "-s FORCE_FILESYSTEM=1",
+        "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s ENVIRONMENT=web",
+        "-s SINGLE_FILE=1",
+        "-s EXPORT_ES6=1",
+        "-s MODULARIZE=1",
+        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-lworkerfs.js"
+    }
+end
 
     configuration {}
         libdirs {}
