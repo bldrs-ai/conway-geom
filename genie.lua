@@ -523,6 +523,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--source-map-base " .. _ARGS[2],
         --"-sASSERTIONS",
         "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1"
     }
@@ -541,7 +542,8 @@ else
         "-s FORCE_FILESYSTEM=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=web",
-        "-s SINGLE_FILE=1",
+      --  "-s SINGLE_FILE=1",
+        "-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
