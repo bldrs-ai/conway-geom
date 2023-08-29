@@ -514,7 +514,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--dts",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
-        "-s ENVIRONMENT=web,node",
+        "-s ENVIRONMENT=web",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",

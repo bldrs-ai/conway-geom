@@ -1,4 +1,5 @@
 
+import { LocateFileHandlerFn } from '../../src/shim/ifc_api.js'
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
 
@@ -18,10 +19,10 @@ export interface StdVector<T> {
 }
 
 export interface GeometryObject {
-  getVertexData: () => any
-  getVertexDataSize: () => number
-  getIndexData: () => any
-  getIndexDataSize: () => number
+  GetVertexData: () => any
+  GetVertexDataSize: () => number
+  GetIndexData: () => any
+  GetIndexDataSize: () => number
   appendGeometry(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
@@ -288,9 +289,9 @@ export class ConwayGeometry {
    *
    * @return {Promise<boolean>} - initialization status
    */
-  async initialize(): Promise<boolean> {
+  async initialize(fileHandler?:LocateFileHandlerFn): Promise<boolean> {
     if (this.wasmModule === void 0) {
-      this.wasmModule = await ConwayGeomWasm()
+      this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
     }
 
     this.initialized = false

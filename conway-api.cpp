@@ -304,11 +304,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
-      .function("getVertexData", &conway::geometry::IfcGeometry::GetVertexData)
-      .function("getVertexDataSize",
+      .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
+      .function("GetVertexDataSize",
                 &conway::geometry::IfcGeometry::GetVertexDataSize)
-      .function("getIndexData", &conway::geometry::IfcGeometry::GetIndexData)
-      .function("getIndexDataSize",
+      .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
+      .function("GetIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
       .function("appendGeometry",
                 &conway::geometry::IfcGeometry::AppendGeometry)
