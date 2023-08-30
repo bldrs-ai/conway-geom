@@ -12,7 +12,7 @@ namespace conway::geometry {
 glm::dvec3 IfcGeometry::GetExtent() const { return max - min; }
 
 // set all vertices relative to min
-void IfcGeometry::Normalize() {
+void IfcGeometry::NormalizeInPlace() {
   for (size_t i = 0; i < vertexData.size(); i += 6) {
     vertexData[i + 0] = vertexData[i + 0] - min.x;
     vertexData[i + 1] = vertexData[i + 1] - min.y;

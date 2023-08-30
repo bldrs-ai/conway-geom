@@ -20,6 +20,8 @@ export interface StdVector<T> {
 
 export interface GeometryObject {
   GetVertexData: () => any
+  GetPoint(parameter:number): Vector3
+  NormalizeInPlace(): void
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
@@ -28,6 +30,9 @@ export interface GeometryObject {
   applyTransform(parameter: any): void
   materialIndex: number
   hasDefaultMaterial: boolean
+  min:Vector3
+  max:Vector3
+  normalized:boolean
 }
 
 export interface SurfaceObject {

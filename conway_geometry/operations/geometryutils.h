@@ -325,7 +325,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
-      printf("No basis found for brep! Count: %i\n", ++triangulateBoundsCount);
+     // printf("No basis found for brep! Count: %i\n", ++triangulateBoundsCount);
       return;
     }
 

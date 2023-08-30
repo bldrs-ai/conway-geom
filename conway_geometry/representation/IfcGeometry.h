@@ -39,6 +39,7 @@ struct IfcGeometry {
 
   glm::dvec3 GetExtent() const;
   void Normalize();
+  void NormalizeInPlace();
   void AddComponent(IfcGeometry &g);
   void AddPoint(glm::dvec4 &pt, glm::dvec3 &n);
   void AddPoint(glm::dvec3 &pt, glm::dvec3 &n);

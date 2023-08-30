@@ -307,6 +307,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
       .function("GetVertexDataSize",
                 &conway::geometry::IfcGeometry::GetVertexDataSize)
+      .function("GetPoint", &conway::geometry::IfcGeometry::GetPoint)
+      .function("NormalizeInPlace", &conway::geometry::IfcGeometry::NormalizeInPlace)
       .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("GetIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
@@ -317,7 +319,10 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("clone", &conway::geometry::IfcGeometry::Clone)
       .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
       .property("hasDefaultMaterial",
-                &conway::geometry::IfcGeometry::hasDefaultMaterial);
+                &conway::geometry::IfcGeometry::hasDefaultMaterial)
+      .property("min", &conway::geometry::IfcGeometry::min)
+      .property("max", &conway::geometry::IfcGeometry::max)
+      .property("normalized", &conway::geometry::IfcGeometry::normalized);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
@@ -639,12 +644,17 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   // ifc::IFCRECTANGLEPROFILEDEF
   // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve>(
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetRectangleProfileCurve>(
       "ParamsGetRectangleProfileCurve")
-      .field("xDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::xDim)
-      .field("yDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::yDim)
-      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::hasPlacement)
-      .field("matrix", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::matrix);
+      .field("xDim", &conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetRectangleProfileCurve::xDim)
+      .field("yDim", &conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetRectangleProfileCurve::yDim)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("matrix", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetRectangleProfileCurve::matrix);
 
   // Define the ResultsGltf object
   emscripten::value_object<
