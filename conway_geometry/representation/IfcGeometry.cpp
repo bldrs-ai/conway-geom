@@ -24,42 +24,42 @@ void IfcGeometry::Normalize() {
   normalized = true;
 }
 
-void IfcGeometry::AddComponent(IfcGeometry *g) { 
-  components.push_back(g); 
-}
+// void IfcGeometry::AddComponent(IfcGeometry *g) { 
+//   components.push_back(g); 
+// }
 
-void IfcGeometry::AddComponentTransform(glm::dmat4x4 transform) {
-  componentTransforms.push_back(transform);
-}
+// void IfcGeometry::AddComponentTransform(glm::dmat4x4 transform) {
+//   componentTransforms.push_back(transform);
+// }
 
-void IfcGeometry::AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4 transform) {
-  for (uint32_t index = 0; index < numPoints; ++index) {
-    glm::dvec4 t =
-        transform *
-        glm::dvec4(
-            glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
-                       geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
-                       geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]),
-            1);
+// void IfcGeometry::AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4 transform) {
+//   for (uint32_t index = 0; index < numPoints; ++index) {
+//     glm::dvec4 t =
+//         transform *
+//         glm::dvec4(
+//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]),
+//             1);
 
-    glm::dvec4 n =
-        transform *
-        glm::dvec4(
-            glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 3],
-                       geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4],
-                       geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5]),
-            0);
+//     glm::dvec4 n =
+//         transform *
+//         glm::dvec4(
+//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 3],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5]),
+//             0);
 
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2] = t.z;
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 3] = n.x;
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4] = n.y;
-    geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5] = n.z;
-  }
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2] = t.z;
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 3] = n.x;
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4] = n.y;
+//     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5] = n.z;
+//   }
 
-  components.push_back(geom);
-}
+//   components.push_back(geom);
+// }
 
 void IfcGeometry::AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n) {
   glm::dvec3 p = pt;

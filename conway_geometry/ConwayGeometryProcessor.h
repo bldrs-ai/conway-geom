@@ -343,8 +343,8 @@ class ConwayGeometryProcessor {
     std::vector<std::string> bufferUris;
     std::vector<std::vector<uint8_t>> buffers;
   };
-  ResultsGltf GeometryToGltf(std::vector<conway::geometry::IfcGeometry> &geom,
-                             std::vector<conway::geometry::Material> &materials,
+  ResultsGltf GeometryToGltf(std::vector< conway::geometry::IfcGeometryCollection > &geom,
+                             std::vector< conway::geometry::Material > &materials,
                              bool isGlb, bool outputDraco, std::string filePath,
                              bool outputFile,
                              glm::dmat4 transform = glm::dmat4(1));

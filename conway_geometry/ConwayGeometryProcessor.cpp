@@ -771,13 +771,14 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
 ConwayGeometryProcessor::GeometryToGltf(
-    std::vector<conway::geometry::IfcGeometry> &geoms,
+    std::vector<conway::geometry::IfcGeometryCollection > &geoms,
     std::vector<conway::geometry::Material> &materials, bool isGlb,
     bool outputDraco, std::string filePath, bool outputFile,
     glm::dmat4 transform) {
   ResultsGltf results;
 
   try {
+
     // Construct a Mesh and add the MeshPrimitive as a child
     Microsoft::glTF::Mesh mesh;
     // Construct a Scene
@@ -883,7 +884,8 @@ ConwayGeometryProcessor::GeometryToGltf(
     std::vector<Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression>
         dracoPrimitives;
 
-    for (conway::geometry::IfcGeometry &geom : geoms) {
+    for (conway::geometry::IfcGeometryCollection& geom : geoms) {
+
       // create a mesh object
       std::unique_ptr<draco::Mesh> dracoMesh;
 
@@ -911,21 +913,24 @@ ConwayGeometryProcessor::GeometryToGltf(
       // geom.GetVertexData();
 
       if (outputDraco) {
+
         dracoMesh.reset(new draco::Mesh());
 
         // set the number of positions and faces
-        uint32_t numPositions = geom.numPoints;
-        uint32_t numFaces = geom.GetIndexDataSize() / 3;
+        uint32_t numPositions = 0;
+        uint32_t numIndices   = 0;
 
-        for (uint32_t geometryComponentIndex = 0;
-             geometryComponentIndex < geom.components.size();
-             ++geometryComponentIndex) {
-          numPositions += geom.components[geometryComponentIndex]->numPoints;
-          numFaces +=
-              geom.components[geometryComponentIndex]->GetIndexDataSize() / 3;
+        for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
+
+          conway::geometry::IfcGeometry& component = *componentPtr;
+
+          numPositions += component.numPoints;
+          numIndices += component.GetIndexDataSize();
         }
 
-        if (numFaces > 0) {
+        uint32_t numFaces = numIndices / 3;
+
+        if ( numFaces > 0 ) {
           // set number of faces
           dracoMesh->SetNumFaces(numFaces);
 
@@ -950,80 +955,76 @@ ConwayGeometryProcessor::GeometryToGltf(
         int32_t numTexCoords = 0;
 
         // populate position attribute
-        float vertexVal[3];
-        uint32_t vertexCount = 0;
+        
 
-        for (uint32_t i = 0; i < geom.numPoints; i++) {
-          glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
-          vertexVal[0] = (float)t.x;
-          vertexVal[1] = (float)t.y;
-          vertexVal[2] = (float)t.z;
-          dracoMesh->attribute(pos_att_id)
-              ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
-                                  vertexVal);
-        }
+        uint32_t vertexCount  = 0;
+        uint32_t totalPoints  = 0;
+        uint32_t totalIndices = 0;
 
         // populate geometry components position attribute
         for (uint32_t geometryComponentIndex = 0;
              geometryComponentIndex < geom.components.size();
              ++geometryComponentIndex) {
-          for (uint32_t index = 0;
-               index < geom.components[geometryComponentIndex]->numPoints;
-               ++index) {
-            glm::dvec4 transformedPointMatrix =
-                geom.componentTransforms[geometryComponentIndex] *
-                glm::dvec4(
-                    glm::dvec3(
-                        geom.components[geometryComponentIndex]
-                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
-                        geom.components[geometryComponentIndex]
-                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
-                        geom.components[geometryComponentIndex]
-                            ->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
-                                         2]),
-                    1);
-            glm::dvec4 t = transform * transformedPointMatrix;
-            vertexVal[0] = (float)t.x;
-            vertexVal[1] = (float)t.y;
-            vertexVal[2] = (float)t.z;
+
+          IfcGeometry& component     = *geom.components[ geometryComponentIndex ];
+          glm::mat4    geomTransform = transform * geom.transforms[ geometryComponentIndex ];
+
+          for ( 
+              const double* where = component.vertexData.data(),
+                          * end   = where + component.vertexData.size();
+              where < end;
+              where += VERTEX_FORMAT_SIZE_FLOATS ) {
+
+            glm::dvec4 t = geomTransform * glm::dvec4(  where[ 0 ], where[ 1 ], where[ 2 ], 1 );
+
+            float vertexVal[ 3 ] = { 
+              static_cast< float >( t.x ),
+              static_cast< float >( t.y ),
+              static_cast< float >( t.z ) 
+            };
+
             dracoMesh->attribute(pos_att_id)
                 ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
-                                    vertexVal);
+                                    vertexVal );
           }
-        }
 
-        // no textures, just map vertices to face indices
-        for (size_t triangleIndex = 0; triangleIndex < numFaces;
-             ++triangleIndex) {
-          const uint32_t *triangle =
-              &(geom.indexData.data()[triangleIndex * 3]);
+          const uint32_t* triangles = component.indexData.data();
 
-          uint32_t triangle0 = triangle[0];
-          uint32_t triangle1 = triangle[1];
-          uint32_t triangle2 = triangle[2];
+          // no textures, just map vertices to face indices
+          for ( size_t triangleIndex = 0, 
+                       end           = ( component.indexData.size() / 3 );
+                triangleIndex < end;
+                ++triangleIndex) {
 
-          const draco::PointIndex vert_id_0(3 * triangleIndex);
-          const draco::PointIndex vert_id_1(3 * triangleIndex + 1);
-          const draco::PointIndex vert_id_2(3 * triangleIndex + 2);
-          const int triangulated_index = 0;
+            uint32_t        indiceIndex = triangleIndex * 3;
+            const uint32_t *triangle    = triangles + indiceIndex;
 
-          // map vertex to face index
-          dracoMesh->attribute(pos_att_id)
-              ->SetPointMapEntry(vert_id_0,
-                                 draco::AttributeValueIndex(triangle0));
-          dracoMesh->attribute(pos_att_id)
-              ->SetPointMapEntry(vert_id_1,
-                                 draco::AttributeValueIndex(triangle1));
-          dracoMesh->attribute(pos_att_id)
-              ->SetPointMapEntry(vert_id_2,
-                                 draco::AttributeValueIndex(triangle2));
-        }
+            uint32_t triangle0 = triangle[0] + totalPoints;
+            uint32_t triangle1 = triangle[1] + totalPoints;
+            uint32_t triangle2 = triangle[2] + totalPoints;
 
-        uint32_t totalPoints = geom.numPoints;
-        for (uint32_t geometryComponentIndex = 0;
-             geometryComponentIndex < geom.components.size();
-             ++geometryComponentIndex) {
-          
+            
+            uint32_t compositeIndiceIndex = totalIndices + indiceIndex;
+
+            const draco::PointIndex vert_id_0(compositeIndiceIndex);
+            const draco::PointIndex vert_id_1(compositeIndiceIndex + 1);
+            const draco::PointIndex vert_id_2(compositeIndiceIndex + 2);
+            const int triangulated_index = 0;
+
+            // map vertex to face index
+            dracoMesh->attribute(pos_att_id)
+                ->SetPointMapEntry(vert_id_0,
+                                  draco::AttributeValueIndex(triangle0));
+            dracoMesh->attribute(pos_att_id)
+                ->SetPointMapEntry(vert_id_1,
+                                  draco::AttributeValueIndex(triangle1));
+            dracoMesh->attribute(pos_att_id)
+                ->SetPointMapEntry(vert_id_2,
+                                  draco::AttributeValueIndex(triangle2));
+          }
+
+          totalIndices += component.indexData.size();
+          totalPoints  += component.numPoints;
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1105,20 +1106,78 @@ ConwayGeometryProcessor::GeometryToGltf(
       std::string accessorIdPositions;
       std::string accessorIdUVs;
 
+      uint32_t numPoints  = 0; 
+      uint32_t numIndices = 0;
+
+      for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
+
+        conway::geometry::IfcGeometry& component = *componentPtr;
+
+        numPoints  += component.numPoints;
+        numIndices += component.GetIndexDataSize();
+      }
+
       // Add an Accessor for the indices and positions
-      std::vector<float> positions;
-      positions.resize(geom.numPoints * 3);
+      // std::unique_ptr< std::vector< float > > positionsPtr    =
+      //   std::make_unique< std::vector< float > >();
+      // std::unique_ptr< std::vector< uint32_t > > indexDataPtr =
+      //   std::make_unique< std::vector< uint32_t > >();
+
+      // positionOwner.push_back( std::vector< float >( numPoints * 3 ) );
+      // indiceOwner.push_back( std::vector< uint32_t >() );
+
+      std::vector<float>    positions;
+      std::vector<uint32_t> indexData;
+
+      positions.resize( numPoints * 3 );
+      indexData.reserve( numIndices );
+
+      uint32_t numFaces = numIndices / 3;
 
       std::vector<float> minValues(3U, std::numeric_limits<float>::max());
       std::vector<float> maxValues(3U, std::numeric_limits<float>::lowest());
 
-      const size_t positionCount = positions.size();
+      const size_t positionCount        = positions.size();
+      float*       positionOutputCursor = positions.data();
 
-      for (uint32_t i = 0; i < geom.numPoints; i++) {
-        glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
-        positions[3 * i + 0] = (float)t.x;
-        positions[3 * i + 1] = (float)t.y;
-        positions[3 * i + 2] = (float)t.z;
+      uint32_t pointOffset     = 0;
+      size_t   transformCursor = 0;
+
+      for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
+
+        conway::geometry::IfcGeometry& component     = *componentPtr;
+        glm::dmat4                     geomTransform = transform * geom.transforms[ transformCursor++ ];
+
+        for ( const double* where = component.vertexData.data(),
+                           *end   = where + component.vertexData.size(); 
+              where < end;
+              where += VERTEX_FORMAT_SIZE_FLOATS ) {
+
+          glm::dvec4 t = geomTransform * glm::dvec4(  where[ 0 ], where[ 1 ], where[ 2 ], 1 );
+
+          *(positionOutputCursor++) = (float)t.x;
+          *(positionOutputCursor++) = (float)t.y;
+          *(positionOutputCursor++) = (float)t.z;
+        }
+
+        size_t indexDataOffset = indexData.size();
+
+        indexData.insert( 
+          indexData.end(),
+          component.indexData.begin(),
+          component.indexData.end() );
+
+        for ( uint32_t *where = indexData.data() + indexDataOffset,
+                       *end   = indexData.data() + indexData.size(); 
+              where < end;
+              where += 3 ) {
+
+            where[ 0 ] += pointOffset;
+            where[ 1 ] += pointOffset;
+            where[ 2 ] += pointOffset; 
+        }
+
+        pointOffset += component.numPoints;
       }
 
       // Accessor min/max properties must be set for vertex position data so
@@ -1165,11 +1224,11 @@ ConwayGeometryProcessor::GeometryToGltf(
         bufferBuilder.AddBufferView(
             Microsoft::glTF::BufferViewTarget::ELEMENT_ARRAY_BUFFER);
 
-        // Copy the Accessor's id - subsequent calls to AddAccessor may
-        // invalidate the returned reference
+        // // Copy the Accessor's id - subsequent calls to AddAccessor may
+        // // invalidate the returned reference
         accessorIdIndices =
             bufferBuilder
-                .AddAccessor(geom.indexData,
+                .AddAccessor(indexData,
                              {Microsoft::glTF::TYPE_SCALAR,
                               Microsoft::glTF::COMPONENT_UNSIGNED_INT})
                 .id;
@@ -1419,7 +1478,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     return results;
   } catch (const std::exception &ex) {
-    printf("Couldn't write GLB file: %s", ex.what());
+    printf("Couldn't write GLB file: %s\n", ex.what());
     results.success = false;
     return results;
   }

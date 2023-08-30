@@ -22,9 +22,9 @@ namespace fuzzybools
 
 namespace conway::geometry {
 
+
 struct IfcGeometry {
-  std::vector<IfcGeometry*> components;
-  std::vector<glm::dmat4x4> componentTransforms;
+
   std::vector<float> fvertexData;
   std::vector<double> vertexData;
   std::vector<uint32_t> indexData;
@@ -34,15 +34,10 @@ struct IfcGeometry {
 
   uint32_t numPoints = 0;
   uint32_t numFaces = 0;
-
-  uint32_t materialIndex      = 0;
-  bool     hasDefaultMaterial = true;
-
+  
   glm::dvec3 GetExtent() const;
   void Normalize();
-  void AddComponentTransform(glm::dmat4x4 transform);
-  void AddComponent(IfcGeometry *g);
-  void AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4 transform);
+ 
   void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
   void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
   void AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c);
@@ -67,6 +62,22 @@ struct IfcGeometry {
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
                          const glm::dvec3 v3, glm::dvec3 &normal, double eps);
+};
+
+
+struct IfcGeometryCollection {
+
+  std::vector<IfcGeometry*> components;
+  std::vector<glm::dmat4x4> transforms;
+  
+  uint32_t materialIndex      = 0;
+  bool     hasDefaultMaterial = true;
+
+  void AddComponentWithTransform( IfcGeometry *geom, const glm::dmat4x4& transform) {
+
+    components.push_back( geom );
+    transforms.push_back( transform );
+  }
 };
 
 }  // namespace conway::geometry

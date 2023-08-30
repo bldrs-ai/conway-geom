@@ -3,6 +3,7 @@ import { CanonicalMaterial } from '../../src/core/canonical_material.js'
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
 
 
+type NativeVectorGeometryCollection = StdVector<GeometryCollection>
 type NativeVectorGeometry = StdVector<GeometryObject>
 type NativeVectorMaterial = StdVector<MaterialObject>
 
@@ -24,6 +25,15 @@ export interface StdVector<T> {
   clear(): void
 }
 
+
+export interface GeometryCollection {
+
+  addComponentWithTransform(geometry:GeometryObject, transform:any): void
+
+  materialIndex: number
+  hasDefaultMaterial: boolean
+}
+
 export interface GeometryObject {
   getVertexData: () => any
   getVertexDataSize: () => number
@@ -33,11 +43,8 @@ export interface GeometryObject {
   addComponentTransform(transform:any): void
   appendWithTransform(geometry: GeometryObject, transform: any): void
   addComponent(parameter: GeometryObject): void
-  addComponentWithTransform(geometry:GeometryObject, transform:any): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  materialIndex: number
-  hasDefaultMaterial: boolean
   delete(): void
 }
 
@@ -317,6 +324,31 @@ export class ConwayGeometry {
   }
 
   /**
+   * Create a native geometry collection.
+   *
+   * @return {GeometryCollection}
+   */
+  nativeGeometryCollection(): GeometryCollection {
+    const nativeGeometryCollection =
+    // eslint-disable-next-line new-cap
+      (new (this.wasmModule.IfcGeometryCollection)()) as GeometryCollection
+
+    return nativeGeometryCollection
+  }
+
+  /**
+   *
+   * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
+   */
+  nativeVectorGeometryCollection(): NativeVectorGeometryCollection {
+    const nativeVectorGeometryCollection_ =
+      // eslint-disable-next-line new-cap
+      (new (this.wasmModule.geometryCollectionArray)()) as NativeVectorGeometryCollection
+
+    return nativeVectorGeometryCollection_
+  }
+
+  /**
  * Create a native material from a canonical one.
  *
  * @param from The material to create the native material from
@@ -520,12 +552,12 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-    geometry: StdVector<GeometryObject>,
-    materials: StdVector<MaterialObject>,
-    isGlb: boolean,
-    outputDraco: boolean,
-    fileUri: string):
-    ResultsGltf {
+      geometry: StdVector<GeometryCollection>,
+      materials: StdVector<MaterialObject>,
+      isGlb: boolean,
+      outputDraco: boolean,
+      fileUri: string):
+      ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
 
