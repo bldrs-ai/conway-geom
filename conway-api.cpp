@@ -26,7 +26,7 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    std::vector<conway::geometry::IfcGeometry>& geoms,
+    std::vector< conway::geometry::IfcGeometryCollection >& geoms,
     std::vector<conway::geometry::Material>& materials, bool isGlb,
     bool outputDraco, std::string filePath) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
@@ -295,6 +295,14 @@ conway::geometry::IfcProfile createNativeIfcProfile(
   return profile;
 }
 
+
+glm::dmat4 getIdentityTransform() {
+  return glm::dmat4(glm::dvec4(1, 0, 0, 0),
+                    glm::dvec4(0, 1, 0, 0),
+                    glm::dvec4(0, 0, 1, 0), 
+                    glm::dvec4(0, 0, 0, 1));
+}
+
 EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcSurface>("IfcSurface")
       .constructor<>();
@@ -316,13 +324,30 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
-      .function("clone", &conway::geometry::IfcGeometry::Clone)
-      .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
-      .property("hasDefaultMaterial",
-                &conway::geometry::IfcGeometry::hasDefaultMaterial)
+      .function("appendWithTransform",
+                &conway::geometry::IfcGeometry::AppendWithTransform)
       .property("min", &conway::geometry::IfcGeometry::min)
       .property("max", &conway::geometry::IfcGeometry::max)
-      .property("normalized", &conway::geometry::IfcGeometry::normalized);
+      .property("normalized", &conway::geometry::IfcGeometry::normalized)
+      // .function("addComponent", &conway::geometry::IfcGeometry::AddComponent,
+      //           emscripten::allow_raw_pointers())
+      // .function("addComponentWithTransform",
+      //           &conway::geometry::IfcGeometry::AddComponentWithTransform,
+      //           emscripten::allow_raw_pointers())
+      // .function("addComponentTransform", &conway::geometry::IfcGeometry::AddComponentTransform)
+      .function("clone", &conway::geometry::IfcGeometry::Clone);
+      // .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
+      // .property("hasDefaultMaterial",
+      //           &conway::geometry::IfcGeometry::hasDefaultMaterial);
+
+  emscripten::class_<conway::geometry::IfcGeometryCollection>("IfcGeometryCollection")
+      .constructor<>()
+      .function("addComponentWithTransform",
+                &conway::geometry::IfcGeometryCollection::AddComponentWithTransform,
+                emscripten::allow_raw_pointers())
+      .property("materialIndex", &conway::geometry::IfcGeometryCollection::materialIndex)
+      .property("hasDefaultMaterial",
+                &conway::geometry::IfcGeometryCollection::hasDefaultMaterial);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
@@ -393,6 +418,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("y", &glm::vec2::y);
 
   emscripten::register_vector<conway::geometry::Material>("materialArray");
+  emscripten::register_vector<conway::geometry::IfcGeometry*>("geometryPointerArray");
+  emscripten::register_vector<conway::geometry::IfcGeometryCollection>("geometryCollectionArray");
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
@@ -729,4 +756,5 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("createBound3D", &createBound3D);
   emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
   emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
+  emscripten::function("getIdentityTransform", &getIdentityTransform);
 }

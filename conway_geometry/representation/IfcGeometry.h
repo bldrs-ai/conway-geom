@@ -22,8 +22,9 @@ namespace fuzzybools
 
 namespace conway::geometry {
 
+
 struct IfcGeometry {
-  std::vector<IfcGeometry> components;
+
   std::vector<float> fvertexData;
   std::vector<double> vertexData;
   std::vector<uint32_t> indexData;
@@ -33,17 +34,14 @@ struct IfcGeometry {
 
   uint32_t numPoints = 0;
   uint32_t numFaces = 0;
-
-  uint32_t materialIndex      = 0;
-  bool     hasDefaultMaterial = true;
-
+  
   glm::dvec3 GetExtent() const;
   void Normalize();
   void NormalizeInPlace();
   void AddComponent(IfcGeometry &g);
-  void AddPoint(glm::dvec4 &pt, glm::dvec3 &n);
-  void AddPoint(glm::dvec3 &pt, glm::dvec3 &n);
-  void AddFace(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c);
+  void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
+  void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
+  void AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c);
   void AddFace(uint32_t a, uint32_t b, uint32_t c);
   void ReverseFace(uint32_t index);
   void ReverseFaces();
@@ -54,7 +52,8 @@ struct IfcGeometry {
   IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;
   IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const;
   uint32_t GetVertexData();
-  void AppendGeometry(IfcGeometry geom);
+  void AppendGeometry(IfcGeometry &geom);
+  void AppendWithTransform(IfcGeometry &geom, glm::dmat4x4 transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();
@@ -64,6 +63,22 @@ struct IfcGeometry {
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
                          const glm::dvec3 v3, glm::dvec3 &normal, double eps);
+};
+
+
+struct IfcGeometryCollection {
+
+  std::vector<IfcGeometry*> components;
+  std::vector<glm::dmat4x4> transforms;
+  
+  uint32_t materialIndex      = 0;
+  bool     hasDefaultMaterial = true;
+
+  void AddComponentWithTransform( IfcGeometry *geom, const glm::dmat4x4& transform) {
+
+    components.push_back( geom );
+    transforms.push_back( transform );
+  }
 };
 
 }  // namespace conway::geometry

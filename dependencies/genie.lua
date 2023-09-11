@@ -259,10 +259,19 @@ linkoptions {
     '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=gltfsdk -s ENVIRONMENT=web -s SINGLE_FILE=1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s EXPORTED_RUNTIME_METHODS=["FS, WORKERFS"] -lworkerfs.js'
 }
 
+configuration {"windows"}
+        prelinkcommands {
+            "$(eval NEWLINKOBJS=$(LINKOBJS)_) $(eval NEWOBJRESP=$(OBJRESP)_) $(eval LINKCMD=$(CXX) -o $(TARGET) $(NEWLINKOBJS) $(RESOURCES) $(ARCH) $(ALL_LDFLAGS) $(LIBS))",
+            "$(if $(wildcard $(NEWOBJRESP)), $(shell del $(subst /,\\,$(NEWOBJRESP))))",
+            "$(foreach string,$(OBJECTS),\
+                $(file >> $(NEWOBJRESP),$(string) )\
+                )"
+        }
+
 configuration {}
 libdirs {}
 links {}
-flags {"Symbols", "FullSymbols"}
+flags {"Symbols", "FullSymbols","UseObjectResponseFile"}
 
 includedirs {
     "../external/gltf-sdk/GLTFSDK/Inc",

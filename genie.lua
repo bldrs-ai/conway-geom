@@ -514,18 +514,21 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--dts",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
-        "-s ENVIRONMENT=web",
+        "-s ENVIRONMENT=node",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
-        --"-sASSERTIONS",
+        "-sASSERTIONS",
+        "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
-        "-s USE_ES6_IMPORT_META=0",
+       -- "-s USE_ES6_IMPORT_META=0",
+       "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORT_ES6=1",
-        "-s MODULARIZE=1"
+        "-s MODULARIZE=1",
+        "-sNO_DISABLE_EXCEPTION_CATCHING"
     }
 else 
     configuration {"gmake"}
