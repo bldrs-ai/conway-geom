@@ -543,7 +543,7 @@ else
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=web",
       --  "-s SINGLE_FILE=1",
-        "-s USE_ES6_IMPORT_META=0",
+      --  "-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",

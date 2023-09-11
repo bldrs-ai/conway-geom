@@ -974,6 +974,10 @@ emscripten::val GetLine(uint32_t modelID, uint32_t expressID)
     retVal.set(emscripten::val("type"), line.ifcType);
     retVal.set(emscripten::val("arguments"), arguments);
 
+    printf("%s", arguments.as<std::string>().c_str());
+
+
+
     return retVal;
 }
 

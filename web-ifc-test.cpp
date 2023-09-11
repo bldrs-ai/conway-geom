@@ -7,7 +7,7 @@
 #include <iostream>
 #include <sstream>
 
-// #include "include/web-ifc.h"
+ //#include "include/web-ifc.h"
 // #include "include/conway-geometry.h"
 // #include "include/ifc-schema.h"
 // #include "include/math/triangulate-with-boundaries.h"
@@ -81,10 +81,18 @@ void DumpGeom(const fuzzybools::Geometry &geom,
   writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
 }
 
+
 std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     webifc::parsing::IfcLoader &loader,
     webifc::geometry::IfcGeometryProcessor &geometryLoader) {
   std::vector<webifc::geometry::IfcFlatMesh> meshes;
+
+  std::vector<uint32_t> expressIDs;
+    auto numLines = loader.GetNumLines();
+    for (int i = 0; i < numLines; i++)
+    {
+        expressIDs.push_back(loader.GetLine(i).expressID);
+    }
 
   for (auto type : schema.GetIfcElementList()) {
     auto elements = loader.GetExpressIDsWithType(type);
