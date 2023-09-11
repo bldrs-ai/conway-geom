@@ -26,7 +26,7 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    std::vector<conway::geometry::IfcGeometry>& geoms,
+    std::vector< conway::geometry::IfcGeometryCollection >& geoms,
     std::vector<conway::geometry::Material>& materials, bool isGlb,
     bool outputDraco, std::string filePath) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
@@ -314,10 +314,27 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendGeometry)
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
-      .function("clone", &conway::geometry::IfcGeometry::Clone)
-      .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
+      .function("appendWithTransform",
+                &conway::geometry::IfcGeometry::AppendWithTransform)
+      // .function("addComponent", &conway::geometry::IfcGeometry::AddComponent,
+      //           emscripten::allow_raw_pointers())
+      // .function("addComponentWithTransform",
+      //           &conway::geometry::IfcGeometry::AddComponentWithTransform,
+      //           emscripten::allow_raw_pointers())
+      // .function("addComponentTransform", &conway::geometry::IfcGeometry::AddComponentTransform)
+      .function("clone", &conway::geometry::IfcGeometry::Clone);
+      // .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
+      // .property("hasDefaultMaterial",
+      //           &conway::geometry::IfcGeometry::hasDefaultMaterial);
+
+  emscripten::class_<conway::geometry::IfcGeometryCollection>("IfcGeometryCollection")
+      .constructor<>()
+      .function("addComponentWithTransform",
+                &conway::geometry::IfcGeometryCollection::AddComponentWithTransform,
+                emscripten::allow_raw_pointers())
+      .property("materialIndex", &conway::geometry::IfcGeometryCollection::materialIndex)
       .property("hasDefaultMaterial",
-                &conway::geometry::IfcGeometry::hasDefaultMaterial);
+                &conway::geometry::IfcGeometryCollection::hasDefaultMaterial);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
@@ -388,6 +405,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("y", &glm::vec2::y);
 
   emscripten::register_vector<conway::geometry::Material>("materialArray");
+  emscripten::register_vector<conway::geometry::IfcGeometry*>("geometryPointerArray");
+  emscripten::register_vector<conway::geometry::IfcGeometryCollection>("geometryCollectionArray");
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
@@ -639,12 +658,17 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   // ifc::IFCRECTANGLEPROFILEDEF
   // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve>(
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetRectangleProfileCurve>(
       "ParamsGetRectangleProfileCurve")
-      .field("xDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::xDim)
-      .field("yDim", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::yDim)
-      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::hasPlacement)
-      .field("matrix", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::matrix);
+      .field("xDim", &conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetRectangleProfileCurve::xDim)
+      .field("yDim", &conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetRectangleProfileCurve::yDim)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("matrix", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetRectangleProfileCurve::matrix);
 
   // Define the ResultsGltf object
   emscripten::value_object<

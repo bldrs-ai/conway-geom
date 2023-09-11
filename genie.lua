@@ -521,10 +521,12 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s FORCE_FILESYSTEM=1",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
-        --"-sASSERTIONS",
+        "-sASSERTIONS",
+        "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s EXPORT_ES6=1",
-        "-s MODULARIZE=1"
+        "-s MODULARIZE=1",
+        "-sNO_DISABLE_EXCEPTION_CATCHING"
     }
 else 
     configuration {"gmake"}

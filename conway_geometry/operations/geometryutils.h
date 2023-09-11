@@ -325,7 +325,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
-      printf("No basis found for brep! Count: %i\n", ++triangulateBoundsCount);
+    //  printf("No basis found for brep! Count: %i\n", ++triangulateBoundsCount);
       return;
     }
 
@@ -610,69 +610,69 @@ inline glm::dvec3 GetOrigin(
   }
 }
 
-inline IfcGeometry flattenGeometry(std::vector<IfcGeometry> &geoms) {
-  IfcGeometry newGeom;
+// inline IfcGeometry flattenGeometry(std::vector<IfcGeometry> &geoms) {
 
-  for (auto meshGeom : geoms) {
-    for (uint32_t i = 0; i < meshGeom.numFaces; i++) {
-      Face f = meshGeom.GetFace(i);
-      glm::dvec3 a = meshGeom.GetPoint(f.i0);
-      glm::dvec3 b = meshGeom.GetPoint(f.i1);
-      glm::dvec3 c = meshGeom.GetPoint(f.i2);
-      newGeom.AddFace(a, b, c);
-    }
-    newGeom.AddComponent(meshGeom);
-  }
+//   IfcGeometry newGeom;
 
-  return newGeom;
-}
+//   for (auto meshGeom : geoms) {
+//     for (uint32_t i = 0; i < meshGeom.numFaces; i++) {
+//       Face f = meshGeom.GetFace(i);
+//       glm::dvec3 a = meshGeom.GetPoint(f.i0);
+//       glm::dvec3 b = meshGeom.GetPoint(f.i1);
+//       glm::dvec3 c = meshGeom.GetPoint(f.i2);
+//       newGeom.AddFace(a, b, c);
+//     }
+//   }
 
-inline void flattenRecursive(
-    IfcComposedMesh &mesh,
-    std::unordered_map<uint32_t, IfcGeometry> &geometryMap,
-    std::vector<IfcGeometry> &geoms, glm::dmat4 mat) {
-  glm::dmat4 newMat = mat * mesh.transformation;
+//   return newGeom;
+// }
 
-  bool transformationBreaksWinding = MatrixFlipsTriangles(newMat);
+// inline void flattenRecursive(
+//     IfcComposedMesh &mesh,
+//     std::unordered_map<uint32_t, IfcGeometry> &geometryMap,
+//     std::vector<IfcGeometry> &geoms, glm::dmat4 mat) {
+//   glm::dmat4 newMat = mat * mesh.transformation;
 
-  auto geomIt = geometryMap.find(mesh.expressID);
+//   bool transformationBreaksWinding = MatrixFlipsTriangles(newMat);
 
-  if (geomIt != geometryMap.end()) {
-    auto meshGeom = geomIt->second;
+//   auto geomIt = geometryMap.find(mesh.expressID);
 
-    if (meshGeom.numFaces) {
-      IfcGeometry newGeom;
+//   if (geomIt != geometryMap.end()) {
+//     auto meshGeom = geomIt->second;
 
-      for (uint32_t i = 0; i < meshGeom.numFaces; i++) {
-        Face f = meshGeom.GetFace(i);
-        glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
-        glm::dvec3 b = newMat * glm::dvec4(meshGeom.GetPoint(f.i1), 1);
-        glm::dvec3 c = newMat * glm::dvec4(meshGeom.GetPoint(f.i2), 1);
+//     if (meshGeom.numFaces) {
+//       IfcGeometry newGeom;
 
-        if (transformationBreaksWinding) {
-          newGeom.AddFace(b, a, c);
-        } else {
-          newGeom.AddFace(a, b, c);
-        }
-      }
+//       for (uint32_t i = 0; i < meshGeom.numFaces; i++) {
+//         Face f = meshGeom.GetFace(i);
+//         glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
+//         glm::dvec3 b = newMat * glm::dvec4(meshGeom.GetPoint(f.i1), 1);
+//         glm::dvec3 c = newMat * glm::dvec4(meshGeom.GetPoint(f.i2), 1);
 
-      geoms.push_back(newGeom);
-    }
-  }
+//         if (transformationBreaksWinding) {
+//           newGeom.AddFace(b, a, c);
+//         } else {
+//           newGeom.AddFace(a, b, c);
+//         }
+//       }
 
-  for (auto &c : mesh.children) {
-    flattenRecursive(c, geometryMap, geoms, newMat);
-  }
-}
+//       geoms.push_back(newGeom);
+//     }
+//   }
 
-inline std::vector<IfcGeometry> flatten(
-    IfcComposedMesh &mesh,
-    std::unordered_map<uint32_t, IfcGeometry> &geometryMap,
-    glm::dmat4 mat = glm::dmat4(1)) {
-  std::vector<IfcGeometry> geoms;
-  flattenRecursive(mesh, geometryMap, geoms, mat);
-  return geoms;
-}
+//   for (auto &c : mesh.children) {
+//     flattenRecursive(c, geometryMap, geoms, newMat);
+//   }
+// }
+
+// inline std::vector<IfcGeometry> flatten(
+//     IfcComposedMesh &mesh,
+//     std::unordered_map<uint32_t, IfcGeometry> &geometryMap,
+//     glm::dmat4 mat = glm::dmat4(1)) {
+//   std::vector<IfcGeometry> geoms;
+//   flattenRecursive(mesh, geometryMap, geoms, mat);
+//   return geoms;
+// }
 
 inline std::array<double, 16> FlattenTransformation(
     const glm::dmat4 &transformation) {
