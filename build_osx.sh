@@ -81,9 +81,12 @@ else
         if [ "$2" = "native" ]; then
             ( cd gmake &&
             make config=${native_config} conway_geom_native webifc_native )
-        elif [ "$2" = "wasm" ]; then
+        elif [ "$2" = "wasmNode" ]; then
             ( cd gmake &&
-            make config=${wasm_config} ConwayGeomWasm )
+            make config=${wasm_config} ConwayGeomWasmNode )
+        elif [ "$2" = "wasmWeb" ]; then
+            ( cd gmake &&
+            make config=${wasm_config} ConwayGeomWasmWeb )
         else
             echo "Platform invalid!" 1>&2
             exit 1
