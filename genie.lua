@@ -468,6 +468,8 @@ project "ConwayGeomWasmNode"
     kind "ConsoleApp"
     files {}
 
+    targetname "ConwayGeomWasm"
+
     targetextension ".js"
 
     ConwayCoreFiles = {
@@ -514,7 +516,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--dts",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
-        "-s ENVIRONMENT=web",
+        "-s ENVIRONMENT=node",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
@@ -524,7 +526,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-sASSERTIONS",
         "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
-        "-s USE_ES6_IMPORT_META=0",
+        --"-s USE_ES6_IMPORT_META=0",
        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
@@ -544,9 +546,9 @@ else
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
-        "-s ENVIRONMENT=web",
+        "-s ENVIRONMENT=node",
         "-s SINGLE_FILE=1",
-        "-s USE_ES6_IMPORT_META=0",
+        --"-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
@@ -668,6 +670,8 @@ project "ConwayGeomWasmWeb"
     language "C++"
     kind "ConsoleApp"
     files {}
+
+    targetname "ConwayGeomWasm"
 
     targetextension ".js"
 
