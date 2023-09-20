@@ -48,7 +48,7 @@ std::string GeometryToObj(conway::geometry::IfcGeometry geom, size_t offset) {
 }
 
 conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry&
         parameters) {
   if (processor) {
     return processor->getPolygonalFaceSetGeometry(parameters);
