@@ -2,6 +2,7 @@
 import { LocateFileHandlerFn } from '../../src/shim/ifc_api.js'
 import { CanonicalMaterial } from '../../src/core/canonical_material.js'
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
+import { IfcNativeTransform } from '../../src/ifc/ifc_scene_builder.js'
 
 
 type NativeVectorGeometryCollection = StdVector<GeometryCollection>
@@ -29,7 +30,7 @@ export interface StdVector<T> {
 
 export interface GeometryCollection {
 
-  addComponentWithTransform(geometry:GeometryObject, transform:any): void
+  addComponentWithTransform(geometry: GeometryObject, transform: any): void
 
   materialIndex: number
   hasDefaultMaterial: boolean
@@ -37,20 +38,21 @@ export interface GeometryCollection {
 
 export interface GeometryObject {
   GetVertexData: () => any
-  GetPoint(parameter:number): Vector3
+  GetPoint(parameter: number): Vector3
   NormalizeInPlace(): void
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
   appendGeometry(parameter: GeometryObject): void
-  addComponentTransform(transform:any): void
+  addComponentTransform(transform: any): void
   appendWithTransform(geometry: GeometryObject, transform: any): void
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  min:Vector3
-  max:Vector3
-  normalized:boolean
+  min: Vector3
+  max: Vector3
+  normalized: boolean
+  toObj(expressID: number): void
   delete(): void
 }
 
@@ -292,6 +294,13 @@ export interface ParamsGetBooleanResult {
   operatorType: number
 }
 
+export interface ParamsRelVoidSubtract {
+  flatFirstMesh: any
+  flatSecondMesh: any
+  operatorType: number
+  parentMatrix:any
+}
+
 /**
  * Internal interface for wasm module, geometry processing
  * OBJ + GLTF + GLB (Draco) Conversions
@@ -336,7 +345,7 @@ export class ConwayGeometry {
    */
   nativeGeometryCollection(): GeometryCollection {
     const nativeGeometryCollection =
-    // eslint-disable-next-line new-cap
+      // eslint-disable-next-line new-cap
       (new (this.wasmModule.IfcGeometryCollection)()) as GeometryCollection
 
     return nativeGeometryCollection
@@ -410,7 +419,7 @@ export class ConwayGeometry {
    *
    * @return {Promise<boolean>} - initialization status
    */
-  async initialize(fileHandler?:LocateFileHandlerFn): Promise<boolean> {
+  async initialize(fileHandler?: LocateFileHandlerFn): Promise<boolean> {
     if (this.wasmModule === void 0) {
       this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
     }
@@ -549,6 +558,16 @@ export class ConwayGeometry {
     return result
   }
 
+  relVoidSubtract(parameters: ParamsRelVoidSubtract): GeometryObject {
+    const result = this.wasmModule.relVoidSubtract(parameters)
+    return result
+  }
+
+  multiplyNativeMatrices(mat1: IfcNativeTransform, mat2: IfcNativeTransform): any {
+    const result = this.wasmModule.multiplyNativeMatrices(mat1, mat2)
+    return result
+  }
+
   /**
    *
    * @param geometry - Vector of native geometry object
@@ -558,12 +577,12 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-      geometry: StdVector<GeometryCollection>,
-      materials: StdVector<MaterialObject>,
-      isGlb: boolean,
-      outputDraco: boolean,
-      fileUri: string):
-      ResultsGltf {
+    geometry: StdVector<GeometryCollection>,
+    materials: StdVector<MaterialObject>,
+    isGlb: boolean,
+    outputDraco: boolean,
+    fileUri: string):
+    ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
 

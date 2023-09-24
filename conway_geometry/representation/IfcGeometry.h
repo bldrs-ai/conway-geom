@@ -59,6 +59,7 @@ struct IfcGeometry {
   uint32_t GetIndexDataSize();
   void ApplyTransform(glm::dmat4x4 transform);
   IfcGeometry Clone();
+  void ToObj(uint32_t expressID);
 
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,

@@ -107,7 +107,7 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
             auto ifc_geom = geometryLoader.GetGeometry(geom.geometryExpressID);
             fuzzybools::Geometry fbGeom;
             std::string fileName = "./";
-            fileName += std::to_string(i);
+            fileName += std::to_string(elements[i]);
             fileName += "_webifc.obj";
 
              std::wstring wsTmp(fileName.begin(), fileName.end());

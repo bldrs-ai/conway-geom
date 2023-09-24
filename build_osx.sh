@@ -7,10 +7,10 @@ case "${1}" in
         ;;
     "clean")
         ( cd gmake && \
-            gmake config=debug64 clean && \
-            gmake config=debugemscripten clean && \
-            gmake config=release64 clean && \
-            gmake config=releaseemscripten clean
+            make config=debug64 clean && \
+            make config=debugemscripten clean && \
+            make config=release64 clean && \
+            make config=releaseemscripten clean
         ) && exit 0 || exit 1
         ;;
     "debug")
@@ -80,7 +80,7 @@ else
     else
         if [ "$2" = "native" ]; then
             ( cd gmake &&
-            make config=${native_config} conway_geom_native webifc_native )
+            make config=${native_config} webifc_native )
         elif [ "$2" = "wasmNode" ]; then
             ( cd gmake &&
             make config=${wasm_config} ConwayGeomWasmNode )

@@ -47,6 +47,10 @@ std::string GeometryToObj(conway::geometry::IfcGeometry geom, size_t offset) {
   return result;
 }
 
+glm::dmat4 multiplyNativeMatrices(glm::dmat4 mat1, glm::dmat4 mat2) {
+  return mat1 * mat2;
+}
+
 conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
     conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
         parameters) {
@@ -207,6 +211,16 @@ conway::geometry::IfcGeometry GetBooleanResult(
   return geometry;
 }
 
+conway::geometry::IfcGeometry RelVoidSubtract(
+    conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract
+        parameters) {
+  if (processor) {
+    return processor->RelVoidSubtract(parameters);
+  }
+  conway::geometry::IfcGeometry geometry;
+  return geometry;
+}
+
 conway::geometry::IfcCurve GetRectangleProfileCurve(
     conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
         parameters) {
@@ -329,16 +343,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("min", &conway::geometry::IfcGeometry::min)
       .property("max", &conway::geometry::IfcGeometry::max)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
-      // .function("addComponent", &conway::geometry::IfcGeometry::AddComponent,
-      //           emscripten::allow_raw_pointers())
-      // .function("addComponentWithTransform",
-      //           &conway::geometry::IfcGeometry::AddComponentWithTransform,
-      //           emscripten::allow_raw_pointers())
-      // .function("addComponentTransform", &conway::geometry::IfcGeometry::AddComponentTransform)
+      .function("toObj", &conway::geometry::IfcGeometry::ToObj)
       .function("clone", &conway::geometry::IfcGeometry::Clone);
-      // .property("materialIndex", &conway::geometry::IfcGeometry::materialIndex)
-      // .property("hasDefaultMaterial",
-      //           &conway::geometry::IfcGeometry::hasDefaultMaterial);
 
   emscripten::class_<conway::geometry::IfcGeometryCollection>("IfcGeometryCollection")
       .constructor<>()
@@ -643,6 +649,17 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetBooleanResult::operatorType);
 
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract>(
+      "ParamsRelVoidSubtract")
+      .field("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsRelVoidSubtract::flatFirstMesh)
+      .field("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsRelVoidSubtract::flatSecondMesh)
+      .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsRelVoidSubtract::operatorType)
+      .field("parentMatrix", &conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract::parentMatrix);
+
   // conway::geometry::ConwayGeometryProcessor::ParamsGetLoop
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetLoop>("ParamsGetLoop")
@@ -751,10 +768,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult);
+  emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
   emscripten::function("getLoop", &GetLoop);
   emscripten::function("createBound3D", &createBound3D);
   emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
   emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
   emscripten::function("getIdentityTransform", &getIdentityTransform);
+  emscripten::function("multiplyNativeMatrices", &multiplyNativeMatrices);
 }

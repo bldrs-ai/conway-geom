@@ -7,6 +7,11 @@
 
 #include "IfcGeometry.h"
 
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+
 #include "fuzzy/aabb.h"
 
 namespace conway::geometry {
@@ -24,30 +29,35 @@ void IfcGeometry::NormalizeInPlace() {
   normalized = true;
 }
 
-// void IfcGeometry::AddComponent(IfcGeometry *g) { 
-//   components.push_back(g); 
+// void IfcGeometry::AddComponent(IfcGeometry *g) {
+//   components.push_back(g);
 // }
 
 // void IfcGeometry::AddComponentTransform(glm::dmat4x4 transform) {
 //   componentTransforms.push_back(transform);
 // }
 
-// void IfcGeometry::AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4 transform) {
+// void IfcGeometry::AddComponentWithTransform(IfcGeometry *geom, glm::dmat4x4
+// transform) {
 //   for (uint32_t index = 0; index < numPoints; ++index) {
 //     glm::dvec4 t =
 //         transform *
 //         glm::dvec4(
-//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0],
-//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1],
-//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 2]),
+//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
+//             0],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
+//                        1], geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS
+//                        + 2]),
 //             1);
 
 //     glm::dvec4 n =
 //         transform *
 //         glm::dvec4(
-//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 3],
-//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4],
-//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5]),
+//             glm::dvec3(geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
+//             3],
+//                        geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS +
+//                        4], geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS
+//                        + 5]),
 //             0);
 
 //     geom->vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
@@ -104,7 +114,8 @@ void IfcGeometry::AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n) {
   numPoints += 1;
 }
 
-void IfcGeometry::AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c) {
+void IfcGeometry::AddFace(const glm::dvec3 &a, const glm::dvec3 &b,
+                          const glm::dvec3 &c) {
   glm::dvec3 normal;
   if (!computeSafeNormal(a, b, c, normal)) {
     // bail out, zero area triangle
@@ -244,6 +255,56 @@ uint32_t IfcGeometry::GetVertexData() {
   return (uint32_t)(size_t)&fvertexData[0];
 }
 
+std::string GeometryToObj(const IfcGeometry &geom, size_t &offset,
+                          glm::dmat4 transform = glm::dmat4(1)) {
+  std::string obj;
+  obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
+
+  const char *vFormat = "v %.6f %.6f %.6f\n";
+  const char *fFormat = "f %zu// %zu// %zu//\n";
+
+  for (uint32_t i = 0; i < geom.numPoints; ++i) {
+    glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
+    char vBuffer[64];
+    snprintf(vBuffer, sizeof(vBuffer), vFormat, t.x, t.y, t.z);
+    obj.append(vBuffer);
+  }
+
+  for (uint32_t i = 0; i < geom.numFaces; ++i) {
+    size_t f1 = geom.indexData[i * 3 + 0] + 1 + offset;
+    size_t f2 = geom.indexData[i * 3 + 1] + 1 + offset;
+    size_t f3 = geom.indexData[i * 3 + 2] + 1 + offset;
+    char fBuffer[64];
+    snprintf(fBuffer, sizeof(fBuffer), fFormat, f1, f2, f3);
+    obj.append(fBuffer);
+  }
+
+  offset += geom.numPoints;
+
+  return obj;
+}
+
+void writeFile(std::wstring filename, std::string data) {
+  std::ofstream out(filename.c_str());
+  out << data;
+  out.close();
+}
+
+glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
+                        glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
+void DumpGeom(const IfcGeometry &geom, std::wstring filename) {
+  size_t offset = 0;
+  writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
+}
+
+void IfcGeometry::ToObj(uint32_t expressID) {
+  std::string fileName = "/Users/soar/Documents/GitHub/conway/";
+  fileName += std::to_string(expressID);
+  fileName += "relvoid_conway.obj";
+  std::wstring wsTmp(fileName.begin(), fileName.end());
+  DumpGeom(*this, wsTmp);
+}
+
 IfcGeometry IfcGeometry::Clone() { return *this; }
 
 void IfcGeometry::AppendWithTransform(IfcGeometry &geom,
@@ -262,19 +323,15 @@ void IfcGeometry::AppendWithTransform(IfcGeometry &geom,
 
   for (; vertexDataCursor < vertexDataEnd;
        vertexDataCursor += VERTEX_FORMAT_SIZE_FLOATS) {
-    glm::dvec4 t = transform * glm::dvec4(
-      glm::dvec3(
-        vertexDataCursor[0],
-        vertexDataCursor[1],
-        vertexDataCursor[2]),
-      1);
+    glm::dvec4 t = transform * glm::dvec4(glm::dvec3(vertexDataCursor[0],
+                                                     vertexDataCursor[1],
+                                                     vertexDataCursor[2]),
+                                          1);
 
-    glm::dvec4 n = transform * glm::dvec4(
-      glm::dvec3(
-        vertexDataCursor[3],
-        vertexDataCursor[4],
-        vertexDataCursor[5]),
-      0);
+    glm::dvec4 n = transform * glm::dvec4(glm::dvec3(vertexDataCursor[3],
+                                                     vertexDataCursor[4],
+                                                     vertexDataCursor[5]),
+                                          0);
 
     vertexDataCursor[0] = t.x;
     vertexDataCursor[1] = t.y;
@@ -322,6 +379,10 @@ uint32_t IfcGeometry::GetIndexData() { return (uint32_t)(size_t)&indexData[0]; }
 uint32_t IfcGeometry::GetIndexDataSize() { return (uint32_t)indexData.size(); }
 
 void IfcGeometry::ApplyTransform(glm::dmat4 transform) {
+  glm::dvec3 currentMin;
+  glm::dvec3 currentMax;
+  min = glm::dvec3(DBL_MAX, DBL_MAX, DBL_MAX);
+  max = glm::dvec3(-DBL_MAX, -DBL_MAX, -DBL_MAX);
   for (uint32_t index = 0; index < numPoints; ++index) {
     glm::dvec4 t =
         transform *
@@ -338,6 +399,17 @@ void IfcGeometry::ApplyTransform(glm::dmat4 transform) {
                        vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 4],
                        vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 5]),
             0);
+
+
+      currentMin.x = t.x; 
+      currentMin.y = t.y;
+      currentMin.z = t.z;
+      min = glm::min(min, currentMin);
+
+      currentMax.x = t.x;
+      currentMax.y = t.y;
+      currentMax.z = t.z;
+      max = glm::max(max, currentMax);
 
     vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
     vertexData[index * VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;

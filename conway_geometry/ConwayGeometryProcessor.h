@@ -127,8 +127,16 @@ class ConwayGeometryProcessor {
   };
   IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
 
-  // case ifc::IFCHALFSPACESOLID:
-  struct ParamsGetHalfspaceSolid {
+  struct ParamsRelVoidSubtract {
+    std::vector<IfcGeometry> flatFirstMesh;
+    std::vector<IfcGeometry> flatSecondMesh;
+    int operatorType = 2;
+    glm::dmat4 parentMatrix;
+  };
+  IfcGeometry RelVoidSubtract(ParamsRelVoidSubtract parameters);
+
+      // case ifc::IFCHALFSPACESOLID:
+      struct ParamsGetHalfspaceSolid {
     bool flipWinding = false;
     double optionalLinearScalingFactor = 1.0;
   };
@@ -343,11 +351,11 @@ class ConwayGeometryProcessor {
     std::vector<std::string> bufferUris;
     std::vector<std::vector<uint8_t>> buffers;
   };
-  ResultsGltf GeometryToGltf(std::vector< conway::geometry::IfcGeometryCollection > &geom,
-                             std::vector< conway::geometry::Material > &materials,
-                             bool isGlb, bool outputDraco, std::string filePath,
-                             bool outputFile,
-                             glm::dmat4 transform = glm::dmat4(1));
+  ResultsGltf GeometryToGltf(
+      std::vector<conway::geometry::IfcGeometryCollection> &geom,
+      std::vector<conway::geometry::Material> &materials, bool isGlb,
+      bool outputDraco, std::string filePath, bool outputFile,
+      glm::dmat4 transform = glm::dmat4(1));
 
   std::string GeometryToObj(const conway::geometry::IfcGeometry &geom,
                             size_t &offset,
@@ -360,7 +368,7 @@ class ConwayGeometryProcessor {
     std::vector<IndexedPolygonalFace> faces;
   };
   IfcGeometry getPolygonalFaceSetGeometry(
-      ParamsGetPolygonalFaceSetGeometry& parameters);
+      ParamsGetPolygonalFaceSetGeometry &parameters);
 
   struct Segment {
     bool isArcType = false;

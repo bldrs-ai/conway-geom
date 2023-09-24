@@ -190,11 +190,14 @@ namespace webifc::geometry
 
             if (relVoidsIt != relVoids.end() && !relVoidsIt->second.empty())
             {
+                printf("hit rel voids: line expressID: %i\n", line.expressID);
+                printf("mesh expressID: %i\n", mesh.expressID);
                 IfcComposedMesh resultMesh;
 
                 auto origin = GetOrigin(mesh, _expressIDToGeometry);
                 auto normalizeMat = glm::translate(-origin);
                 auto flatElementMeshes = flatten(mesh, _expressIDToGeometry, normalizeMat);
+              //  auto flatElementMeshTest = flatten(mesh, _expressIDToGeometry);
                 auto elementColor = mesh.GetColor();
 
                 IfcGeometry finalGeometry;
@@ -203,14 +206,32 @@ namespace webifc::geometry
                 {
 
                     std::vector<IfcGeometry> voidGeoms;
+                    int testExpressID = 0;
 
                     for (auto relVoidExpressID : relVoidsIt->second)
                     {
+                        printf("relVoid expressID: %i\n", relVoidExpressID);
                         IfcComposedMesh voidGeom = GetMesh(relVoidExpressID);
+                        testExpressID = relVoidExpressID;
+                        printf("voidGeom expressID: %i\n", voidGeom.expressID);
                         auto flatVoidMesh = flatten(voidGeom, _expressIDToGeometry, normalizeMat);
                         voidGeoms.insert(voidGeoms.end(), flatVoidMesh.begin(), flatVoidMesh.end());
                     }
 
+                    //test
+                   // IfcComposedMesh voidGeom_ = GetMesh(testExpressID);
+                  //  auto flatVoidMesh_ = flatten(voidGeom_, _expressIDToGeometry);
+
+                    /*for (int i = 0; i < flatElementMeshTest[0].numPoints; ++i) {
+                        auto point = flatElementMeshTest[0].GetPoint(i);
+                        printf("flatElementMeshTest Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, point.x, point.y, point.z);
+                    }
+                    for (int i = 0; i < flatVoidMesh_[0].numPoints; ++i) {
+                        auto point2 = flatVoidMesh_[0].GetPoint(i);
+                        printf("voidGeoms Point Test %i: x: %.3f, y: %.3f, z: %.3f\n", i, point2.x, point2.y, point2.z);
+                    }*/
+                    
+                    printf("flatElementMeshes Size: %i\nvoidGeoms Size: %i\n", flatElementMeshes.size(), voidGeoms.size());
                     finalGeometry = BoolSubtract(flatElementMeshes, voidGeoms, line.expressID);
                 }
 
@@ -828,6 +849,7 @@ namespace webifc::geometry
 
                     if (!profile.isComposite)
                     {
+                        
                         geom = Extrude(profile, dir, depth,_errorHandler);
                         if (flipWinding)
                         {
@@ -863,6 +885,11 @@ namespace webifc::geometry
                     #ifdef CSG_DEBUG_OUTPUT
                         io::DumpIfcGeometry(geom, "IFCEXTRUDEDAREASOLID_geom.obj");
                     #endif
+
+                  /*  for (int i = 0; i < geom.numPoints; ++i) {
+                        auto point = geom.GetPoint(i);
+                        printf("geom expressID: %i - Point %i: x: %.3f, y: %.3f, z: %.3f\n", line.expressID, point.x, point.y, point.z);
+                    }*/
 
                     _expressIDToGeometry[line.expressID] = geom;
                     mesh.expressID = line.expressID;

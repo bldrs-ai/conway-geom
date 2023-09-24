@@ -53,6 +53,8 @@ namespace webifc::geometry {
 			sum += (pt2.x - pt1.x) * (pt2.y + pt1.y);
 		}
 
+		printf("sum: %.6f\n", sum);
+
 		return sum < 0;
 	}
 }
