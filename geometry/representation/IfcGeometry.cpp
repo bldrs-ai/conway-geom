@@ -84,7 +84,7 @@ namespace webifc::geometry {
 		if (!computeSafeNormal(a, b, c, normal))
 		{
 			// bail out, zero area triangle
-			printf("zero tri\n");
+	//		printf("zero tri\n");
 			return;
 		}
 

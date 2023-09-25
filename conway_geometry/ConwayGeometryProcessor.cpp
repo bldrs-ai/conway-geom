@@ -681,7 +681,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis1Placement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
-    ParamsAxis2Placement3D parameters) {
+    const ParamsAxis2Placement3D& parameters) {
   glm::dvec3 zAxis(0, 0, 1);
   glm::dvec3 xAxis(1, 0, 0);
 
@@ -703,7 +703,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
-    ParamsLocalPlacement parameters) {
+    const ParamsLocalPlacement& parameters) {
   if (parameters.useRelPlacement) {
     glm::dmat4 result = parameters.relPlacement * parameters.axis2Placement;
     return result;
@@ -715,7 +715,7 @@ glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
-    ParamsCartesianTransformationOperator3D parameters) {
+    const ParamsCartesianTransformationOperator3D& parameters) {
   double scale1 = 1.0;
   double scale2 = 1.0;
   double scale3 = 1.0;
@@ -826,50 +826,50 @@ IfcBound3D ConwayGeometryProcessor::GetBound(ParamsGetBound parameters) {
 }
 
 std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
-    ParamsReadIndexedPolygonalFace parameters) {
+    const ParamsReadIndexedPolygonalFace& parameters) {
   std::vector<IfcBound3D> bounds;
 
   bounds.emplace_back();
 
   // calculate loop upper bound
   size_t faceIndexUpperBound = 0;
-  if (parameters.face->face_starts.size() > 1) {
+  if (parameters.face.face_starts.size() > 1) {
     faceIndexUpperBound =
-        parameters.face->face_starts[1] - parameters.face->face_starts[0];
+        parameters.face.face_starts[1] - parameters.face.face_starts[0];
   } else {
-    faceIndexUpperBound = parameters.face->indices.size();
+    faceIndexUpperBound = parameters.face.indices.size();
   }
 
   for (size_t index = 0; index < faceIndexUpperBound; index++) {
-    uint32_t currentIndex = parameters.face->indices[index];
+    uint32_t currentIndex = parameters.face.indices[index];
 
-    glm::dvec3 point = (*parameters.points)[currentIndex - 1];
+    glm::dvec3 point = parameters.points[currentIndex - 1];
 
     // I am not proud of this (I inherited this, will change - NC)
     bounds.back().curve.points.push_back(point);
   }
 
-  if (parameters.face->face_starts.size() <= 1) {
+  if (parameters.face.face_starts.size() <= 1) {
     return bounds;
   } else {
     // TODO(nickcastel50): handle case IFCINDEXEDPOLYGONALFACEWITHVOIDS
-    for (size_t i = 1; i < parameters.face->face_starts.size(); i++) {
+    for (size_t i = 1; i < parameters.face.face_starts.size(); i++) {
       bounds.emplace_back();
-      size_t startIdx = parameters.face->face_starts[i];
+      size_t startIdx = parameters.face.face_starts[i];
       size_t endIdx = 0;
       size_t faceVoidsSize = 0;
-      if (i + 1 >= parameters.face->face_starts.size()) {
-        endIdx = parameters.face->indices.size();
+      if (i + 1 >= parameters.face.face_starts.size()) {
+        endIdx = parameters.face.indices.size();
         faceVoidsSize = endIdx - startIdx;
       } else {
-        endIdx = parameters.face->face_starts[i + 1];
+        endIdx = parameters.face.face_starts[i + 1];
         faceVoidsSize = endIdx - startIdx;
       }
 
       for (size_t index = startIdx; index < endIdx; index++) {
-        uint32_t currentIndex = parameters.face->indices[index];
+        uint32_t currentIndex = parameters.face.indices[index];
 
-        glm::dvec3 point = (*parameters.points)[currentIndex - 1];
+        glm::dvec3 point = parameters.points[currentIndex - 1];
 
         // I am not proud of this (I inherited this, will change - NC)
         bounds.back().curve.points.push_back(point);
@@ -1609,7 +1609,7 @@ std::string ConwayGeometryProcessor::GeometryToObj(
 }
 
 IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
-    ParamsGetPolygonalFaceSetGeometry &parameters) {
+    const ParamsGetPolygonalFaceSetGeometry &parameters) {
   IfcGeometry geom;
   std::vector<IfcBound3D> bounds;
 
@@ -1628,7 +1628,7 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
-    ParamsGetIfcIndexedPolyCurve parameters) {
+    const ParamsGetIfcIndexedPolyCurve& parameters) {
   IfcCurve curve;
 
   if (parameters.dimensions == 2) {
@@ -1664,7 +1664,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
-    ParamsGetCircleCurve parameters) {
+    const ParamsGetCircleCurve& parameters) {
   IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1684,7 +1684,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
 enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
-    ParamsGetIfcCircle parameters) {
+    const ParamsGetIfcCircle& parameters) {
   conway::geometry::IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1806,7 +1806,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
 }
 
 conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
-    ParamsGetExtrudedAreaSolid parameters) {
+    const ParamsGetExtrudedAreaSolid& parameters) {
   conway::geometry::IfcGeometry geom;
   double depth = parameters.depth;
 

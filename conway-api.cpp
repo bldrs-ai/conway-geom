@@ -52,7 +52,7 @@ glm::dmat4 multiplyNativeMatrices(glm::dmat4 mat1, glm::dmat4 mat2) {
 }
 
 conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+    conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry&
         parameters) {
   if (processor) {
     return processor->getPolygonalFaceSetGeometry(parameters);

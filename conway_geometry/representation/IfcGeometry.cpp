@@ -119,7 +119,7 @@ void IfcGeometry::AddFace(const glm::dvec3 &a, const glm::dvec3 &b,
   glm::dvec3 normal;
   if (!computeSafeNormal(a, b, c, normal)) {
     // bail out, zero area triangle
-    printf("zero tri\n");
+   // printf("zero tri\n");
     return;
   }
 
