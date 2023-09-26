@@ -82,9 +82,13 @@ IF "%1"=="test" (
         IF "%2"=="native" (
             cd gmake
             make config=%native_config% conway_geom_native webifc_native
-        ) ELSE IF "%2"=="wasm" (
+        ) ELSE IF "%2"=="wasmNode" (
             cd gmake
-            make config=%wasm_config% ConwayGeomWasm
+            make config=%wasm_config% ConwayGeomWasmNode
+        ) 
+        ELSE IF "%2"=="wasmWeb" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasmWeb
         ) ELSE (
             echo "Platform invalid" >&2
             exit /b 1
