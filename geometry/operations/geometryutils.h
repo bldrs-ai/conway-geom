@@ -705,24 +705,6 @@ namespace webifc::geometry {
 		{
 			glm::dmat4 newMat = mat * mesh.transformation;
 
-			printf("mat:\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n",
-			mat[0][0], mat[0][1], mat[0][2], mat[0][3],
-			mat[1][0], mat[1][1], mat[1][2], mat[1][3],
-			mat[2][0], mat[2][1], mat[2][2], mat[2][3],
-			mat[3][0], mat[3][1], mat[3][2], mat[3][3]);
-
-			printf("mesh.transformation:\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n",
-			mesh.transformation[0][0], mesh.transformation[0][1], mesh.transformation[0][2], mesh.transformation[0][3],
-			mesh.transformation[1][0], mesh.transformation[1][1], mesh.transformation[1][2], mesh.transformation[1][3],
-			mesh.transformation[2][0], mesh.transformation[2][1], mesh.transformation[2][2], mesh.transformation[2][3],
-			mesh.transformation[3][0], mesh.transformation[3][1], mesh.transformation[3][2], mesh.transformation[3][3]);
-
-			printf("newMat:\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n",
-			newMat[0][0], newMat[0][1], newMat[0][2], newMat[0][3],
-			newMat[1][0], newMat[1][1], newMat[1][2], newMat[1][3],
-			newMat[2][0], newMat[2][1], newMat[2][2], newMat[2][3],
-			newMat[3][0], newMat[3][1], newMat[3][2], newMat[3][3]);
-
 			bool transformationBreaksWinding = MatrixFlipsTriangles(newMat);
 
 			auto geomIt = geometryMap.find(mesh.expressID);
