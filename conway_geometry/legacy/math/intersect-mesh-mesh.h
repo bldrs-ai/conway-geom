@@ -126,11 +126,6 @@ namespace conway
         {
             geometry::Face f = mesh.GetFace(i);
 
-            if (i == 4)
-            {
-                // printf("asdf");
-            }
-
             const glm::dvec3& a = mesh.GetPoint(f.i0);
             const glm::dvec3& b = mesh.GetPoint(f.i1);
             const glm::dvec3& c = mesh.GetPoint(f.i2);

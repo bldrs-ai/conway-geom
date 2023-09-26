@@ -772,21 +772,6 @@ void genIndexIfc() {
         printf("Writing GLTF...\n");
       }
 
-      /*
-      let fullGeometry = materialGeometry.get(material)
-
-      if (fullGeometry === void 0) {
-
-        fullGeometry = conwaywasm.nativeGeometryCollection()
-        materialGeometry.set(material, fullGeometry)
-      }
-
-      if (nativeTransform === void 0) {
-        fullGeometry.addComponentWithTransform(geometry.geometry,
-      identityTransform) } else {
-        fullGeometry.addComponentWithTransform(geometry.geometry,
-      nativeTransform)
-      */
       glm::dmat4 identityMatrix(1.0);
       std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
       conway::geometry::IfcGeometryCollection geometryCollectionSingle;

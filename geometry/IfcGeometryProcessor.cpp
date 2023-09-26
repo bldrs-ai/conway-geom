@@ -108,17 +108,14 @@ namespace webifc::geometry
             auto material = relMaterials.find(line.expressID);
             if (material != relMaterials.end())
             {
-              //  printf("found material for mesh: #%i\n", line.expressID);
                 auto &materials = material->second;
                 for (auto item : materials)
                 {
                     if (materialDefinitions.count(item.second) != 0)
                     {
-                     //   printf("item.second: #%i\n", item.second);
                         auto &defs = materialDefinitions.at(item.second);
                         for (auto def : defs)
                         {
-                       //     printf("materialDefinitions: def.second: #%i\n", def.second);
                             styledItemColor = _geometryLoader.GetColor(def.second);
                             if (styledItemColor) break;
                         }
@@ -127,7 +124,6 @@ namespace webifc::geometry
                         // if no color found, check material itself
                     if (!styledItemColor)
                     {
-                     //   printf("checking material itself, expressID: %i\n", item.second);
                         styledItemColor = _geometryLoader.GetColor(item.second);
                         if (styledItemColor) break;
                     }
@@ -170,28 +166,10 @@ namespace webifc::geometry
                 mesh.children.push_back(GetMesh(ifcPresentation));
             }
 
-                /*
-                // not sure if aggregates are needed here...
-                // add aggregates before applying voids!
-                auto relAggIt = relAggregates.find(line.expressID);
-                if (relAggIt != relAggregates.end() && !relAggIt->second.empty())
-                {
-                    for (auto relAggExpressID : relAggIt->second)
-                    {
-                        // hacky fix to avoid double application of the parent matrix
-                        auto aggMesh = GetMesh(relAggExpressID);
-                        aggMesh.transformation *= glm::inverse(mesh.transformation);
-                        mesh.children.push_back(aggMesh);
-                    }
-                }
-                */
-
             auto relVoidsIt = relVoids.find(line.expressID);
 
             if (relVoidsIt != relVoids.end() && !relVoidsIt->second.empty())
             {
-                printf("hit rel voids: line expressID: %i\n", line.expressID);
-                printf("mesh expressID: %i\n", mesh.expressID);
                 IfcComposedMesh resultMesh;
 
                 auto origin = GetOrigin(mesh, _expressIDToGeometry);
@@ -210,28 +188,12 @@ namespace webifc::geometry
 
                     for (auto relVoidExpressID : relVoidsIt->second)
                     {
-                        printf("relVoid expressID: %i\n", relVoidExpressID);
                         IfcComposedMesh voidGeom = GetMesh(relVoidExpressID);
                         testExpressID = relVoidExpressID;
-                        printf("voidGeom expressID: %i\n", voidGeom.expressID);
                         auto flatVoidMesh = flatten(voidGeom, _expressIDToGeometry, normalizeMat);
                         voidGeoms.insert(voidGeoms.end(), flatVoidMesh.begin(), flatVoidMesh.end());
                     }
-
-                    //test
-                   // IfcComposedMesh voidGeom_ = GetMesh(testExpressID);
-                  //  auto flatVoidMesh_ = flatten(voidGeom_, _expressIDToGeometry);
-
-                    /*for (int i = 0; i < flatElementMeshTest[0].numPoints; ++i) {
-                        auto point = flatElementMeshTest[0].GetPoint(i);
-                        printf("flatElementMeshTest Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, point.x, point.y, point.z);
-                    }
-                    for (int i = 0; i < flatVoidMesh_[0].numPoints; ++i) {
-                        auto point2 = flatVoidMesh_[0].GetPoint(i);
-                        printf("voidGeoms Point Test %i: x: %.3f, y: %.3f, z: %.3f\n", i, point2.x, point2.y, point2.z);
-                    }*/
                     
-                    printf("flatElementMeshes Size: %i\nvoidGeoms Size: %i\n", flatElementMeshes.size(), voidGeoms.size());
                     finalGeometry = BoolSubtract(flatElementMeshes, voidGeoms, line.expressID);
                 }
 
@@ -885,11 +847,6 @@ namespace webifc::geometry
                     #ifdef CSG_DEBUG_OUTPUT
                         io::DumpIfcGeometry(geom, "IFCEXTRUDEDAREASOLID_geom.obj");
                     #endif
-
-                  /*  for (int i = 0; i < geom.numPoints; ++i) {
-                        auto point = geom.GetPoint(i);
-                        printf("geom expressID: %i - Point %i: x: %.3f, y: %.3f, z: %.3f\n", line.expressID, point.x, point.y, point.z);
-                    }*/
 
                     _expressIDToGeometry[line.expressID] = geom;
                     mesh.expressID = line.expressID;

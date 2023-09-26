@@ -57,23 +57,6 @@ bool IfcCurve::IsCCW() const {
         points[(i + 1) % points.size()];  // Next point (wrapping around)
     sum += (p2.x - p1.x) * (p2.y + p1.y);
   }
-  //printf("sum: %.6f\n", sum);
   return sum < 0;
 }
-
-/*bool IfcCurve::IsCCW() const
-	{
-		double sum = 0;
-
-		for (size_t i = 0; i < points.size(); i++)
-		{
-			glm::dvec3 pt1 = points.at((i + 1) % points.size());
-			glm::dvec3 pt2 = points.at(i);
-			sum += (pt2.x - pt1.x) * (pt2.y + pt1.y);
-		}
-
-    printf("sum test: %.6f\n", sum);
-
-		return sum < 0;
-	}*/
 }  // namespace conway::geometry

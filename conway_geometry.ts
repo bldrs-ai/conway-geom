@@ -298,7 +298,7 @@ export interface ParamsRelVoidSubtract {
   flatFirstMesh: any
   flatSecondMesh: any
   operatorType: number
-  parentMatrix:any
+  parentMatrix: any
 }
 
 /**
@@ -320,10 +320,10 @@ export class ConwayGeometry {
   }
 
   /**
- *
- * @param initialSize number - initial size of the vector (optional)
- * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
- */
+   *
+   * @param initialSize number - initial size of the vector (optional)
+   * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
+   */
   nativeVectorGeometry(initialSize?: number): NativeVectorGeometry {
     const nativeVectorGeometry_ =
       // eslint-disable-next-line new-cap
@@ -345,7 +345,6 @@ export class ConwayGeometry {
    */
   nativeGeometryCollection(): GeometryCollection {
     const nativeGeometryCollection =
-      // eslint-disable-next-line new-cap
       (new (this.wasmModule.IfcGeometryCollection)()) as GeometryCollection
 
     return nativeGeometryCollection
@@ -364,11 +363,10 @@ export class ConwayGeometry {
   }
 
   /**
- * Create a native material from a canonical one.
- *
- * @param from The material to create the native material from
- * @return {MaterialObject} The created canonical material.
- */
+   *
+   * @param from The material to create the native material from
+   * @return {MaterialObject} The created canonical material.
+   */
   nativeMaterial(from: CanonicalMaterial): MaterialObject {
     const native: MaterialObject = {
 
@@ -397,11 +395,10 @@ export class ConwayGeometry {
   }
 
   /**
- * Create a native vector of glm::vec3 to pass across the boundary.
- *
- * @param initialSize number - initial size of the vector (optional)
- * @return {NativeVectorMaterial} - a native std::vector<MaterialObject> from the wasm module
- */
+   *
+   * @param initialSize number - initial size of the vector (optional)
+   * @return {NativeVectorMaterial} - a native std::vector<MaterialObject> from the wasm module
+   */
   nativeVectorMaterial(initialSize?: number): NativeVectorMaterial {
     const nativeVectorMaterial_ =
       // eslint-disable-next-line new-cap
@@ -421,6 +418,7 @@ export class ConwayGeometry {
    */
   async initialize(fileHandler?: LocateFileHandlerFn): Promise<boolean> {
     if (this.wasmModule === void 0) {
+      // eslint-disable-next-line new-cap
       this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
     }
 
@@ -558,11 +556,22 @@ export class ConwayGeometry {
     return result
   }
 
+  /**
+   *
+   * @param parameters
+   * @return {GeometryObject}
+   */
   relVoidSubtract(parameters: ParamsRelVoidSubtract): GeometryObject {
     const result = this.wasmModule.relVoidSubtract(parameters)
     return result
   }
 
+  /**
+   *
+   * @param mat1
+   * @param mat2
+   * @return {any} matrix result of the multiplication
+   */
   multiplyNativeMatrices(mat1: IfcNativeTransform, mat2: IfcNativeTransform): any {
     const result = this.wasmModule.multiplyNativeMatrices(mat1, mat2)
     return result
@@ -577,11 +586,11 @@ export class ConwayGeometry {
    * @return {ResultsGltf} - boolean success + buffers + file uris
    */
   toGltf(
-    geometry: StdVector<GeometryCollection>,
-    materials: StdVector<MaterialObject>,
-    isGlb: boolean,
-    outputDraco: boolean,
-    fileUri: string):
+      geometry: StdVector<GeometryCollection>,
+      materials: StdVector<MaterialObject>,
+      isGlb: boolean,
+      outputDraco: boolean,
+      fileUri: string):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
   }
@@ -614,10 +623,10 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @returns glmdmat4 identity matrix
+   *
+   * @return {any} identity matrix
    */
-  getIdentityTransform() {
+  getIdentityTransform():any {
     return this.wasmModule.getIdentityTransform()
   }
 

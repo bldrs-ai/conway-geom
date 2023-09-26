@@ -131,13 +131,6 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
 
   IfcGeometry result;
 
-  /*IfcGeometry r1;
-  IfcGeometry r2;
-
-  intersectMeshMesh(firstGeom, secondGeom, r1, r2);
-
-  result = boolSubtract(r1, r2);*/
-
   if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
     printf("bool aborted due to empty source or target\n");
 
