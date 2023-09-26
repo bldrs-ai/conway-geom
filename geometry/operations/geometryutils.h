@@ -703,7 +703,6 @@ namespace webifc::geometry {
 
 		inline	void flattenRecursive(IfcComposedMesh &mesh, std::unordered_map<uint32_t, IfcGeometry> &geometryMap, std::vector<IfcGeometry> &geoms, glm::dmat4 mat)
 		{
-			printf("flattenRecursive: mesh expressID: %i\n", mesh.expressID);
 			glm::dmat4 newMat = mat * mesh.transformation;
 
 			printf("mat:\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n%.4f, %.4f, %.4f, %.4f\n",
