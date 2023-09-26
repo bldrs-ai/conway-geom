@@ -80,7 +80,7 @@ else
     else
         if [ "$2" = "native" ]; then
             ( cd gmake &&
-            make config=${native_config} webifc_native )
+            make config=${native_config} conway_geom_native webifc_native )
         elif [ "$2" = "wasmNode" ]; then
             ( cd gmake &&
             make config=${wasm_config} ConwayGeomWasmNode )
