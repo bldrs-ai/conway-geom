@@ -32,9 +32,11 @@ export interface GeometryCollection {
 
   materialIndex: number
   hasDefaultMaterial: boolean
+  readonly currentSize: number
 }
 
 export interface GeometryObject {
+  getAllocationSize(): number
   getVertexData: () => any
   getVertexDataSize: () => number
   getIndexData: () => any
@@ -556,9 +558,18 @@ export class ConwayGeometry {
       materials: StdVector<MaterialObject>,
       isGlb: boolean,
       outputDraco: boolean,
-      fileUri: string):
+      fileUri: string,
+      geometryOffset: number = 0,
+      geometryCount: number = geometry.size() ):
       ResultsGltf {
-    return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
+    return this.wasmModule.geometryToGltf(
+      geometry,
+      materials,
+      isGlb,
+      outputDraco,
+      fileUri,
+      geometryOffset,
+      geometryCount)
   }
 
   /**

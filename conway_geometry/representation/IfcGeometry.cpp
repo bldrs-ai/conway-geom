@@ -6,7 +6,6 @@
 // Implementation for IfcGeometry
 
 #include "IfcGeometry.h"
-
 #include "fuzzy/aabb.h"
 
 namespace conway::geometry {
@@ -312,6 +311,13 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
             maxIndex + geom.indexData[k * 3 + 2]);
   }
 }
+
+  uint32_t IfcGeometry::GetAllocationSize() const { 
+    return 
+      byteSize( fvertexData ) +
+      byteSize( vertexData ) +
+      byteSize( indexData );
+  }
 
 uint32_t IfcGeometry::GetVertexDataSize() {
   return (uint32_t)fvertexData.size();
