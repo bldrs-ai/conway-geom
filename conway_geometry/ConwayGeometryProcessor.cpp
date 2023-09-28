@@ -126,13 +126,15 @@ IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
 IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
     const std::vector<IfcGeometry> &firstGeoms,
     std::vector<IfcGeometry> &secondGeoms) {
-  IfcGeometry firstGeom = BoolJoinLegacy(firstGeoms);
-  IfcGeometry secondGeom = BoolJoinLegacy(secondGeoms);
+  IfcGeometry firstGeom = firstGeoms[0];//BoolJoinLegacy(firstGeoms);
+  IfcGeometry secondGeom = secondGeoms[0];//BoolJoinLegacy(secondGeoms);
 
   IfcGeometry result;
 
   if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
     printf("bool aborted due to empty source or target\n");
+    printf("firstGeom.numFaces: %i\n", firstGeom.numFaces);
+    printf("secondGeoms.size(): %i\n", secondGeoms.size());
 
     // bail out because we will get strange meshes
     // if this happens, probably there's an issue parsing the mesh that occurred
@@ -171,24 +173,25 @@ glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
 }
 
 glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
-    glm::dvec3 centroid(0.0);
-    uint32_t numVertices = 0;
+  glm::dvec3 centroid(0.0);
+  uint32_t numVertices = 0;
 
-    // I'm assuming the IfcGeometry class provides a method to iterate over all vertices.
-    // If it doesn't, you might need to iterate over faces and access vertices via face indices.
-    for (uint32_t i = 0; i < geometry.numFaces; i++) {
-        Face f = geometry.GetFace(i);
-        centroid += geometry.GetPoint(f.i0);
-        centroid += geometry.GetPoint(f.i1);
-        centroid += geometry.GetPoint(f.i2);
-        numVertices += 3;
-    }
+  // I'm assuming the IfcGeometry class provides a method to iterate over all
+  // vertices. If it doesn't, you might need to iterate over faces and access
+  // vertices via face indices.
+  for (uint32_t i = 0; i < geometry.numFaces; i++) {
+    Face f = geometry.GetFace(i);
+    centroid += geometry.GetPoint(f.i0);
+    centroid += geometry.GetPoint(f.i1);
+    centroid += geometry.GetPoint(f.i2);
+    numVertices += 3;
+  }
 
-    if (numVertices > 0) {
-        centroid /= static_cast<double>(numVertices);
-    }
+  if (numVertices > 0) {
+    centroid /= static_cast<double>(numVertices);
+  }
 
-    return centroid;
+  return centroid;
 }
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
@@ -261,7 +264,8 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   resultGeometry =
       BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
-  glm::dmat4 combinedMatrix = glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
+  glm::dmat4 combinedMatrix =
+      glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
 
   resultGeometry.ApplyTransform(combinedMatrix);
 
@@ -286,6 +290,27 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     printf("second mesh zero\n");
     return resultGeometry;
   }
+
+  printf("parameters.flatFirstMesh[0]:\n");
+  for (int i = 0; i < parameters.flatFirstMesh[0].numPoints; ++i) {
+    auto point_ = parameters.flatFirstMesh[0].GetPoint(i);
+
+    printf("Point %i: x: %.4f, y: %.4f, z: %.4f\n", i, point_.x, point_.y,
+           point_.z);
+  }
+
+  printf("parameters.flatSecondMesh[0]:\n");
+  for (int i = 0; i < parameters.flatSecondMesh[0].numPoints; ++i) {
+    auto point_ = parameters.flatSecondMesh[0].GetPoint(i);
+
+    printf("Point %i: x: %.4f, y: %.4f, z: %.4f\n", i, point_.x, point_.y,
+           point_.z);
+  }
+
+/*glm::dmat4 identity = glm::dmat4(1.0);
+size_t offset = 0;
+  std::string secondGeomStr = ToObj(parameters.flatSecondMesh[0], offset, identity);
+   printf("secondGeoms[0]:\n%s\n", secondGeomStr.c_str());*/
 
   glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
   // get origin
@@ -674,7 +699,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis1Placement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
-    const ParamsAxis2Placement3D& parameters) {
+    const ParamsAxis2Placement3D &parameters) {
   glm::dvec3 zAxis(0, 0, 1);
   glm::dvec3 xAxis(1, 0, 0);
 
@@ -696,7 +721,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
-    const ParamsLocalPlacement& parameters) {
+    const ParamsLocalPlacement &parameters) {
   if (parameters.useRelPlacement) {
     glm::dmat4 result = parameters.relPlacement * parameters.axis2Placement;
     return result;
@@ -708,7 +733,7 @@ glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
-    const ParamsCartesianTransformationOperator3D& parameters) {
+    const ParamsCartesianTransformationOperator3D &parameters) {
   double scale1 = 1.0;
   double scale2 = 1.0;
   double scale3 = 1.0;
@@ -819,7 +844,7 @@ IfcBound3D ConwayGeometryProcessor::GetBound(ParamsGetBound parameters) {
 }
 
 std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
-    const ParamsReadIndexedPolygonalFace& parameters) {
+    const ParamsReadIndexedPolygonalFace &parameters) {
   std::vector<IfcBound3D> bounds;
 
   bounds.emplace_back();
@@ -1621,7 +1646,7 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
-    const ParamsGetIfcIndexedPolyCurve& parameters) {
+    const ParamsGetIfcIndexedPolyCurve &parameters) {
   IfcCurve curve;
 
   if (parameters.dimensions == 2) {
@@ -1657,7 +1682,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
-    const ParamsGetCircleCurve& parameters) {
+    const ParamsGetCircleCurve &parameters) {
   IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1677,7 +1702,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
 enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
-    const ParamsGetIfcCircle& parameters) {
+    const ParamsGetIfcCircle &parameters) {
   conway::geometry::IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1799,7 +1824,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
 }
 
 conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
-    const ParamsGetExtrudedAreaSolid& parameters) {
+    const ParamsGetExtrudedAreaSolid &parameters) {
   conway::geometry::IfcGeometry geom;
   double depth = parameters.depth;
 

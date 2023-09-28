@@ -49,7 +49,7 @@ project "conway_geom_native"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
@@ -208,7 +208,7 @@ project "conway_geom_native_tests"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
@@ -358,7 +358,9 @@ project "webifc_native"
         "geometry/**.*",
         "parsing/**.*",
         "utility/**.*",
-        "schema/**.*"
+        "schema/**.*",
+        "test/io_helpers.cpp",
+        "test/io_helpers.h"
     }
     WebIfcTestingMain = {"web-ifc-test.cpp"}
 
@@ -369,7 +371,7 @@ project "webifc_native"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
@@ -416,7 +418,8 @@ project "webifc_native"
             "external/manifold/src/sdf/include",
             "external/manifold/src/third_party/graphlite/include",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt"
+            "external/fuzzy-bools/deps/cdt",
+            "external/fast_float/include"
         }
 
         excludes {
@@ -488,7 +491,7 @@ project "ConwayGeomWasmNode"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
@@ -691,7 +694,7 @@ project "ConwayGeomWasmWeb"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}

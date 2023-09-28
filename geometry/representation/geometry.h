@@ -1,14 +1,18 @@
-/* MPL License: https://github.com/nickcastel50/conway-geom/blob/typescript_api/LICENSE.md */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.  */
+
 //Generic Representations of geometry used in web-ifc
 
 #pragma once
 
 #include <array>
-#include <string>
+#include <optional>
+#include <string_view>
 #include <cstdio>
 #include <algorithm>
 #include <unordered_map>
-#include <optional>
+#include <cstdint>
 #include <glm/glm.hpp>
 
 #include "IfcCurve.h"
@@ -17,12 +21,10 @@
 
 namespace webifc::geometry {
 
-	inline constexpr int VERTEX_FORMAT_SIZE_FLOATS = 6;
-
 	inline constexpr double EPS_SMALL = 1e-6;
 	inline static constexpr double EPS_TINY = 1e-9;
 
-	const static std::unordered_map<std::string, int> Horizontal_alignment_type{
+	const static std::unordered_map<std::string_view, int> Horizontal_alignment_type{
 		{"LINE", 1},		
 		{"CIRCULARARC", 2},	
 		{"CLOTHOID", 3},	
@@ -33,50 +35,29 @@ namespace webifc::geometry {
 		{"SINECURVE", 8},				//ToDo
 		{"VIENNESEBEND", 9}};			//ToDo
 
-		const static std::unordered_map<std::string, int> Vertical_alignment_type{
+		const static std::unordered_map<std::string_view, int> Vertical_alignment_type{
 			{"CONSTANTGRADIENT", 1},	
 			{"CIRCULARARC", 2},			
 			{"PARABOLICARC", 3},		
 			{"CLOTHOID", 4}};				//ToDo
 
-		const double EXTRUSION_DISTANCE_HALFSPACE_M = 50;
-
-		struct Face
-		{
-			int i0;
-			int i1;
-			int i2;
-		};
-
-		struct Loop
-		{
-			bool hasOne;
-			glm::dvec2 v1;
-			glm::dvec2 v2;
-		};
+		const double EXTRUSION_DISTANCE_HALFSPACE_M = 100;
 
 		struct IfcSegmentIndexSelect
 		{
-			std::string type;
+			std::string_view type;
 			std::vector<uint32_t> indexs;
 		};
 
 		struct IfcProfile
 		{
-			std::string type;
+			std::string_view type;
 			IfcCurve curve;
 			std::vector<IfcCurve> holes;
 			bool isConvex;
 			bool isComposite = false;
 			std::vector<IfcProfile> profiles;
-		};
-
-
-		struct IfcProfile3D
-		{
-			std::string type;
-			IfcCurve curve;
-			bool isConvex;
+			std::vector<double> tags;
 		};
 
 		struct IfcAlignmentSegment
@@ -95,13 +76,13 @@ namespace webifc::geometry {
 			bool Active = false;
 			double UDegree;
 			double VDegree;
-			std::string ClosedU;
-			std::string ClosedV;
-			std::string CurveType;
+			std::string_view ClosedU;
+			std::string_view ClosedV;
+			std::string_view CurveType;
 			std::vector<std::vector<double>> Weights;
 			std::vector<std::vector<glm::dvec3>> ControlPoints;
-			std::vector<glm::f64> UMultiplicity;
-			std::vector<glm::f64> VMultiplicity;
+			std::vector<uint32_t> UMultiplicity;
+			std::vector<uint32_t> VMultiplicity;
 			std::vector<glm::f64> UKnots;
 			std::vector<glm::f64> VKnots;
 			std::vector<std::vector<glm::f64>> WeightPoints;
@@ -111,7 +92,7 @@ namespace webifc::geometry {
 		{
 			bool Active = false;
 			glm::dmat4 Direction;
-			IfcProfile3D Profile;
+			IfcProfile Profile;
 		};
 
 		struct Extrusion
@@ -120,6 +101,12 @@ namespace webifc::geometry {
 			glm::dvec3 Direction;
 			IfcProfile Profile;
 			double Length;
+		};
+
+		struct IfcCrossSections
+		{
+			std::vector<IfcCurve> curves;
+			std::vector<uint32_t> expressID;
 		};
 
 		struct IfcAlignment
@@ -163,6 +150,7 @@ namespace webifc::geometry {
 		{
 			bool hasParam = false;
 			bool hasPos = false;
+			bool hasLenght = false;
 			double param;
 			glm::dvec2 pos;
 			glm::dvec3 pos3D;
@@ -311,4 +299,3 @@ namespace webifc::geometry {
 			}
 		};
 	}
-	
