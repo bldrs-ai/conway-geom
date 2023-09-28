@@ -546,12 +546,16 @@ export class ConwayGeometry {
   }
 
   /**
+   * Convert geometry to gltf.
    *
-   * @param geometry - Vector of native geometry object
-   * @param isGlb  - boolean if the output should be a single GLB file
-   * @param outputDraco - boolean should the output use Draco compression
-   * @param fileUri - string of base name for output files
-   * @return {ResultsGltf} - boolean success + buffers + file uris
+   * @param geometry Vector of native geometry collection objects
+   * @param materials Vector of native materials indexed by geometry
+   * @param isGlb  boolean if the output should be a single GLB file
+   * @param outputDraco boolean should the output use Draco compression
+   * @param fileUri string of base name for output files
+   * @param geometryOffset The offset into the geometry vector to use to start
+   *
+   * @return {ResultsGltf} boolean success + buffers + file uris
    */
   toGltf(
       geometry: StdVector<GeometryCollection>,
@@ -563,13 +567,13 @@ export class ConwayGeometry {
       geometryCount: number = geometry.size() ):
       ResultsGltf {
     return this.wasmModule.geometryToGltf(
-      geometry,
-      materials,
-      isGlb,
-      outputDraco,
-      fileUri,
-      geometryOffset,
-      geometryCount)
+        geometry,
+        materials,
+        isGlb,
+        outputDraco,
+        fileUri,
+        geometryOffset,
+        geometryCount)
   }
 
   /**
