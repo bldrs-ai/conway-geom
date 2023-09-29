@@ -105,10 +105,13 @@ std::vector<webifc::geometry::IfcCrossSections> GetCrossSections3D(
   return crossSections;
 }
 
-std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom, size_t &offset,
+std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom, size_t &offset, std::string materialName,
                           glm::dmat4 transform = glm::dmat4(1)) {
   std::string obj;
   obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
+
+  obj.append("mtllib " + materialName + ".mtl\n");
+  obj.append("usemtl " + materialName + "\n");
 
   const char *vFormat = "v %.6f %.6f %.6f\n";
   const char *fFormat = "f %zu// %zu// %zu//\n";
@@ -134,18 +137,39 @@ std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom, size_t &off
   return obj;
 }
 
-void writeFile(std::wstring filename, std::string data) {
+/*void writeFile(std::string filename, std::string data) {
   std::ofstream out(filename.c_str());
   out << data;
   out.close();
+}*/
+
+std::string ColorToMtl(const glm::dvec3 &color, const std::string &materialName) {
+    std::string mtl;
+    const char *mtlFormat = 
+        "newmtl %s\n"
+        "Ka %f %f %f\n"  // Ambient color
+        "Kd %f %f %f\n"  // Diffuse color
+        "Ks 0.000 0.000 0.000\n";  // Specular color (set to black for simplicity)
+
+    char mtlBuffer[128];
+    snprintf(mtlBuffer, sizeof(mtlBuffer), mtlFormat, materialName.c_str(), color.r, color.g, color.b, color.r, color.g, color.b);
+    mtl.append(mtlBuffer);
+
+    return mtl;
 }
 
 glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                           glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
-void DumpGeom(const webifc::geometry::IfcGeometry &geom,
-                         std::wstring filename) {
+void DumpGeom(const webifc::geometry::IfcGeometry &geom, glm::dvec3 &color,
+                         std::string name) {
   size_t offset = 0;
-  writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
+  std::string fileName = "./";
+  std::string objFileName = fileName + name + ".obj";
+  std::string mtlFileName = fileName + name + ".mtl";
+  writeFile(objFileName, GeometryToObj(geom, offset, name, NormalizeMat));
+
+  printf("name: %s\n",name.c_str());
+  writeFile(mtlFileName, ColorToMtl(color, name));
 }
 
 std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
@@ -162,16 +186,13 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
 
       for (auto &geom : mesh.geometries) {
         auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
-
+        glm::dvec3 color(geom.color.r, geom.color.g, geom.color.b);
         if (webifc::statistics::exportObjs) {
             fuzzybools::Geometry fbGeom;
-            std::string fileName = "./";
-            fileName += std::to_string(geom.geometryExpressID);
-            fileName += "_webifc.obj";
+            std::string fileName = std::to_string(geom.geometryExpressID);
+            fileName += "_webifc";
 
-            std::wstring wsTmp(fileName.begin(), fileName.end());
-
-            DumpGeom(flatGeom, wsTmp);
+            DumpGeom(flatGeom, color, fileName);
 
             std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
         }
@@ -431,9 +452,6 @@ int main(int argc, char *argv[]) {
   if (webifc::statistics::collectStats) {
     std::vector<uint32_t> currentlySupportedTypes = {
         webifc::schema::IFCPLANE,
-        webifc::schema::IFCBSPLINESURFACE,
-        webifc::schema::IFCBSPLINESURFACEWITHKNOTS,
-        webifc::schema::IFCRATIONALBSPLINESURFACEWITHKNOTS,
         webifc::schema::IFCAXIS2PLACEMENT2D,
         webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2D,
         webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM,
