@@ -1,6 +1,8 @@
 
+import { LocateFileHandlerFn } from '../../src/shim/ifc_api.js'
 import { CanonicalMaterial } from '../../src/core/canonical_material.js'
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
+import { NativeTransform } from '../../src/core/native_types.js'
 
 
 type NativeVectorGeometryCollection = StdVector<GeometryCollection>
@@ -28,7 +30,7 @@ export interface StdVector<T> {
 
 export interface GeometryCollection {
 
-  addComponentWithTransform(geometry:GeometryObject, transform:any): void
+  addComponentWithTransform(geometry: GeometryObject, transform: any): void
 
   materialIndex: number
   hasDefaultMaterial: boolean
@@ -36,17 +38,23 @@ export interface GeometryCollection {
 }
 
 export interface GeometryObject {
+  GetVertexData: () => any
+  GetPoint(parameter: number): Vector3
+  NormalizeInPlace(): void
+  GetVertexDataSize: () => number
+  GetIndexData: () => any
+  GetIndexDataSize: () => number
   getAllocationSize(): number
-  getVertexData: () => any
-  getVertexDataSize: () => number
-  getIndexData: () => any
-  getIndexDataSize: () => number
   appendGeometry(parameter: GeometryObject): void
-  addComponentTransform(transform:any): void
+  addComponentTransform(transform: any): void
   appendWithTransform(geometry: GeometryObject, transform: any): void
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
+  min: Vector3
+  max: Vector3
+  normalized: boolean
+  toObj(expressID: number): void
   delete(): void
 }
 
@@ -288,6 +296,13 @@ export interface ParamsGetBooleanResult {
   operatorType: number
 }
 
+export interface ParamsRelVoidSubtract {
+  flatFirstMesh: any
+  flatSecondMesh: any
+  operatorType: number
+  parentMatrix: any
+}
+
 /**
  * Internal interface for wasm module, geometry processing
  * OBJ + GLTF + GLB (Draco) Conversions
@@ -307,10 +322,10 @@ export class ConwayGeometry {
   }
 
   /**
- *
- * @param initialSize number - initial size of the vector (optional)
- * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
- */
+   *
+   * @param initialSize number - initial size of the vector (optional)
+   * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
+   */
   nativeVectorGeometry(initialSize?: number): NativeVectorGeometry {
     const nativeVectorGeometry_ =
       // eslint-disable-next-line new-cap
@@ -332,7 +347,6 @@ export class ConwayGeometry {
    */
   nativeGeometryCollection(): GeometryCollection {
     const nativeGeometryCollection =
-    // eslint-disable-next-line new-cap
       (new (this.wasmModule.IfcGeometryCollection)()) as GeometryCollection
 
     return nativeGeometryCollection
@@ -351,11 +365,10 @@ export class ConwayGeometry {
   }
 
   /**
- * Create a native material from a canonical one.
- *
- * @param from The material to create the native material from
- * @return {MaterialObject} The created canonical material.
- */
+   *
+   * @param from The material to create the native material from
+   * @return {MaterialObject} The created canonical material.
+   */
   nativeMaterial(from: CanonicalMaterial): MaterialObject {
     const native: MaterialObject = {
 
@@ -384,11 +397,10 @@ export class ConwayGeometry {
   }
 
   /**
- * Create a native vector of glm::vec3 to pass across the boundary.
- *
- * @param initialSize number - initial size of the vector (optional)
- * @return {NativeVectorMaterial} - a native std::vector<MaterialObject> from the wasm module
- */
+   *
+   * @param initialSize number - initial size of the vector (optional)
+   * @return {NativeVectorMaterial} - a native std::vector<MaterialObject> from the wasm module
+   */
   nativeVectorMaterial(initialSize?: number): NativeVectorMaterial {
     const nativeVectorMaterial_ =
       // eslint-disable-next-line new-cap
@@ -406,9 +418,10 @@ export class ConwayGeometry {
    *
    * @return {Promise<boolean>} - initialization status
    */
-  async initialize(): Promise<boolean> {
+  async initialize(fileHandler?: LocateFileHandlerFn): Promise<boolean> {
     if (this.wasmModule === void 0) {
-      this.wasmModule = await ConwayGeomWasm()
+      // eslint-disable-next-line new-cap
+      this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
     }
 
     this.initialized = false
@@ -546,7 +559,28 @@ export class ConwayGeometry {
   }
 
   /**
+  
+   * @param parameters
+   * @return {GeometryObject}
+   */
+  relVoidSubtract(parameters: ParamsRelVoidSubtract): GeometryObject {
+    const result = this.wasmModule.relVoidSubtract(parameters)
+    return result
+  }
+
+  /**
    * Convert geometry to gltf.
+   *
+   * @param mat1
+   * @param mat2
+   * @return {any} matrix result of the multiplication
+   */
+  multiplyNativeMatrices(mat1: NativeTransform, mat2: NativeTransform): any {
+    const result = this.wasmModule.multiplyNativeMatrices(mat1, mat2)
+    return result
+  }
+
+  /**
    *
    * @param geometry Vector of native geometry collection objects
    * @param materials Vector of native materials indexed by geometry
@@ -601,6 +635,14 @@ export class ConwayGeometry {
    */
   getLocalPlacement(parameters: ParamsLocalPlacement) {
     return this.wasmModule.getLocalPlacement(parameters)
+  }
+
+  /**
+   *
+   * @return {any} identity matrix
+   */
+  getIdentityTransform():any {
+    return this.wasmModule.getIdentityTransform()
   }
 
   /**

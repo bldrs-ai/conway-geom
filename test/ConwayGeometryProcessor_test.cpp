@@ -20,7 +20,7 @@ void testBoolSubtract() {
   std::vector<conway::geometry::IfcGeometry> geometryArr1;
   std::vector<conway::geometry::IfcGeometry> geometryArr2;
 
-  conwayGeometryProcessor.BoolSubtract(geometryArr1, geometryArr2);
+  conwayGeometryProcessor.BoolSubtractLegacy(geometryArr1, geometryArr2);
 }
 
 void testGeometryToGltf() {
@@ -29,14 +29,18 @@ void testGeometryToGltf() {
   conway::geometry::IfcGeometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
-  std::vector<conway::geometry::IfcGeometry> geometries;
-  geometries.push_back(ifcGeometry);
-
   std::vector<conway::geometry::Material> materials;
   materials.push_back(ifcMaterial);
-  
+
+  glm::dmat4 identityMatrix(1.0);
+  std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+  conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+  geometryCollectionSingle.AddComponentWithTransform(&ifcGeometry,
+                                                     identityMatrix);
+  geometryCollection.push_back(geometryCollectionSingle);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(geometries, materials, false, false,
+  conwayGeometryProcessor.GeometryToGltf(geometryCollection, materials, false, false,
                                          testFilePath, false);
 }
 
@@ -46,15 +50,19 @@ void testGeometryToGlb() {
   conway::geometry::IfcGeometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
-  std::vector<conway::geometry::IfcGeometry> geometries;
-  geometries.push_back(ifcGeometry);
-
   std::vector<conway::geometry::Material> materials;
   materials.push_back(ifcMaterial);
 
+  glm::dmat4 identityMatrix(1.0);
+  std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+  conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+  geometryCollectionSingle.AddComponentWithTransform(&ifcGeometry,
+                                                     identityMatrix);
+  geometryCollection.push_back(geometryCollectionSingle);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(geometries, materials, true, false, testFilePath,
-                                         false);
+  conwayGeometryProcessor.GeometryToGltf(geometryCollection, materials, true, false,
+                                         testFilePath, false);
 }
 
 void testGeometryToGltfDraco() {
@@ -63,15 +71,18 @@ void testGeometryToGltfDraco() {
   conway::geometry::IfcGeometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
-  std::vector<conway::geometry::IfcGeometry> geometries;
-  geometries.push_back(ifcGeometry);
-
   std::vector<conway::geometry::Material> materials;
   materials.push_back(ifcMaterial);
 
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(geometries, materials, false, true, testFilePath,
-                                         false);
+  glm::dmat4 identityMatrix(1.0);
+  std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+  conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+  geometryCollectionSingle.AddComponentWithTransform(&ifcGeometry,
+                                                     identityMatrix);
+  geometryCollection.push_back(geometryCollectionSingle);
+  conwayGeometryProcessor.GeometryToGltf(geometryCollection, materials, false,
+                                         true, testFilePath, false);
 }
 
 void testGeometryToGlbDraco() {
@@ -80,15 +91,19 @@ void testGeometryToGlbDraco() {
   conway::geometry::IfcGeometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
-  std::vector<conway::geometry::IfcGeometry> geometries;
-  geometries.push_back(ifcGeometry);
-
   std::vector<conway::geometry::Material> materials;
   materials.push_back(ifcMaterial);
 
+  glm::dmat4 identityMatrix(1.0);
+  std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+  conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+  geometryCollectionSingle.AddComponentWithTransform(&ifcGeometry,
+                                                     identityMatrix);
+  geometryCollection.push_back(geometryCollectionSingle);
+
   std::string testFilePath = "./test";
-  conwayGeometryProcessor.GeometryToGltf(geometries, materials, true, true, testFilePath,
-                                         false);
+  conwayGeometryProcessor.GeometryToGltf(geometryCollection, materials, true, true,
+                                         testFilePath, false);
 }
 
 void testGetAxis1Placement() {

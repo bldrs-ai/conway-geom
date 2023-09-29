@@ -772,13 +772,18 @@ void genIndexIfc() {
         printf("Writing GLTF...\n");
       }
 
-      std::vector<conway::geometry::IfcGeometry> geometrySingle;
-      geometrySingle.push_back(geometryVec[0]);
+      glm::dmat4 identityMatrix(1.0);
+      std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+      conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+      geometryCollectionSingle.AddComponentWithTransform(&geometryVec[0],
+                                                         identityMatrix);
+      geometryCollection.push_back(geometryCollectionSingle);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometrySingle, materials, false, conway::statistics::exportDraco,
-              fileNameGltf, true, NormalizeMat);
+              geometryCollection, materials, false,
+              conway::statistics::exportDraco, fileNameGltf, true,
+              NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
@@ -793,13 +798,18 @@ void genIndexIfc() {
         printf("Writing GLB...\n");
       }
 
-      std::vector<conway::geometry::IfcGeometry> geometrySingle;
-      geometrySingle.push_back(geometryVec[0]);
+      glm::dmat4 identityMatrix(1.0);
+      std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+      conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+      geometryCollectionSingle.AddComponentWithTransform(&geometryVec[0],
+                                                         identityMatrix);
+      geometryCollection.push_back(geometryCollectionSingle);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometrySingle, materials, true, conway::statistics::exportDraco,
-              fileNameGltf, true, NormalizeMat);
+              geometryCollection, materials, true,
+              conway::statistics::exportDraco, fileNameGltf, true,
+              NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
@@ -846,11 +856,22 @@ void genIndexIfc() {
         printf("Writing Complete GLTF...\n");
       }
 
+      glm::dmat4 identityMatrix(1.0);
+      std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+      conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+
+      for (int i = 0; i < geometryVec.size(); ++i) {
+        geometryCollectionSingle.AddComponentWithTransform(&geometryVec[i],
+                                                           identityMatrix);
+      }
+
+      geometryCollection.push_back(geometryCollectionSingle);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec, materials, false, conway::statistics::exportDraco,
-              fileNameGltf, true, NormalizeMat);
+              geometryCollection, materials, false,
+              conway::statistics::exportDraco, fileNameGltf, true,
+              NormalizeMat);
 
       if (!results.success) {
         printf("Error writing GLTF...");
@@ -864,10 +885,20 @@ void genIndexIfc() {
         printf("Writing Complete GLB...\n");
       }
 
+      glm::dmat4 identityMatrix(1.0);
+      std::vector<conway::geometry::IfcGeometryCollection> geometryCollection;
+      conway::geometry::IfcGeometryCollection geometryCollectionSingle;
+
+      for (int i = 0; i < geometryVec.size(); ++i) {
+        geometryCollectionSingle.AddComponentWithTransform(&geometryVec[i],
+                                                           identityMatrix);
+      }
+
+      geometryCollection.push_back(geometryCollectionSingle);
       std::vector<conway::geometry::Material> materials;
       conway::geometry::ConwayGeometryProcessor::ResultsGltf results =
           conwayGeometryProcessor.GeometryToGltf(
-              geometryVec, materials, true, conway::statistics::exportDraco,
+              geometryCollection, materials, true, conway::statistics::exportDraco,
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {

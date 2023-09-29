@@ -43,7 +43,8 @@ struct IfcGeometry {
   
   glm::dvec3 GetExtent() const;
   void Normalize();
- 
+  void NormalizeInPlace();
+  void AddComponent(IfcGeometry &g);
   void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
   void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
   void AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c);
@@ -64,6 +65,7 @@ struct IfcGeometry {
   uint32_t GetIndexDataSize();
   void ApplyTransform(glm::dmat4x4 transform);
   IfcGeometry Clone();
+  void ToObj(uint32_t expressID);
 
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,

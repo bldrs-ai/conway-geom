@@ -1831,6 +1831,7 @@ IfcProfile IfcGeometryLoader::GetProfile(uint32_t expressID) const
   {
     if (!profile.curve.IsCCW())
     {
+      printf("inverting curve on profile expressID: %i...\n", expressID);
       profile.curve.Invert();
     }
     for (auto &hole : profile.holes)

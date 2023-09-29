@@ -131,13 +131,6 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
 
   IfcGeometry result;
 
-  /*IfcGeometry r1;
-  IfcGeometry r2;
-
-  intersectMeshMesh(firstGeom, secondGeom, r1, r2);
-
-  result = boolSubtract(r1, r2);*/
-
   if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
     printf("bool aborted due to empty source or target\n");
 
@@ -165,7 +158,120 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
                                       glm::dvec3(0, 0, 1));
     curve = GetRectangleCurve(xdim, ydim, placement);
   }
+
+  if (!curve.IsCCW()) {
+    curve.Invert();
+  }
+
   return curve;
+}
+
+glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
+  return (geometry.min + geometry.max) * 0.5;
+}
+
+glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
+    glm::dvec3 centroid(0.0);
+    uint32_t numVertices = 0;
+
+    // I'm assuming the IfcGeometry class provides a method to iterate over all vertices.
+    // If it doesn't, you might need to iterate over faces and access vertices via face indices.
+    for (uint32_t i = 0; i < geometry.numFaces; i++) {
+        Face f = geometry.GetFace(i);
+        centroid += geometry.GetPoint(f.i0);
+        centroid += geometry.GetPoint(f.i1);
+        centroid += geometry.GetPoint(f.i2);
+        numVertices += 3;
+    }
+
+    if (numVertices > 0) {
+        centroid /= static_cast<double>(numVertices);
+    }
+
+    return centroid;
+}
+
+IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
+    ParamsRelVoidSubtract parameters) {
+  IfcGeometry resultGeometry;
+  if (parameters.flatFirstMesh.size() <= 0) {
+    printf("first mesh zero\n");
+    return resultGeometry;
+  }
+
+  if (parameters.flatSecondMesh.size() <= 0) {
+    printf("second mesh zero\n");
+    return resultGeometry;
+  }
+
+  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
+  // get origin
+  if (parameters.flatFirstMesh[0].numFaces) {
+    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+      Face f = parameters.flatFirstMesh[0].GetFace(i);
+      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
+      break;
+    }
+  }
+
+  // TODO: clean this up, remove origin translation
+  auto normalizeMat = glm::translate(-originFirstMesh);
+  glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
+  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
+  IfcGeometry newGeomFirstMesh;
+
+  for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+    Face f = parameters.flatFirstMesh[0].GetFace(i);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
+
+    if (transformationBreaksWinding) {
+      newGeomFirstMesh.AddFace(b, a, c);
+    } else {
+      newGeomFirstMesh.AddFace(a, b, c);
+    }
+  }
+
+  parameters.flatFirstMesh[0] = newGeomFirstMesh;
+  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
+  IfcGeometry newGeomSecondMesh;
+
+  for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
+    Face f = parameters.flatSecondMesh[0].GetFace(i);
+    glm::dvec3 a =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
+    glm::dvec3 b =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
+    glm::dvec3 c =
+        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
+
+    if (transformationBreaksWinding) {
+      newGeomSecondMesh.AddFace(b, a, c);
+    } else {
+      newGeomSecondMesh.AddFace(a, b, c);
+    }
+  }
+
+  parameters.flatSecondMesh[0] = newGeomSecondMesh;
+
+  resultGeometry =
+      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+
+  glm::dmat4 combinedMatrix = glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
+
+  resultGeometry.ApplyTransform(combinedMatrix);
+
+  /*resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
+
+  glm::dmat4 inverseParentMatrix = glm::inverse(parameters.parentMatrix);
+
+  resultGeometry.ApplyTransform(inverseParentMatrix);*/
+
+  return resultGeometry;
 }
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
@@ -181,7 +287,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     return resultGeometry;
   }
 
-  glm::dvec3 originFirstMesh;
+  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
   // get origin
   if (parameters.flatFirstMesh[0].numFaces) {
     for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
@@ -781,7 +887,6 @@ ConwayGeometryProcessor::GeometryToGltf(
   ResultsGltf results;
 
   try {
-
     // Construct a Mesh and add the MeshPrimitive as a child
     Microsoft::glTF::Mesh mesh;
     // Construct a Scene
@@ -887,8 +992,7 @@ ConwayGeometryProcessor::GeometryToGltf(
     std::vector<Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression>
         dracoPrimitives;
 
-    for (conway::geometry::IfcGeometryCollection& geom : geoms) {
-
+    for (conway::geometry::IfcGeometryCollection &geom : geoms) {
       // create a mesh object
       std::unique_ptr<draco::Mesh> dracoMesh;
 
@@ -916,16 +1020,14 @@ ConwayGeometryProcessor::GeometryToGltf(
       // geom.GetVertexData();
 
       if (outputDraco) {
-
         dracoMesh.reset(new draco::Mesh());
 
         // set the number of positions and faces
         uint32_t numPositions = 0;
-        uint32_t numIndices   = 0;
+        uint32_t numIndices = 0;
 
-        for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
-
-          conway::geometry::IfcGeometry& component = *componentPtr;
+        for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
+          conway::geometry::IfcGeometry &component = *componentPtr;
 
           numPositions += component.numPoints;
           numIndices += component.GetIndexDataSize();
@@ -933,7 +1035,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         uint32_t numFaces = numIndices / 3;
 
-        if ( numFaces > 0 ) {
+        if (numFaces > 0) {
           // set number of faces
           dracoMesh->SetNumFaces(numFaces);
 
@@ -958,55 +1060,46 @@ ConwayGeometryProcessor::GeometryToGltf(
         int32_t numTexCoords = 0;
 
         // populate position attribute
-        
 
-        uint32_t vertexCount  = 0;
-        uint32_t totalPoints  = 0;
+        uint32_t vertexCount = 0;
+        uint32_t totalPoints = 0;
         uint32_t totalIndices = 0;
 
         // populate geometry components position attribute
         for (uint32_t geometryComponentIndex = 0;
              geometryComponentIndex < geom.components.size();
              ++geometryComponentIndex) {
+          IfcGeometry &component = *geom.components[geometryComponentIndex];
+          glm::mat4 geomTransform =
+              transform * geom.transforms[geometryComponentIndex];
 
-          IfcGeometry& component     = *geom.components[ geometryComponentIndex ];
-          glm::mat4    geomTransform = transform * geom.transforms[ geometryComponentIndex ];
+          for (const double *where = component.vertexData.data(),
+                            *end = where + component.vertexData.size();
+               where < end; where += VERTEX_FORMAT_SIZE_FLOATS) {
+            glm::dvec4 t =
+                geomTransform * glm::dvec4(where[0], where[1], where[2], 1);
 
-          for ( 
-              const double* where = component.vertexData.data(),
-                          * end   = where + component.vertexData.size();
-              where < end;
-              where += VERTEX_FORMAT_SIZE_FLOATS ) {
-
-            glm::dvec4 t = geomTransform * glm::dvec4(  where[ 0 ], where[ 1 ], where[ 2 ], 1 );
-
-            float vertexVal[ 3 ] = { 
-              static_cast< float >( t.x ),
-              static_cast< float >( t.y ),
-              static_cast< float >( t.z ) 
-            };
+            float vertexVal[3] = {static_cast<float>(t.x),
+                                  static_cast<float>(t.y),
+                                  static_cast<float>(t.z)};
 
             dracoMesh->attribute(pos_att_id)
                 ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
-                                    vertexVal );
+                                    vertexVal);
           }
 
-          const uint32_t* triangles = component.indexData.data();
+          const uint32_t *triangles = component.indexData.data();
 
           // no textures, just map vertices to face indices
-          for ( size_t triangleIndex = 0, 
-                       end           = ( component.indexData.size() / 3 );
-                triangleIndex < end;
-                ++triangleIndex) {
-
-            uint32_t        indiceIndex = triangleIndex * 3;
-            const uint32_t *triangle    = triangles + indiceIndex;
+          for (size_t triangleIndex = 0, end = (component.indexData.size() / 3);
+               triangleIndex < end; ++triangleIndex) {
+            uint32_t indiceIndex = triangleIndex * 3;
+            const uint32_t *triangle = triangles + indiceIndex;
 
             uint32_t triangle0 = triangle[0] + totalPoints;
             uint32_t triangle1 = triangle[1] + totalPoints;
             uint32_t triangle2 = triangle[2] + totalPoints;
 
-            
             uint32_t compositeIndiceIndex = totalIndices + indiceIndex;
 
             const draco::PointIndex vert_id_0(compositeIndiceIndex);
@@ -1017,17 +1110,17 @@ ConwayGeometryProcessor::GeometryToGltf(
             // map vertex to face index
             dracoMesh->attribute(pos_att_id)
                 ->SetPointMapEntry(vert_id_0,
-                                  draco::AttributeValueIndex(triangle0));
+                                   draco::AttributeValueIndex(triangle0));
             dracoMesh->attribute(pos_att_id)
                 ->SetPointMapEntry(vert_id_1,
-                                  draco::AttributeValueIndex(triangle1));
+                                   draco::AttributeValueIndex(triangle1));
             dracoMesh->attribute(pos_att_id)
                 ->SetPointMapEntry(vert_id_2,
-                                  draco::AttributeValueIndex(triangle2));
+                                   draco::AttributeValueIndex(triangle2));
           }
 
           totalIndices += component.indexData.size();
-          totalPoints  += component.numPoints;
+          totalPoints += component.numPoints;
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1109,14 +1202,13 @@ ConwayGeometryProcessor::GeometryToGltf(
       std::string accessorIdPositions;
       std::string accessorIdUVs;
 
-      uint32_t numPoints  = 0; 
+      uint32_t numPoints = 0;
       uint32_t numIndices = 0;
 
-      for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
+      for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
+        conway::geometry::IfcGeometry &component = *componentPtr;
 
-        conway::geometry::IfcGeometry& component = *componentPtr;
-
-        numPoints  += component.numPoints;
+        numPoints += component.numPoints;
         numIndices += component.GetIndexDataSize();
       }
 
@@ -1129,34 +1221,33 @@ ConwayGeometryProcessor::GeometryToGltf(
       // positionOwner.push_back( std::vector< float >( numPoints * 3 ) );
       // indiceOwner.push_back( std::vector< uint32_t >() );
 
-      std::vector<float>    positions;
+      std::vector<float> positions;
       std::vector<uint32_t> indexData;
 
-      positions.resize( numPoints * 3 );
-      indexData.reserve( numIndices );
+      positions.resize(numPoints * 3);
+      indexData.reserve(numIndices);
 
       uint32_t numFaces = numIndices / 3;
 
       std::vector<float> minValues(3U, std::numeric_limits<float>::max());
       std::vector<float> maxValues(3U, std::numeric_limits<float>::lowest());
 
-      const size_t positionCount        = positions.size();
-      float*       positionOutputCursor = positions.data();
+      const size_t positionCount = positions.size();
+      float *positionOutputCursor = positions.data();
 
-      uint32_t pointOffset     = 0;
-      size_t   transformCursor = 0;
+      uint32_t pointOffset = 0;
+      size_t transformCursor = 0;
 
-      for ( conway::geometry::IfcGeometry* componentPtr : geom.components ) {
+      for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
+        conway::geometry::IfcGeometry &component = *componentPtr;
+        glm::dmat4 geomTransform =
+            transform * geom.transforms[transformCursor++];
 
-        conway::geometry::IfcGeometry& component     = *componentPtr;
-        glm::dmat4                     geomTransform = transform * geom.transforms[ transformCursor++ ];
-
-        for ( const double* where = component.vertexData.data(),
-                           *end   = where + component.vertexData.size(); 
-              where < end;
-              where += VERTEX_FORMAT_SIZE_FLOATS ) {
-
-          glm::dvec4 t = geomTransform * glm::dvec4(  where[ 0 ], where[ 1 ], where[ 2 ], 1 );
+        for (const double *where = component.vertexData.data(),
+                          *end = where + component.vertexData.size();
+             where < end; where += VERTEX_FORMAT_SIZE_FLOATS) {
+          glm::dvec4 t =
+              geomTransform * glm::dvec4(where[0], where[1], where[2], 1);
 
           *(positionOutputCursor++) = (float)t.x;
           *(positionOutputCursor++) = (float)t.y;
@@ -1165,19 +1256,15 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         size_t indexDataOffset = indexData.size();
 
-        indexData.insert( 
-          indexData.end(),
-          component.indexData.begin(),
-          component.indexData.end() );
+        indexData.insert(indexData.end(), component.indexData.begin(),
+                         component.indexData.end());
 
-        for ( uint32_t *where = indexData.data() + indexDataOffset,
-                       *end   = indexData.data() + indexData.size(); 
-              where < end;
-              where += 3 ) {
-
-            where[ 0 ] += pointOffset;
-            where[ 1 ] += pointOffset;
-            where[ 2 ] += pointOffset; 
+        for (uint32_t *where = indexData.data() + indexDataOffset,
+                      *end = indexData.data() + indexData.size();
+             where < end; where += 3) {
+          where[0] += pointOffset;
+          where[1] += pointOffset;
+          where[2] += pointOffset;
         }
 
         pointOffset += component.numPoints;

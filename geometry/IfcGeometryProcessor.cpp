@@ -108,17 +108,14 @@ namespace webifc::geometry
             auto material = relMaterials.find(line.expressID);
             if (material != relMaterials.end())
             {
-              //  printf("found material for mesh: #%i\n", line.expressID);
                 auto &materials = material->second;
                 for (auto item : materials)
                 {
                     if (materialDefinitions.count(item.second) != 0)
                     {
-                     //   printf("item.second: #%i\n", item.second);
                         auto &defs = materialDefinitions.at(item.second);
                         for (auto def : defs)
                         {
-                       //     printf("materialDefinitions: def.second: #%i\n", def.second);
                             styledItemColor = _geometryLoader.GetColor(def.second);
                             if (styledItemColor) break;
                         }
@@ -127,7 +124,6 @@ namespace webifc::geometry
                         // if no color found, check material itself
                     if (!styledItemColor)
                     {
-                     //   printf("checking material itself, expressID: %i\n", item.second);
                         styledItemColor = _geometryLoader.GetColor(item.second);
                         if (styledItemColor) break;
                     }
@@ -170,22 +166,6 @@ namespace webifc::geometry
                 mesh.children.push_back(GetMesh(ifcPresentation));
             }
 
-                /*
-                // not sure if aggregates are needed here...
-                // add aggregates before applying voids!
-                auto relAggIt = relAggregates.find(line.expressID);
-                if (relAggIt != relAggregates.end() && !relAggIt->second.empty())
-                {
-                    for (auto relAggExpressID : relAggIt->second)
-                    {
-                        // hacky fix to avoid double application of the parent matrix
-                        auto aggMesh = GetMesh(relAggExpressID);
-                        aggMesh.transformation *= glm::inverse(mesh.transformation);
-                        mesh.children.push_back(aggMesh);
-                    }
-                }
-                */
-
             auto relVoidsIt = relVoids.find(line.expressID);
 
             if (relVoidsIt != relVoids.end() && !relVoidsIt->second.empty())
@@ -195,6 +175,7 @@ namespace webifc::geometry
                 auto origin = GetOrigin(mesh, _expressIDToGeometry);
                 auto normalizeMat = glm::translate(-origin);
                 auto flatElementMeshes = flatten(mesh, _expressIDToGeometry, normalizeMat);
+              //  auto flatElementMeshTest = flatten(mesh, _expressIDToGeometry);
                 auto elementColor = mesh.GetColor();
 
                 IfcGeometry finalGeometry;
@@ -203,14 +184,16 @@ namespace webifc::geometry
                 {
 
                     std::vector<IfcGeometry> voidGeoms;
+                    int testExpressID = 0;
 
                     for (auto relVoidExpressID : relVoidsIt->second)
                     {
                         IfcComposedMesh voidGeom = GetMesh(relVoidExpressID);
+                        testExpressID = relVoidExpressID;
                         auto flatVoidMesh = flatten(voidGeom, _expressIDToGeometry, normalizeMat);
                         voidGeoms.insert(voidGeoms.end(), flatVoidMesh.begin(), flatVoidMesh.end());
                     }
-
+                    
                     finalGeometry = BoolSubtract(flatElementMeshes, voidGeoms, line.expressID);
                 }
 
@@ -828,6 +811,7 @@ namespace webifc::geometry
 
                     if (!profile.isComposite)
                     {
+                        
                         geom = Extrude(profile, dir, depth,_errorHandler);
                         if (flipWinding)
                         {
