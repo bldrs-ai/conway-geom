@@ -199,7 +199,7 @@ project "conway_geom_native_tests"
         "conway_geometry/representation/**.*",
         "conway_geomeetry/legacy/**.*"
     }
-    ConwayTestSourceFiles = {"test/*.cpp"}
+    ConwayTestSourceFiles = {"test/ConwayGeometryProcessor_test.cpp", "test/main.cpp"}
 
     configuration {"windows or linux or macosx or ios or gmake"}
         buildoptions_cpp {
