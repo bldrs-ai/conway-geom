@@ -11,7 +11,20 @@
 #include "../representation/IfcGeometry.h"
 #include "../representation/geometry.h"
 
+
 namespace conway::geometry {
+
+  constexpr double EPS_BIG2 = 1e-3;
+
+
+inline double angleConversion(double angle)
+	{
+		if (abs(angle > 2) - EPS_SMALL * (double)CONST_PI)
+		{
+			angle = (angle / 360) * 2 * (double)CONST_PI;
+		}
+		return angle;
+	}
 
 inline glm::dvec3 projectOntoPlane(const glm::dvec3 &origin,
                                    const glm::dvec3 &normal,
@@ -45,187 +58,220 @@ inline bool GetWindingOfTriangle(const glm::dvec3 &a, const glm::dvec3 &b,
   return glm::dot(norm, glm::dvec3(0, 0, 1)) > 0.0;
 }
 
-//! This implementation generates much more vertices than needed, and does not
-//! have smoothed normals
-inline IfcGeometry Sweep(
-    const bool closed, const IfcProfile &profile, const IfcCurve &directrix,
-    const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0)) {
-  IfcGeometry geom;
+//! This implementation generates much more vertices than needed, and does not have smoothed normals
+// TODO: Review rotate90 value, as it should be inferred from IFC but the source data had not been identified yet
+// An arbitrary value has been added in IFCSURFACECURVESWEPTAREASOLID but this is a bad solution
+inline	IfcGeometry Sweep(const double scaling, const bool closed, const IfcProfile &profile, const IfcCurve &directrix, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false)
+	{
+		IfcGeometry geom;
 
-  std::vector<glm::vec<3, glm::f64>> dpts;
+		std::vector<glm::vec<3, glm::f64>> dpts;
 
-  // Remove repeated points
-  for (size_t i = 0; i < directrix.points.size(); i++) {
-    if (i < directrix.points.size() - 1) {
-      if (glm::distance(directrix.points[i], directrix.points[i + 1]) > 10e-5) {
-        dpts.push_back(directrix.points[i]);
-      }
-    } else {
-      dpts.push_back(directrix.points[i]);
-    }
-  }
+		// Remove repeated points
+		for (size_t i = 0; i < directrix.points.size(); i++)
+		{
+			if (i < directrix.points.size() - 1)
+			{
+				if (glm::distance(directrix.points[i], directrix.points[i + 1]) > EPS_BIG2 / scaling)
+				{
+					dpts.push_back(directrix.points[i]);
+				}
+			}
+			else
+			{
+				dpts.push_back(directrix.points[i]);
+			}
+		}
 
-  if (closed) {
-    glm::vec<3, glm::f64> dirStart =
-        dpts[dpts.size() - 2] - dpts[dpts.size() - 1];
-    glm::vec<3, glm::f64> dirEnd = dpts[1] - dpts[0];
-    std::vector<glm::vec<3, glm::f64>> newDpts;
-    newDpts.push_back(dpts[0] + dirStart);
-    for (size_t i = 0; i < dpts.size(); i++) {
-      newDpts.push_back(dpts[i]);
-    }
-    newDpts.push_back(dpts[dpts.size() - 1] + dirEnd);
-    dpts = newDpts;
-  }
+		if (closed)
+		{
+			glm::vec<3, glm::f64> dirStart = dpts[dpts.size() - 2] - dpts[dpts.size() - 1];
+			glm::vec<3, glm::f64> dirEnd = dpts[1] - dpts[0];
+			std::vector<glm::vec<3, glm::f64>> newDpts;
+			newDpts.push_back(dpts[0] + dirStart);
+			for (size_t i = 0; i < dpts.size(); i++)
+			{
+				newDpts.push_back(dpts[i]);
+			}
+			newDpts.push_back(dpts[dpts.size() - 1] + dirEnd);
+			dpts = newDpts;
+		}
 
-  if (dpts.size() <= 1) {
-    // nothing to sweep
-    return geom;
-  }
+		if (dpts.size() <= 1)
+		{
+				// nothing to sweep
+			return geom;
+		}
 
-  // compute curve for each part of the directrix
-  std::vector<IfcCurve> curves;
+			// compute curve for each part of the directrix
+		std::vector<IfcCurve> curves;
+		std::vector<glm::dmat4> transforms;
 
-  for (size_t i = 0; i < dpts.size(); i++) {
-    IfcCurve segmentForCurve;
+		for (size_t i = 0; i < dpts.size(); i++)
+		{
+			IfcCurve segmentForCurve;
 
-    glm::dvec3 planeNormal;
-    glm::dvec3 directrixSegmentNormal;
-    glm::dvec3 planeOrigin;
+			glm::dvec3 planeNormal;
+			glm::dvec3 directrixSegmentNormal;
+			glm::dvec3 planeOrigin;
 
-    if (i == 0)  // start
-    {
-      planeNormal = glm::normalize(dpts[1] - dpts[0]);
-      directrixSegmentNormal = planeNormal;
-      planeOrigin = dpts[0];
-    } else if (i == dpts.size() - 1)  // end
-    {
-      planeNormal = glm::normalize(dpts[i] - dpts[i - 1]);
-      directrixSegmentNormal = planeNormal;
-      planeOrigin = dpts[i];
-    } else  // middle
-    {
-      // possibly the directrix is bad
-      glm::dvec3 n1 = glm::normalize(dpts[i] - dpts[i - 1]);
-      glm::dvec3 n2 = glm::normalize(dpts[i + 1] - dpts[i]);
-      glm::dvec3 p = glm::normalize(glm::cross(n1, n2));
+				if (i == 0) // start
+				{
+					planeNormal = glm::normalize(dpts[1] - dpts[0]);
+					directrixSegmentNormal = planeNormal;
+					planeOrigin = dpts[0];
+				}
+				else if (i == dpts.size() - 1) // end
+				{
+					planeNormal = glm::normalize(dpts[i] - dpts[i - 1]);
+					directrixSegmentNormal = planeNormal;
+					planeOrigin = dpts[i];
+				}
+				else // middle
+				{
+					// possibly the directrix is bad
+					glm::dvec3 n1 = glm::normalize(dpts[i] - dpts[i - 1]);
+					glm::dvec3 n2 = glm::normalize(dpts[i + 1] - dpts[i]);
+					glm::dvec3 p = glm::normalize(glm::cross(n1, n2));
 
-      // double prod = glm::dot(n1, n2);
+					// double prod = glm::dot(n1, n2);
 
-      if (std::isnan(p.x)) {
-        // TODO: sometimes outliers cause the perp to become NaN!
-        // this is bad news, as it nans the points added to the final mesh
-        // also, it's hard to bail out now :/
-        // see curve.add() for more info on how this is currently "solved"
-        printf("NaN perp!\n");
-      }
+					if (std::isnan(p.x))
+					{
+						// TODO: sometimes outliers cause the perp to become NaN!
+						// this is bad news, as it nans the points added to the final mesh
+						// also, it's hard to bail out now :/
+						// see curve.add() for more info on how this is currently "solved"
+						printf("NaN perp!\n");
+					}
 
-      glm::dvec3 u1 = glm::normalize(glm::cross(n1, p));
-      glm::dvec3 u2 = glm::normalize(glm::cross(n2, p));
+					glm::dvec3 u1 = glm::normalize(glm::cross(n1, p));
+					glm::dvec3 u2 = glm::normalize(glm::cross(n2, p));
 
-      // TODO: When n1 and n2 have similar direction but opposite side...
-      // ... projection tend to infinity. -> glm::dot(n1, n2)
-      // I implemented a bad solution to prevent projection to infinity
-      if (glm::dot(n1, n2) < -0.9) {
-        n2 = -n2;
-        u2 = -u2;
-      }
+					// TODO: When n1 and n2 have similar direction but opposite side...
+					// ... projection tend to infinity. -> glm::dot(n1, n2)
+					// I implemented a bad solution to prevent projection to infinity
+					if (glm::dot(n1, n2) < -0.9)
+					{
+						n2 = -n2;
+						u2 = -u2;
+					}
 
-      glm::dvec3 au = glm::normalize(u1 + u2);
-      planeNormal = glm::normalize(glm::cross(au, p));
-      directrixSegmentNormal = n1;  // n1 or n2 doesn't matter
+					glm::dvec3 au = glm::normalize(u1 + u2);
+					planeNormal = glm::normalize(glm::cross(au, p));
+					directrixSegmentNormal = n1; // n1 or n2 doesn't matter
 
-      planeOrigin = dpts[i];
-    }
+					planeOrigin = dpts[i];
+				}
 
-    if (curves.empty()) {
-      // construct initial curve
-      glm::dvec3 left;
-      if (initialDirectrixNormal == glm::dvec3(0)) {
-        left = glm::cross(
-            directrixSegmentNormal,
-            glm::dvec3(directrixSegmentNormal.y, directrixSegmentNormal.x,
-                       directrixSegmentNormal.z));
-        if (left == glm::dvec3(0, 0, 0)) {
-          left = glm::cross(
-              directrixSegmentNormal,
-              glm::dvec3(directrixSegmentNormal.x, directrixSegmentNormal.z,
-                         directrixSegmentNormal.y));
-        }
-        if (left == glm::dvec3(0, 0, 0)) {
-          left = glm::cross(
-              directrixSegmentNormal,
-              glm::dvec3(directrixSegmentNormal.z, directrixSegmentNormal.y,
-                         directrixSegmentNormal.x));
-        }
-      } else {
-        left = glm::cross(directrixSegmentNormal, initialDirectrixNormal);
-      }
+				if (curves.empty())
+				{
+					// construct initial curve
+					glm::dvec3 left;
+					glm::dvec3 right;
+					if (initialDirectrixNormal == glm::dvec3(0))
+					{
+						left = glm::cross(directrixSegmentNormal, glm::dvec3(directrixSegmentNormal.y, directrixSegmentNormal.x, directrixSegmentNormal.z));
+						if (left == glm::dvec3(0, 0, 0))
+						{
+							left = glm::cross(directrixSegmentNormal, glm::dvec3(directrixSegmentNormal.x, directrixSegmentNormal.z, directrixSegmentNormal.y));
+						}
+						if (left == glm::dvec3(0, 0, 0))
+						{
+							left = glm::cross(directrixSegmentNormal, glm::dvec3(directrixSegmentNormal.z, directrixSegmentNormal.y, directrixSegmentNormal.x));
+						}
+						right = glm::normalize(glm::cross(directrixSegmentNormal, left));
+						left = glm::normalize(glm::cross(directrixSegmentNormal, right));
+					}
+					else
+					{
+						left = glm::cross(directrixSegmentNormal, initialDirectrixNormal);
+						glm::dvec3 side = glm::normalize(initialDirectrixNormal);
+						right = glm::normalize(glm::cross(directrixSegmentNormal, left));
+						left = glm::normalize(glm::cross(directrixSegmentNormal, right));
+						right *= side;
+					}
 
-      if (left == glm::dvec3(0, 0, 0)) {
-        printf("0 left vec in sweep!\n");
-      }
+					if (left == glm::dvec3(0, 0, 0))
+					{
+						printf("0 left vec in sweep!\n");
+					}
 
-      glm::dvec3 right =
-          glm::normalize(glm::cross(directrixSegmentNormal, left));
-      left = glm::normalize(glm::cross(directrixSegmentNormal, right));
+					// project profile onto planeNormal, place on planeOrigin
+					// TODO: look at holes
+					auto &ppts = profile.curve.points;
+					for (auto &pt2D : ppts)
+					{				
+						glm::dvec3 pt = -pt2D.x * left + -pt2D.y * right + planeOrigin;
+						if(rotate90)
+						{
+							pt = -pt2D.x * right - pt2D.y * left + planeOrigin;
+						}
+						glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt, directrixSegmentNormal);
+						
+						segmentForCurve.Add3d(proj);
+					}
+				}
+				else
+				{
+					// project previous curve onto the normal
+					const IfcCurve &prevCurve = curves.back();
 
-      // project profile onto planeNormal, place on planeOrigin
-      // TODO: look at holes
-      auto &ppts = profile.curve.points;
-      for (auto &pt2D : ppts) {
-        glm::dvec3 pt = -pt2D.x * right + -pt2D.y * left + planeOrigin;
-        glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt,
-                                           directrixSegmentNormal);
+					auto &ppts = prevCurve.points;
+					for (auto &pt : ppts)
+					{
+						glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt, directrixSegmentNormal);
 
-        segmentForCurve.Add3d(proj);
-      }
-    } else {
-      // project previous curve onto the normal
-      const IfcCurve &prevCurve = curves.back();
+						segmentForCurve.Add3d(proj);
+					}
+				}
 
-      auto &ppts = prevCurve.points;
-      for (auto &pt : ppts) {
-        glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt,
-                                           directrixSegmentNormal);
+				if (!closed || (i != 0 && i != dpts.size() - 1))
+				{
+					curves.push_back(segmentForCurve);
+				}
+			}
 
-        segmentForCurve.Add3d(proj);
-      }
-    }
+			if (closed)
+			{
+				dpts.pop_back();
+				dpts.erase(dpts.begin());
+			}
 
-    if (!closed || (i != 0 && i != dpts.size() - 1)) {
-      curves.push_back(segmentForCurve);
-    }
-  }
+			// connect the curves
+			for (size_t i = 1; i < dpts.size(); i++)
+			{
+				glm::dvec3 p1 = dpts[i - 1];
+				glm::dvec3 p2 = dpts[i];
 
-  if (closed) {
-    dpts.pop_back();
-    dpts.erase(dpts.begin());
-  }
+				const double di = glm::distance(p1, p2);
 
-  // connect the curves
-  for (size_t i = 1; i < dpts.size(); i++) {
-    const auto &c1 = curves[i - 1].points;
-    const auto &c2 = curves[i].points;
+				//Only segments smaller than 10 cm will be represented, those that are bigger will be standardized
 
-    uint32_t capSize = c1.size();
-    for (size_t j = 1; j < capSize; j++) {
-      glm::dvec3 bl = c1[j - 1];
-      glm::dvec3 br = c1[j - 0];
+					const auto &c1 = curves[i - 1].points;
+					const auto &c2 = curves[i].points;
 
-      glm::dvec3 tl = c2[j - 1];
-      glm::dvec3 tr = c2[j - 0];
+					uint32_t capSize = c1.size();
+					for (size_t j = 1; j < capSize; j++)
+					{
+						glm::dvec3 bl = c1[j - 1];
+						glm::dvec3 br = c1[j - 0];
 
-      geom.AddFace(tl, br, bl);
-      geom.AddFace(tl, tr, br);
-    }
-  }
+						glm::dvec3 tl = c2[j - 1];
+						glm::dvec3 tr = c2[j - 0];
 
-  // DumpSVGCurve(directrix.points, glm::dvec3(), "directrix.html");
-  // DumpIfcGeometry(geom, "sweep.obj");
+						geom.AddFace(tl, br, bl);
+						geom.AddFace(tl, tr, br);
+					}
+				
+			}
 
-  return geom;
-}
+			// DumpSVGCurve(directrix.points, glm::dvec3(), "directrix.html");
+			// DumpIfcGeometry(geom, "sweep.obj");
+
+			return geom;
+		}
+
 
 inline bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
                               const glm::dvec3 v3, glm::dvec3 &normal,
