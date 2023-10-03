@@ -64,7 +64,7 @@ if /i "%1"=="debug" (
     exit /b 1
 )
 
-IF "%1"=="test" (
+if "%1"=="test" (
     cd gmake
     make config=%native_config% conway_geom_native_tests
     ..\bin\64\debug\conway_geom_native_tests
@@ -72,24 +72,23 @@ IF "%1"=="test" (
         echo "! Build failed" >&2
         exit /b 1
     )
-) ELSE (
-    IF "%2"=="" (
+) else (
+    if "%2"=="" (
         echo "No platform specified, building for native + wasm"
         cd gmake
         make config=%native_config% conway_geom_native webifc_native
         make config=%wasm_config% ConwayGeomWasm
-    ) ELSE (
-        IF "%2"=="native" (
+    ) else (
+        if "%2"=="native" (
             cd gmake
             make config=%native_config% conway_geom_native webifc_native
-        ) ELSE IF "%2"=="wasmNode" (
+        ) else if "%2"=="wasmNode" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasmNode
-        ) 
-        ELSE IF "%2"=="wasmWeb" (
+        ) else if "%2"=="wasmWeb" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasmWeb
-        ) ELSE (
+        ) else (
             echo "Platform invalid" >&2
             exit /b 1
         )

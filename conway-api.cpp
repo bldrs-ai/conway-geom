@@ -27,11 +27,19 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
     std::vector< conway::geometry::IfcGeometryCollection >& geoms,
-    std::vector<conway::geometry::Material>& materials, bool isGlb,
-    bool outputDraco, std::string filePath) {
+    std::vector< conway::geometry::Material >& materials,
+    bool isGlb,
+    bool outputDraco,
+    std::string filePath,
+    size_t offset,
+    size_t count ) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
   if (processor) {
-    results = processor->GeometryToGltf(geoms, materials, isGlb, outputDraco,
+
+    offset = std::min( offset, geoms.size() );
+    count  = std::min( count, geoms.size() - offset );
+
+    results = processor->GeometryToGltf( std::span{ geoms.data() + offset, count }, std::span{ materials.data(), materials.size() }, isGlb, outputDraco,
                                         filePath, false, NormalizeMat);
   }
 
@@ -339,7 +347,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("applyTransform",
                 &conway::geometry::IfcGeometry::ApplyTransform)
       .function("appendWithTransform",
-                &conway::geometry::IfcGeometry::AppendWithTransform)
+                &conway::geometry::IfcGeometry::AppendWithTransform) 
+      .function("getAllocationSize", &conway::geometry::IfcGeometry::GetAllocationSize )
       .property("min", &conway::geometry::IfcGeometry::min)
       .property("max", &conway::geometry::IfcGeometry::max)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
@@ -353,7 +362,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 emscripten::allow_raw_pointers())
       .property("materialIndex", &conway::geometry::IfcGeometryCollection::materialIndex)
       .property("hasDefaultMaterial",
-                &conway::geometry::IfcGeometryCollection::hasDefaultMaterial);
+                &conway::geometry::IfcGeometryCollection::hasDefaultMaterial)
+      .property("currentSize",
+          &conway::geometry::IfcGeometryCollection::currentSize);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()

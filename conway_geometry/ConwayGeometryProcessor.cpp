@@ -877,10 +877,13 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
 ConwayGeometryProcessor::GeometryToGltf(
-    std::vector<conway::geometry::IfcGeometryCollection> &geoms,
-    std::vector<conway::geometry::Material> &materials, bool isGlb,
-    bool outputDraco, std::string filePath, bool outputFile,
-    glm::dmat4 transform) {
+    std::span<conway::geometry::IfcGeometryCollection > geoms,
+    std::span<conway::geometry::Material> materials,
+    bool isGlb,
+    bool outputDraco,
+    std::string filePath,
+    bool outputFile,
+    glm::dmat4 transform ) {
   ResultsGltf results;
 
   try {
@@ -979,7 +982,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     // Create a Buffer - it will be the 'current' Buffer that all the
     // BufferViews created by this BufferBuilder will automatically reference
-    bufferBuilder.AddBuffer(bufferId);
+    bufferBuilder.AddBuffer( bufferId );
 
     if (outputDraco) {
       document.extensionsRequired.insert("KHR_draco_mesh_compression");
@@ -1149,7 +1152,7 @@ ConwayGeometryProcessor::GeometryToGltf(
         if (dracoOptions.posQuantizationBits > 0) {
           encoder.SetAttributeQuantization(
               draco::GeometryAttribute::POSITION,
-              11);  // dracoOptions.posQuantizationBits );
+              14);  // dracoOptions.posQuantizationBits );
         }
 
         if (dracoOptions.texCoordsQuantizationBits > 0) {
