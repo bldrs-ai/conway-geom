@@ -23,6 +23,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <span>
 
 // draco
 #include <draco/compression/config/compression_shared.h>
@@ -351,10 +352,11 @@ class ConwayGeometryProcessor {
     std::vector<std::string> bufferUris;
     std::vector<std::vector<uint8_t>> buffers;
   };
-  ResultsGltf GeometryToGltf(
-      std::vector<conway::geometry::IfcGeometryCollection> &geom,
-      std::vector<conway::geometry::Material> &materials, bool isGlb,
-      bool outputDraco, std::string filePath, bool outputFile,
+  ResultsGltf GeometryToGltf( 
+      std::span< conway::geometry::IfcGeometryCollection > geom,
+      std::span< conway::geometry::Material > materials,
+      bool isGlb, bool outputDraco, std::string filePath,
+      bool outputFile,
       glm::dmat4 transform = glm::dmat4(1));
 
   std::string GeometryToObj(const conway::geometry::IfcGeometry &geom,

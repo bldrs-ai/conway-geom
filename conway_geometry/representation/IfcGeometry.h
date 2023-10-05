@@ -22,6 +22,10 @@ namespace fuzzybools
 
 namespace conway::geometry {
 
+template< typename T >
+constexpr size_t byteSize( const std::vector< T >& data ) {
+  return data.size() * sizeof( T );
+}
 
 struct IfcGeometry {
 
@@ -34,6 +38,8 @@ struct IfcGeometry {
 
   uint32_t numPoints = 0;
   uint32_t numFaces = 0;
+
+  uint32_t GetAllocationSize() const;
   
   glm::dvec3 GetExtent() const;
   void Normalize();
@@ -77,9 +83,15 @@ struct IfcGeometryCollection {
 
   void AddComponentWithTransform( IfcGeometry *geom, const glm::dmat4x4& transform) {
 
-    components.push_back( geom );
-    transforms.push_back( transform );
+    if ( geom != nullptr ) {
+      components.push_back( geom );
+      transforms.push_back( transform );
+
+      currentSize += geom->GetAllocationSize();
+    }
   }
+  
+  size_t currentSize = 0;
 };
 
 }  // namespace conway::geometry

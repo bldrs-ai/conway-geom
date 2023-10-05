@@ -2,7 +2,7 @@
 import { LocateFileHandlerFn } from '../../src/shim/ifc_api.js'
 import { CanonicalMaterial } from '../../src/core/canonical_material.js'
 import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
-import { IfcNativeTransform } from '../../src/ifc/ifc_scene_builder.js'
+import { NativeTransform } from '../../src/core/native_types.js'
 
 
 type NativeVectorGeometryCollection = StdVector<GeometryCollection>
@@ -34,6 +34,7 @@ export interface GeometryCollection {
 
   materialIndex: number
   hasDefaultMaterial: boolean
+  readonly currentSize: number
 }
 
 export interface GeometryObject {
@@ -43,6 +44,7 @@ export interface GeometryObject {
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
+  getAllocationSize(): number
   appendGeometry(parameter: GeometryObject): void
   addComponentTransform(transform: any): void
   appendWithTransform(geometry: GeometryObject, transform: any): void
@@ -557,7 +559,7 @@ export class ConwayGeometry {
   }
 
   /**
-   *
+  
    * @param parameters
    * @return {GeometryObject}
    */
@@ -567,32 +569,45 @@ export class ConwayGeometry {
   }
 
   /**
+   * Convert geometry to gltf.
    *
    * @param mat1
    * @param mat2
    * @return {any} matrix result of the multiplication
    */
-  multiplyNativeMatrices(mat1: IfcNativeTransform, mat2: IfcNativeTransform): any {
+  multiplyNativeMatrices(mat1: NativeTransform, mat2: NativeTransform): any {
     const result = this.wasmModule.multiplyNativeMatrices(mat1, mat2)
     return result
   }
 
   /**
    *
-   * @param geometry - Vector of native geometry object
-   * @param isGlb  - boolean if the output should be a single GLB file
-   * @param outputDraco - boolean should the output use Draco compression
-   * @param fileUri - string of base name for output files
-   * @return {ResultsGltf} - boolean success + buffers + file uris
+   * @param geometry Vector of native geometry collection objects
+   * @param materials Vector of native materials indexed by geometry
+   * @param isGlb  boolean if the output should be a single GLB file
+   * @param outputDraco boolean should the output use Draco compression
+   * @param fileUri string of base name for output files
+   * @param geometryOffset The offset into the geometry vector to use to start
+   *
+   * @return {ResultsGltf} boolean success + buffers + file uris
    */
   toGltf(
       geometry: StdVector<GeometryCollection>,
       materials: StdVector<MaterialObject>,
       isGlb: boolean,
       outputDraco: boolean,
-      fileUri: string):
-    ResultsGltf {
-    return this.wasmModule.geometryToGltf(geometry, materials, isGlb, outputDraco, fileUri)
+      fileUri: string,
+      geometryOffset: number = 0,
+      geometryCount: number = geometry.size() ):
+      ResultsGltf {
+    return this.wasmModule.geometryToGltf(
+        geometry,
+        materials,
+        isGlb,
+        outputDraco,
+        fileUri,
+        geometryOffset,
+        geometryCount)
   }
 
   /**
