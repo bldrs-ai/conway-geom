@@ -915,7 +915,7 @@ void genIndexIfc() {
 
 #ifdef _WIN32
       std::wstring wsTmp(fileName.begin(), fileName.end());
-      writeFile(wsTmp, singleObj);
+      writeFile(wsTmp, completeObj);
 #else
       writeFile(fileName, completeObj);
 #endif
