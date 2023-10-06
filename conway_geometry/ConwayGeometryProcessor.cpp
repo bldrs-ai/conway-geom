@@ -2,9 +2,9 @@
 
 #include <glm/glm.hpp>
 
-// #include "fuzzy/fuzzy-bools.h"
-#include "legacy/math/bool-mesh-mesh.h"
-#include "legacy/math/intersect-mesh-mesh.h"
+#include "fuzzy/fuzzy-bools.h"
+//#include "legacy/math/bool-mesh-mesh.h"
+//#include "legacy/math/intersect-mesh-mesh.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
@@ -80,7 +80,7 @@ double normalDiff(glm::dvec3 extents) {
   }
 }
 
-IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
+/*IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
   IfcGeometry result;
 
   if (Geoms.size() == 0) {
@@ -121,9 +121,9 @@ IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
     }
     return result;
   }
-}
+}*/
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
+/*IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
     const std::vector<IfcGeometry> &firstGeoms,
     std::vector<IfcGeometry> &secondGeoms) {
   IfcGeometry firstGeom = firstGeoms[0];//BoolJoinLegacy(firstGeoms);
@@ -145,7 +145,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
   result = boolMultiOp_CSGJSCPP(firstGeom, secondGeoms);
 
   return result;
-}
+}*/
 
 IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
     ParamsGetRectangleProfileCurve parameters) {
@@ -193,6 +193,83 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
 
   return centroid;
 }
+
+IfcGeometry IfcGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &firstGeoms, std::vector<IfcGeometry> &secondGeoms)
+    {
+        IfcGeometry finalResult;
+
+        for (auto &firstGeom : firstGeoms)
+        {
+            fuzzybools::Geometry result = firstGeom;
+            for (auto &secondGeom : secondGeoms)
+            {
+                bool doit = true;
+                if (secondGeom.numFaces == 0)
+                {
+                    printf("bool aborted due to empty source or target\n");
+
+                    // bail out because we will get strange meshes
+                    // if this happens, probably there's an issue parsing the mesh that occurred earlier
+                    doit = false;
+                }
+
+                if (result.numFaces == 0)
+                {
+                    printf("bool aborted due to empty source or target\n");
+
+                    // bail out because we will get strange meshes
+                    // if this happens, probably there's an issue parsing the mesh that occurred earlier
+                    break;
+                }
+
+                if (doit)
+                {
+                    if (secondGeom.halfSpace)
+                    {
+                        glm::dvec3 origin = secondGeom.halfSpaceOrigin;
+                        glm::dvec3 x = secondGeom.halfSpaceX - origin;
+                        glm::dvec3 y = secondGeom.halfSpaceY - origin;
+                        glm::dvec3 z = secondGeom.halfSpaceZ - origin;
+                        glm::dmat4 trans = glm::dmat4(
+                            glm::dvec4(x, 0),
+                            glm::dvec4(y, 0),
+                            glm::dvec4(z, 0),
+                            glm::dvec4(0, 0, 0, 1)
+                        );
+                        IfcGeometry newSecond;
+
+                        double scaleX = 1;
+                        double scaleY = 1;
+                        double scaleZ = 1;
+
+                        for (uint32_t i = 0; i < result.numPoints; i++)
+                        {
+                            glm::dvec3 p = result.GetPoint(i);
+                            glm::dvec3 vec = (p - origin);
+                            double dx = glm::dot(vec, x);
+                            double dy = glm::dot(vec, y);
+                            double dz = glm::dot(vec, z);
+                            if (glm::abs(dx) > scaleX) {scaleX = glm::abs(dx); }
+                            if (glm::abs(dy) > scaleY) {scaleY = glm::abs(dy); }
+                            if (glm::abs(dz) > scaleZ) {scaleZ = glm::abs(dz); }
+                        }
+                        newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2, scaleZ * 2, secondGeom.halfSpaceOrigin);
+                        result = fuzzybools::Subtract(result, newSecond);
+                    }
+                    else
+                    {
+                        result = fuzzybools::Subtract(result, secondGeom);
+                    }
+                }
+            }
+            IfcGeometry newResult;
+            newResult.AddGeometry(result);
+            finalResult.AddPart(newResult);
+            finalResult.AddGeometry(result);
+        }
+
+        return finalResult;
+    }
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     ParamsRelVoidSubtract parameters) {
@@ -261,8 +338,8 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 
   parameters.flatSecondMesh[0] = newGeomSecondMesh;
 
-  resultGeometry =
-      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+  resultGeometry = BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+      //BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   glm::dmat4 combinedMatrix =
       glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
@@ -366,8 +443,8 @@ size_t offset = 0;
 
   parameters.flatSecondMesh[0] = newGeomSecondMesh;
 
-  resultGeometry =
-      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+  resultGeometry = BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+      //BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
 
@@ -495,7 +572,7 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
       auto surface = parameters.surface;
 
       if (surface.BSplineSurface.Active) {
-        TriangulateBspline(geometry, parameters.boundsArray, surface);
+        TriangulateBspline(geometry, parameters.boundsArray, surface, parameters.scaling);
       } else if (surface.CylinderSurface.Active) {
         TriangulateCylindricalSurface(geometry, parameters.boundsArray,
                                       surface);

@@ -34,8 +34,8 @@ project "conway_geom_native"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+       -- "conway_geometry/legacy/**.*"
     }
     WebIfcSourceFiles = {"web-ifc-api.cpp"}
     WebIfcTestSourceFiles = {"test/*.cpp"}
@@ -196,8 +196,8 @@ project "conway_geom_native_tests"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+      --  "conway_geometry/legacy/**.*"
     }
     ConwayTestSourceFiles = {"test/ConwayGeometryProcessor_test.cpp", "test/main.cpp"}
 
@@ -479,8 +479,8 @@ project "ConwayGeomWasmNode"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+      --  "conway_geometry/legacy/**.*"
     }
     ConwaySourceFiles = {"conway-api.cpp"}
 
@@ -682,8 +682,8 @@ project "ConwayGeomWasmWeb"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+       -- "conway_geometry/legacy/**.*"
     }
     ConwaySourceFiles = {"conway-api.cpp"}
 

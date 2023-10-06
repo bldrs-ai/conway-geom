@@ -333,7 +333,7 @@ inline	glm::dvec3 InterpolateRationalBSplineCurveWithKnots(double t, int degree,
 		return glm::determinant(mat) < 0;
 	}
 
-inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments, glm::dmat3 placement = glm::dmat3(1), double startRad = 0, double endRad = CONST_PI * 2, bool swap = true)
+inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments, glm::dmat3 placement = glm::dmat3(1), double startRad = 0, double endRad = (double)CONST_PI * 2, bool swap = true)
 	{
 		IfcCurve c;
 

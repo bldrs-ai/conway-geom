@@ -66,6 +66,7 @@ export interface ParamsAddFaceToGeometry {
   boundsArray: StdVector<Bound3DObject> // std::vector<IfcBound3D>
   advancedBrep: boolean
   surface: SurfaceObject // IfcSurface
+  scaling:number
 }
 
 export interface ParamsGetLoop {

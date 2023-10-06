@@ -167,6 +167,7 @@ class ConwayGeometryProcessor {
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
+    double scaling;
   };
 
   struct ParamsGetBrep {

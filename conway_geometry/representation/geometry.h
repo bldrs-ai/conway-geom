@@ -1,6 +1,8 @@
-/* 
- * Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md 
- * Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/geometry.h
+/*
+ * Decoupling:
+ * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+ * Ref:
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/geometry.h
  * */
 
 // Generic Representations of geometry used in web-ifc
@@ -46,7 +48,7 @@ const static std::unordered_map<std::string, int> Vertical_alignment_type{
     {"PARABOLICARC", 3},
     {"CLOTHOID", 4}};  // ToDo
 
-const double EXTRUSION_DISTANCE_HALFSPACE_M = 50;
+const double EXTRUSION_DISTANCE_HALFSPACE_M = 100;
 
 struct Face {
   int i0;
@@ -107,6 +109,11 @@ struct Extrusion {
   glm::dvec3 Direction;
   IfcProfile Profile;
   double Length;
+};
+
+struct IfcCrossSections {
+  std::vector<IfcCurve> curves;
+  std::vector<uint32_t> expressID;
 };
 
 struct IfcAlignment {

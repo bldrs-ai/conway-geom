@@ -1,16 +1,20 @@
-/* 
- * Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md 
- * Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/IfcGeometry.h
+/*
+ * Decoupling:
+ * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+ * Ref:
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/IfcGeometry.h
  * */
 
 // Represents a single piece of IFC Geometry
 
 #pragma once
 
+#include <fuzzy/geometry.h>
+
 #include <glm/glm.hpp>
+#include <optional>
 #include <string>
 #include <vector>
-#include <optional>
 
 #include "geometry.h"
 #include "material.h"
@@ -22,13 +26,20 @@ namespace fuzzybools
 
 namespace conway::geometry {
 
-template< typename T >
-constexpr size_t byteSize( const std::vector< T >& data ) {
-  return data.size() * sizeof( T );
+template <typename T>
+constexpr size_t byteSize(const std::vector<T> &data) {
+  return data.size() * sizeof(T);
 }
 
 struct IfcGeometry {
-
+  //new additions 0.0.44
+  bool halfSpace = false;
+  std::vector<IfcGeometry> part;
+  glm::dvec3 halfSpaceX = glm::dvec3(1, 0, 0);
+  glm::dvec3 halfSpaceY = glm::dvec3(0, 1, 0);
+  glm::dvec3 halfSpaceZ = glm::dvec3(0, 0, 1);
+  glm::dvec3 halfSpaceOrigin = glm::dvec3(0, 0, 0);
+  //end new additions 0.0.44
   std::vector<float> fvertexData;
   std::vector<double> vertexData;
   std::vector<uint32_t> indexData;
@@ -40,14 +51,14 @@ struct IfcGeometry {
   uint32_t numFaces = 0;
 
   uint32_t GetAllocationSize() const;
-  
+
   glm::dvec3 GetExtent() const;
   void Normalize();
   void NormalizeInPlace();
   void AddComponent(IfcGeometry &g);
   void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
   void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
-  void AddFace(const glm::dvec3& a, const glm::dvec3& b, const glm::dvec3& c);
+  void AddFace(const glm::dvec3 &a, const glm::dvec3 &b, const glm::dvec3 &c);
   void AddFace(uint32_t a, uint32_t b, uint32_t c);
   void ReverseFace(uint32_t index);
   void ReverseFaces();
@@ -72,25 +83,23 @@ struct IfcGeometry {
                          const glm::dvec3 v3, glm::dvec3 &normal, double eps);
 };
 
-
 struct IfcGeometryCollection {
-
-  std::vector<IfcGeometry*> components;
+  std::vector<IfcGeometry *> components;
   std::vector<glm::dmat4x4> transforms;
-  
-  uint32_t materialIndex      = 0;
-  bool     hasDefaultMaterial = true;
 
-  void AddComponentWithTransform( IfcGeometry *geom, const glm::dmat4x4& transform) {
+  uint32_t materialIndex = 0;
+  bool hasDefaultMaterial = true;
 
-    if ( geom != nullptr ) {
-      components.push_back( geom );
-      transforms.push_back( transform );
+  void AddComponentWithTransform(IfcGeometry *geom,
+                                 const glm::dmat4x4 &transform) {
+    if (geom != nullptr) {
+      components.push_back(geom);
+      transforms.push_back(transform);
 
       currentSize += geom->GetAllocationSize();
     }
   }
-  
+
   size_t currentSize = 0;
 };
 

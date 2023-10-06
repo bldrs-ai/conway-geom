@@ -22,6 +22,7 @@ struct IfcCurve {
   glm::dvec3 Get3d(size_t i) const;
   void Invert();
   bool IsCCW() const;
+  glm::dmat4 getPlacementAtDistance(double length);
 
  private:
   static constexpr double EPS_TINY = 1e-9;

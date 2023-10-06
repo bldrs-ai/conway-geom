@@ -1,6 +1,8 @@
-/* 
- * Decoupling: https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
- * Ref: https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/operations/mesh_utils.h
+/*
+ * Decoupling:
+ * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
+ * Ref:
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/operations/mesh_utils.h
  * */
 
 #pragma once
@@ -20,7 +22,7 @@
 namespace conway::geometry {
 
 // TODO: review and simplify
-inline void TriangulateRevolution(geometry::IfcGeometry &geometry,
+inline void TriangulateRevolution(IfcGeometry &geometry,
                                   std::vector<IfcBound3D> &bounds,
                                   IfcSurface &surface) {
   // First we get the revolution data
@@ -174,7 +176,7 @@ inline void TriangulateRevolution(geometry::IfcGeometry &geometry,
 }
 
 // TODO: review and simplify
-inline void TriangulateCylindricalSurface(geometry::IfcGeometry &geometry,
+inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
                                           std::vector<IfcBound3D> &bounds,
                                           IfcSurface &surface) {
   // First we get the cylinder data
@@ -384,7 +386,7 @@ inline void TriangulateCylindricalSurface(geometry::IfcGeometry &geometry,
 }
 
 // TODO: review and simplify
-inline void TriangulateExtrusion(geometry::IfcGeometry &geometry,
+inline void TriangulateExtrusion(IfcGeometry &geometry,
                                  std::vector<IfcBound3D> &bounds,
                                  IfcSurface &surface) {
   // NO EXAMPLE FILES ABOUT THIS CASE
@@ -464,39 +466,16 @@ inline void TriangulateExtrusion(geometry::IfcGeometry &geometry,
   }
 }
 
-// TODO: review and simplify
-inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
-                                           tinynurbs::RationalSurface3d srf) {
-  // Initial data
-
-  glm::highp_dvec3 ptc = tinynurbs::surfacePoint(srf, 0.0, 0.0);
-  glm::highp_dvec3 pth = tinynurbs::surfacePoint(srf, 1.0, 0.0);
-  glm::highp_dvec3 ptv = tinynurbs::surfacePoint(srf, 0.0, 1.0);
-
-  double dh = glm::distance(ptc, pth);
-  double dv = glm::distance(ptc, ptv);
-  double pr = (dh + 1) / (dv + 1);
-
-  double step1 = 0.01;
-  double minError = 0.0001;
-  double maxError = 0.01;
-  double rotacions = 6;
-  // double stepOld = step1;
-
-  // First approximation
-
-  double fU = 0.5;
-  double fV = 0.5;
-  double divisor = 100;
-  double maxdi = 1e+100;
-  // double extension = 0;
-
-  while (maxdi > maxError && divisor < 10000) {
+inline double InverseMethod(glm::dvec3 pt, tinynurbs::RationalSurface3d srf,
+                            double pr, double rotations, double minError,
+                            double maxError, double &fU, double &fV,
+                            double &divisor, double maxDistance) {
+  while (maxDistance > maxError && divisor < 10000) {
     for (double r = 1; r < 5; r++) {
       int round = 0;
-      while (maxdi > minError && round < 3) {
-        for (double i = 0; i < rotacions; i++) {
-          double rads = (i / rotacions) * CONST_PI * 2;
+      while (maxDistance > minError && round < 3) {
+        for (double i = 0; i < rotations; i++) {
+          double rads = (i / rotations) * CONST_PI * 2;
           double incU = glm::sin(rads) / (r * r * divisor);
           double incV = glm::cos(rads) / (r * r * divisor);
           if (pr > 1) {
@@ -510,8 +489,8 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
             double ffV = fV + incV;
             glm::highp_dvec3 pt00 = tinynurbs::surfacePoint(srf, ffU, ffV);
             double di = glm::distance(pt00, pt);
-            if (di < maxdi) {
-              maxdi = di;
+            if (di < maxDistance) {
+              maxDistance = di;
               fU = ffU;
               fV = ffV;
             } else {
@@ -524,175 +503,38 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
     }
     divisor *= 3;
   }
+  return maxDistance;
+}
 
-  // If first method fails to provide a precise solution we use second slow but
-  // reliable method
+inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
+                                           tinynurbs::RationalSurface3d srf,
+                                           double scaling) {
+  glm::highp_dvec3 ptc = tinynurbs::surfacePoint(srf, 0.0, 0.0);
+  glm::highp_dvec3 pth = tinynurbs::surfacePoint(srf, 1.0, 0.0);
+  glm::highp_dvec3 ptv = tinynurbs::surfacePoint(srf, 0.0, 1.0);
 
-  double repetition = 0;
-  double maxdis = maxdi;
-  double fUs = fU;
-  double fVs = fV;
-  while (maxdi > maxError && repetition < 8) {
-    double extension = 1;
-    double repetitionTemp = repetition;
-    while (repetitionTemp > 4) {
-      repetitionTemp -= 3;
-      extension++;
-    }
-    if (repetitionTemp == 0) {
-      fU = extension;
-      fV = 0;
-    }
-    if (repetitionTemp == 1) {
-      fU = 0;
-      fV = extension;
-    }
-    if (repetitionTemp == 2) {
-      fU = -extension;
-      fV = 0;
-    }
-    if (repetitionTemp == 3) {
-      fU = 0;
-      fV = -extension;
-    }
+  double dh = glm::distance(ptc, pth);
+  double dv = glm::distance(ptc, ptv);
+  double pr = (dh + 1) / (dv + 1);
 
-    maxdi = 1e+100;
-    divisor = 100;
-    rotacions = 6;
-    while (maxdi > maxError && divisor < 10000) {
-      for (double r = 1; r < 5; r++) {
-        int round = 0;
-        while (maxdi > minError && round < 3) {
-          for (double i = 0; i < rotacions; i++) {
-            double rads = (i / rotacions) * CONST_PI * 2;
-            double incU = glm::sin(rads) / (r * r * divisor);
-            double incV = glm::cos(rads) / (r * r * divisor);
-            if (pr > 1) {
-              incV *= pr;
-            } else {
-              incU /= pr;
-            }
-            bool repeat = true;
-            while (repeat) {
-              double ffU = fU + incU;
-              double ffV = fV + incV;
-              glm::highp_dvec3 pt00 = tinynurbs::surfacePoint(srf, ffU, ffV);
-              double di = glm::distance(pt00, pt);
-              if (di < maxdi) {
-                maxdi = di;
-                fU = ffU;
-                fV = ffV;
-                if (di < maxdis) {
-                  maxdis = di;
-                  fUs = ffU;
-                  fVs = ffV;
-                }
-              } else {
-                repeat = false;
-              }
-            }
-          }
-          round++;
-        }
-      }
-      divisor *= 3;
-    }
-    repetition++;
-  }
+  double minError = 0.0001;
+  double maxError = 0.01;
+  double rotations = 6;
 
-  // If the second method fails then we go to the third method
-  while (maxdi > maxError * 3 && repetition < 32) {
-    double extension = 1;
-    double repetitionTemp = repetition;
-    while (repetitionTemp > 7) {
-      repetitionTemp -= 8;
-      extension++;
-    }
-    if (repetitionTemp == 0) {
-      fU = extension;
-      fV = 0;
-    }
-    if (repetitionTemp == 1) {
-      fU = 0;
-      fV = extension;
-    }
-    if (repetitionTemp == 2) {
-      fU = -extension;
-      fV = 0;
-    }
-    if (repetitionTemp == 3) {
-      fU = 0;
-      fV = -extension;
-    }
+  double fU = 0.5;
+  double fV = 0.5;
+  double divisor = 100.0;
+  double maxDistance = 1e+100;
 
-    if (repetitionTemp == 4) {
-      fU = extension * 0.707;
-      fV = extension * 0.707;
-    }
-    if (repetitionTemp == 5) {
-      fU = -extension * 0.707;
-      fV = extension * 0.707;
-    }
-    if (repetitionTemp == 6) {
-      fU = extension * 0.707;
-      fV = -extension * 0.707;
-    }
-    if (repetitionTemp == 7) {
-      fU = -extension * 0.707;
-      fV = -extension * 0.707;
-    }
-
-    maxdi = 1e+100;
-    divisor = 100;
-    rotacions = 6;
-    while (maxdi > maxError && divisor < 10000) {
-      for (double r = 1; r < 5; r++) {
-        int round = 0;
-        while (maxdi > minError && round < 3) {
-          for (double i = 0; i < rotacions; i++) {
-            double rads = (i / rotacions) * CONST_PI * 2;
-            double incU = glm::sin(rads) / (r * r * divisor);
-            double incV = glm::cos(rads) / (r * r * divisor);
-            if (pr > 1) {
-              incV *= pr;
-            } else {
-              incU /= pr;
-            }
-            bool repeat = true;
-            while (repeat) {
-              double ffU = fU + incU;
-              double ffV = fV + incV;
-              glm::highp_dvec3 pt00 = tinynurbs::surfacePoint(srf, ffU, ffV);
-              double di = glm::distance(pt00, pt);
-              if (di < maxdi) {
-                maxdi = di;
-                fU = ffU;
-                fV = ffV;
-                if (di < maxdis) {
-                  maxdis = di;
-                  fUs = ffU;
-                  fVs = ffV;
-                }
-              } else {
-                repeat = false;
-              }
-            }
-          }
-          round++;
-        }
-      }
-      divisor *= 3;
-    }
-    repetition++;
-  }
-
-  return glm::dvec2(fUs, fVs);
+  maxDistance = InverseMethod(pt, srf, pr, rotations, minError / scaling,
+                              maxError / scaling, fU, fV, divisor, maxDistance);
+  return glm::dvec2(fU, fV);
 }
 
 // TODO: review and simplify
-inline void TriangulateBspline(geometry::IfcGeometry &geometry,
+inline void TriangulateBspline(IfcGeometry &geometry,
                                std::vector<IfcBound3D> &bounds,
-                               IfcSurface &surface) {
+                               IfcSurface &surface, double scaling) {
   //			double limit = 1e-4;
 
   // First: We define the Nurbs surface
@@ -725,13 +567,13 @@ inline void TriangulateBspline(geometry::IfcGeometry &geometry,
   srf.weights = tinynurbs::array2(num_u, num_v, weights);
 
   for (size_t i = 0; i < surface.BSplineSurface.UMultiplicity.size(); i++) {
-    for (int r = 0; r < surface.BSplineSurface.UMultiplicity[i]; r++) {
+    for (size_t r = 0; r < surface.BSplineSurface.UMultiplicity[i]; r++) {
       srf.knots_u.push_back(surface.BSplineSurface.UKnots[i]);
     }
   }
 
   for (size_t i = 0; i < surface.BSplineSurface.VMultiplicity.size(); i++) {
-    for (int r = 0; r < surface.BSplineSurface.VMultiplicity[i]; r++) {
+    for (size_t r = 0; r < surface.BSplineSurface.VMultiplicity[i]; r++) {
       srf.knots_v.push_back(surface.BSplineSurface.VKnots[i]);
     }
   }
@@ -747,7 +589,7 @@ inline void TriangulateBspline(geometry::IfcGeometry &geometry,
     std::vector<Point> points;
     for (size_t j = 0; j < bounds[0].curve.points.size(); j++) {
       glm::dvec3 pt = bounds[0].curve.points[j];
-      glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf);
+      glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf, scaling);
       points.push_back({pInv.x, pInv.y});
     }
     uvBoundaryValues.push_back(points);
