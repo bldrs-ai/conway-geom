@@ -16,13 +16,13 @@
 #include <string>
 #include <vector>
 
-#include "geometry.h"
+//#include "geometry.h"
 #include "material.h"
 
-namespace fuzzybools
+/*namespace fuzzybools
 {
     struct AABB; // Forward declaration for fuzzybools::AABB
-}
+}*/
 
 namespace conway::geometry {
 
