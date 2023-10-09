@@ -50,12 +50,6 @@ const static std::unordered_map<std::string, int> Vertical_alignment_type{
 
 const double EXTRUSION_DISTANCE_HALFSPACE_M = 100;
 
-struct Face {
-  int i0;
-  int i1;
-  int i2;
-};
-
 struct Loop {
   bool hasOne;
   glm::dvec2 v1;

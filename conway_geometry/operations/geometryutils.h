@@ -906,7 +906,7 @@ inline std::optional<glm::dvec3> GetOriginRec(
 
     if (meshGeom.numFaces) {
       for (uint32_t i = 0; i < meshGeom.numFaces; i++) {
-        Face f = meshGeom.GetFace(i);
+        fuzzybools::Face f = meshGeom.GetFace(i);
         glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
 
         return a;

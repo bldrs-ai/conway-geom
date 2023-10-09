@@ -31,7 +31,7 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
-struct IfcGeometry {
+struct IfcGeometry : fuzzybools::Geometry {
   //new additions 0.0.44
   bool halfSpace = false;
   std::vector<IfcGeometry> part;
@@ -40,9 +40,9 @@ struct IfcGeometry {
   glm::dvec3 halfSpaceZ = glm::dvec3(0, 0, 1);
   glm::dvec3 halfSpaceOrigin = glm::dvec3(0, 0, 0);
   //end new additions 0.0.44
-  std::vector<float> fvertexData;
+  /*std::vector<float> fvertexData;
   std::vector<double> vertexData;
-  std::vector<uint32_t> indexData;
+  std::vector<uint32_t> indexData;*/
   glm::dvec3 min = glm::dvec3(DBL_MAX, DBL_MAX, DBL_MAX);
   glm::dvec3 max = glm::dvec3(-DBL_MAX, -DBL_MAX, -DBL_MAX);
   bool normalized = false;
@@ -53,23 +53,24 @@ struct IfcGeometry {
   uint32_t GetAllocationSize() const;
 
   glm::dvec3 GetExtent() const;
-  void Normalize();
+  //void Normalize();
   void NormalizeInPlace();
-  void AddComponent(IfcGeometry &g);
+  /*void AddComponent(IfcGeometry &g);
   void AddPoint(const glm::dvec4 &pt, const glm::dvec3 &n);
   void AddPoint(const glm::dvec3 &pt, const glm::dvec3 &n);
   void AddFace(const glm::dvec3 &a, const glm::dvec3 &b, const glm::dvec3 &c);
-  void AddFace(uint32_t a, uint32_t b, uint32_t c);
+  void AddFace(uint32_t a, uint32_t b, uint32_t c);*/
   void ReverseFace(uint32_t index);
   void ReverseFaces();
-  Face GetFace(uint32_t index) const;
-  fuzzybools::AABB GetFaceBox(uint32_t index) const;
+  //fuzzybools::Face GetFace(uint32_t index) const;
+  //fuzzybools::AABB GetFaceBox(uint32_t index) const;
   glm::dvec3 GetPoint(uint32_t index) const;
-  void GetCenterExtents(glm::dvec3 &center, glm::dvec3 &extents) const;
-  IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;
-  IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const;
+  //void GetCenterExtents(glm::dvec3 &center, glm::dvec3 &extents) const;
+  //IfcGeometry Normalize(glm::dvec3 center, glm::dvec3 extents) const;
+  //IfcGeometry DeNormalize(glm::dvec3 center, glm::dvec3 extents) const;
   uint32_t GetVertexData();
   void AppendGeometry(IfcGeometry &geom);
+  void AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, glm::dvec3 origin = glm::dvec3(0, 0, 0));
   void AppendWithTransform(IfcGeometry &geom, glm::dmat4x4 transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();

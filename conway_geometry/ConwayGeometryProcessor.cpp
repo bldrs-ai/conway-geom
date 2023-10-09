@@ -25,7 +25,7 @@ fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
   fuzzybools::Geometry fbGeom;
 
   for (size_t i = 0; i < geom.numFaces; i++) {
-    const Face &f = geom.GetFace(i);
+    const fuzzybools::Face &f = geom.GetFace(i);
 
     auto a = geom.GetPoint(f.i0);
     auto b = geom.GetPoint(f.i1);
@@ -180,7 +180,7 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
   // vertices. If it doesn't, you might need to iterate over faces and access
   // vertices via face indices.
   for (uint32_t i = 0; i < geometry.numFaces; i++) {
-    Face f = geometry.GetFace(i);
+    fuzzybools::Face f = geometry.GetFace(i);
     centroid += geometry.GetPoint(f.i0);
     centroid += geometry.GetPoint(f.i1);
     centroid += geometry.GetPoint(f.i2);
@@ -194,7 +194,7 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
   return centroid;
 }
 
-IfcGeometry IfcGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &firstGeoms, std::vector<IfcGeometry> &secondGeoms)
+IfcGeometry ConwayGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &firstGeoms, std::vector<IfcGeometry> &secondGeoms)
     {
         IfcGeometry finalResult;
 
@@ -262,9 +262,11 @@ IfcGeometry IfcGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &f
                     }
                 }
             }
-            IfcGeometry newResult;
-            newResult.AddGeometry(result);
-            finalResult.AddPart(newResult);
+
+          //TODO(nickcastel50): Figure out if this is necessary 
+          //  IfcGeometry newResult;
+          //  newResult.AddGeometry(result);
+          //  finalResult.AddPart(newResult);
             finalResult.AddGeometry(result);
         }
 
@@ -288,7 +290,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   // get origin
   if (parameters.flatFirstMesh[0].numFaces) {
     for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      Face f = parameters.flatFirstMesh[0].GetFace(i);
+      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
       originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
       break;
     }
@@ -301,7 +303,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   IfcGeometry newGeomFirstMesh;
 
   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    Face f = parameters.flatFirstMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
@@ -321,7 +323,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   IfcGeometry newGeomSecondMesh;
 
   for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    Face f = parameters.flatSecondMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatSecondMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
@@ -393,7 +395,7 @@ size_t offset = 0;
   // get origin
   if (parameters.flatFirstMesh[0].numFaces) {
     for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      Face f = parameters.flatFirstMesh[0].GetFace(i);
+      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
       originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
       break;
     }
@@ -406,7 +408,7 @@ size_t offset = 0;
   IfcGeometry newGeomFirstMesh;
 
   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    Face f = parameters.flatFirstMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
@@ -426,7 +428,7 @@ size_t offset = 0;
   IfcGeometry newGeomSecondMesh;
 
   for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    Face f = parameters.flatSecondMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatSecondMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
