@@ -695,7 +695,7 @@ project "ConwayGeomWasmWeb"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
