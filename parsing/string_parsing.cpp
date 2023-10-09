@@ -35,7 +35,14 @@ std::string p21encode(std::string_view input) {
                 .from_bytes(tmp.data());
         stream << "\\X2\\" << std::hex << std::setw(4) << std::setfill('0')
                << std::uppercase;
+        //TODO(nickcastel50): Should probably test this more rigorously
+        //although not necessary for our work (web-ifc parser code)
+        #ifdef _WIN32
+         for (char16_t uC : utf16) { stream << static_cast<int>(uC); }
+         #else
         for (char16_t uC : utf16) stream << uC;
+        #endif
+       
         stream << std::dec << std::setw(1) << "\\X0\\";
         inEncode = false;
         tmp = "";
