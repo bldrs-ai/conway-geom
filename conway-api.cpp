@@ -345,8 +345,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendWithTransform)
       .function("getAllocationSize",
                 &conway::geometry::IfcGeometry::GetAllocationSize)
-      .property("min", &conway::geometry::IfcGeometry::min)
-      .property("max", &conway::geometry::IfcGeometry::max)
+      .function("getParts", &conway::geometry::IfcGeometry::getParts)
+      .function("getMin", &conway::geometry::IfcGeometry::getMin)
+      .function("getMax", &conway::geometry::IfcGeometry::getMax)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
       .function("toObj", &conway::geometry::IfcGeometry::ToObj)
       .function("clone", &conway::geometry::IfcGeometry::Clone);

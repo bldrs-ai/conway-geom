@@ -16,7 +16,7 @@
 
 namespace conway::geometry {
 
-//glm::dvec3 IfcGeometry::GetExtent() const { return max - min; }
+// glm::dvec3 IfcGeometry::GetExtent() const { return max - min; }
 
 // set all vertices relative to min
 void IfcGeometry::NormalizeInPlace() {
@@ -28,6 +28,10 @@ void IfcGeometry::NormalizeInPlace() {
 
   normalized = true;
 }
+
+glm::dvec3 IfcGeometry::getMin() { return min; }
+
+glm::dvec3 IfcGeometry::getMax() { return max; }
 
 // void IfcGeometry::AddComponent(IfcGeometry *g) {
 //   components.push_back(g);
@@ -158,9 +162,10 @@ void IfcGeometry::ReverseFaces() {
 }*/
 
 glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
-  return glm::dvec3(vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0],
-                    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1],
-                    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]);
+  return glm::dvec3(
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0],
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1],
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]);
 }
 
 /*fuzzybools::AABB IfcGeometry::GetFaceBox(uint32_t index) const {
@@ -230,7 +235,7 @@ IfcGeometry IfcGeometry::DeNormalize(glm::dvec3 center,
   return newGeom;
 }*/
 
-uint32_t IfcGeometry::GetVertexData() {
+/*uint32_t IfcGeometry::GetVertexData() {
   // unfortunately webgl can't do doubles
   if (fvertexData.size() != vertexData.size()) {
     fvertexData.resize(vertexData.size());
@@ -252,6 +257,23 @@ uint32_t IfcGeometry::GetVertexData() {
     return 0;
   }
 
+  return (uint32_t)(size_t)&fvertexData[0];
+}*/
+
+uint32_t IfcGeometry::GetVertexData() {
+  // unfortunately webgl can't do doubles
+  if (fvertexData.size() != vertexData.size()) {
+    fvertexData.resize(vertexData.size());
+    for (size_t i = 0; i < vertexData.size(); i++) {
+      // The vector was previously copied in batches of 6, but
+      // copying single entry at a time is more resilient if the
+      // underlying geometry lib changes the treatment of normals
+      fvertexData[i] = vertexData[i];
+    }
+  }
+  if (fvertexData.empty()) {
+    return 0;
+  }
   return (uint32_t)(size_t)&fvertexData[0];
 }
 
@@ -370,41 +392,47 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
   }
 }
 
-	void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans, double scx, double scy, double scz, glm::dvec3 origin)
-	{
-			
-		for (uint32_t i = 0; i < geom.numFaces; i++)
-		{
-			fuzzybools::Face f = geom.GetFace(i);
-			glm::dvec3 a = geom.GetPoint(f.i0);
-			glm::dvec3 b = geom.GetPoint(f.i1);
-			glm::dvec3 c = geom.GetPoint(f.i2);
-			if(scx != 1 || scy != 1 || scz != 1)
-			{
-				double aax = glm::dot(trans[0], glm::dvec4(a - origin, 1)) * scx;
-				double aay = glm::dot(trans[1], glm::dvec4(a - origin, 1)) * scy;
-				double aaz = glm::dot(trans[2], glm::dvec4(a - origin, 1)) * scz;
-				a = origin + glm::dvec3(aax *  trans[0]) + glm::dvec3(aay * trans[1]) + glm::dvec3(aaz * trans[2]);
-				double bbx = glm::dot(trans[0], glm::dvec4(b - origin, 1)) * scx;
-				double bby = glm::dot(trans[1], glm::dvec4(b - origin, 1)) * scy;
-				double bbz = glm::dot(trans[2], glm::dvec4(b - origin, 1)) * scz;
-				b = origin + glm::dvec3(bbx *  trans[0]) + glm::dvec3(bby * trans[1]) + glm::dvec3(bbz * trans[2]);
-				double ccx = glm::dot(trans[0], glm::dvec4(c - origin, 1)) * scx;
-				double ccy = glm::dot(trans[1], glm::dvec4(c - origin, 1)) * scy;
-				double ccz = glm::dot(trans[2], glm::dvec4(c - origin, 1)) * scz;
-				c = origin + glm::dvec3(ccx *  trans[0]) + glm::dvec3(ccy * trans[1]) + glm::dvec3(ccz * trans[2]);
-			}
-			AddFace(a, b, c);
-		}
+std::vector<IfcGeometry> IfcGeometry::getParts() {
+  return part;
+}
 
+void IfcGeometry::AddPart(IfcGeometry geom)
+	{
+		part.push_back(geom);
 	}
 
-  uint32_t IfcGeometry::GetAllocationSize() const { 
-    return 
-      byteSize( fvertexData ) +
-      byteSize( vertexData ) +
-      byteSize( indexData );
+void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans,
+                              double scx, double scy, double scz,
+                              glm::dvec3 origin) {
+  for (uint32_t i = 0; i < geom.numFaces; i++) {
+    fuzzybools::Face f = geom.GetFace(i);
+    glm::dvec3 a = geom.GetPoint(f.i0);
+    glm::dvec3 b = geom.GetPoint(f.i1);
+    glm::dvec3 c = geom.GetPoint(f.i2);
+    if (scx != 1 || scy != 1 || scz != 1) {
+      double aax = glm::dot(trans[0], glm::dvec4(a - origin, 1)) * scx;
+      double aay = glm::dot(trans[1], glm::dvec4(a - origin, 1)) * scy;
+      double aaz = glm::dot(trans[2], glm::dvec4(a - origin, 1)) * scz;
+      a = origin + glm::dvec3(aax * trans[0]) + glm::dvec3(aay * trans[1]) +
+          glm::dvec3(aaz * trans[2]);
+      double bbx = glm::dot(trans[0], glm::dvec4(b - origin, 1)) * scx;
+      double bby = glm::dot(trans[1], glm::dvec4(b - origin, 1)) * scy;
+      double bbz = glm::dot(trans[2], glm::dvec4(b - origin, 1)) * scz;
+      b = origin + glm::dvec3(bbx * trans[0]) + glm::dvec3(bby * trans[1]) +
+          glm::dvec3(bbz * trans[2]);
+      double ccx = glm::dot(trans[0], glm::dvec4(c - origin, 1)) * scx;
+      double ccy = glm::dot(trans[1], glm::dvec4(c - origin, 1)) * scy;
+      double ccz = glm::dot(trans[2], glm::dvec4(c - origin, 1)) * scz;
+      c = origin + glm::dvec3(ccx * trans[0]) + glm::dvec3(ccy * trans[1]) +
+          glm::dvec3(ccz * trans[2]);
+    }
+    AddFace(a, b, c);
   }
+}
+
+uint32_t IfcGeometry::GetAllocationSize() const {
+  return byteSize(fvertexData) + byteSize(vertexData) + byteSize(indexData);
+}
 
 uint32_t IfcGeometry::GetVertexDataSize() {
   return (uint32_t)fvertexData.size();
@@ -423,29 +451,30 @@ void IfcGeometry::ApplyTransform(glm::dmat4 transform) {
     glm::dvec4 t =
         transform *
         glm::dvec4(
-            glm::dvec3(vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0],
-                       vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1],
-                       vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]),
+            glm::dvec3(
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0],
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1],
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]),
             1);
 
     glm::dvec4 n =
         transform *
         glm::dvec4(
-            glm::dvec3(vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 3],
-                       vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 4],
-                       vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 5]),
+            glm::dvec3(
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 3],
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 4],
+                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 5]),
             0);
 
+    currentMin.x = t.x;
+    currentMin.y = t.y;
+    currentMin.z = t.z;
+    min = glm::min(min, currentMin);
 
-      currentMin.x = t.x; 
-      currentMin.y = t.y;
-      currentMin.z = t.z;
-      min = glm::min(min, currentMin);
-
-      currentMax.x = t.x;
-      currentMax.y = t.y;
-      currentMax.z = t.z;
-      max = glm::max(max, currentMax);
+    currentMax.x = t.x;
+    currentMax.y = t.y;
+    currentMax.z = t.z;
+    max = glm::max(max, currentMax);
 
     vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
     vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;

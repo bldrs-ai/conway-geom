@@ -33,7 +33,7 @@
 8. -h - Displays help.
 
 ## Current IFC Schema Coverage (For Ifc-JS Feature Parity)
-### 38.88% Complete (51/90)
+### 56.67% Complete (51/90)
 
 1.  IFCPLANE
 2.  ~~IFCBSPLINESURFACE~~

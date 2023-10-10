@@ -3,8 +3,8 @@
 #include <glm/glm.hpp>
 
 #include "fuzzy/fuzzy-bools.h"
-//#include "legacy/math/bool-mesh-mesh.h"
-//#include "legacy/math/intersect-mesh-mesh.h"
+// #include "legacy/math/bool-mesh-mesh.h"
+// #include "legacy/math/intersect-mesh-mesh.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
@@ -194,84 +194,81 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
   return centroid;
 }
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtract(const std::vector<IfcGeometry> &firstGeoms, std::vector<IfcGeometry> &secondGeoms)
-    {
-        IfcGeometry finalResult;
+IfcGeometry ConwayGeometryProcessor::BoolSubtract(
+    const std::vector<IfcGeometry> &firstGeoms,
+    std::vector<IfcGeometry> &secondGeoms) {
+  IfcGeometry finalResult;
 
-        for (auto &firstGeom : firstGeoms)
-        {
-            fuzzybools::Geometry result = firstGeom;
-            for (auto &secondGeom : secondGeoms)
-            {
-                bool doit = true;
-                if (secondGeom.numFaces == 0)
-                {
-                    printf("bool aborted due to empty source or target\n");
+  for (auto &firstGeom : firstGeoms) {
+    fuzzybools::Geometry result = firstGeom;
+    for (auto &secondGeom : secondGeoms) {
+      bool doit = true;
+      if (secondGeom.numFaces == 0) {
+        printf("bool aborted due to empty source or target\n");
 
-                    // bail out because we will get strange meshes
-                    // if this happens, probably there's an issue parsing the mesh that occurred earlier
-                    doit = false;
-                }
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        doit = false;
+      }
 
-                if (result.numFaces == 0)
-                {
-                    printf("bool aborted due to empty source or target\n");
+      if (result.numFaces == 0) {
+        printf("bool aborted due to empty source or target\n");
 
-                    // bail out because we will get strange meshes
-                    // if this happens, probably there's an issue parsing the mesh that occurred earlier
-                    break;
-                }
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        break;
+      }
 
-                if (doit)
-                {
-                    if (secondGeom.halfSpace)
-                    {
-                        glm::dvec3 origin = secondGeom.halfSpaceOrigin;
-                        glm::dvec3 x = secondGeom.halfSpaceX - origin;
-                        glm::dvec3 y = secondGeom.halfSpaceY - origin;
-                        glm::dvec3 z = secondGeom.halfSpaceZ - origin;
-                        glm::dmat4 trans = glm::dmat4(
-                            glm::dvec4(x, 0),
-                            glm::dvec4(y, 0),
-                            glm::dvec4(z, 0),
-                            glm::dvec4(0, 0, 0, 1)
-                        );
-                        IfcGeometry newSecond;
+      if (doit) {
+        if (secondGeom.halfSpace) {
+          glm::dvec3 origin = secondGeom.halfSpaceOrigin;
+          glm::dvec3 x = secondGeom.halfSpaceX - origin;
+          glm::dvec3 y = secondGeom.halfSpaceY - origin;
+          glm::dvec3 z = secondGeom.halfSpaceZ - origin;
+          glm::dmat4 trans =
+              glm::dmat4(glm::dvec4(x, 0), glm::dvec4(y, 0), glm::dvec4(z, 0),
+                         glm::dvec4(0, 0, 0, 1));
+          IfcGeometry newSecond;
 
-                        double scaleX = 1;
-                        double scaleY = 1;
-                        double scaleZ = 1;
+          double scaleX = 1;
+          double scaleY = 1;
+          double scaleZ = 1;
 
-                        for (uint32_t i = 0; i < result.numPoints; i++)
-                        {
-                            glm::dvec3 p = result.GetPoint(i);
-                            glm::dvec3 vec = (p - origin);
-                            double dx = glm::dot(vec, x);
-                            double dy = glm::dot(vec, y);
-                            double dz = glm::dot(vec, z);
-                            if (glm::abs(dx) > scaleX) {scaleX = glm::abs(dx); }
-                            if (glm::abs(dy) > scaleY) {scaleY = glm::abs(dy); }
-                            if (glm::abs(dz) > scaleZ) {scaleZ = glm::abs(dz); }
-                        }
-                        newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2, scaleZ * 2, secondGeom.halfSpaceOrigin);
-                        result = fuzzybools::Subtract(result, newSecond);
-                    }
-                    else
-                    {
-                        result = fuzzybools::Subtract(result, secondGeom);
-                    }
-                }
+          for (uint32_t i = 0; i < result.numPoints; i++) {
+            glm::dvec3 p = result.GetPoint(i);
+            glm::dvec3 vec = (p - origin);
+            double dx = glm::dot(vec, x);
+            double dy = glm::dot(vec, y);
+            double dz = glm::dot(vec, z);
+            if (glm::abs(dx) > scaleX) {
+              scaleX = glm::abs(dx);
             }
-
-          //TODO(nickcastel50): Figure out if this is necessary 
-          //  IfcGeometry newResult;
-          //  newResult.AddGeometry(result);
-          //  finalResult.AddPart(newResult);
-            finalResult.AddGeometry(result);
+            if (glm::abs(dy) > scaleY) {
+              scaleY = glm::abs(dy);
+            }
+            if (glm::abs(dz) > scaleZ) {
+              scaleZ = glm::abs(dz);
+            }
+          }
+          newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
+                                scaleZ * 2, secondGeom.halfSpaceOrigin);
+          result = fuzzybools::Subtract(result, newSecond);
+        } else {
+          result = fuzzybools::Subtract(result, secondGeom);
         }
-
-        return finalResult;
+      }
     }
+
+    IfcGeometry newResult;
+    newResult.AddGeometry(result);
+    finalResult.AddPart(newResult);
+    finalResult.AddGeometry(result);
+  }
+
+  return finalResult;
+}
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     ParamsRelVoidSubtract parameters) {
@@ -340,8 +337,16 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 
   parameters.flatSecondMesh[0] = newGeomSecondMesh;
 
-  resultGeometry = BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
-      //BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+  resultGeometry =
+      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+
+  printf("resultGeometry:\n");
+  for (int i = 0; i < resultGeometry.numPoints; ++i) {
+    glm::dvec3 point_ = resultGeometry.GetPoint(i);
+    printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, point_.x, point_.y,
+           point_.z);
+  }
+  // BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   glm::dmat4 combinedMatrix =
       glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
@@ -370,85 +375,8 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     return resultGeometry;
   }
 
-  printf("parameters.flatFirstMesh[0]:\n");
-  for (int i = 0; i < parameters.flatFirstMesh[0].numPoints; ++i) {
-    auto point_ = parameters.flatFirstMesh[0].GetPoint(i);
-
-    printf("Point %i: x: %.4f, y: %.4f, z: %.4f\n", i, point_.x, point_.y,
-           point_.z);
-  }
-
-  printf("parameters.flatSecondMesh[0]:\n");
-  for (int i = 0; i < parameters.flatSecondMesh[0].numPoints; ++i) {
-    auto point_ = parameters.flatSecondMesh[0].GetPoint(i);
-
-    printf("Point %i: x: %.4f, y: %.4f, z: %.4f\n", i, point_.x, point_.y,
-           point_.z);
-  }
-
-/*glm::dmat4 identity = glm::dmat4(1.0);
-size_t offset = 0;
-  std::string secondGeomStr = ToObj(parameters.flatSecondMesh[0], offset, identity);
-   printf("secondGeoms[0]:\n%s\n", secondGeomStr.c_str());*/
-
-  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
-  // get origin
-  if (parameters.flatFirstMesh[0].numFaces) {
-    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
-      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
-      break;
-    }
-  }
-
-  // TODO: clean this up, remove origin translation
-  auto normalizeMat = glm::translate(-originFirstMesh);
-  glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
-  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomFirstMesh;
-
-  for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
-
-    if (transformationBreaksWinding) {
-      newGeomFirstMesh.AddFace(b, a, c);
-    } else {
-      newGeomFirstMesh.AddFace(a, b, c);
-    }
-  }
-
-  parameters.flatFirstMesh[0] = newGeomFirstMesh;
-  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomSecondMesh;
-
-  for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    fuzzybools::Face f = parameters.flatSecondMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
-
-    if (transformationBreaksWinding) {
-      newGeomSecondMesh.AddFace(b, a, c);
-    } else {
-      newGeomSecondMesh.AddFace(a, b, c);
-    }
-  }
-
-  parameters.flatSecondMesh[0] = newGeomSecondMesh;
-
-  resultGeometry = BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
-      //BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
-
-  resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
+  resultGeometry =
+      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   return resultGeometry;
 }
@@ -574,7 +502,8 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
       auto surface = parameters.surface;
 
       if (surface.BSplineSurface.Active) {
-        TriangulateBspline(geometry, parameters.boundsArray, surface, parameters.scaling);
+        TriangulateBspline(geometry, parameters.boundsArray, surface,
+                           parameters.scaling);
       } else if (surface.CylinderSurface.Active) {
         TriangulateCylindricalSurface(geometry, parameters.boundsArray,
                                       surface);
@@ -981,13 +910,10 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
 ConwayGeometryProcessor::GeometryToGltf(
-    std::span<conway::geometry::IfcGeometryCollection > geoms,
-    std::span<conway::geometry::Material> materials,
-    bool isGlb,
-    bool outputDraco,
-    std::string filePath,
-    bool outputFile,
-    glm::dmat4 transform ) {
+    std::span<conway::geometry::IfcGeometryCollection> geoms,
+    std::span<conway::geometry::Material> materials, bool isGlb,
+    bool outputDraco, std::string filePath, bool outputFile,
+    glm::dmat4 transform) {
   ResultsGltf results;
 
   try {
@@ -1086,7 +1012,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     // Create a Buffer - it will be the 'current' Buffer that all the
     // BufferViews created by this BufferBuilder will automatically reference
-    bufferBuilder.AddBuffer( bufferId );
+    bufferBuilder.AddBuffer(bufferId);
 
     if (outputDraco) {
       document.extensionsRequired.insert("KHR_draco_mesh_compression");
@@ -1315,6 +1241,9 @@ ConwayGeometryProcessor::GeometryToGltf(
         numPoints += component.numPoints;
         numIndices += component.GetIndexDataSize();
       }
+
+      printf("numPoints: %i\n", numPoints);
+      printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1959,6 +1888,7 @@ conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
           geom_t.indexData[k * 3 + 1] = temp;
         }
       }
+      geom.AddPart(geom_t);
       geom.AppendGeometry(geom_t);
     }
   }

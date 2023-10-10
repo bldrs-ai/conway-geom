@@ -43,16 +43,17 @@ struct IfcGeometry : fuzzybools::Geometry {
   /*std::vector<float> fvertexData;
   std::vector<double> vertexData;
   std::vector<uint32_t> indexData;*/
-  glm::dvec3 min = glm::dvec3(DBL_MAX, DBL_MAX, DBL_MAX);
-  glm::dvec3 max = glm::dvec3(-DBL_MAX, -DBL_MAX, -DBL_MAX);
-  bool normalized = false;
+  //glm::dvec3 min = glm::dvec3(DBL_MAX, DBL_MAX, DBL_MAX);
+  //glm::dvec3 max = glm::dvec3(-DBL_MAX, -DBL_MAX, -DBL_MAX);
 
-  uint32_t numPoints = 0;
-  uint32_t numFaces = 0;
+  std::vector<IfcGeometry> getParts();
+  glm::dvec3 getMin();
+  glm::dvec3 getMax();
+  bool normalized = false;
 
   uint32_t GetAllocationSize() const;
 
-  glm::dvec3 GetExtent() const;
+  //glm::dvec3 GetExtent() const;
   //void Normalize();
   void NormalizeInPlace();
   /*void AddComponent(IfcGeometry &g);
@@ -62,6 +63,7 @@ struct IfcGeometry : fuzzybools::Geometry {
   void AddFace(uint32_t a, uint32_t b, uint32_t c);*/
   void ReverseFace(uint32_t index);
   void ReverseFaces();
+  void AddPart(IfcGeometry geom);
   //fuzzybools::Face GetFace(uint32_t index) const;
   //fuzzybools::AABB GetFaceBox(uint32_t index) const;
   glm::dvec3 GetPoint(uint32_t index) const;

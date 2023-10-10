@@ -10,14 +10,14 @@
 
 #include <glm/gtx/transform.hpp>
 
+#include "../utility/LoaderError.h"
+#include "../utility/LoaderSettings.h"
+#include "../utility/ifcStatistics.h"
 #include "IfcGeometryProcessor.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
 #include "representation/geometry.h"
-#include "../utility/ifcStatistics.h"
-#include "../utility/LoaderError.h"
-#include "../utility/LoaderSettings.h"
 
 namespace webifc::geometry {
 IfcGeometryProcessor::IfcGeometryProcessor(
@@ -1594,7 +1594,7 @@ void IfcGeometryProcessor::ReadIndexedPolygonalFace(
 
 IfcGeometry IfcGeometryProcessor::GetBrep(uint32_t expressID) {
   auto lineType = _loader.GetLineType(expressID);
-    webifc::statistics::collectStatistics(lineType);
+  webifc::statistics::collectStatistics(lineType);
   webifc::statistics::printTypeInfo(
       "//%s\n", (_schemaManager.IfcTypeCodeToType(lineType)).c_str());
   switch (lineType) {
@@ -1624,7 +1624,7 @@ IfcGeometry IfcGeometryProcessor::GetBrep(uint32_t expressID) {
 void IfcGeometryProcessor::AddFaceToGeometry(uint32_t expressID,
                                              IfcGeometry &geometry) {
   auto lineType = _loader.GetLineType(expressID);
-    webifc::statistics::collectStatistics(lineType);
+  webifc::statistics::collectStatistics(lineType);
   webifc::statistics::printTypeInfo(
       "//%s\n", (_schemaManager.IfcTypeCodeToType(lineType)).c_str());
 

@@ -51,8 +51,9 @@ export interface GeometryObject {
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  min: Vector3
-  max: Vector3
+  getMin(): Vector3
+  getMax(): Vector3
+  getParts(): StdVector<GeometryObject>
   normalized: boolean
   toObj(expressID: number): void
   delete(): void

@@ -105,7 +105,8 @@ std::vector<webifc::geometry::IfcCrossSections> GetCrossSections3D(
   return crossSections;
 }
 
-std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom, size_t &offset, std::string materialName,
+std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom,
+                          size_t &offset, std::string materialName,
                           glm::dmat4 transform = glm::dmat4(1)) {
   std::string obj;
   obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
@@ -143,32 +144,42 @@ std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom, size_t &off
   out.close();
 }*/
 
-std::string ColorToMtl(const glm::dvec3 &color, const std::string &materialName) {
-    std::string mtl;
-    const char *mtlFormat = 
-        "newmtl %s\n"
-        "Ka %f %f %f\n"  // Ambient color
-        "Kd %f %f %f\n"  // Diffuse color
-        "Ks 0.000 0.000 0.000\n";  // Specular color (set to black for simplicity)
+std::string ColorToMtl(const glm::dvec3 &color,
+                       const std::string &materialName) {
+  std::string mtl;
+  const char *mtlFormat =
+      "newmtl %s\n"
+      "Ka %f %f %f\n"            // Ambient color
+      "Kd %f %f %f\n"            // Diffuse color
+      "Ks 0.000 0.000 0.000\n";  // Specular color (set to black for simplicity)
 
-    char mtlBuffer[128];
-    snprintf(mtlBuffer, sizeof(mtlBuffer), mtlFormat, materialName.c_str(), color.r, color.g, color.b, color.r, color.g, color.b);
-    mtl.append(mtlBuffer);
+  char mtlBuffer[128];
+  snprintf(mtlBuffer, sizeof(mtlBuffer), mtlFormat, materialName.c_str(),
+           color.r, color.g, color.b, color.r, color.g, color.b);
+  mtl.append(mtlBuffer);
 
-    return mtl;
+  return mtl;
+}
+
+std::string DumpMeshToStr(webifc::geometry::IfcComposedMesh &mesh,
+              webifc::geometry::IfcGeometryProcessor &processor,
+              size_t &offset) {
+ // writeFile(filename,
+      //      ToObj(mesh, processor, offset, webifc::geometry::NormalizeIFC));
+   return ToObj(mesh, processor, offset, webifc::geometry::NormalizeIFC);
 }
 
 glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
-                          glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
+                        glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 void DumpGeom(const webifc::geometry::IfcGeometry &geom, glm::dvec3 &color,
-                         std::string name) {
+              std::string name) {
   size_t offset = 0;
   std::string fileName = "./";
   std::string objFileName = fileName + name + ".obj";
   std::string mtlFileName = fileName + name + ".mtl";
   writeFile(objFileName, GeometryToObj(geom, offset, name, NormalizeMat));
 
-  printf("name: %s\n",name.c_str());
+  printf("name: %s\n", name.c_str());
   writeFile(mtlFileName, ColorToMtl(color, name));
 }
 
@@ -177,6 +188,8 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     webifc::geometry::IfcGeometryProcessor &geometryLoader) {
   std::vector<webifc::geometry::IfcFlatMesh> meshes;
   webifc::schema::IfcSchemaManager schema;
+
+  webifc::geometry::IfcGeometry fullGeometry;
 
   for (auto type : schema.GetIfcElementList()) {
     auto elements = loader.GetExpressIDsWithType(type);
@@ -188,19 +201,42 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
         auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
         glm::dvec3 color(geom.color.r, geom.color.g, geom.color.b);
         if (webifc::statistics::exportObjs) {
-            fuzzybools::Geometry fbGeom;
-            std::string fileName = std::to_string(geom.geometryExpressID);
-            fileName += "_webifc";
+          webifc::geometry::IfcGeometry tmpGeometry;
+          std::string fileName = std::to_string(geom.geometryExpressID);
+          fileName += "_webifc";
 
-            DumpGeom(flatGeom, color, fileName);
+          DumpGeom(flatGeom, color, fileName);
 
-            std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+          std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
         }
       }
 
       meshes.push_back(mesh);
     }
   }
+
+  /*if (webifc::statistics::exportObjs) {
+    webifc::geometry::IfcGeometry tmpGeometry;
+    size_t offset = 0;
+    std::string completeObj = "";
+    for (auto type : schema.GetIfcElementList()) {
+      if (type == webifc::schema::IFCOPENINGELEMENT ||
+          type == webifc::schema::IFCSPACE ||
+          type == webifc::schema::IFCOPENINGSTANDARDCASE) {
+        continue;
+      }
+      auto elements = loader.GetExpressIDsWithType(type);
+
+      for (unsigned int i = 0; i < elements.size(); i++) {
+        auto mesh = geometryLoader.GetMesh(elements[i]);
+        completeObj += DumpMeshToStr(mesh, geometryLoader, offset );
+      }
+    }
+
+    glm::dvec3 color(0, 0, 0);
+    std::string fullFileName = "fullOBJ_webifc_test.obj";
+    writeFile(fullFileName, completeObj);
+  }*/
 
   return meshes;
 }

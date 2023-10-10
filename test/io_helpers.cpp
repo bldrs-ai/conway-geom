@@ -63,7 +63,7 @@ namespace webifc::io
 
         if (width == 0 && height == 0)
         {
-            printf("asdf\n");
+           // printf("asdf\n");
         }
 
         for (auto &pt : input)
@@ -526,7 +526,7 @@ namespace webifc::io
 
         if (width == 0 && height == 0)
         {
-            printf("asdf");
+         //   printf("asdf");
         }
 
         return {min, max};
