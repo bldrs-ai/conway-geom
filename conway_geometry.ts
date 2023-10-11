@@ -58,7 +58,66 @@ export interface GeometryObject {
   delete(): void
 }
 
+
+export interface ParamsGetBSplineCurve {
+  degree: number
+  points2: StdVector< Vector2 >
+  points3: StdVector< Vector3 >
+  knots: StdVector< number >
+  weights: StdVector< number >
+}
+
+
+export interface BSplineSurface {
+  active: boolean
+  uDegree: number
+  vDegree: number
+  closedU: boolean
+  closedV: boolean
+// CurveType has been left out deliberately, it's just metadata -- CS
+// weights have been left out, only weightpoints is set from here -- CS
+  controlPoints: StdVector< StdVector< Vector3 > >
+  uMultiplicity: StdVector< number >
+  vMultiplicity: StdVector< number >
+  uKnots: StdVector< number >
+  vKnots: StdVector< number >
+  weightPoints: StdVector< StdVector< number > >
+}
+
+export interface CylinderSurface {
+  active: boolean
+  radius: number
+}
+
+export interface IfcProfile3D {
+  type: string
+  curve: CurveObject
+  isConvex: boolean
+}
+
+export interface RevolutionSurface {
+  active: boolean
+  direction: NativeTransform
+  profile: IfcProfile3D
+}
+
+export interface ExtrusionSurface {
+  active: boolean
+  direction: Vector3
+  profile: ProfileObject
+  length: number
+}
+
 export interface SurfaceObject {
+
+  transformation: NativeTransform
+  bspline: BSplineSurface
+  cylinder: CylinderSurface
+  revolution: RevolutionSurface
+  extrusion: ExtrusionSurface
+
+  normal(): Vector3
+
   delete(): void
 }
 
@@ -290,6 +349,12 @@ export interface ParamsAxis2Placement3D {
   normalizeX: boolean
 }
 
+export interface ParamsAxis1Placement3D {
+  position: any
+  zAxisRef: any
+  normalizeZ: boolean
+}
+
 export interface ParamsGetBooleanResult {
   flatFirstMesh: any
   flatSecondMesh: any
@@ -338,6 +403,36 @@ export class ConwayGeometry {
     }
 
     return nativeVectorGeometry_
+  }
+
+  /**
+   *
+   * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
+   */
+  nativeVectorVectorDouble(): StdVector< StdVector< number > > {
+    const nativeVectorVectorDouble_ =
+      // eslint-disable-next-line new-cap
+      (new (this.wasmModule.vectorVectorDouble)()) as StdVector< StdVector< number > >
+
+    return nativeVectorVectorDouble_
+  }
+
+  /**
+   *
+   * @param initialSize number - initial size of the vector (optional)
+   * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
+   */
+  nativeVectorDouble(initialSize?: number): StdVector< number > {
+    const nativeVectorDouble_ =
+      // eslint-disable-next-line new-cap
+      (new (this.wasmModule.vectorDouble)()) as StdVector< number >
+
+    if (initialSize !== void 0) {
+      // resize has a required second parameter to set default values
+      nativeVectorDouble_.resize(initialSize, 0)
+    }
+
+    return nativeVectorDouble_
   }
 
   /**
@@ -479,6 +574,17 @@ export class ConwayGeometry {
   }
 
   /**
+   * Get a B-Spline Curve
+   *
+   * @param parameters
+   * @return {CurveObject} - The native curve object.
+   */
+  getBSplineCurve(parameters: ParamsGetBSplineCurve ) : CurveObject {
+    const result = this.wasmModule.getBSplineCurve( parameters )
+    return result
+  }
+
+  /**
    *
    * @param parameters - ParamsGetIfcIndexedPolyCurve parsed from data model
    * @return {CurveObject}
@@ -559,7 +665,7 @@ export class ConwayGeometry {
   }
 
   /**
-  
+   *
    * @param parameters
    * @return {GeometryObject}
    */
@@ -608,6 +714,15 @@ export class ConwayGeometry {
         fileUri,
         geometryOffset,
         geometryCount)
+  }
+
+  /**
+   *
+   * @param parameters - ParamsGetAxis2Placement2D structure
+   * @return {any} - native Axis2Placement2D structure
+   */
+  getAxis1Placement3D(parameters: ParamsAxis1Placement3D): any {
+    return this.wasmModule.getAxis1Placement(parameters)
   }
 
   /**

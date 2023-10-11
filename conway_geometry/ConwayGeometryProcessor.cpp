@@ -511,8 +511,8 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.UDegree = parameters.Udegree;
     surface.BSplineSurface.VDegree = parameters.Vdegree;
     surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
-    surface.BSplineSurface.ClosedU = parameters.closedU;
-    surface.BSplineSurface.ClosedV = parameters.closedV;
+    surface.BSplineSurface.ClosedU = parameters.closedU == "T";
+    surface.BSplineSurface.ClosedV = parameters.closedV == "T";
     surface.BSplineSurface.CurveType = parameters.curveType;
 
     // TODO(nickcastel50): Old implementation wasn't returning a surface for
@@ -1673,6 +1673,17 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
 
   curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
                          placement);
+
+  return curve;
+}
+
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
+    const ParamsGetBSplineCurve& parameters) {
+
+  IfcCurve curve;
+
+  // * TODO - Implement - CS
 
   return curve;
 }

@@ -84,8 +84,8 @@ struct BSpline {
   bool Active = false;
   double UDegree;
   double VDegree;
-  std::string ClosedU;
-  std::string ClosedV;
+  bool ClosedU;
+  bool ClosedV;
   std::string CurveType;
   std::vector<std::vector<double>> Weights;
   std::vector<std::vector<glm::dvec3>> ControlPoints;
