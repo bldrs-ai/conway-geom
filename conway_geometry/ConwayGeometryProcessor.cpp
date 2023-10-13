@@ -340,12 +340,6 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   resultGeometry =
       BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
-  printf("resultGeometry:\n");
-  for (int i = 0; i < resultGeometry.numPoints; ++i) {
-    glm::dvec3 point_ = resultGeometry.GetPoint(i);
-    printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, point_.x, point_.y,
-           point_.z);
-  }
   // BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
   glm::dmat4 combinedMatrix =
