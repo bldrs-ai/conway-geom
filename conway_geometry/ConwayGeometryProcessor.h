@@ -267,7 +267,6 @@ class ConwayGeometryProcessor {
   // case ifc::IFCAXIS1PLACEMENT:
   struct ParamsAxis1Placement3D {
     glm::dvec3 position;
-    glm::dvec3 xAxisRef;
     glm::dvec3 zAxisRef;
     bool normalizeZ = false;
   };
@@ -422,6 +421,16 @@ class ConwayGeometryProcessor {
   };
 
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
+
+  struct ParamsGetBSplineCurve {
+      uint32_t degree;
+      std::vector< glm::dvec2 > points2;
+      std::vector< glm::dvec3> points3;
+      std::vector< double > knots;
+      std::vector< double > weights;
+  };
+  
+  conway::geometry::IfcCurve getBSplineCurve(const ParamsGetBSplineCurve& parameters);
 
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
