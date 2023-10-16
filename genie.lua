@@ -168,6 +168,7 @@ project "conway_geom_native"
         flags {"EnableAVX2"}
 
     configuration {"windows", "x64", "Debug"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
         targetdir(path.join("bin", "64", "debug"))
         libdirs {"./dependencies/win"}
         links {
@@ -178,6 +179,7 @@ project "conway_geom_native"
         flags {"EnableAVX2"}
 
     configuration {"windows", "x64", "Release"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
         targetdir(path.join("bin", "64", "release"))
         libdirs {"./dependencies/win"}
         links {
@@ -330,6 +332,7 @@ project "conway_geom_native_tests"
         flags {"EnableAVX2"}
 
     configuration {"windows", "x64", "Debug"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
         targetdir(path.join("bin", "64", "debug"))
         libdirs {"./dependencies/win"}
         links {
@@ -340,6 +343,7 @@ project "conway_geom_native_tests"
         flags {"EnableAVX2"}
 
     configuration {"windows", "x64", "Release"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
         targetdir(path.join("bin", "64", "release"))
         libdirs {"./dependencies/win"}
         links {
@@ -691,7 +695,7 @@ project "ConwayGeomWasmWeb"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++17"
+            "-std=c++20"
         }
 
     configuration {"windows or macosx or linux"}
