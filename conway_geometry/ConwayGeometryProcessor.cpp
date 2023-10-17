@@ -538,8 +538,8 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.UDegree = parameters.Udegree;
     surface.BSplineSurface.VDegree = parameters.Vdegree;
     surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
-    surface.BSplineSurface.ClosedU = parameters.closedU == "T";
-    surface.BSplineSurface.ClosedV = parameters.closedV == "T";
+    surface.BSplineSurface.ClosedU = parameters.closedU;
+    surface.BSplineSurface.ClosedV = parameters.closedV;
     surface.BSplineSurface.CurveType = parameters.curveType;
 
     // TODO(nickcastel50): Old implementation wasn't returning a surface for
@@ -1710,7 +1710,30 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
   IfcCurve curve;
 
-  // * TODO - Implement - CS
+  //bool condition = false;
+      /*if (edge) {
+        condition = !condition;
+      }*/
+      
+      int degree = parameters.degree;
+
+      if (degree == 2) {
+        std::vector<glm::dvec2> tempPoints =
+            GetRationalBSplineCurveWithKnots(degree, parameters.points2, parameters.knots, parameters.weights);
+        for (size_t i = 0; i < tempPoints.size(); i++) {
+          curve.Add2d(tempPoints[i]);
+        }
+      } else if (degree == 3) {
+        std::vector<glm::dvec3> tempPoints =
+            GetRationalBSplineCurveWithKnots(degree, parameters.points3, parameters.knots, parameters.weights);
+        for (size_t i = 0; i < tempPoints.size(); i++) {
+          curve.Add3d(tempPoints[i]); 
+        }
+      }
+
+      /*if (condition) {
+        std::reverse(curve.points.begin(), curve.points.end());
+      }*/
 
   return curve;
 }

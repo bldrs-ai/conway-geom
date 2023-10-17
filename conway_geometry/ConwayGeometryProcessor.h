@@ -220,8 +220,8 @@ class ConwayGeometryProcessor {
     // TODO(nickcastel50): How do we pass these across?
     std::vector<std::vector<glm::vec<3, glm::f64>>> ctrolPts;
     std::string curveType;
-    std::string closedU;
-    std::string closedV;
+    bool closedU;
+    bool closedV;
     std::string selfIntersect;
     bool isBsplineSurfaceWithKnots = false;
     std::vector<glm::f64> UMultiplicity;
