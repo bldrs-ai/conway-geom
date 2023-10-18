@@ -132,6 +132,7 @@ export interface ParamsAddFaceToGeometry {
 export interface ParamsGetLoop {
   isEdgeLoop: boolean
   points: StdVector<Vector3> // std::vector<glm::dvec3>
+  edges: StdVector<CurveObject>
 }
 
 export interface ParamsCreateBound3D {
@@ -205,6 +206,7 @@ export interface CurveObject {
   invert: () => void
   isCCW: () => boolean
   delete(): void
+  indices: any
 }
 
 export interface ProfileObject {

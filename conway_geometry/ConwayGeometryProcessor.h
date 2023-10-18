@@ -318,6 +318,7 @@ class ConwayGeometryProcessor {
   struct ParamsGetLoop {
     bool isEdgeLoop = false;
     std::vector<glm::dvec3> points;
+    std::vector<conway::geometry::IfcCurve> edges;
   };
 
   IfcCurve GetLoop(ParamsGetLoop parameters);

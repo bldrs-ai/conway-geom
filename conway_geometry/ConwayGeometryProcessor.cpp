@@ -770,61 +770,40 @@ glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
 
 IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
   IfcCurve curve;
-  if (!parameters.isEdgeLoop) {
+  if (parameters.edges.size() == 0) {
     if (parameters.points.size() > 0) {
       curve.points = parameters.points;
-      /*curve.points.reserve(parameters.numPoints);
-
-      glm::dvec3 prevPoint = parameters.points[0];
-
-      curve.points.push_back(prevPoint);
-
-      for (size_t index = 1; index < parameters.numPoints; index++) {
-        glm::dvec3 currentPoint = parameters.points[index];
-        // trim repeats
-        if (currentPoint.x != prevPoint.x && currentPoint.y != prevPoint.y &&
-            currentPoint.z != prevPoint.z) {
-          curve.points.push_back(parameters.points[index]);
-        }
-
-        prevPoint = currentPoint;
-      }*/
     }
   } else {
-    // TODO(nickcastel50): Handle edge loop
-    ;
-    /*auto edges = _loader.GetSetArgument();
     int id = 0;
-
-    for (auto &token : edges)
-    {
-            uint32_t edgeId = _loader.GetRefArgument(token);
-            IfcCurve<3> edgeCurve = GetOrientedEdge(edgeId);
-
-            // Important not to repeat the last point otherwise triangulation
-    fails
-            // if the list has zero points this is initial, no repetition is
-    possible, otherwise we must check if (curve.points.size() == 0)
+    for (int edgeIndex = 0; edgeIndex < parameters.edges.size(); ++edgeIndex) {
+      // Important not to repeat the last point otherwise triangulation fails
+        // if the list has zero points this is initial, no repetition is possible, otherwise we must check
+        if (curve.points.size() == 0)
+        {
+          for (auto &pt : parameters.edges[edgeIndex].points)
+          {
+            printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n", curve.points.size(), pt.x, pt.y, pt.z);
+            curve.points.push_back(pt);
+            curve.indices.push_back(id);
+          }
+        }
+        else
+        {
+          for (auto &pt : parameters.edges[edgeIndex].points)
+          {
+            if (notPresent(pt, curve.points))
             {
-                    for (auto &pt : edgeCurve.points)
-                    {
-                            curve.points.push_back(pt);
-                            curve.indices.push_back(id);
-                    }
+              printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n", curve.points.size(), pt.x, pt.y, pt.z);
+              curve.points.push_back(pt);
+              curve.indices.push_back(id);
+            } else {
+              printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z: %.3f\n", pt.x, pt.y, pt.z);
             }
-            else
-            {
-                    for (auto &pt : edgeCurve.points)
-                    {
-                            if (notPresent(pt, curve.points))
-                            {
-                                    curve.points.push_back(pt);
-                                    curve.indices.push_back(id);
-                            }
-                    }
-            }
-            id++;
-    }*/
+          }
+        }
+        id++;
+    }
   }
 
   return curve;

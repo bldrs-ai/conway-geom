@@ -461,7 +461,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("get2d", &conway::geometry::IfcCurve::Get2d)
       .function("get3d", &conway::geometry::IfcCurve::Get3d)
       .function("invert", &conway::geometry::IfcCurve::Invert)
-      .function("isCCW", &conway::geometry::IfcCurve::IsCCW);
+      .function("isCCW", &conway::geometry::IfcCurve::IsCCW)
+      .property("indices", &conway::geometry::IfcCurve::indices);
 
   emscripten::class_<conway::geometry::IfcProfile>("IfcProfile")
       .constructor<>()
@@ -779,7 +780,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
           "isEdgeLoop",
           &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::isEdgeLoop)
       .field("points",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::points);
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::points)
+      .field("edges", &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::edges);
 
   // ParamsCreateBound3D
   emscripten::value_object<ParamsCreateBound3D>("ParamsCreateBound3D")
