@@ -148,6 +148,7 @@ struct IfcAlignment {
 struct IfcTrimmingSelect {
   bool hasParam = false;
   bool hasPos = false;
+  bool hasLength = false;
   double param;
   glm::dvec2 pos;
   glm::dvec3 pos3D;

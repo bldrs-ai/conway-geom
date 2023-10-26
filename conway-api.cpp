@@ -101,7 +101,8 @@ conway::geometry::IfcCurve GetIfcCircle(
 }
 
 conway::geometry::IfcCurve GetBSplineCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve
+        parameters) {
   if (processor) {
     return processor->getBSplineCurve(parameters);
   }
@@ -216,7 +217,6 @@ glm::dmat4 GetAxis1Placement(
   glm::dmat4 resultMat;
   return resultMat;
 }
-
 
 glm::dmat4 GetAxis2Placement3D(
     conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
@@ -343,72 +343,46 @@ glm::dmat4 getIdentityTransform() {
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
-
-/*
-  active: boolean
-  direction: NativeTransform
-  profile: IfcProfile3D*/
+  /*
+    active: boolean
+    direction: NativeTransform
+    profile: IfcProfile3D*/
 
   emscripten::value_object<conway::geometry::Extrusion>("ExtrusionSurface")
-      .field( "active",
-        &conway::geometry::Extrusion::Active )
-      .field( "direction",
-        &conway::geometry::Extrusion::Direction )
-      .field( "profile",
-        &conway::geometry::Extrusion::Profile )
-      .field( "length",
-        &conway::geometry::Extrusion::Length );
+      .field("active", &conway::geometry::Extrusion::Active)
+      .field("direction", &conway::geometry::Extrusion::Direction)
+      .field("profile", &conway::geometry::Extrusion::Profile)
+      .field("length", &conway::geometry::Extrusion::Length);
 
   emscripten::value_object<conway::geometry::Revolution>("RevolutionSurface")
-      .field( "active",
-        &conway::geometry::Revolution::Active )
-      .field( "direction",
-        &conway::geometry::Revolution::Direction )
-      .field( "profile",
-        &conway::geometry::Revolution::Profile );
+      .field("active", &conway::geometry::Revolution::Active)
+      .field("direction", &conway::geometry::Revolution::Direction)
+      .field("profile", &conway::geometry::Revolution::Profile);
 
   emscripten::value_object<conway::geometry::Cylinder>("CylinderSurface")
-      .field( "active",
-        &conway::geometry::Cylinder::Active )
-      .field( "radius",
-        &conway::geometry::Cylinder::Radius );
+      .field("active", &conway::geometry::Cylinder::Active)
+      .field("radius", &conway::geometry::Cylinder::Radius);
 
   emscripten::value_object<conway::geometry::BSpline>("BSplineSurface")
-      .field( "active",
-        &conway::geometry::BSpline::Active )
-      .field( "uDegree",
-        &conway::geometry::BSpline::UDegree )
-      .field( "vDegree",
-        &conway::geometry::BSpline::VDegree )
-      .field( "closedU",
-        &conway::geometry::BSpline::ClosedU )
-      .field( "closedV",
-        &conway::geometry::BSpline::ClosedV )
-      .field( "controlPoints",
-        &conway::geometry::BSpline::ControlPoints )
-      .field( "uMultiplicity",
-        &conway::geometry::BSpline::UMultiplicity )
-      .field( "vMultiplicity",
-        &conway::geometry::BSpline::VMultiplicity )
-      .field( "uKnots",
-        &conway::geometry::BSpline::UKnots )
-      .field( "vKnots",
-        &conway::geometry::BSpline::VKnots )
-      .field( "weightPoints",
-        &conway::geometry::BSpline::WeightPoints );
+      .field("active", &conway::geometry::BSpline::Active)
+      .field("uDegree", &conway::geometry::BSpline::UDegree)
+      .field("vDegree", &conway::geometry::BSpline::VDegree)
+      .field("closedU", &conway::geometry::BSpline::ClosedU)
+      .field("closedV", &conway::geometry::BSpline::ClosedV)
+      .field("controlPoints", &conway::geometry::BSpline::ControlPoints)
+      .field("uMultiplicity", &conway::geometry::BSpline::UMultiplicity)
+      .field("vMultiplicity", &conway::geometry::BSpline::VMultiplicity)
+      .field("uKnots", &conway::geometry::BSpline::UKnots)
+      .field("vKnots", &conway::geometry::BSpline::VKnots)
+      .field("weightPoints", &conway::geometry::BSpline::WeightPoints);
 
   emscripten::class_<conway::geometry::IfcSurface>("IfcSurface")
       .constructor<>()
-      .property( "transformation",
-        &conway::geometry::IfcSurface::transformation )
-      .property( "bspline",
-        &conway::geometry::IfcSurface::BSplineSurface )
-      .property( "cylinder",
-        &conway::geometry::IfcSurface::CylinderSurface )
-      .property( "revolution",
-        &conway::geometry::IfcSurface::RevolutionSurface )
-      .property( "extrusion",
-        &conway::geometry::IfcSurface::ExtrusionSurface );
+      .property("transformation", &conway::geometry::IfcSurface::transformation)
+      .property("bspline", &conway::geometry::IfcSurface::BSplineSurface)
+      .property("cylinder", &conway::geometry::IfcSurface::CylinderSurface)
+      .property("revolution", &conway::geometry::IfcSurface::RevolutionSurface)
+      .property("extrusion", &conway::geometry::IfcSurface::ExtrusionSurface);
 
   emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
       .constructor<>();
@@ -530,14 +504,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsAxis1Placement3D>(
-        "ParamsAxis1Placement3D"
-      )
-      .field( "position", &conway::geometry::ConwayGeometryProcessor::
-                            ParamsAxis1Placement3D::position)
-      .field( "zAxisRef", &conway::geometry::ConwayGeometryProcessor::
-                            ParamsAxis1Placement3D::zAxisRef)
-      .field( "normalizeZ", &conway::geometry::ConwayGeometryProcessor::
-                            ParamsAxis1Placement3D::normalizeZ);
+      "ParamsAxis1Placement3D")
+      .field("position", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsAxis1Placement3D::position)
+      .field("zAxisRef", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsAxis1Placement3D::zAxisRef)
+      .field("normalizeZ", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsAxis1Placement3D::normalizeZ);
 
   // conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
   emscripten::value_object<
@@ -776,12 +749,10 @@ EMSCRIPTEN_BINDINGS(my_module) {
   // conway::geometry::ConwayGeometryProcessor::ParamsGetLoop
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetLoop>("ParamsGetLoop")
-      .field(
-          "isEdgeLoop",
-          &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::isEdgeLoop)
       .field("points",
              &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::points)
-      .field("edges", &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::edges);
+      .field("edges",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetLoop::edges);
 
   // ParamsCreateBound3D
   emscripten::value_object<ParamsCreateBound3D>("ParamsCreateBound3D")
@@ -800,7 +771,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("surface", &conway::geometry::ConwayGeometryProcessor::
                             ParamsAddFaceToGeometry::surface)
       .field("scaling", &conway::geometry::ConwayGeometryProcessor::
-      ParamsAddFaceToGeometry::scaling);
+                            ParamsAddFaceToGeometry::scaling);
 
   // ifc::IFCRECTANGLEPROFILEDEF
   // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
@@ -827,24 +798,36 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("buffers",
              &conway::geometry::ConwayGeometryProcessor::ResultsGltf::buffers);
 
-
   emscripten::value_object<
-      conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve >( "ParamsGetBSplineCurve" )
-      .field( 
-        "degree",
-        &conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve::degree )
-      .field( 
-        "points2",
-        &conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve::points2 )
-      .field( 
-        "points3",
-        &conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve::points3 )
-      .field( 
-        "knots",
-        &conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve::knots )
-      .field( 
-        "weights",
-        &conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve::weights );
+      conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve>(
+      "ParamsGetBSplineCurve")
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetBSplineCurve::dimensions)
+      .field("degree", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetBSplineCurve::degree)
+      .field("points2", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetBSplineCurve::points2)
+      .field("points3", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetBSplineCurve::points3)
+      .field("knots", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetBSplineCurve::knots)
+      .field("weights", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetBSplineCurve::weights);
+
+  emscripten::value_object<conway::geometry::IfcTrimmingSelect>(
+      "TrimmingSelect")
+      .field("hasParam", &conway::geometry::IfcTrimmingSelect::hasParam)
+      .field("hasPos", &conway::geometry::IfcTrimmingSelect::hasPos)
+      .field("hasLength", &conway::geometry::IfcTrimmingSelect::hasLength)
+      .field("param", &conway::geometry::IfcTrimmingSelect::param)
+      .field("pos", &conway::geometry::IfcTrimmingSelect::pos)
+      .field("pos3D", &conway::geometry::IfcTrimmingSelect::pos3D);
+
+  emscripten::value_object<conway::geometry::IfcTrimmingArguments>(
+      "TrimmingArguments")
+      .field("exist", &conway::geometry::IfcTrimmingArguments::exist)
+      .field("start", &conway::geometry::IfcTrimmingArguments::start)
+      .field("end", &conway::geometry::IfcTrimmingArguments::end);
 
   emscripten::value_array<std::array<double, 16>>("array_double_16")
       .element(emscripten::index<0>())
@@ -895,7 +878,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("freeGeometryProcessor", &FreeGeometryProcessor);
   emscripten::function("geometryToObj", &GeometryToObj);
   emscripten::function("geometryToGltf", &GeometryToGltf);
-  emscripten::function("getAxis1Placement", &GetAxis1Placement );
+  emscripten::function("getAxis1Placement", &GetAxis1Placement);
   emscripten::function("getAxis2Placement2D", &GetAxis2Placement2D);
   emscripten::function("getAxis2Placement3D", &GetAxis2Placement3D);
   emscripten::function("getLocalPlacement", &GetLocalPlacement);

@@ -526,6 +526,7 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
   double divisor = 100.0;
   double maxDistance = 1e+100;
 
+  printf("scaling: %.3f\n", scaling);
   maxDistance = InverseMethod(pt, srf, pr, rotations, minError / scaling,
                               maxError / scaling, fU, fV, divisor, maxDistance);
   return glm::dvec2(fU, fV);
@@ -539,11 +540,21 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
   // First: We define the Nurbs surface
 
+  printf("surface.BSplineSurface.UDegree: %.3f\n", surface.BSplineSurface.UDegree);
+  printf("surface.BSplineSurface.VDegree: %.3f\n", surface.BSplineSurface.VDegree);
+  printf("surface.BSplineSurface.ControlPoints size: %i\n", surface.BSplineSurface.ControlPoints.size());
+  printf("surface.BSplineSurface.ControlPoints[0] size: %i\n", surface.BSplineSurface.ControlPoints[0].size());
+
   tinynurbs::RationalSurface3d srf;
   srf.degree_u = surface.BSplineSurface.UDegree;
   srf.degree_v = surface.BSplineSurface.VDegree;
   size_t num_u = surface.BSplineSurface.ControlPoints.size();
   size_t num_v = surface.BSplineSurface.ControlPoints[0].size();
+
+  auto test = surface.BSplineSurface.ControlPoints[0];
+
+  printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y, test[0].z);
+  printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y, test[1].z);
 
   std::vector<glm::dvec3> controlPoints;
   for (std::vector<glm::dvec3> row : surface.BSplineSurface.ControlPoints) {
@@ -554,6 +565,7 @@ inline void TriangulateBspline(IfcGeometry &geometry,
   srf.control_points = tinynurbs::array2(num_u, num_v, controlPoints);
 
   std::vector<double> weights;
+  //for (std::vector<double> row : surface.BSplineSurface.WeightPoints) {
   for (std::vector<double> row : surface.BSplineSurface.Weights) {
     for (double weight : row) {
       weights.push_back(weight);
@@ -589,6 +601,7 @@ inline void TriangulateBspline(IfcGeometry &geometry,
     std::vector<Point> points;
     for (size_t j = 0; j < bounds[0].curve.points.size(); j++) {
       glm::dvec3 pt = bounds[0].curve.points[j];
+      printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f\n", j, pt.x, pt.y, pt.z);
       glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf, scaling);
       points.push_back({pInv.x, pInv.y});
     }
@@ -654,6 +667,8 @@ inline void TriangulateBspline(IfcGeometry &geometry,
       glm::dvec3 pt10 = tinynurbs::surfacePoint(srf, p2[0], p2[1]);
       geometry.AddFace(pt00, pt01, pt10);
     }
+  } else {
+    printf("surface was not valid!\n");
   }
 }
 }  // namespace conway::geometry

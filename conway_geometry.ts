@@ -61,6 +61,7 @@ export interface GeometryObject {
 
 
 export interface ParamsGetBSplineCurve {
+  dimensions:number
   degree: number
   points2: StdVector< Vector2 >
   points3: StdVector< Vector3 >
@@ -129,8 +130,22 @@ export interface ParamsAddFaceToGeometry {
   scaling:number
 }
 
+export interface TrimmingSelect {
+  hasParam:boolean
+  hasPos:boolean
+  hasLength:boolean
+  param:number
+  pos:Vector2 | undefined
+  pos3D:Vector3 | undefined
+}
+
+export interface TrimmingArguments {
+  exist:boolean
+  start:TrimmingSelect | undefined
+  end:TrimmingSelect | undefined
+}
+
 export interface ParamsGetLoop {
-  isEdgeLoop: boolean
   points: StdVector<Vector3> // std::vector<glm::dvec3>
   edges: StdVector<CurveObject>
 }

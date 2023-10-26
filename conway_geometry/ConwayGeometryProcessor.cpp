@@ -778,31 +778,39 @@ IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
     int id = 0;
     for (int edgeIndex = 0; edgeIndex < parameters.edges.size(); ++edgeIndex) {
       // Important not to repeat the last point otherwise triangulation fails
-        // if the list has zero points this is initial, no repetition is possible, otherwise we must check
-        if (curve.points.size() == 0)
+      // if the list has zero points this is initial, no repetition is possible,
+      // otherwise we must check
+      if (curve.points.size() == 0) {
+        for (auto &pt : parameters.edges[edgeIndex].points) {
+          printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n",
+                 curve.points.size(), pt.x, pt.y, pt.z);
+          curve.points.push_back(pt);
+          curve.indices.push_back(id);
+        }
+      } else {
+        for (int i = 0; i < parameters.edges[edgeIndex].points.size(); ++i)
+        // for (auto &pt : parameters.edges[edgeIndex].points)
         {
-          for (auto &pt : parameters.edges[edgeIndex].points)
-          {
-            printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n", curve.points.size(), pt.x, pt.y, pt.z);
+          glm::dvec3 pt = parameters.edges[edgeIndex].points[i];
+          /*if (i == 0) {
+            if (!notPresent(pt, curve.points)) {
+              printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z: %.3f\n",
+                     pt.x, pt.y, pt.z);
+            }
+          } else {*/
+             if (notPresent(pt, curve.points))
+              {
+            printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n",
+                   curve.points.size(), pt.x, pt.y, pt.z);
             curve.points.push_back(pt);
             curve.indices.push_back(id);
-          }
+               } else {
+                 printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z:%.3f\n", pt.x, pt.y, pt.z);
+               }
+         // }
         }
-        else
-        {
-          for (auto &pt : parameters.edges[edgeIndex].points)
-          {
-            if (notPresent(pt, curve.points))
-            {
-              printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n", curve.points.size(), pt.x, pt.y, pt.z);
-              curve.points.push_back(pt);
-              curve.indices.push_back(id);
-            } else {
-              printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z: %.3f\n", pt.x, pt.y, pt.z);
-            }
-          }
-        }
-        id++;
+      }
+      id++;
     }
   }
 
@@ -1215,8 +1223,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         numIndices += component.GetIndexDataSize();
       }
 
-      printf("numPoints: %i\n", numPoints);
-      printf("numIndices: %i\n", numIndices);
+      //printf("numPoints: %i\n", numPoints);
+      //printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1683,36 +1691,68 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
   return curve;
 }
 
-
 conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
-    const ParamsGetBSplineCurve& parameters) {
-
+    const ParamsGetBSplineCurve &parameters) {
   IfcCurve curve;
 
-  //bool condition = false;
-      /*if (edge) {
-        condition = !condition;
-      }*/
-      
-      int degree = parameters.degree;
+  // bool condition = false;
+  /*if (edge) {
+    condition = !condition;
+  }*/
 
-      if (degree == 2) {
-        std::vector<glm::dvec2> tempPoints =
-            GetRationalBSplineCurveWithKnots(degree, parameters.points2, parameters.knots, parameters.weights);
-        for (size_t i = 0; i < tempPoints.size(); i++) {
-          curve.Add2d(tempPoints[i]);
-        }
-      } else if (degree == 3) {
-        std::vector<glm::dvec3> tempPoints =
-            GetRationalBSplineCurveWithKnots(degree, parameters.points3, parameters.knots, parameters.weights);
-        for (size_t i = 0; i < tempPoints.size(); i++) {
-          curve.Add3d(tempPoints[i]); 
-        }
-      }
+  int dimensions = parameters.dimensions;
+  printf("dimensions: %i\n", parameters.dimensions);
 
-      /*if (condition) {
-        std::reverse(curve.points.begin(), curve.points.end());
-      }*/
+  int degree = parameters.degree;
+
+  if (dimensions == 2) {
+    printf("parameters.points2 size: %i\n", parameters.points2.size());
+    printf("degree: %i\n", degree);
+    printf("parameters.knots:\n");
+
+    for (int i = 0; i < parameters.knots.size(); ++i) {
+      printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    }
+
+    printf("parameters.weights:\n");
+
+    for (int i = 0; i < parameters.weights.size(); ++i) {
+      printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    }
+
+    std::vector<glm::dvec2> tempPoints = GetRationalBSplineCurveWithKnots(
+        degree, parameters.points2, parameters.knots, parameters.weights);
+    for (size_t i = 0; i < tempPoints.size(); i++) {
+      printf("Point %i: x: %.3f, y: %.3f\n", i, tempPoints[i].x,
+             tempPoints[i].y);
+      curve.Add2d(tempPoints[i]);
+    }
+  } else if (dimensions == 3) {
+    printf("parameters.points3 size: %i\n", parameters.points3.size());
+    printf("degree: %i\n", degree);
+    printf("parameters.knots:\n");
+
+    for (int i = 0; i < parameters.knots.size(); ++i) {
+      printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    }
+
+    printf("parameters.weights:\n");
+
+    for (int i = 0; i < parameters.weights.size(); ++i) {
+      printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    }
+    std::vector<glm::dvec3> tempPoints = GetRationalBSplineCurveWithKnots(
+        degree, parameters.points3, parameters.knots, parameters.weights);
+    for (size_t i = 0; i < tempPoints.size(); i++) {
+      printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, tempPoints[i].x,
+             tempPoints[i].y, tempPoints[i].z);
+      curve.Add3d(tempPoints[i]);
+    }
+  }
+
+  /*if (condition) {
+    std::reverse(curve.points.begin(), curve.points.end());
+  }*/
 
   return curve;
 }

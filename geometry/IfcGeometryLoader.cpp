@@ -1089,6 +1089,10 @@ IfcCurve IfcGeometryLoader::GetOrientedEdge(uint32_t expressID) const {
     std::reverse(curveEdge.points.begin(), curveEdge.points.end());
   }
 
+  for (int i = 0; i < curveEdge.points.size(); ++i) {
+    printf("[GetOrientedEdge]: express ID: %i, Point %i:  x: %.3f, y: %.3f, z: %.3f\n", expressID, i, curveEdge.points[i].x, curveEdge.points[i].y, curveEdge.points[i].z);
+  }
+
   return curveEdge;
 }
 

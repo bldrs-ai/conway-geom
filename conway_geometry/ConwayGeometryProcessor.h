@@ -424,6 +424,7 @@ class ConwayGeometryProcessor {
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
 
   struct ParamsGetBSplineCurve {
+      uint32_t dimensions;
       uint32_t degree;
       std::vector< glm::dvec2 > points2;
       std::vector< glm::dvec3> points3;
