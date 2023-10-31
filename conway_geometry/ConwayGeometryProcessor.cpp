@@ -443,20 +443,20 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 }
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
-    ParamsGetBooleanResult parameters) {
+    ParamsGetBooleanResult *parameters) {
   IfcGeometry resultGeometry;
-  if (parameters.flatFirstMesh.size() <= 0) {
+  if (parameters->flatFirstMesh.size() <= 0) {
     printf("first mesh zero\n");
     return resultGeometry;
   }
 
-  if (parameters.flatSecondMesh.size() <= 0) {
+  if (parameters->flatSecondMesh.size() <= 0) {
     printf("second mesh zero\n");
     return resultGeometry;
   }
 
   resultGeometry =
-      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
+      BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
 
   return resultGeometry;
 }

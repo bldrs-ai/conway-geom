@@ -464,6 +464,7 @@ export interface ParamsAxis1Placement3D {
 }
 
 export interface ParamsGetBooleanResult {
+  delete(): unknown
   flatFirstMesh: any
   flatSecondMesh: any
   operatorType: number

@@ -126,7 +126,7 @@ class ConwayGeometryProcessor {
     std::vector<IfcGeometry> flatSecondMesh;
     int operatorType = 2;
   };
-  IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
+  IfcGeometry GetBooleanResult(ParamsGetBooleanResult *parameters);
 
   struct ParamsRelVoidSubtract {
     std::vector<IfcGeometry> flatFirstMesh;

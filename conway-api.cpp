@@ -242,7 +242,7 @@ glm::dmat4 GetAxis2Placement3D(
 
 conway::geometry::IfcGeometry GetBooleanResult(
     conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult
-        parameters) {
+        *parameters) {
   if (processor) {
     return processor->GetBooleanResult(parameters);
   }
@@ -426,6 +426,10 @@ conway::geometry::IfcProfile TransformProfile(
 glm::dmat4 getIdentityTransform() {
   return glm::dmat4(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 1, 0, 0),
                     glm::dvec4(0, 0, 1, 0), glm::dvec4(0, 0, 0, 1));
+}
+
+void deleteParamsGetBooleanResult(conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult* params) {
+  delete params;
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
@@ -826,7 +830,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
                  paramsGetIfcTrimmedCurve);
 
-  emscripten::value_object<
+  emscripten::class_<conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>("ParamsGetBooleanResult")
+    .constructor<>()
+    .property("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::flatFirstMesh)
+    .property("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::flatSecondMesh)
+    .property("operatorType", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::operatorType);
+
+  /*emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
       .field("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::
@@ -834,7 +844,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::
                                    ParamsGetBooleanResult::flatSecondMesh)
       .field("operatorType", &conway::geometry::ConwayGeometryProcessor::
-                                 ParamsGetBooleanResult::operatorType);
+                                 ParamsGetBooleanResult::operatorType);*/
 
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract>(
@@ -1107,7 +1117,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
-  emscripten::function("getBooleanResult", &GetBooleanResult);
+  emscripten::function("getBooleanResult", &GetBooleanResult, emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsGetBooleanResult", &deleteParamsGetBooleanResult, emscripten::allow_raw_pointers());
   emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
   emscripten::function("getBSplineCurve", &GetBSplineCurve);
