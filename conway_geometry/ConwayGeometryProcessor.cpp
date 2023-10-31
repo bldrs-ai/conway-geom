@@ -168,6 +168,20 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
   return curve;
 }
 
+IfcCurve ConwayGeometryProcessor::GetRectangleHollowProfileHole(
+    ParamsGetRectangleProfileCurve parameters) {
+  IfcCurve curve;
+  double xdim = parameters.xDim;
+  double ydim = parameters.yDim;
+
+  curve = GetRectangleCurve(xdim - parameters.thickness,
+                            ydim - parameters.thickness, parameters.matrix);
+
+  curve.Invert();
+
+  return curve;
+}
+
 glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
   return (geometry.min + geometry.max) * 0.5;
 }
@@ -623,6 +637,28 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   return IfcSurface();
 }
 
+IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile &parameters) {
+  if (!parameters.profile.isComposite)
+      {
+        for (uint32_t i = 0; i < parameters.profile.curve.points.size(); i++)
+        {
+          parameters.profile.curve.points[i] = parameters.transformation * glm::dvec3(parameters.profile.curve.points[i].x, parameters.profile.curve.points[i].y, 1);
+        }
+      }
+      else
+      {
+        for (uint32_t j = 0; j < parameters.profile.profiles.size(); j++)
+        {
+          for (uint32_t i = 0; i < parameters.profile.profiles[j].curve.points.size(); i++)
+          {
+            parameters.profile.profiles[j].curve.points[i] = parameters.transformation * glm::dvec3(parameters.profile.profiles[j].curve.points[i].x, parameters.profile.profiles[j].curve.points[i].y, 1);
+          }
+        }
+      }
+
+      return parameters.profile;
+}
+
 glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
     ParamsGetAxis2Placement2D parameters) {
   if (parameters.isAxis2Placement2D) {
@@ -798,16 +834,16 @@ IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
                      pt.x, pt.y, pt.z);
             }
           } else {*/
-             if (notPresent(pt, curve.points))
-              {
+          if (notPresent(pt, curve.points)) {
             printf("points size == %i\nPoint: x: %.3f, y: %.3f, z: %.3f\n",
                    curve.points.size(), pt.x, pt.y, pt.z);
             curve.points.push_back(pt);
             curve.indices.push_back(id);
-               } else {
-                 printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z:%.3f\n", pt.x, pt.y, pt.z);
-               }
-         // }
+          } else {
+            printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z:%.3f\n",
+                   pt.x, pt.y, pt.z);
+          }
+          // }
         }
       }
       id++;
@@ -1223,8 +1259,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         numIndices += component.GetIndexDataSize();
       }
 
-      //printf("numPoints: %i\n", numPoints);
-      //printf("numIndices: %i\n", numIndices);
+      // printf("numPoints: %i\n", numPoints);
+      // printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1673,11 +1709,49 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve ConwayGeometryProcessor::getEllipseCurve(
+    const ParamsGetEllipseCurve &parameters) {
+  IfcCurve curve;
+
+  double radiusX = parameters.radiusX;
+  double radiusY = parameters.radiusY;
+
+  if (parameters.hasPlacement) {
+    curve = GetEllipseCurve(radiusX, radiusY, parameters.circleSegments,
+                            parameters.placement);
+  } else {
+    glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
+                                      glm::dvec3(0, 0, 1));
+    curve = GetEllipseCurve(radiusX, radiusY, parameters.circleSegments,
+                            placement);
+  }
+
+  return curve;
+}
+
 conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
     const ParamsGetCircleCurve &parameters) {
   IfcCurve curve;
 
   double radius = parameters.radius;
+
+  glm::dmat3 placement(1);
+
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
+                         placement);
+
+  return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleHoleCurve(
+    const ParamsGetCircleCurve &parameters) {
+  IfcCurve curve;
+
+  double radius = parameters.radius - parameters.thickness;
 
   glm::dmat3 placement(1);
 

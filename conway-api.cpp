@@ -89,6 +89,17 @@ conway::geometry::IfcCurve GetCircleCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve GetCircleHoleCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve
+        parameters) {
+  if (processor) {
+    return processor->getCircleHoleCurve(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
 conway::geometry::IfcCurve GetIfcCircle(
     conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle parameters) {
   if (processor) {
@@ -260,6 +271,17 @@ conway::geometry::IfcCurve GetRectangleProfileCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve GetRectangleHollowProfileHole(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
+        parameters) {
+  if (processor) {
+    return processor->GetRectangleHollowProfileHole(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
 bool InitializeGeometryProcessor() {
   processor = std::make_unique<conway::geometry::ConwayGeometryProcessor>();
 
@@ -335,6 +357,15 @@ conway::geometry::IfcProfile createNativeIfcProfile(
   profile.profiles = parameters.profiles;
 
   return profile;
+}
+
+conway::geometry::IfcProfile TransformProfile(conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile parameters) {
+  if (processor) {
+    return processor->transformProfile(parameters);
+  }
+
+  conway::geometry::IfcProfile transformProfile;
+  return transformProfile;
 }
 
 glm::dmat4 getIdentityTransform() {
@@ -537,7 +568,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetCircleCurve::hasPlacement)
       .field("placement", &conway::geometry::ConwayGeometryProcessor::
-                              ParamsGetCircleCurve::placement);
+                              ParamsGetCircleCurve::placement)
+      .field("thickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve::thickness);
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve>("ParamsGetEllipseCurve")
+  .field("radiusX", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::radiusX)
+  .field("radiusY", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::radiusY)
+  .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::hasPlacement)
+  .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::placement)
+  .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::circleSegments);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
   emscripten::value_object<
@@ -582,6 +621,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                            ParamsGetPolygonalFaceSetGeometry::points)
       .field("faces", &conway::geometry::ConwayGeometryProcessor::
                           ParamsGetPolygonalFaceSetGeometry::faces);
+
+  
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement2D
   emscripten::value_object<
@@ -785,7 +826,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetRectangleProfileCurve::hasPlacement)
       .field("matrix", &conway::geometry::ConwayGeometryProcessor::
-                           ParamsGetRectangleProfileCurve::matrix);
+                           ParamsGetRectangleProfileCurve::matrix)
+      .field("thickness", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetRectangleProfileCurve::thickness);
 
   // Define the ResultsGltf object
   emscripten::value_object<
@@ -900,4 +943,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
   emscripten::function("getIdentityTransform", &getIdentityTransform);
   emscripten::function("multiplyNativeMatrices", &multiplyNativeMatrices);
+  emscripten::function("getRectangleHollowProfileHole",
+                       &GetRectangleHollowProfileHole);
+  emscripten::function("getCircleHoleCurve", &GetCircleHoleCurve);
+  emscripten::function("transformProfile", &TransformProfile);
 }

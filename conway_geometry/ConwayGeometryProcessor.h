@@ -194,9 +194,12 @@ class ConwayGeometryProcessor {
     double yDim = 0.0f;
     bool hasPlacement = false;
     glm::dmat3 matrix;
+    double thickness = -1.0f;
   };
 
   IfcCurve GetRectangleProfileCurve(ParamsGetRectangleProfileCurve parameters);
+
+  IfcCurve GetRectangleHollowProfileHole(ParamsGetRectangleProfileCurve parameters);
 
   // case ifc::IFCFACEBASEDSURFACEMODEL:
   // case ifc::IFCSHELLBASEDSURFACEMODEL:
@@ -364,6 +367,13 @@ class ConwayGeometryProcessor {
                             size_t &offset,
                             glm::dmat4 transform = glm::dmat4(1));
 
+  struct ParamsTransformProfile {
+    glm::dmat3 transformation;
+    IfcProfile profile;
+  };
+
+  IfcProfile transformProfile(ParamsTransformProfile &parameters);
+
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
     uint32_t indicesPerFace = 0;
@@ -393,9 +403,23 @@ class ConwayGeometryProcessor {
     float radius;
     bool hasPlacement = true;
     glm::dmat3 placement;
+    double thickness = -1.0f;
   };
 
   conway::geometry::IfcCurve getCircleCurve(const ParamsGetCircleCurve& parameters);
+
+  conway::geometry::IfcCurve getCircleHoleCurve(const ParamsGetCircleCurve& parameters);
+
+  //case ifc::EllipseProfileDef
+  struct ParamsGetEllipseCurve {
+    float radiusX;
+    float radiusY;
+    bool hasPlacement = true;
+    glm::dmat3 placement;
+    int circleSegments = 12;
+  };
+
+  conway::geometry::IfcCurve getEllipseCurve(const ParamsGetEllipseCurve& parameters);
 
   // case ifc::IFCTRIMMEDCURVE
   struct ParamsGetIfcTrimmedCurve {

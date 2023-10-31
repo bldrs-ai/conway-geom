@@ -237,6 +237,15 @@ export interface ParamsGetCircleCurve {
   radius: number
   hasPlacement: boolean
   placement: any
+  thickness: number
+}
+
+export interface ParamsGetEllipseCurve {
+  radiusX: number
+  radiusY: number
+  hasPlacement:boolean
+  placement:any
+  circleSegments:number
 }
 
 export interface ParamsCreateNativeIfcProfile {
@@ -258,6 +267,79 @@ export interface ParamsGetRectangleProfileCurve {
   yDim: number
   hasPlacement: boolean
   matrix: any // glm::dmat3
+  thickness:number
+}
+
+export interface ParamsGetCShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  hasFillet:boolean
+  depth:number
+  width:number
+  thickness:number
+  girth:number
+  filletRadius:number
+}
+
+export interface paramsGetIShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  hasFillet:boolean
+  width:number
+  depth:number
+  webThickness:number
+  flangeThickness:number
+}
+
+export interface ParamsGetLShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  filletRadius:number
+  depth:number
+  width:number
+  thickness:number
+  edgeRadius:number
+  legSlope:number
+  //centerOfGravityInX:number
+  //centerOfGravityInY:number
+}
+
+export interface ParamsGetTShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  hasFillet:boolean
+  depth:number
+  width:number
+  webThickness:number
+  filletRadius:number
+  flangeEdgeRadius:number
+  //webEdgeRadius:number
+  //webSlope:number
+  flangeScope:number
+}
+
+export interface ParamsGetUShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  depth:number
+  flangeWidth:number
+  webThickness:number
+  flangeThickness:number
+  filletRadius:number
+  edgeRadius:number
+  flangeScope:number
+}
+
+export interface ParamsGetZShapeCurve {
+  hasPlacement:boolean
+  placement:any
+  hasFillet:boolean
+  depth:number
+  flangeWidth:number
+  webThickness:number
+  flangeThickness:number
+  filletRadius:number
+  edgeRadius:number
 }
 
 export interface ParamsGetHalfspaceSolid {
@@ -278,6 +360,11 @@ export interface ParamsGetAxis2Placement2D {
   scale1: number
   customScale2: boolean
   scale2: number
+}
+
+export interface ParamsTransformProfile {
+  transform:any //glm::dmat3
+  profile:ProfileObject
 }
 
 export interface Segment {
@@ -572,6 +659,11 @@ export class ConwayGeometry {
     return result
   }
 
+  transformProfile(parameters:ParamsTransformProfile):ProfileObject {
+    const result = this.wasmModule.transformProfile(parameters)
+    return result
+  }
+
   /**
    *
    * @param parameters - ParamsPolygonalFaceSet parsed from data model
@@ -624,6 +716,26 @@ export class ConwayGeometry {
   }
 
   /**
+   * 
+   * @param parameters ParamsGetCirlceCurve parsed from data model
+   * @returns {CurveObject}
+   */
+  getCircleHoleCurve(parameters:ParamsGetCircleCurve):CurveObject {
+    const result = this.wasmModule.getCircleHoleCurve(parameters)
+    return result 
+  }
+
+  /**
+   * 
+   * @param parameters ParamsGetEllipseCurve parsed from data model
+   * @returns 
+   */
+  getEllipseCurve(parameters:ParamsGetEllipseCurve):CurveObject {
+    const result = this.wasmModule.getEllipseCurve(parameters)
+    return result
+  }
+
+  /**
    *
    * @param parameters ParamsCreateNativeIfcProfile parsed from data model
    * @return {ProfileObject}
@@ -660,6 +772,11 @@ export class ConwayGeometry {
    */
   getRectangleProfileCurve(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleProfileCurve(parameters)
+    return result
+  }
+
+  getRectangleHollowProfileHole(parameters:ParamsGetRectangleProfileCurve):CurveObject {
+    const result = this.wasmModule.getRectangleHollowProfileHole(parameters)
     return result
   }
 

@@ -727,6 +727,14 @@ namespace webifc::geometry
 				glm::dvec3 pt10 = tinynurbs::surfacePoint(srf, p2[0], p2[1]);
 				geometry.AddFace(pt00, pt01, pt10);
 			}
+
+			printf("result surface geometry:\n");
+
+    for (int i = 0; i < geometry.numPoints; ++i) {
+      glm::dvec3 pt__ = geometry.GetPoint(i);
+
+      printf("point %i: x: %.3f, y: %.3f, z: %.3f\n", i, pt__.x, pt__.y, pt__.z);
+    }
 		}
 	}
 }
