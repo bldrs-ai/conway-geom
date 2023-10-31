@@ -61,12 +61,12 @@ export interface GeometryObject {
 
 
 export interface ParamsGetBSplineCurve {
-  dimensions:number
+  dimensions: number
   degree: number
-  points2: StdVector< Vector2 >
-  points3: StdVector< Vector3 >
-  knots: StdVector< number >
-  weights: StdVector< number >
+  points2: StdVector<Vector2>
+  points3: StdVector<Vector3>
+  knots: StdVector<number>
+  weights: StdVector<number>
 }
 
 
@@ -76,14 +76,14 @@ export interface BSplineSurface {
   vDegree: number
   closedU: boolean
   closedV: boolean
-// CurveType has been left out deliberately, it's just metadata -- CS
-// weights have been left out, only weightpoints is set from here -- CS
-  controlPoints: StdVector< StdVector< Vector3 > >
-  uMultiplicity: StdVector< number >
-  vMultiplicity: StdVector< number >
-  uKnots: StdVector< number >
-  vKnots: StdVector< number >
-  weightPoints: StdVector< StdVector< number > >
+  // CurveType has been left out deliberately, it's just metadata -- CS
+  // weights have been left out, only weightpoints is set from here -- CS
+  controlPoints: StdVector<StdVector<Vector3>>
+  uMultiplicity: StdVector<number>
+  vMultiplicity: StdVector<number>
+  uKnots: StdVector<number>
+  vKnots: StdVector<number>
+  weightPoints: StdVector<StdVector<number>>
 }
 
 export interface CylinderSurface {
@@ -127,22 +127,22 @@ export interface ParamsAddFaceToGeometry {
   boundsArray: StdVector<Bound3DObject> // std::vector<IfcBound3D>
   advancedBrep: boolean
   surface: SurfaceObject // IfcSurface
-  scaling:number
+  scaling: number
 }
 
 export interface TrimmingSelect {
-  hasParam:boolean
-  hasPos:boolean
-  hasLength:boolean
-  param:number
-  pos:Vector2 | undefined
-  pos3D:Vector3 | undefined
+  hasParam: boolean
+  hasPos: boolean
+  hasLength: boolean
+  param: number
+  pos: Vector2 | undefined
+  pos3D: Vector3 | undefined
 }
 
 export interface TrimmingArguments {
-  exist:boolean
-  start:TrimmingSelect | undefined
-  end:TrimmingSelect | undefined
+  exist: boolean
+  start: TrimmingSelect | undefined
+  end: TrimmingSelect | undefined
 }
 
 export interface ParamsGetLoop {
@@ -243,9 +243,9 @@ export interface ParamsGetCircleCurve {
 export interface ParamsGetEllipseCurve {
   radiusX: number
   radiusY: number
-  hasPlacement:boolean
-  placement:any
-  circleSegments:number
+  hasPlacement: boolean
+  placement: any
+  circleSegments: number
 }
 
 export interface ParamsCreateNativeIfcProfile {
@@ -267,79 +267,81 @@ export interface ParamsGetRectangleProfileCurve {
   yDim: number
   hasPlacement: boolean
   matrix: any // glm::dmat3
-  thickness:number
+  thickness: number
 }
 
 export interface ParamsGetCShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  hasFillet:boolean
-  depth:number
-  width:number
-  thickness:number
-  girth:number
-  filletRadius:number
+  hasPlacement: boolean
+  placement: any
+  hasFillet: boolean
+  depth: number
+  width: number
+  thickness: number
+  girth: number
+  filletRadius: number
 }
 
-export interface paramsGetIShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  hasFillet:boolean
-  width:number
-  depth:number
-  webThickness:number
-  flangeThickness:number
+export interface ParamsGetIShapeCurve {
+  hasPlacement: boolean
+  placement: any
+  hasFillet: boolean
+  width: number
+  depth: number
+  webThickness: number
+  flangeThickness: number
+  filletRadius: number
 }
 
 export interface ParamsGetLShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  filletRadius:number
-  depth:number
-  width:number
-  thickness:number
-  edgeRadius:number
-  legSlope:number
+  hasPlacement: boolean
+  placement: any
+  hasFillet: boolean
+  filletRadius: number
+  depth: number
+  width: number
+  thickness: number
+  edgeRadius: number
+  legSlope: number
   //centerOfGravityInX:number
   //centerOfGravityInY:number
 }
 
 export interface ParamsGetTShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  hasFillet:boolean
-  depth:number
-  width:number
-  webThickness:number
-  filletRadius:number
-  flangeEdgeRadius:number
+  hasPlacement: boolean
+  placement: any
+  hasFillet: boolean
+  depth: number
+  width: number
+  webThickness: number
+  filletRadius: number
+  flangeEdgeRadius: number
   //webEdgeRadius:number
   //webSlope:number
-  flangeScope:number
+  flangeScope: number
 }
 
 export interface ParamsGetUShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  depth:number
-  flangeWidth:number
-  webThickness:number
-  flangeThickness:number
-  filletRadius:number
-  edgeRadius:number
-  flangeScope:number
+  hasPlacement: boolean
+  placement: any
+  depth: number
+  flangeWidth: number
+  webThickness: number
+  flangeThickness: number
+  filletRadius: number
+  edgeRadius: number
+  flangeScope: number
 }
 
 export interface ParamsGetZShapeCurve {
-  hasPlacement:boolean
-  placement:any
-  hasFillet:boolean
-  depth:number
-  flangeWidth:number
-  webThickness:number
-  flangeThickness:number
-  filletRadius:number
-  edgeRadius:number
+  hasPlacement: boolean
+  placement: any
+  hasFillet: boolean
+  depth: number
+  flangeWidth: number
+  webThickness: number
+  flangeThickness: number
+  filletRadius: number
+  edgeRadius: number
 }
 
 export interface ParamsGetHalfspaceSolid {
@@ -363,8 +365,8 @@ export interface ParamsGetAxis2Placement2D {
 }
 
 export interface ParamsTransformProfile {
-  transform:any //glm::dmat3
-  profile:ProfileObject
+  transform: any //glm::dmat3
+  profile: ProfileObject
 }
 
 export interface Segment {
@@ -515,10 +517,10 @@ export class ConwayGeometry {
    *
    * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
    */
-  nativeVectorVectorDouble(): StdVector< StdVector< number > > {
+  nativeVectorVectorDouble(): StdVector<StdVector<number>> {
     const nativeVectorVectorDouble_ =
       // eslint-disable-next-line new-cap
-      (new (this.wasmModule.vectorVectorDouble)()) as StdVector< StdVector< number > >
+      (new (this.wasmModule.vectorVectorDouble)()) as StdVector<StdVector<number>>
 
     return nativeVectorVectorDouble_
   }
@@ -528,10 +530,10 @@ export class ConwayGeometry {
    * @param initialSize number - initial size of the vector (optional)
    * @return {NativeVectorGeometry} - a native std::vector<GeometryObject> from the wasm module
    */
-  nativeVectorDouble(initialSize?: number): StdVector< number > {
+  nativeVectorDouble(initialSize?: number): StdVector<number> {
     const nativeVectorDouble_ =
       // eslint-disable-next-line new-cap
-      (new (this.wasmModule.vectorDouble)()) as StdVector< number >
+      (new (this.wasmModule.vectorDouble)()) as StdVector<number>
 
     if (initialSize !== void 0) {
       // resize has a required second parameter to set default values
@@ -659,7 +661,7 @@ export class ConwayGeometry {
     return result
   }
 
-  transformProfile(parameters:ParamsTransformProfile):ProfileObject {
+  transformProfile(parameters: ParamsTransformProfile): ProfileObject {
     const result = this.wasmModule.transformProfile(parameters)
     return result
   }
@@ -673,6 +675,67 @@ export class ConwayGeometry {
     const result = this.wasmModule.getPolygonalFaceSetGeometry(parameters)
     return result
   }
+
+  /**
+ *
+ * @param parameters ParamsGetCShapeCurve parsed from data model
+ * @return {CurveObject}
+ */
+  getCShapeCurve(parameters: ParamsGetCShapeCurve): CurveObject {
+    const result = this.wasmModule.getCShapeCurve(parameters)
+    return result
+  }
+
+  /**
+ *
+ * @param parameters ParamsGetIShapeCurve parsed from data model
+ * @return {CurveObject}
+ */
+  getIShapeCurve(parameters: ParamsGetIShapeCurve): CurveObject {
+    const result = this.wasmModule.getIShapeCurve(parameters)
+    return result
+  }
+
+  /**
+ *
+ * @param parameters ParamsGetLShapeCurve parsed from data model
+ * @return {CurveObject}
+ */
+  getLShapeCurve(parameters: ParamsGetLShapeCurve): CurveObject {
+    const result = this.wasmModule.getLShapeCurve(parameters)
+    return result
+  }
+
+  /**
+   *
+   * @param parameters ParamsGetTShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
+  getTShapeCurve(parameters: ParamsGetTShapeCurve): CurveObject {
+    const result = this.wasmModule.getTShapeCurve(parameters)
+    return result
+  }
+
+  /**
+   *
+   * @param parameters ParamsGetUShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
+  getUShapeCurve(parameters: ParamsGetUShapeCurve): CurveObject {
+    const result = this.wasmModule.getUShapeCurve(parameters)
+    return result
+  }
+
+  /**
+   *
+   * @param parameters ParamsGetZShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
+  getZShapeCurve(parameters: ParamsGetZShapeCurve): CurveObject {
+    const result = this.wasmModule.getZShapeCurve(parameters)
+    return result
+  }
+
 
   /**
    *
@@ -690,8 +753,8 @@ export class ConwayGeometry {
    * @param parameters
    * @return {CurveObject} - The native curve object.
    */
-  getBSplineCurve(parameters: ParamsGetBSplineCurve ) : CurveObject {
-    const result = this.wasmModule.getBSplineCurve( parameters )
+  getBSplineCurve(parameters: ParamsGetBSplineCurve): CurveObject {
+    const result = this.wasmModule.getBSplineCurve(parameters)
     return result
   }
 
@@ -720,9 +783,9 @@ export class ConwayGeometry {
    * @param parameters ParamsGetCirlceCurve parsed from data model
    * @returns {CurveObject}
    */
-  getCircleHoleCurve(parameters:ParamsGetCircleCurve):CurveObject {
+  getCircleHoleCurve(parameters: ParamsGetCircleCurve): CurveObject {
     const result = this.wasmModule.getCircleHoleCurve(parameters)
-    return result 
+    return result
   }
 
   /**
@@ -730,7 +793,7 @@ export class ConwayGeometry {
    * @param parameters ParamsGetEllipseCurve parsed from data model
    * @returns 
    */
-  getEllipseCurve(parameters:ParamsGetEllipseCurve):CurveObject {
+  getEllipseCurve(parameters: ParamsGetEllipseCurve): CurveObject {
     const result = this.wasmModule.getEllipseCurve(parameters)
     return result
   }
@@ -775,7 +838,7 @@ export class ConwayGeometry {
     return result
   }
 
-  getRectangleHollowProfileHole(parameters:ParamsGetRectangleProfileCurve):CurveObject {
+  getRectangleHollowProfileHole(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleHollowProfileHole(parameters)
     return result
   }
@@ -834,22 +897,22 @@ export class ConwayGeometry {
    * @return {ResultsGltf} boolean success + buffers + file uris
    */
   toGltf(
-      geometry: StdVector<GeometryCollection>,
-      materials: StdVector<MaterialObject>,
-      isGlb: boolean,
-      outputDraco: boolean,
-      fileUri: string,
-      geometryOffset: number = 0,
-      geometryCount: number = geometry.size() ):
-      ResultsGltf {
+    geometry: StdVector<GeometryCollection>,
+    materials: StdVector<MaterialObject>,
+    isGlb: boolean,
+    outputDraco: boolean,
+    fileUri: string,
+    geometryOffset: number = 0,
+    geometryCount: number = geometry.size()):
+    ResultsGltf {
     return this.wasmModule.geometryToGltf(
-        geometry,
-        materials,
-        isGlb,
-        outputDraco,
-        fileUri,
-        geometryOffset,
-        geometryCount)
+      geometry,
+      materials,
+      isGlb,
+      outputDraco,
+      fileUri,
+      geometryOffset,
+      geometryCount)
   }
 
   /**
@@ -892,7 +955,7 @@ export class ConwayGeometry {
    *
    * @return {any} identity matrix
    */
-  getIdentityTransform():any {
+  getIdentityTransform(): any {
     return this.wasmModule.getIdentityTransform()
   }
 

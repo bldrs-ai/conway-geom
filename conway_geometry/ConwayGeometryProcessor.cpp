@@ -147,6 +147,78 @@ double normalDiff(glm::dvec3 extents) {
   return result;
 }*/
 
+IfcCurve ConwayGeometryProcessor::GetCShapeCurve(ParamsGetCShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCShapedCurve(parameters.width, parameters.depth, parameters.girth, parameters.thickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetIShapeCurve(ParamsGetIShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetIShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.flangeThickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetLShapeCurve(ParamsGetLShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetLShapedCurve(parameters.width, parameters.depth, parameters.thickness,parameters.hasFillet, parameters.filletRadius, parameters.edgeRadius, parameters.legSlope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetTShapeCurve(ParamsGetTShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetTShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.hasFillet, parameters.filletRadius, parameters.flangeEdgeRadius, parameters.flangeScope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetUShapeCurve(ParamsGetUShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetUShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.flangeScope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetZShapeCurve(ParamsGetZShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetZShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.placement);
+
+  return curve;
+}
+
 IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
     ParamsGetRectangleProfileCurve parameters) {
   IfcCurve curve;

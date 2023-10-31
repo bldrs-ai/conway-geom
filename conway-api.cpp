@@ -260,6 +260,59 @@ conway::geometry::IfcGeometry RelVoidSubtract(
   return geometry;
 }
 
+conway::geometry::IfcCurve GetCShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve parameters) {
+  if (processor) {
+    return processor->GetCShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+conway::geometry::IfcCurve GetIShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve parameters) {
+  if (processor) {
+    return processor->GetIShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+conway::geometry::IfcCurve GetLShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve parameters) {
+  if (processor) {
+    return processor->GetLShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+conway::geometry::IfcCurve GetTShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve parameters) {
+  if (processor) {
+    return processor->GetTShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+conway::geometry::IfcCurve GetUShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve parameters) {
+  if (processor) {
+    return processor->GetUShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
+conway::geometry::IfcCurve GetZShapeCurve(conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve parameters) {
+  if (processor) {
+    return processor->GetZShapeCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
 conway::geometry::IfcCurve GetRectangleProfileCurve(
     conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
         parameters) {
@@ -359,7 +412,9 @@ conway::geometry::IfcProfile createNativeIfcProfile(
   return profile;
 }
 
-conway::geometry::IfcProfile TransformProfile(conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile parameters) {
+conway::geometry::IfcProfile TransformProfile(
+    conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile
+        parameters) {
   if (processor) {
     return processor->transformProfile(parameters);
   }
@@ -569,14 +624,22 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                  ParamsGetCircleCurve::hasPlacement)
       .field("placement", &conway::geometry::ConwayGeometryProcessor::
                               ParamsGetCircleCurve::placement)
-      .field("thickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve::thickness);
+      .field("thickness", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetCircleCurve::thickness);
 
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve>("ParamsGetEllipseCurve")
-  .field("radiusX", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::radiusX)
-  .field("radiusY", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::radiusY)
-  .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::hasPlacement)
-  .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::placement)
-  .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve::circleSegments);
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve>(
+      "ParamsGetEllipseCurve")
+      .field("radiusX", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetEllipseCurve::radiusX)
+      .field("radiusY", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetEllipseCurve::radiusY)
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetEllipseCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetEllipseCurve::placement)
+      .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetEllipseCurve::circleSegments);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
   emscripten::value_object<
@@ -621,8 +684,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
                            ParamsGetPolygonalFaceSetGeometry::points)
       .field("faces", &conway::geometry::ConwayGeometryProcessor::
                           ParamsGetPolygonalFaceSetGeometry::faces);
-
-  
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement2D
   emscripten::value_object<
@@ -830,6 +891,119 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("thickness", &conway::geometry::ConwayGeometryProcessor::
                               ParamsGetRectangleProfileCurve::thickness);
 
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve>(
+      "ParamsGetCShapeCurve")
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetCShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetCShapeCurve::placement)
+      .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetCShapeCurve::hasFillet)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetCShapeCurve::depth)
+      .field("width", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetCShapeCurve::width)
+      .field("thickness", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetCShapeCurve::thickness)
+      .field("girth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetCShapeCurve::girth)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetCShapeCurve::filletRadius);
+
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve>(
+      "paramsGetIShapeCurve")
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetIShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetIShapeCurve::placement)
+      .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetIShapeCurve::hasFillet)
+      .field("width", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetIShapeCurve::width)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetIShapeCurve::depth)
+      .field("webThickness", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetIShapeCurve::webThickness)
+      .field("flangeThickness", &conway::geometry::ConwayGeometryProcessor::
+                                    ParamsGetIShapeCurve::flangeThickness)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetIShapeCurve::filletRadius);
+
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve>(
+      "ParamsGetLShapeCurve")
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetLShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetLShapeCurve::placement)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetLShapeCurve::filletRadius)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetLShapeCurve::depth)
+      .field("width", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetLShapeCurve::width)
+      .field("thickness", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetLShapeCurve::thickness)
+      .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetLShapeCurve::edgeRadius)
+      .field("legSlope", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsGetLShapeCurve::legSlope);
+
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve>(
+      "ParamsGetTShapeCurve")
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetTShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetTShapeCurve::placement)
+      .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetTShapeCurve::hasFillet)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetTShapeCurve::depth)
+      .field("width", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetTShapeCurve::width)
+      .field("webThickness", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetTShapeCurve::webThickness)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetTShapeCurve::filletRadius)
+      .field("flangeEdgeRadius", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetTShapeCurve::flangeEdgeRadius)
+      .field("flangeScope", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetTShapeCurve::flangeScope);
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve>(
+      "ParamsGetUShapeCurve")
+      .field("hasPlacement",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::hasPlacement)
+       .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::placement)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::depth)
+      .field("flangeWidth",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeWidth)
+      .field("webThickness",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::webThickness)
+      .field("flangeThickness",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeThickness)
+      .field("filletRadius",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::filletRadius)
+      .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::edgeRadius)
+      .field("flangeScope",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeScope);
+
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve>("ParamsGetZShapeCurve")
+    .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::hasPlacement)
+    .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::placement)
+    .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::hasFillet)
+    .field("depth", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::depth)
+    .field("flangeWidth", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::flangeWidth)
+    .field("webThickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::webThickness)
+    .field("flangeThickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::flangeThickness)
+    .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::filletRadius)
+    .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::edgeRadius);
+
+
   // Define the ResultsGltf object
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ResultsGltf>("ResultsGltf")
@@ -947,4 +1121,10 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        &GetRectangleHollowProfileHole);
   emscripten::function("getCircleHoleCurve", &GetCircleHoleCurve);
   emscripten::function("transformProfile", &TransformProfile);
+  emscripten::function("getCShapeCurve", &GetCShapeCurve);
+  emscripten::function("getIShapeCurve", &GetIShapeCurve);
+  emscripten::function("getTShapeCurve", &GetTShapeCurve);
+  emscripten::function("getLShapeCurve", &GetLShapeCurve);
+  emscripten::function("getUShapeCurve", &GetUShapeCurve);
+  emscripten::function("getZShapeCurve", &GetZShapeCurve);
 }
