@@ -455,7 +455,7 @@ class ConwayGeometryProcessor {
     IfcProfile profile;
   };
 
-  IfcProfile transformProfile(ParamsTransformProfile& parameters);
+  IfcProfile transformProfile(ParamsTransformProfile *parameters);
 
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {

@@ -709,26 +709,26 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   return IfcSurface();
 }
 
-IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile &parameters) {
-  if (!parameters.profile.isComposite)
+IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile *parameters) {
+  if (!parameters->profile.isComposite)
       {
-        for (uint32_t i = 0; i < parameters.profile.curve.points.size(); i++)
+        for (uint32_t i = 0; i < parameters->profile.curve.points.size(); i++)
         {
-          parameters.profile.curve.points[i] = parameters.transformation * glm::dvec3(parameters.profile.curve.points[i].x, parameters.profile.curve.points[i].y, 1);
+          parameters->profile.curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.curve.points[i].x, parameters->profile.curve.points[i].y, 1);
         }
       }
       else
       {
-        for (uint32_t j = 0; j < parameters.profile.profiles.size(); j++)
+        for (uint32_t j = 0; j < parameters->profile.profiles.size(); j++)
         {
-          for (uint32_t i = 0; i < parameters.profile.profiles[j].curve.points.size(); i++)
+          for (uint32_t i = 0; i < parameters->profile.profiles[j].curve.points.size(); i++)
           {
-            parameters.profile.profiles[j].curve.points[i] = parameters.transformation * glm::dvec3(parameters.profile.profiles[j].curve.points[i].x, parameters.profile.profiles[j].curve.points[i].y, 1);
+            parameters->profile.profiles[j].curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.profiles[j].curve.points[i].x, parameters->profile.profiles[j].curve.points[i].y, 1);
           }
         }
       }
 
-      return parameters.profile;
+      return parameters->profile;
 }
 
 glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(

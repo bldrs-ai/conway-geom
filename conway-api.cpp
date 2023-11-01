@@ -313,6 +313,14 @@ conway::geometry::IfcCurve GetZShapeCurve(conway::geometry::ConwayGeometryProces
   return curve;
 }
 
+conway::geometry::IfcCurve GetEllipseCurve(conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve parameters) {
+  if (processor) {
+    return processor->getEllipseCurve(parameters);
+  }
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
 conway::geometry::IfcCurve GetRectangleProfileCurve(
     conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
         parameters) {
@@ -414,7 +422,7 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 
 conway::geometry::IfcProfile TransformProfile(
     conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile
-        parameters) {
+        *parameters) {
   if (processor) {
     return processor->transformProfile(parameters);
   }
@@ -430,6 +438,21 @@ glm::dmat4 getIdentityTransform() {
 
 void deleteParamsGetBooleanResult(conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult* params) {
   delete params;
+}
+
+void deleteParamsTransformProfile(conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile *params) {
+  delete params;
+}
+
+glm::dmat3 placementIdentity2D(1);
+
+glm::dmat3 GetIdentity2DMatrix() {
+  return placementIdentity2D;
+}
+
+glm::dmat4 placementIdentity3D(1);
+glm::dmat4 GetIdentity3DMatrix() {
+  return placementIdentity3D;
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
@@ -836,6 +859,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
     .property("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::flatSecondMesh)
     .property("operatorType", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::operatorType);
 
+  emscripten::class_<conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile>("ParamsTransformProfile")
+  .constructor<>()
+  .property("transformation", &conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile::transformation)
+  .property("profile", &conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile::profile);
+
   /*emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
@@ -1119,6 +1147,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult, emscripten::allow_raw_pointers());
   emscripten::function("deleteParamsGetBooleanResult", &deleteParamsGetBooleanResult, emscripten::allow_raw_pointers());
+  emscripten::function("transformProfile", &TransformProfile, emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsTransformProfile", &deleteParamsTransformProfile, emscripten::allow_raw_pointers());
   emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
   emscripten::function("getBSplineCurve", &GetBSplineCurve);
@@ -1131,11 +1161,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getRectangleHollowProfileHole",
                        &GetRectangleHollowProfileHole);
   emscripten::function("getCircleHoleCurve", &GetCircleHoleCurve);
-  emscripten::function("transformProfile", &TransformProfile);
+  emscripten::function("getEllipseCurve", &GetEllipseCurve);
   emscripten::function("getCShapeCurve", &GetCShapeCurve);
   emscripten::function("getIShapeCurve", &GetIShapeCurve);
   emscripten::function("getTShapeCurve", &GetTShapeCurve);
   emscripten::function("getLShapeCurve", &GetLShapeCurve);
   emscripten::function("getUShapeCurve", &GetUShapeCurve);
   emscripten::function("getZShapeCurve", &GetZShapeCurve);
+  emscripten::function("getIdentity2DMatrix", &GetIdentity2DMatrix);
+  emscripten::function("getIdentity3DMatrix", &GetIdentity3DMatrix);
 }

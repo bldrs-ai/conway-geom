@@ -367,6 +367,7 @@ export interface ParamsGetAxis2Placement2D {
 export interface ParamsTransformProfile {
   transform: any //glm::dmat3
   profile: ProfileObject
+  delete(): unknown
 }
 
 export interface Segment {

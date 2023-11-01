@@ -593,7 +593,8 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
-     // printf("No basis found for brep! Count: %i\n", ++triangulateBoundsCount);
+      // printf("No basis found for brep! Count: %i\n",
+      // ++triangulateBoundsCount);
       return;
     }
 
@@ -648,63 +649,60 @@ inline void TriangulateBounds(IfcGeometry &geometry,
   }
 }
 
-inline IfcGeometry SectionedSurface(IfcCrossSections profiles, webifc::utility::LoaderErrorHandler _errorHandler)
-	{
-		IfcGeometry geom;
+inline IfcGeometry SectionedSurface(
+    IfcCrossSections profiles,
+    webifc::utility::LoaderErrorHandler _errorHandler) {
+  IfcGeometry geom;
 
-		// Iterate over each profile, and create a surface by connecting the corresponding points with faces.
-		for (size_t i = 0; i < profiles.curves.size() - 1; i++)
-		{
-			IfcCurve &profile1 = profiles.curves[i];
-			IfcCurve &profile2 = profiles.curves[i + 1];
+  // Iterate over each profile, and create a surface by connecting the
+  // corresponding points with faces.
+  for (size_t i = 0; i < profiles.curves.size() - 1; i++) {
+    IfcCurve &profile1 = profiles.curves[i];
+    IfcCurve &profile2 = profiles.curves[i + 1];
 
-			// Check that the profiles have the same number of points
-			if (profile1.points.size() != profile2.points.size())
-			{
-				printf("profiles must have the same number of points in SectionedSurface\n");
-			}
+    // Check that the profiles have the same number of points
+    if (profile1.points.size() != profile2.points.size()) {
+      printf(
+          "profiles must have the same number of points in SectionedSurface\n");
+    }
 
-			std::vector<uint32_t> indices;
+    std::vector<uint32_t> indices;
 
-			// Create faces by connecting corresponding points from the two profiles
-			for (size_t j = 0; j < profile1.points.size(); j++)
-			{
-				glm::dvec3 &p1 = profile1.points[j];
-				int j2 = 0;
-				if (profile1.points.size() > 1)
-				{
-					double pr = (double)j / (double)(profile1.points.size() - 1);
-					j2 = pr * (profile2.points.size() - 1);
-				}
-				glm::dvec3 &p2 = profile2.points[j2];
+    // Create faces by connecting corresponding points from the two profiles
+    for (size_t j = 0; j < profile1.points.size(); j++) {
+      glm::dvec3 &p1 = profile1.points[j];
+      int j2 = 0;
+      if (profile1.points.size() > 1) {
+        double pr = (double)j / (double)(profile1.points.size() - 1);
+        j2 = pr * (profile2.points.size() - 1);
+      }
+      glm::dvec3 &p2 = profile2.points[j2];
 
-				glm::dvec3 normal = glm::dvec3(0.0, 0.0, 1.0);
+      glm::dvec3 normal = glm::dvec3(0.0, 0.0, 1.0);
 
-				if (glm::distance(p1, p2) > 1E-5)
-				{
-					normal = glm::normalize(glm::cross(p2 - p1, glm::cross(p2 - p1, glm::dvec3(0.0, 0.0, 1.0))));
-				}
+      if (glm::distance(p1, p2) > 1E-5) {
+        normal = glm::normalize(glm::cross(
+            p2 - p1, glm::cross(p2 - p1, glm::dvec3(0.0, 0.0, 1.0))));
+      }
 
-				geom.AddPoint(p1, normal);
-				geom.AddPoint(p2, normal);
+      geom.AddPoint(p1, normal);
+      geom.AddPoint(p2, normal);
 
-				indices.push_back(geom.numPoints - 2);
-				indices.push_back(geom.numPoints - 1);
-			}
+      indices.push_back(geom.numPoints - 2);
+      indices.push_back(geom.numPoints - 1);
+    }
 
-			// Create the faces
-			if (indices.size() > 0)
-			{
-				for (size_t j = 0; j < indices.size() - 2; j += 4)
-				{
-					geom.AddFace(indices[j], indices[j + 1], indices[j + 2]);
-					geom.AddFace(indices[j + 2], indices[j + 1], indices[j + 3]);
-				}
-			}
-		}
+    // Create the faces
+    if (indices.size() > 0) {
+      for (size_t j = 0; j < indices.size() - 2; j += 4) {
+        geom.AddFace(indices[j], indices[j + 1], indices[j + 2]);
+        geom.AddFace(indices[j + 2], indices[j + 1], indices[j + 3]);
+      }
+    }
+  }
 
-		return geom;
-	}
+  return geom;
+}
 
 inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
                            glm::dvec3 cuttingPlaneNormal = glm::dvec3(0),
@@ -750,6 +748,14 @@ inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
     }
 
     std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+    for (int i = 0; i < polygon.size(); ++i) {
+      auto _polygon = polygon[i];
+      for (int j = 0; j < _polygon.size(); ++j) {
+        auto _point = _polygon[j];
+        printf("Polygon[%i] Point %i: x: %.3f, y: %.3f\n", i, j, _point[0], _point[1]);
+      }
+    }
 
     if (indices.size() < 3) {
       // probably a degenerate polygon
@@ -953,98 +959,114 @@ inline glm::dvec3 GetOrigin(
 //   return newGeom;
 // }
 
-/*inline	void flattenRecursive(IfcComposedMesh &mesh, std::unordered_map<uint32_t, IfcGeometry> &geometryMap, std::vector<IfcGeometry> &geoms, glm::dmat4 mat)
-		{
-			glm::dmat4 newMat = mat * mesh.transformation;
+/*inline	void flattenRecursive(IfcComposedMesh &mesh,
+   std::unordered_map<uint32_t, IfcGeometry> &geometryMap,
+   std::vector<IfcGeometry> &geoms, glm::dmat4 mat)
+                {
+                        glm::dmat4 newMat = mat * mesh.transformation;
 
-			bool transformationBreaksWinding = MatrixFlipsTriangles(newMat);
+                        bool transformationBreaksWinding =
+   MatrixFlipsTriangles(newMat);
 
-			auto geomIt = geometryMap.find(mesh.expressID);
+                        auto geomIt = geometryMap.find(mesh.expressID);
 
-			if (geomIt != geometryMap.end())
-			{
-				auto meshGeom = geomIt->second;
+                        if (geomIt != geometryMap.end())
+                        {
+                                auto meshGeom = geomIt->second;
 
-				if (meshGeom.part.size() > 0)
-				{
-					for (uint32_t i = 0; i < meshGeom.part.size(); i++)
-					{
+                                if (meshGeom.part.size() > 0)
+                                {
+                                        for (uint32_t i = 0; i <
+   meshGeom.part.size(); i++)
+                                        {
 
-						IfcGeometry newMeshGeom = meshGeom.part[i];
-						if (newMeshGeom.numFaces)
-						{
-							IfcGeometry newGeom;
-							newGeom.halfSpace = newMeshGeom.halfSpace;
-							if (newGeom.halfSpace)
-							{
-								newGeom.halfSpaceOrigin = newMat * glm::dvec4(newMeshGeom.halfSpaceOrigin, 1);
-								newGeom.halfSpaceX = newMat * glm::dvec4(newMeshGeom.halfSpaceX, 1);
-								newGeom.halfSpaceY = newMat * glm::dvec4(newMeshGeom.halfSpaceY, 1);
-								newGeom.halfSpaceZ = newMat * glm::dvec4(newMeshGeom.halfSpaceZ, 1);
-							}
-							
-							for (uint32_t i = 0; i < newMeshGeom.numFaces; i++)
-							{
-								fuzzybools::Face f = newMeshGeom.GetFace(i);
-								glm::dvec3 a = newMat * glm::dvec4(newMeshGeom.GetPoint(f.i0), 1);
-								glm::dvec3 b = newMat * glm::dvec4(newMeshGeom.GetPoint(f.i1), 1);
-								glm::dvec3 c = newMat * glm::dvec4(newMeshGeom.GetPoint(f.i2), 1);
+                                                IfcGeometry newMeshGeom =
+   meshGeom.part[i]; if (newMeshGeom.numFaces)
+                                                {
+                                                        IfcGeometry newGeom;
+                                                        newGeom.halfSpace =
+   newMeshGeom.halfSpace; if (newGeom.halfSpace)
+                                                        {
+                                                                newGeom.halfSpaceOrigin
+   = newMat * glm::dvec4(newMeshGeom.halfSpaceOrigin, 1); newGeom.halfSpaceX =
+   newMat * glm::dvec4(newMeshGeom.halfSpaceX, 1); newGeom.halfSpaceY = newMat *
+   glm::dvec4(newMeshGeom.halfSpaceY, 1); newGeom.halfSpaceZ = newMat *
+   glm::dvec4(newMeshGeom.halfSpaceZ, 1);
+                                                        }
 
-								if (transformationBreaksWinding)
-								{
-									newGeom.AddFace(b, a, c);
-								}
-								else
-								{
-									newGeom.AddFace(a, b, c);
-								}
-							}
+                                                        for (uint32_t i = 0; i <
+   newMeshGeom.numFaces; i++)
+                                                        {
+                                                                fuzzybools::Face
+   f = newMeshGeom.GetFace(i); glm::dvec3 a = newMat *
+   glm::dvec4(newMeshGeom.GetPoint(f.i0), 1); glm::dvec3 b = newMat *
+   glm::dvec4(newMeshGeom.GetPoint(f.i1), 1); glm::dvec3 c = newMat *
+   glm::dvec4(newMeshGeom.GetPoint(f.i2), 1);
 
-							geoms.push_back(newGeom);
-						}
-					}
-				}
-				else
-				{
-					if (meshGeom.numFaces)
-					{
-						IfcGeometry newGeom;
-						newGeom.halfSpace = meshGeom.halfSpace;
-						if (newGeom.halfSpace)
-						{
-							newGeom.halfSpaceOrigin = newMat * glm::dvec4(meshGeom.halfSpaceOrigin, 1);
-							newGeom.halfSpaceX = newMat * glm::dvec4(meshGeom.halfSpaceX, 1);
-							newGeom.halfSpaceY = newMat * glm::dvec4(meshGeom.halfSpaceY, 1);
-							newGeom.halfSpaceZ = newMat * glm::dvec4(meshGeom.halfSpaceZ, 1);
-						}
-						
-						for (uint32_t i = 0; i < meshGeom.numFaces; i++)
-						{
-							fuzzybools::Face f = meshGeom.GetFace(i);
-							glm::dvec3 a = newMat * glm::dvec4(meshGeom.GetPoint(f.i0), 1);
-							glm::dvec3 b = newMat * glm::dvec4(meshGeom.GetPoint(f.i1), 1);
-							glm::dvec3 c = newMat * glm::dvec4(meshGeom.GetPoint(f.i2), 1);
+                                                                if
+   (transformationBreaksWinding)
+                                                                {
+                                                                        newGeom.AddFace(b,
+   a, c);
+                                                                }
+                                                                else
+                                                                {
+                                                                        newGeom.AddFace(a,
+   b, c);
+                                                                }
+                                                        }
 
-							if (transformationBreaksWinding)
-							{
-								newGeom.AddFace(b, a, c);
-							}
-							else
-							{
-								newGeom.AddFace(a, b, c);
-							}
-						}
+                                                        geoms.push_back(newGeom);
+                                                }
+                                        }
+                                }
+                                else
+                                {
+                                        if (meshGeom.numFaces)
+                                        {
+                                                IfcGeometry newGeom;
+                                                newGeom.halfSpace =
+   meshGeom.halfSpace; if (newGeom.halfSpace)
+                                                {
+                                                        newGeom.halfSpaceOrigin
+   = newMat * glm::dvec4(meshGeom.halfSpaceOrigin, 1); newGeom.halfSpaceX =
+   newMat * glm::dvec4(meshGeom.halfSpaceX, 1); newGeom.halfSpaceY = newMat *
+   glm::dvec4(meshGeom.halfSpaceY, 1); newGeom.halfSpaceZ = newMat *
+   glm::dvec4(meshGeom.halfSpaceZ, 1);
+                                                }
 
-						geoms.push_back(newGeom);
-					}
-				}
-			}
+                                                for (uint32_t i = 0; i <
+   meshGeom.numFaces; i++)
+                                                {
+                                                        fuzzybools::Face f =
+   meshGeom.GetFace(i); glm::dvec3 a = newMat *
+   glm::dvec4(meshGeom.GetPoint(f.i0), 1); glm::dvec3 b = newMat *
+   glm::dvec4(meshGeom.GetPoint(f.i1), 1); glm::dvec3 c = newMat *
+   glm::dvec4(meshGeom.GetPoint(f.i2), 1);
 
-			for (auto &c : mesh.children)
-			{
-				flattenRecursive(c, geometryMap, geoms, newMat);
-			}
-		}*/
+                                                        if
+   (transformationBreaksWinding)
+                                                        {
+                                                                newGeom.AddFace(b,
+   a, c);
+                                                        }
+                                                        else
+                                                        {
+                                                                newGeom.AddFace(a,
+   b, c);
+                                                        }
+                                                }
+
+                                                geoms.push_back(newGeom);
+                                        }
+                                }
+                        }
+
+                        for (auto &c : mesh.children)
+                        {
+                                flattenRecursive(c, geometryMap, geoms, newMat);
+                        }
+                }*/
 
 // inline std::vector<IfcGeometry> flatten(
 //     IfcComposedMesh &mesh,
