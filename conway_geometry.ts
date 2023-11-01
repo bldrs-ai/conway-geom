@@ -1,7 +1,7 @@
 
 import { LocateFileHandlerFn } from '../../src/shim/ifc_api.js'
 import { CanonicalMaterial } from '../../src/core/canonical_material.js'
-import { default as ConwayGeomWasm } from './Dist/ConwayGeomWasm.js'
+import { default as ConwayGeomWasm } from './bin/release/ConwayGeomWasm.js'
 import { NativeTransform } from '../../src/core/native_types.js'
 
 

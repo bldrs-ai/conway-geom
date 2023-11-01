@@ -4,7 +4,10 @@ gmake/
 .DS_Store
 **/.DS_Store
 Dist/
+dist/
 dependencies/**/*.a
 /.vs
 build/
 cache/
+node_modules
+yarn-error.log

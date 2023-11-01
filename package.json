@@ -1,0 +1,22 @@
+{
+  "name": "conway-geom",
+  "version": "0.1.0",
+  "main": "conway_geometry.ts",
+  "repository": "https://github.com/bldrs-ai/conway-geom",
+  "author": "info@bldrs.ai",
+  "license": "AGPL-3.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "clean": "rm -rf bin/release dist",
+    "build-node": "./build_osx.sh release wasmNode",
+    "build-web": "./build_osx.sh release wasmWeb",
+    "dist-node": "yarn build-node && node esbuild/build-node.js",
+    "dist-web": "yarn build-web && node esbuild/build-web.js",
+    "setup": "yarn unzip-deps",
+    "unzip-deps": "cd dependencies/wasm ; unzip dependencies.zip ; cd -"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.5"
+  }
+}
