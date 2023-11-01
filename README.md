@@ -7,7 +7,8 @@
 3. Clone this repo and navigate to the root of the repository.
 4. Run ```git submodule update --init --recursive```
 5. Add EMSDK environment variable to your terminal path. Example: ```EMSDK=D:\emsdk``` (no trailing slash)
-6. Run ```build_osx.sh debug``` or ```build_osx.sh release``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
+6. `cd dependencies/wasm ; unzip dependencies.zip ; cd -`
+7. Run ```build_osx.sh release (wasmNode|wasmWeb) profile``` or ```build_osx.sh release (wasmNode|wasmWeb)``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
 
 ### Build Steps (Windows)
 1. [Install EMSDK](https://github.com/emscripten-core/emsdk) and follow the instructions for your platform. 
@@ -17,7 +18,7 @@
 5. Add EMSDK environment variable to your terminal path. Example: ```EMSDK=D:\emsdk``` (no trailing slash)
 6. Add EMSCRIPTEN environment variable, example: ```EMSCRIPTEN=D:\emsdk\upstream\emscripten```
 7. [Install MinGW-64](https://github.com/msys2/msys2-installer/releases/download/2022-06-03/msys2-x86_64-20220603.exe) and add ```g++.exe``` location to your PATH variable. 
-8. Run ```build_win.bat debug``` or ```build_win.bat release``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
+8. Run ```build_win.bat release (wasmNode|wasmWeb) profile``` or ```build_win.bat release (wasmNode|wasmWeb)``` which will run genie and use gmake to build wasm modules (single and multithreaded) + native test executables in debug or release mode.
 
 ## conway_native Usage
 1. Running application currently parses geometry from index.ifc and outputs individual obj files + a single complete obj file. 
