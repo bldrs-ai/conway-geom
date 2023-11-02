@@ -302,8 +302,8 @@ export interface ParamsGetLShapeCurve {
   thickness: number
   edgeRadius: number
   legSlope: number
-  //centerOfGravityInX:number
-  //centerOfGravityInY:number
+  // centerOfGravityInX:number
+  // centerOfGravityInY:number
 }
 
 export interface ParamsGetTShapeCurve {
@@ -315,8 +315,8 @@ export interface ParamsGetTShapeCurve {
   webThickness: number
   filletRadius: number
   flangeEdgeRadius: number
-  //webEdgeRadius:number
-  //webSlope:number
+  // webEdgeRadius:number
+  // webSlope:number
   flangeScope: number
 }
 
@@ -365,7 +365,7 @@ export interface ParamsGetAxis2Placement2D {
 }
 
 export interface ParamsTransformProfile {
-  transform: any //glm::dmat3
+  transformation: any // glm::dmat3
   profile: ProfileObject
   delete(): unknown
 }
@@ -663,6 +663,11 @@ export class ConwayGeometry {
     return result
   }
 
+  /**
+   *
+   * @param parameters - ParamsTransformProfile parsed from data model
+   * @return {ProfileObject} - Native Profile object
+   */
   transformProfile(parameters: ParamsTransformProfile): ProfileObject {
     const result = this.wasmModule.transformProfile(parameters)
     return result
@@ -679,30 +684,30 @@ export class ConwayGeometry {
   }
 
   /**
- *
- * @param parameters ParamsGetCShapeCurve parsed from data model
- * @return {CurveObject}
- */
+   *
+   * @param parameters ParamsGetCShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
   getCShapeCurve(parameters: ParamsGetCShapeCurve): CurveObject {
     const result = this.wasmModule.getCShapeCurve(parameters)
     return result
   }
 
   /**
- *
- * @param parameters ParamsGetIShapeCurve parsed from data model
- * @return {CurveObject}
- */
+   *
+   * @param parameters ParamsGetIShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
   getIShapeCurve(parameters: ParamsGetIShapeCurve): CurveObject {
     const result = this.wasmModule.getIShapeCurve(parameters)
     return result
   }
 
   /**
- *
- * @param parameters ParamsGetLShapeCurve parsed from data model
- * @return {CurveObject}
- */
+   *
+   * @param parameters ParamsGetLShapeCurve parsed from data model
+   * @return {CurveObject}
+   */
   getLShapeCurve(parameters: ParamsGetLShapeCurve): CurveObject {
     const result = this.wasmModule.getLShapeCurve(parameters)
     return result
@@ -781,9 +786,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
+   *
    * @param parameters ParamsGetCirlceCurve parsed from data model
-   * @returns {CurveObject}
+   * @return {CurveObject}
    */
   getCircleHoleCurve(parameters: ParamsGetCircleCurve): CurveObject {
     const result = this.wasmModule.getCircleHoleCurve(parameters)
@@ -791,9 +796,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
+   *
    * @param parameters ParamsGetEllipseCurve parsed from data model
-   * @returns 
+   * @return {CurveObject}
    */
   getEllipseCurve(parameters: ParamsGetEllipseCurve): CurveObject {
     const result = this.wasmModule.getEllipseCurve(parameters)
@@ -840,6 +845,11 @@ export class ConwayGeometry {
     return result
   }
 
+  /**
+   *
+   * @param parameters ParamsGetRectangleProfileCurve parsed from data model
+   * @return {CurveObject}
+   */
   getRectangleHollowProfileHole(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleHollowProfileHole(parameters)
     return result
@@ -895,26 +905,25 @@ export class ConwayGeometry {
    * @param outputDraco boolean should the output use Draco compression
    * @param fileUri string of base name for output files
    * @param geometryOffset The offset into the geometry vector to use to start
-   *
    * @return {ResultsGltf} boolean success + buffers + file uris
    */
   toGltf(
-    geometry: StdVector<GeometryCollection>,
-    materials: StdVector<MaterialObject>,
-    isGlb: boolean,
-    outputDraco: boolean,
-    fileUri: string,
-    geometryOffset: number = 0,
-    geometryCount: number = geometry.size()):
+      geometry: StdVector<GeometryCollection>,
+      materials: StdVector<MaterialObject>,
+      isGlb: boolean,
+      outputDraco: boolean,
+      fileUri: string,
+      geometryOffset: number = 0,
+      geometryCount: number = geometry.size()):
     ResultsGltf {
     return this.wasmModule.geometryToGltf(
-      geometry,
-      materials,
-      isGlb,
-      outputDraco,
-      fileUri,
-      geometryOffset,
-      geometryCount)
+        geometry,
+        materials,
+        isGlb,
+        outputDraco,
+        fileUri,
+        geometryOffset,
+        geometryCount)
   }
 
   /**

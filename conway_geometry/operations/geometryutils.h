@@ -753,7 +753,7 @@ inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
       auto _polygon = polygon[i];
       for (int j = 0; j < _polygon.size(); ++j) {
         auto _point = _polygon[j];
-        printf("Polygon[%i] Point %i: x: %.3f, y: %.3f\n", i, j, _point[0], _point[1]);
+       // printf("Polygon[%i] Point %i: x: %.3f, y: %.3f\n", i, j, _point[0], _point[1]);
       }
     }
 
