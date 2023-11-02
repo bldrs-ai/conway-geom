@@ -13,6 +13,7 @@ struct IfcProfile {
   bool isConvex;
   bool isComposite = false;
   std::vector<IfcProfile> profiles;
+  std::vector<double> tags;
 
   std::string getType() const;
   IfcCurve getCurve() const;

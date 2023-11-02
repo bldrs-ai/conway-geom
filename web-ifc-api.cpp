@@ -3,24 +3,69 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
  
 #include <string>
-#include <fstream>
-#include <sstream>
-#include <iostream>
+#include <vector>
 #include <stack>
+#include <sstream>
+#include <cstdint>
 #include <memory>
-#include <map>
 
 #include <emscripten/bind.h>
 
-#include "include/web-ifc.h"
-#include "include/web-ifc-geometry.h"
+#include "parsing/IfcLoader.h"
+#include "schema/IfcSchemaManager.h"
+#include "utility/LoaderSettings.h"
+#include "utility/Logging.h"
+#include "geometry/IfcGeometryProcessor.h"
 
 #include "version.h"
 
-std::map<uint32_t, std::unique_ptr<webifc::IfcLoader>> loaders;
-std::map<uint32_t, std::unique_ptr<webifc::IfcGeometryLoader>> geomLoaders;
 
-uint32_t GLOBAL_MODEL_ID_COUNTER = 0;
+struct ModelInfo
+{
+    public:
+        ModelInfo(webifc::utility::LoaderSettings _settings, webifc::schema::IfcSchemaManager &_schemaManager) : schemaManager(_schemaManager), settings(_settings)
+        {
+            errorHandler = new webifc::utility::LoaderErrorHandler();
+            loader = new webifc::parsing::IfcLoader(_settings.TAPE_SIZE,_settings.MEMORY_LIMIT,*errorHandler,schemaManager);
+        }
+        
+        webifc::geometry::IfcGeometryProcessor * GetGeometryLoader()
+        {
+            if (geometryLoader==nullptr)
+            {
+                geometryLoader = new webifc::geometry::IfcGeometryProcessor(*loader, *errorHandler,schemaManager,settings.CIRCLE_SEGMENTS,settings.COORDINATE_TO_ORIGIN, settings.OPTIMIZE_PROFILES);
+            }
+            return geometryLoader;
+        }
+        
+        webifc::utility::LoaderErrorHandler * GetErrorHanlder()
+        {
+            return errorHandler;
+        }
+        
+        webifc::parsing::IfcLoader * GetLoader()
+        {
+            return loader;
+        }
+
+        void Close()
+        {
+            delete geometryLoader;
+            geometryLoader=nullptr;
+            delete loader;
+            loader=nullptr;
+        }
+
+    private:
+        webifc::schema::IfcSchemaManager &schemaManager;
+        webifc::utility::LoaderSettings settings;
+        webifc::parsing::IfcLoader * loader=nullptr;
+        webifc::geometry::IfcGeometryProcessor * geometryLoader=nullptr;
+        webifc::utility::LoaderErrorHandler * errorHandler=nullptr;
+};
+
+std::vector<ModelInfo> models;
+webifc::schema::IfcSchemaManager schemaManager;
 
 #ifdef __EMSCRIPTEN_PTHREADS__
     constexpr bool MT_ENABLED = true;
@@ -30,275 +75,79 @@ uint32_t GLOBAL_MODEL_ID_COUNTER = 0;
 
 bool shown_version_header = false;
 
-// use to construct API placeholders
-int main() {
-    loaders.emplace();
-    geomLoaders.emplace(0, std::make_unique<webifc::IfcGeometryLoader>(*loaders[0]));
-
-    return 0;
-}
-
-std::string ReadFile(const std::string& filename)
-{
-    std::ifstream t("/" + filename);
-    t.seekg(0, std::ios::end);
-    size_t size = t.tellg();
-    std::string buffer(size, ' ');
-    t.seekg(0);
-    t.read(&buffer[0], size);
-    return buffer;
-}
-
-void WriteFile(const std::string& filename, const std::string& contents)
-{
-    std::ofstream t("/" + filename);
-    t << contents;
-}
-
-int OpenModel(webifc::LoaderSettings settings, emscripten::val callback)
+int CreateModel(webifc::utility::LoaderSettings settings)
 {
     if (!shown_version_header)
     {
-        webifc::logInfo("web-ifc: " + WEB_IFC_VERSION_NUMBER +
-                        " threading: " + (MT_ENABLED ? "enabled" : "disabled"));
+        std::stringstream str;
+        str << "web-ifc: "<< WEB_IFC_VERSION_NUMBER << " threading: " << (MT_ENABLED ? "enabled" : "disabled");
+        str << " schemas available [";
+        for (auto schema : schemaManager.GetAvailableSchemas())  str << schemaManager.GetSchemaName(schema)<<",";
+        str << "]";
+        webifc::utility::log::info(str.str());
         shown_version_header = true;
     }
 
-    uint32_t modelID = GLOBAL_MODEL_ID_COUNTER++;
-
-    auto loader = std::make_unique<webifc::IfcLoader>(settings);
-    loaders.emplace(modelID, std::move(loader));
-
-    // Start the timer.
-    auto start = webifc::ms();
-
-    size_t contentOffset = 0;
-    loaders[modelID]->LoadFile([&](char* dest, size_t destSize)
-                    {
-                        emscripten::val retVal = callback((uint32_t)dest, destSize);
-                        uint32_t len = retVal.as<uint32_t>();
-                        return len;
-                    });
-
-    // Ensure IsOpen will return true upon successful load.
-    loaders[modelID]->SetOpen();
-
-    // Stop the timer.
-    auto end = webifc::ms() - start;
-
-    auto geomLoader = std::make_unique<webifc::IfcGeometryLoader>(*loaders[modelID]);
-    geomLoaders.emplace(modelID, std::move(geomLoader));
-
-    return modelID;
+    models.emplace_back(settings,schemaManager);
+    return models.size()-1;
 }
 
-int CreateModel(webifc::LoaderSettings settings)
+int OpenModel(webifc::utility::LoaderSettings settings, emscripten::val callback)
 {
-    uint32_t modelID = GLOBAL_MODEL_ID_COUNTER++;
+    auto modelID = CreateModel(settings);
+    const std::function<uint32_t(char *, size_t, size_t)> loaderFunc= [callback](char* dest, size_t sourceOffset, size_t destSize) {    
+        emscripten::val retVal = callback((uint32_t)dest,sourceOffset, destSize);
+        uint32_t len = retVal.as<uint32_t>();
+        return len;
+    };
     
-    auto loader = std::make_unique<webifc::IfcLoader>(settings);
-    loaders.emplace(modelID, std::move(loader));
-    auto geomLoader = std::make_unique<webifc::IfcGeometryLoader>(*loaders[modelID]);
-    geomLoaders.emplace(modelID, std::move(geomLoader));
+    models[modelID].GetLoader()->LoadFile(loaderFunc);
 
     return modelID;
 }
 
-
-void serialize(std::vector<std::string> filePaths, std::string serializedName, emscripten::val callback, uint32_t ramLimit = 200000000)
+void SaveModel(uint32_t modelID, emscripten::val callback)
 {
-    auto settings = webifc::LoaderSettings();
-    auto loader = std::make_unique<webifc::IfcLoader>(settings);
-
-    loader->ActivateSerializer(ramLimit);
-    loader->SetSerializedFileName(serializedName);
-    loader->SetCallback([&](std::string dest, size_t destSize)
-                        {
-                        emscripten::val retVal = callback(dest, destSize);
-                        return dest; });
-
-    uint32_t numLines = 0;
-
-    for (uint32_t fi = 0; fi < filePaths.size(); fi++)
-    {
-        std::ifstream bigFile(filePaths[fi], std::ios::binary | std::ios::ate);
-        int fileSize = bigFile.tellg();
-        bigFile.seekg(0);
-        constexpr size_t bufferSize = 5000;
-        std::array<char, bufferSize> buffer;
-        
-        bool inText = false;
-        std::string prevStringChunk = "";
-        std::string content = "";
-
-        if (bigFile.fail())
+    models[modelID].GetLoader()->SaveFile([&](char* src, size_t srcSize)
         {
-            std::cout << "ERROR, Could not open " << filePaths[fi] << std::endl;
-            exit(1);
+            emscripten::val retVal = callback((uint32_t)src, srcSize);
         }
-
-        while (bigFile)
-        {
-            content.clear();
-            for (int i(0); i < bufferSize; ++i)
-                buffer[i] = '\0';
-            bigFile.read(buffer.data(), bufferSize);
-            content = buffer.data();
-
-            if (content.size() > bufferSize)
-            {
-                content.erase(bufferSize, content.size() - bufferSize);
-            }
-
-            // keep record of quotations
-            for (int j = 0; j < content.size(); j++)
-            {
-                if (content[j] == '\'')
-                {
-                    inText = !inText;
-                }
-            }
-
-            // Add the preovious uncomplete string chunk
-            content = prevStringChunk + content;
-
-            bool doit = true;
-            prevStringChunk.clear();
-            uint32_t i = 1;
-            bool inText2 = inText;
-
-            while (true)
-            {
-                uint32_t idx = content.size() - i;
-                // Negative idx is not suposed to happen
-
-                if (content.size() < i)
-                {
-                    doit = false;
-                    break;
-                }
-                if (content[idx] == '\'')
-                {
-                    inText2 = !inText2;
-                }
-                // Only if you are not in a text the ';' indicates end of line
-                if (content[idx] == ';' && !inText2)
-                {
-                    break;
-                }
-                else
-                {
-                    // All the incomplete text is keep in the prevStringChunk
-                    prevStringChunk.push_back(content[idx]);
-                }
-                i++;
-            }
-
-            // Reverse the uncomplete string line
-            reverse(prevStringChunk.begin(), prevStringChunk.end());
-
-            if (doit)
-            {
-                // Remove uncomplete last line
-                content.erase(content.size() - prevStringChunk.size(), prevStringChunk.size());
-                content = content + " ";
-
-                size_t contentOffset = 0;
-                numLines += loader->readFilePart([&](char *dest, size_t destSize)
-                                                 {
-                        uint32_t length = std::min(content.size() - contentOffset, destSize);
-                        memcpy(dest, &content[contentOffset], length);
-
-                        contentOffset += length;
-
-                        return length; });
-            }
-        }
-        bigFile.close();
-    }
-
-    loader->storeLastChunk();
-    loader->storeMetadata(numLines);
-    loader->DisableSerializer();
+    );
 }
 
-uint32_t openSerialized(std::vector<std::string> paths, webifc::LoaderSettings settings, uint32_t ramLimit = 200000000)
+int GetModelSize(uint32_t modelID)
 {
-    for (int i(0); i < paths.size(); ++i)
-    {
-        std::cout << paths[i] << std::endl;
-    }
-    uint32_t modelID = CreateModel(settings);
-
-    loaders[modelID]->ActivateSerializer(ramLimit);
-    loaders[modelID]->SetBinPaths(paths);
-    uint32_t numLines = loaders[modelID]->loadMetadata();
-
-    std::cout << "Metdata loaded..." << std::endl;
-    // Continue opening
-    loaders[modelID]->LoadSerializedFileData(numLines);
-
-    std::cout << "Context data loaded..." << std::endl;
-
-    // Ensure IsOpen will return true upon successful load.
-    loaders[modelID]->SetOpen();
-
-    //testing if it is able to read geometry//
-
-    // std::cout << "Loading geometry..." << std::endl;
-
-    // std::vector<webifc::IfcFlatMesh> meshes;
-
-    // for (auto type : ifc::IfcElements)
-    // {
-    //     auto elements = loaders[modelID]->GetExpressIDsWithType(type);
-
-    //     for (int i = 0; i < elements.size(); i++)
-    //     {
-    //         auto mesh = geomLoaders[modelID]->GetFlatMesh(elements[i]);
-    //         meshes.push_back(mesh);
-    //     }
-    // }
-
-    //End testing//
-
-    loaders[modelID]->DisableSerializer();
-
-    std::cout << "Serialized files successfully loaded" << std::endl;
-
-    return modelID;
+    return models[modelID].GetLoader()->GetTotalSize();
 }
 
 void CloseModel(uint32_t modelID)
 {
-    geomLoaders.erase(modelID);
-    loaders[modelID]->SetClosed();
-    loaders.erase(modelID);
+    models[modelID].Close();
 }
 
-webifc::IfcFlatMesh GetFlatMesh(uint32_t modelID, uint32_t expressID)
+webifc::geometry::IfcFlatMesh GetFlatMesh(uint32_t modelID, uint32_t expressID)
 {
-    auto& geomLoader = geomLoaders[modelID];
+    auto geomLoader = models[modelID].GetGeometryLoader();
 
     if (!geomLoader)
     {
         return {};
     }
 
-    webifc::IfcFlatMesh mesh = geomLoader->GetFlatMesh(expressID);
+    webifc::geometry::IfcFlatMesh mesh = geomLoader->GetFlatMesh(expressID);
     
     for (auto& geom : mesh.geometries)
     {
-        auto& flatGeom = geomLoader->GetCachedGeometry(geom.geometryExpressID);
+        auto& flatGeom = geomLoader->GetGeometry(geom.geometryExpressID);
         flatGeom.GetVertexData();
     }
 
     return mesh;
 }
 
-void StreamMeshes(uint32_t modelID, std::vector<uint32_t> expressIds, emscripten::val callback) {
-    auto& loader = loaders[modelID];
-    auto& geomLoader = geomLoaders[modelID];
+void StreamMeshes(uint32_t modelID, const std::vector<uint32_t> & expressIds, emscripten::val callback) {
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
 
     if (!loader || !geomLoader)
     {
@@ -311,12 +160,12 @@ void StreamMeshes(uint32_t modelID, std::vector<uint32_t> expressIds, emscripten
     for (const auto& id : expressIds)
     {
         // read the mesh from IFC
-        webifc::IfcFlatMesh mesh = geomLoader->GetFlatMesh(id);
+        webifc::geometry::IfcFlatMesh mesh = geomLoader->GetFlatMesh(id);
 
         // prepare the geometry data
         for (auto& geom : mesh.geometries)
         {
-            auto& flatGeom = geomLoader->GetCachedGeometry(geom.geometryExpressID);
+            auto& flatGeom = geomLoader->GetGeometry(geom.geometryExpressID);
             flatGeom.GetVertexData();
         }   
 
@@ -327,15 +176,32 @@ void StreamMeshes(uint32_t modelID, std::vector<uint32_t> expressIds, emscripten
         }
 
         // clear geometry, freeing memory, client is expected to have consumed the data
-        geomLoader->ClearCachedGeometry();
+        geomLoader->Clear();
 
         index++;
     }
 }
 
+void StreamMeshesWithExpressID(uint32_t modelID, emscripten::val expressIdsVal, emscripten::val callback)
+{
+    std::vector<uint32_t> expressIds;
+
+    uint32_t size = expressIdsVal["length"].as<uint32_t>();
+    for (size_t i=0; i < size; i++) 
+    {
+        emscripten::val expressIdVal = expressIdsVal[std::to_string(i)];
+
+        uint32_t expressId = expressIdVal.as<uint32_t>();
+
+        expressIds.push_back(expressId);
+    }
+    
+    StreamMeshes(modelID, expressIds, callback);
+}
+
 void StreamAllMeshesWithTypes(uint32_t modelID, const std::vector<uint32_t>& types, emscripten::val callback)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
 
     if (!loader)
     {
@@ -354,7 +220,7 @@ void StreamAllMeshesWithTypesVal(uint32_t modelID, emscripten::val typesVal, ems
     std::vector<uint32_t> types;
 
     uint32_t size = typesVal["length"].as<uint32_t>();
-    int index = 0;
+    uint32_t index = 0;
     while (index < size)
     {
         emscripten::val typeVal = typesVal[std::to_string(index++)];
@@ -368,8 +234,8 @@ void StreamAllMeshesWithTypesVal(uint32_t modelID, emscripten::val typesVal, ems
 }
 
 void StreamAllMeshes(uint32_t modelID, emscripten::val callback) {
-    auto& loader = loaders[modelID];
-    auto& geomLoader = geomLoaders[modelID];
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
 
     if (!loader || !geomLoader)
     {
@@ -378,9 +244,9 @@ void StreamAllMeshes(uint32_t modelID, emscripten::val callback) {
 
     std::vector<uint32_t> types;
 
-    for (auto& type : ifc::IfcElements)
+    for (auto& type : schemaManager.GetIfcElementList())
     {
-        if (type == ifc::IFCOPENINGELEMENT || type == ifc::IFCSPACE || type == ifc::IFCOPENINGSTANDARDCASE)
+        if (type == webifc::schema::IFCOPENINGELEMENT || type == webifc::schema::IFCSPACE || type == webifc::schema::IFCOPENINGSTANDARDCASE)
         {
             continue;
         }
@@ -391,33 +257,33 @@ void StreamAllMeshes(uint32_t modelID, emscripten::val callback) {
     StreamAllMeshesWithTypes(modelID, types, callback);
 }
 
-std::vector<webifc::IfcFlatMesh> LoadAllGeometry(uint32_t modelID)
+std::vector<webifc::geometry::IfcFlatMesh> LoadAllGeometry(uint32_t modelID)
 {
-    auto& loader = loaders[modelID];
-    auto& geomLoader = geomLoaders[modelID];
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
 
     if (!loader || !geomLoader)
     {
         return {};
     }
 
-    std::vector<webifc::IfcFlatMesh> meshes;
+    std::vector<webifc::geometry::IfcFlatMesh> meshes;
 
-    for (auto type : ifc::IfcElements)
+    for (auto type : schemaManager.GetIfcElementList())
     {
         auto elements = loader->GetExpressIDsWithType(type);
 
-        if (type == ifc::IFCOPENINGELEMENT || type == ifc::IFCSPACE || type == ifc::IFCOPENINGSTANDARDCASE)
+        if (type == webifc::schema::IFCOPENINGELEMENT || type == webifc::schema::IFCSPACE || type == webifc::schema::IFCOPENINGSTANDARDCASE)
         {
             continue;
         }
 
-        for (int i = 0; i < elements.size(); i++)
+        for (uint32_t i = 0; i < elements.size(); i++)
         {
-            webifc::IfcFlatMesh mesh = geomLoader->GetFlatMesh(elements[i]);
+            webifc::geometry::IfcFlatMesh mesh = geomLoader->GetFlatMesh(elements[i]);
             for (auto& geom : mesh.geometries)
             {
-                auto& flatGeom = geomLoader->GetCachedGeometry(geom.geometryExpressID);
+                auto& flatGeom = geomLoader->GetGeometry(geom.geometryExpressID);
                 flatGeom.GetVertexData();
             }   
             meshes.push_back(std::move(mesh));
@@ -427,32 +293,122 @@ std::vector<webifc::IfcFlatMesh> LoadAllGeometry(uint32_t modelID)
     return meshes;
 }
 
-webifc::IfcGeometry GetGeometry(uint32_t modelID, uint32_t expressID)
+webifc::geometry::IfcGeometry GetGeometry(uint32_t modelID, uint32_t expressID)
 {
-    auto& geomLoader = geomLoaders[modelID];
+    auto geomLoader = models[modelID].GetGeometryLoader();
     if (!geomLoader)
     {
         return {};
     }
 
-    return geomLoader->GetCachedGeometry(expressID);
+    return geomLoader->GetGeometry(expressID);
 }
 
-std::vector<webifc::LoaderError> GetAndClearErrors(uint32_t modelID)
+std::vector<webifc::geometry::IfcCrossSections> GetAllCrossSections2D(uint32_t modelID)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
 
-    if (!loader)
+    if (!loader || !geomLoader)
+    {
+        return {};
+    }
+
+    std::vector<uint32_t> typeList; 
+    typeList.push_back(webifc::schema::IFCSECTIONEDSOLIDHORIZONTAL);  
+    typeList.push_back(webifc::schema::IFCSECTIONEDSOLID);
+    typeList.push_back(webifc::schema::IFCSECTIONEDSURFACE);
+
+    std::vector<webifc::geometry::IfcCrossSections> crossSections;
+
+    for(auto& type: typeList)
+    {
+        auto elements = loader->GetExpressIDsWithType(type);
+
+        for (size_t i = 0; i < elements.size(); i++)
+        {
+            webifc::geometry::IfcCrossSections crossSection = geomLoader->GetLoader().GetCrossSections2D(elements[i]);
+            crossSections.push_back(crossSection);
+        }
+    }
+
+    return crossSections;
+}
+
+std::vector<webifc::geometry::IfcCrossSections> GetAllCrossSections3D(uint32_t modelID)
+{
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
+
+    if (!loader || !geomLoader)
+    {
+        return {};
+    }
+
+    std::vector<uint32_t> typeList; 
+    typeList.push_back(webifc::schema::IFCSECTIONEDSOLIDHORIZONTAL);  
+    typeList.push_back(webifc::schema::IFCSECTIONEDSOLID);
+    typeList.push_back(webifc::schema::IFCSECTIONEDSURFACE);
+
+    std::vector<webifc::geometry::IfcCrossSections> crossSections;
+
+    for(auto& type: typeList)
+    {
+        auto elements = loader->GetExpressIDsWithType(type);
+
+        for (size_t i = 0; i < elements.size(); i++)
+        {
+            webifc::geometry::IfcCrossSections crossSection = geomLoader->GetLoader().GetCrossSections3D(elements[i], true, geomLoader->GetCoordinationMatrix());
+            crossSections.push_back(crossSection);
+        }
+    }
+
+    return crossSections;
+}
+
+std::vector<webifc::geometry::IfcAlignment> GetAllAlignments(uint32_t modelID)
+{
+    auto loader = models[modelID].GetLoader();
+    auto geomLoader = models[modelID].GetGeometryLoader();
+
+    if (!loader || !geomLoader)
+    {
+        return {};
+    }
+
+    auto type = webifc::schema::IFCALIGNMENT;
+
+    auto elements = loader->GetExpressIDsWithType(type);
+
+    std::vector<webifc::geometry::IfcAlignment> alignments;
+
+    for (size_t i = 0; i < elements.size(); i++)
+    {
+        webifc::geometry::IfcAlignment alignment = geomLoader->GetLoader().GetAlignment(elements[i]);
+        alignment.transform(geomLoader->GetCoordinationMatrix());
+        alignments.push_back(alignment);
+    }
+
+    return alignments;
+}
+
+std::vector<webifc::utility::LoaderError> GetAndClearErrors(uint32_t modelID)
+{
+    auto errorHandler = models[modelID].GetErrorHanlder();
+
+    if (!errorHandler)
     {
         return {};
     }
     
-    return loader->GetAndClearErrors();
+    auto errors = errorHandler->GetErrors();
+    errorHandler->ClearErrors();
+    return errors;
 }
 
 void SetGeometryTransformation(uint32_t modelID, std::array<double, 16> m)
 {
-    auto& geomLoader = geomLoaders[modelID];
+    auto geomLoader = models[modelID].GetGeometryLoader();
     if (!geomLoader)
     {
         return;
@@ -469,23 +425,38 @@ void SetGeometryTransformation(uint32_t modelID, std::array<double, 16> m)
     transformation[2] = v3;
     transformation[3] = v4;
 
-    geomLoaders[modelID]->SetTransformation(transformation);
+    geomLoader->SetTransformation(transformation);
+}
+
+std::array<double, 16> FlattenTransformation(const glm::dmat4 &transformation)
+{
+    std::array<double, 16> flatTransformation;
+
+    for (int i = 0; i < 4; i++)
+    {
+        for (int j = 0; j < 4; j++)
+        {
+            flatTransformation[i * 4 + j] = transformation[i][j];
+        }
+    }
+
+    return flatTransformation;
 }
 
 std::array<double, 16> GetCoordinationMatrix(uint32_t modelID)
 {
-    auto& geomLoader = geomLoaders[modelID];
+    auto geomLoader = models[modelID].GetGeometryLoader();
     if (!geomLoader)
     {
         return {};
     }
 
-    return webifc::FlattenTransformation(geomLoader->GetCoordinationMatrix());
+    return FlattenTransformation(geomLoader->GetCoordinationMatrix());
 }
 
 std::vector<uint32_t> GetLineIDsWithType(uint32_t modelID, emscripten::val types)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return {};
@@ -494,21 +465,18 @@ std::vector<uint32_t> GetLineIDsWithType(uint32_t modelID, emscripten::val types
     std::vector<uint32_t> expressIDs;
 
     uint32_t size = types["length"].as<uint32_t>();
-    for (int i=0; i < size; i++) {
+    for (uint32_t i=0; i < size; i++) {
     
         uint32_t type = types[std::to_string(i)].as<uint32_t>();
-        auto lineIDs = loader->GetLineIDsWithType(type);
-        for (auto lineID : lineIDs)
-        {
-          expressIDs.push_back(loader->LineIDToExpressID(lineID));
-        }
+        auto ids = loader->GetExpressIDsWithType(type);
+        expressIDs.insert(expressIDs.end(),ids.begin(),ids.end());    
     }
     return expressIDs;
 }
 
 std::vector<uint32_t> GetInversePropertyForItem(uint32_t modelID, uint32_t expressID, emscripten::val targetTypes, uint32_t position, bool set)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return {};
@@ -517,29 +485,29 @@ std::vector<uint32_t> GetInversePropertyForItem(uint32_t modelID, uint32_t expre
     auto expressIDs = GetLineIDsWithType(modelID,targetTypes);
     for (auto foundExpressID : expressIDs)
     {
-      auto lineID = loader->ExpressIDToLineID(foundExpressID); 
-      loader->MoveToLineArgument(lineID, position);
-      auto& _tape = loader->GetTape();
+      loader->MoveToLineArgument(foundExpressID, position);
 
-      webifc::IfcTokenType t = static_cast<webifc::IfcTokenType>(_tape.Read<char>());
-      if (t == webifc::IfcTokenType::REF) 
+      webifc::parsing::IfcTokenType t = loader->GetTokenType();
+      if (t == webifc::parsing::IfcTokenType::REF) 
       {
-        uint32_t val = _tape.template Read<uint32_t>();
+        loader->StepBack();
+        uint32_t val = loader->GetRefArgument();
         if (val == expressID)
         {
           inverseIDs.push_back(foundExpressID);
           if (!set) return inverseIDs;
         }
       }
-      else if (t == webifc::IfcTokenType::SET_BEGIN)
+      else if (t == webifc::parsing::IfcTokenType::SET_BEGIN)
       {
-          while (!_tape.AtEnd())
+          while (!loader->IsAtEnd())
           {
-              webifc::IfcTokenType setValueType = static_cast<webifc::IfcTokenType>(_tape.Read<char>());
-              if (setValueType == webifc::IfcTokenType::SET_END) break;
-              if (setValueType == webifc::IfcTokenType::REF) 
+              webifc::parsing::IfcTokenType setValueType = loader->GetTokenType();
+              if (setValueType == webifc::parsing::IfcTokenType::SET_END) break;
+              if (setValueType == webifc::parsing::IfcTokenType::REF) 
               {
-                uint32_t val = _tape.template Read<uint32_t>();
+                loader->StepBack();
+                uint32_t val = loader->GetRefArgument();
                 if (val == expressID)
                 {
                   inverseIDs.push_back(foundExpressID);
@@ -554,18 +522,27 @@ std::vector<uint32_t> GetInversePropertyForItem(uint32_t modelID, uint32_t expre
 
 bool ValidateExpressID(uint32_t modelID, uint32_t expressId)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return {};
     }
+    return loader->IsValidExpressID(expressId);
+}
 
-    return loader->ValidateExpressID(expressId);
+void ExtendLineStorage(uint32_t modelID, uint32_t lineStorageSize)
+{
+        auto loader = models[modelID].GetLoader();
+        if (!loader)
+        {
+            return;
+        }
+        loader->ExtendLineStorage(lineStorageSize);
 }
 
 uint32_t GetNextExpressID(uint32_t modelID, uint32_t expressId)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if(!loader)
     {
         return {};
@@ -578,228 +555,279 @@ uint32_t GetNextExpressID(uint32_t modelID, uint32_t expressId)
 
     while(cont)
     {
-        if(currentId >= maxId)
+        if(currentId > maxId)
         {
             cont = false;
             continue;
         }
         currentId++;
-        cont = !(loader->ValidateExpressID(currentId));
+        cont = !(loader->IsValidExpressID(currentId));
     }
-
     return currentId;
 }
 
 std::vector<uint32_t> GetAllLines(uint32_t modelID)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return {};
     }
 
     std::vector<uint32_t> expressIDs;
-    auto numLines = loader->GetNumLines();
-    for (int i = 0; i < numLines; i++)
+    auto numLines = loader->GetMaxExpressId();
+    for (uint32_t i = 1; i <= numLines; i++)
     {
-        expressIDs.push_back(loader->GetLine(i).expressID);
+        if (!loader->IsValidExpressID(i)) continue;
+        expressIDs.push_back(i);
     }
     return expressIDs;
 }
 
-void ExportFileAsIFC(uint32_t modelID)
+bool WriteValue(uint32_t modelID, webifc::parsing::IfcTokenType t, emscripten::val value)
 {
-    auto& loader = loaders[modelID];
-    if (!loader)
-    {
-        return;
-    }
-
-    std::string exportData = loader->DumpAsIFC();
-    WriteFile("export.ifc", exportData);
-    webifc::logInfo("Exported to export.ifc");
-}
-
-template<uint32_t N>
-void WriteValue(webifc::DynamicTape<N>& tape, webifc::IfcTokenType t, emscripten::val value)
-{
+    bool responseCode = true;
+    auto loader = models[modelID].GetLoader();
     switch (t)
     {
-    case webifc::IfcTokenType::STRING:
-    case webifc::IfcTokenType::ENUM:
+    case webifc::parsing::IfcTokenType::STRING:
+    case webifc::parsing::IfcTokenType::ENUM:
     {
         std::string copy = value.as<std::string>();
 
         uint16_t length = copy.size();
-        tape.push2((uint16_t)length);
-        tape.push((void*)copy.c_str(), copy.size());
+        loader->Push<uint16_t>((uint16_t)length);
+        loader->Push((void*)copy.c_str(), copy.size());
 
         break;
     }
-    case webifc::IfcTokenType::REF:
+    case webifc::parsing::IfcTokenType::REF:
     {
         uint32_t val = value.as<uint32_t>();
-        tape.push(&val, sizeof(uint32_t));
+        loader->Push<uint32_t>(val);
 
         break;
     }
-    case webifc::IfcTokenType::REAL:
+    case webifc::parsing::IfcTokenType::REAL:
     {
         double val = value.as<double>();
-        tape.push(&val, sizeof(double));
-
+        loader->PushDouble(val);
+        break;
+    }
+    case webifc::parsing::IfcTokenType::INTEGER:
+    {
+        int val = value.as<int>();
+        loader->PushInt(val);
         break;
     }
     default:
         // use undefined to signal val parse issue
-        tape.push('?');
+        loader->Push<uint8_t>('?');
+        responseCode = false;
     }
+    return responseCode;
 }
 
-void WriteSet(webifc::DynamicTape<TAPE_SIZE>& _tape, emscripten::val& val)
+bool WriteSet(uint32_t modelID, emscripten::val& val)
 {
-    _tape.push(webifc::IfcTokenType::SET_BEGIN);
+    bool responseCode = true;
+    auto loader = models[modelID].GetLoader();
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::SET_BEGIN);
 
     uint32_t size = val["length"].as<uint32_t>();
-    int index = 0;
-    while (true && index < size)
+    for (size_t i=0; i < size;i++) 
     {
-        emscripten::val child = val[std::to_string(index)];
-        if (child.isArray())
+        emscripten::val child = val[std::to_string(i)];
+        if (child.isNull()) loader->Push<uint8_t>(webifc::parsing::IfcTokenType::EMPTY);
+        else if (child.isUndefined()) continue;
+        else if (child.isArray()) WriteSet(modelID,child);
+        else if (child["value"].isArray())
         {
-            WriteSet(_tape, child);
-        }
-        else if (child.isNull())
-        {
-            _tape.push(webifc::IfcTokenType::EMPTY);
-        }
-        else if (child.isUndefined())
-        {
-            // nothing to do here, possibly mismatch in ifc spec!
-            index++;
-            continue;
+            
+            emscripten::val innerVal = child["value"];
+            webifc::parsing::IfcTokenType type = static_cast<webifc::parsing::IfcTokenType>(child["type"].as<uint32_t>());
+            loader->Push(webifc::parsing::IfcTokenType::SET_BEGIN);
+            uint32_t sz = innerVal["length"].as<uint32_t>();
+            for (size_t z=0; z < sz;z++) {
+                loader->Push<uint8_t>(type);
+                if (type == webifc::parsing::IfcTokenType::INTEGER) {
+                    int value = innerVal[std::to_string(z)].as<int>();
+                    loader->PushInt(value);
+                } else {
+                    double value = innerVal[std::to_string(z)].as<double>();
+                    loader->PushDouble(value);
+                }
+            }
+            loader->Push(webifc::parsing::IfcTokenType::SET_END);
         }
         else if (child["type"].isNumber())
         {
-            webifc::IfcTokenType type = static_cast<webifc::IfcTokenType>(child["type"].as<uint32_t>());
-            _tape.push(type);
+            webifc::parsing::IfcTokenType type = static_cast<webifc::parsing::IfcTokenType>(child["type"].as<uint32_t>());
+            loader->Push(type);
             switch(type)
             {
-                case webifc::IfcTokenType::LINE_END:
-                case webifc::IfcTokenType::EMPTY:
-                case webifc::IfcTokenType::SET_BEGIN:
-                case webifc::IfcTokenType::SET_END:
+                case webifc::parsing::IfcTokenType::LINE_END:
+                case webifc::parsing::IfcTokenType::EMPTY:
+                case webifc::parsing::IfcTokenType::SET_BEGIN:
+                case webifc::parsing::IfcTokenType::SET_END:
                 {
                     // ignore, we should not be seeing this
                     break;
                 }
-                case webifc::IfcTokenType::UNKNOWN:
+                case webifc::parsing::IfcTokenType::UNKNOWN:
                 {
                     // ignore, already pushed above, no further data
                     break;
                 }
-                case webifc::IfcTokenType::LABEL:
+                case webifc::parsing::IfcTokenType::LABEL:
                 {
                     auto label = child["label"];
-                    auto valueType = static_cast<webifc::IfcTokenType>(child["valueType"].as<uint32_t>());
+                    auto valueType = static_cast<webifc::parsing::IfcTokenType>(child["valueType"].as<uint32_t>());
                     auto value = child["value"];
 
                     std::string copy = label.as<std::string>();
 
                     uint16_t length = copy.size();
-                    _tape.push2((uint16_t)length);
-                    _tape.push((void*)copy.c_str(), copy.size());
+                    loader->Push<uint16_t>((uint16_t)length);
+                    loader->Push((void*)copy.c_str(), copy.size());
 
-                    _tape.push(webifc::IfcTokenType::SET_BEGIN);
+                    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::SET_BEGIN);
 
-                    _tape.push(valueType);
-                    WriteValue(_tape, valueType, value);
+                    loader->Push<uint8_t>(valueType);
+                    WriteValue(modelID,valueType, value);
 
-                    _tape.push(webifc::IfcTokenType::SET_END);
+                    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::SET_END);
 
                     break;
                 }
-                case webifc::IfcTokenType::STRING:
-                case webifc::IfcTokenType::ENUM:
-                case webifc::IfcTokenType::REF:
-                case webifc::IfcTokenType::REAL:
+                case webifc::parsing::IfcTokenType::STRING:
+                case webifc::parsing::IfcTokenType::ENUM:
+                case webifc::parsing::IfcTokenType::REF:
+                case webifc::parsing::IfcTokenType::REAL:
+                case webifc::parsing::IfcTokenType::INTEGER:
                 {
-                    WriteValue(_tape, type, child["value"]);
+                    WriteValue(modelID,type, child["value"]);
                     break;
                 }
                 default:
                     break;
             }
+        } 
+        else if (child.isNumber() || child.isTrue() || child.isFalse() || child.isString())
+        {
+            webifc::parsing::IfcTokenType type;
+            if (child.isNumber()) type = webifc::parsing::IfcTokenType::REAL;
+            else if (child.isString()) type = webifc::parsing::IfcTokenType::STRING;
+            else type = webifc::parsing::IfcTokenType::ENUM;
+            loader->Push<uint8_t>(type);
+            WriteValue(modelID, type, child);
         }
         else
         {
-            webifc::logError("Error in writeline: unknown object received");
+            webifc::utility::log::error("Error in writeline: unknown object received");
+            responseCode = false;
         }
-
-        index++;
     }
 
-    _tape.push(webifc::IfcTokenType::SET_END);
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::SET_END);
+    return responseCode;
 }
 
-void WriteLine(uint32_t modelID, uint32_t expressID, uint32_t type, emscripten::val parameters)
+
+std::string GetNameFromTypeCode(uint32_t type) 
 {
-    auto& loader = loaders[modelID];
+    return std::string(schemaManager.IfcTypeCodeToType(type));
+}
+
+uint32_t GetTypeCodeFromName(std::string typeName) 
+{
+    return schemaManager.IfcTypeToTypeCode(typeName);
+}
+
+bool IsIfcElement(uint32_t type) 
+{
+    return schemaManager.IsIfcElement(type);
+}
+
+bool WriteHeaderLine(uint32_t modelID,uint32_t type, emscripten::val parameters)
+{
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
-        return;
+        return false;
     }
-
-    auto& _tape = loader->GetTape();
-
-    _tape.SetWriteAtEnd();
-
-    uint32_t start = _tape.GetTotalSize();
-
-    // line ID
-    _tape.push(webifc::IfcTokenType::REF);
-    _tape.push(&expressID, sizeof(uint32_t));
-
-    // line TYPE
-    const char* ifcName = GetReadableNameFromTypeCode(type);
-    _tape.push(webifc::IfcTokenType::LABEL);
-    uint16_t length = strlen(ifcName);
-    _tape.push2((uint16_t)length);
-    _tape.push((void*)ifcName, length);
-
-    WriteSet(_tape, parameters);
-
-    // end line
-    _tape.push(webifc::IfcTokenType::LINE_END);
-
-    uint32_t end = _tape.GetTotalSize();
-
-    loader->UpdateLineTape(expressID, type, start, end);
+    uint32_t start = loader->GetTotalSize();
+    std::string_view ifcName = schemaManager.IfcTypeCodeToType(type);
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::LABEL);
+    loader->Push<uint16_t>((uint16_t)ifcName.size());
+    loader->Push((void*)ifcName.data(), ifcName.size());
+    bool responseCode = WriteSet(modelID,parameters);
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::LINE_END);
+    loader->AddHeaderLineTape(type, start);
+    return responseCode;
 }
 
-template<uint32_t N>
-emscripten::val ReadValue(webifc::DynamicTape<N>& tape, webifc::IfcTokenType t)
+void RemoveLine(uint32_t modelID, uint32_t expressID)
 {
+    auto loader = models[modelID].GetLoader();
+    if (!loader) return;
+    loader->RemoveLine(expressID);
+}
+
+bool WriteLine(uint32_t modelID, uint32_t expressID, uint32_t type, emscripten::val parameters)
+{
+    auto loader = models[modelID].GetLoader();
+    if (!loader)
+    {
+        return false;
+    }
+    uint32_t start = loader->GetTotalSize();
+
+    // line ID
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::REF);
+    loader->Push<uint32_t>(expressID);
+
+    // line TYPE
+    std::string_view ifcName = schemaManager.IfcTypeCodeToType(type);
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::LABEL);
+    loader->Push<uint16_t>((uint16_t)ifcName.size());
+    loader->Push((void*)ifcName.data(), ifcName.size());
+    bool responseCode = WriteSet(modelID,parameters);
+    // end line
+    loader->Push<uint8_t>(webifc::parsing::IfcTokenType::LINE_END);
+
+    loader->UpdateLineTape(expressID, type, start);
+    return responseCode;
+}
+
+
+emscripten::val ReadValue(uint32_t modelID, webifc::parsing::IfcTokenType t)
+{
+    auto loader = models[modelID].GetLoader();
     switch (t)
     {
-    case webifc::IfcTokenType::STRING:
-    case webifc::IfcTokenType::ENUM:
+    case webifc::parsing::IfcTokenType::STRING:
     {
-        webifc::StringView view = tape.ReadStringView();
-        std::string copy(view.data, view.len);
-
-        return emscripten::val(copy);
+        return emscripten::val(loader->GetDecodedStringArgument());
     }
-    case webifc::IfcTokenType::REAL:
+    case webifc::parsing::IfcTokenType::ENUM:
     {
-        double d = tape.template Read<double>();
-
+        std::string_view s = loader->GetStringArgument();
+        return emscripten::val(std::string(s));
+    }
+    case webifc::parsing::IfcTokenType::REAL:
+    {
+        std::string_view s = loader->GetDoubleArgumentAsString();
+        return emscripten::val(std::string(s));
+    }
+    case webifc::parsing::IfcTokenType::INTEGER:
+    {
+        int d = loader->GetIntArgument();
         return emscripten::val(d);
     }
-    case webifc::IfcTokenType::REF:
+    case webifc::parsing::IfcTokenType::REF:
     {
-        uint32_t ref = tape.template Read<uint32_t>();
-
+        uint32_t ref = loader->GetRefArgument();
         return emscripten::val(ref);
     }
     default:
@@ -808,208 +836,157 @@ emscripten::val ReadValue(webifc::DynamicTape<N>& tape, webifc::IfcTokenType t)
     }
 }
 
-emscripten::val& GetArgs(const std::unique_ptr<webifc::IfcLoader>& loader, emscripten::val& arguments)
+emscripten::val GetArgs(uint32_t modelID, bool inObject=false, bool inList=false)
 {
-    auto& _tape = loader->GetTape();
-
-    std::stack<emscripten::val> valueStack;
-    std::stack<int> valuePosition;
-
-    valueStack.push(arguments);
-    valuePosition.push(0);
-
+    auto loader = models[modelID].GetLoader();
+    auto arguments = emscripten::val::array();
+    size_t size = 0;
     bool endOfLine = false;
-    while (!_tape.AtEnd() && !endOfLine)
+    while (!loader->IsAtEnd() && !endOfLine)
     {
-        webifc::IfcTokenType t = static_cast<webifc::IfcTokenType>(_tape.Read<char>());
-
-        auto& topValue = valueStack.top();
-        auto& topPosition = valuePosition.top();
+        webifc::parsing::IfcTokenType t = loader->GetTokenType();
 
         switch (t)
         {
-        case webifc::IfcTokenType::LINE_END:
-        {
-            endOfLine = true;
-            break;
-        }
-        case webifc::IfcTokenType::UNKNOWN:
-        {
-            auto obj = emscripten::val::object(); 
-            obj.set("type", emscripten::val(static_cast<uint32_t>(webifc::IfcTokenType::UNKNOWN))); 
-
-            topValue.set(topPosition++, obj);
-            
-            break;
-        }
-        case webifc::IfcTokenType::EMPTY:
-        {
-            topValue.set(topPosition++, emscripten::val::null());
-            
-            break;
-        }
-        case webifc::IfcTokenType::SET_BEGIN:
-        {
-            auto newValue = emscripten::val::array();
-
-            valueStack.push(newValue);
-            valuePosition.push(0);
-
-            break;
-        }
-        case webifc::IfcTokenType::SET_END:
-        {
-            if (valueStack.size() == 1)
+            case webifc::parsing::IfcTokenType::LINE_END:
             {
-                // this is a pop just before endline, so ignore
                 endOfLine = true;
+                break;
             }
-            else
+            case webifc::parsing::IfcTokenType::EMPTY:
             {
-                auto topCopy = valueStack.top();
-
-                valueStack.pop();
-                valuePosition.pop();
-                auto& parent = valueStack.top();
-                int& parentCount = valuePosition.top();
-                parent.set(parentCount++, topCopy);
+                arguments.set(size++,emscripten::val::null());
+                break;
             }
-
-            break;
-        }
-        case webifc::IfcTokenType::LABEL:
-        {
-            // read label
-            webifc::StringView view = _tape.ReadStringView();
-            std::string copy(view.data, view.len);
-
-            auto obj = emscripten::val::object(); 
-            obj.set("type", emscripten::val(static_cast<uint32_t>(webifc::IfcTokenType::LABEL)));
-            obj.set("label", emscripten::val(copy));
-
-            // read set open
-            _tape.Read<char>();
-            
-            // read value following label
-            webifc::IfcTokenType t = static_cast<webifc::IfcTokenType>(_tape.Read<char>());
-            obj.set("valueType", emscripten::val(static_cast<uint32_t>(t)));
-            obj.set("value", ReadValue(_tape, t));
-
-            // read set close
-            _tape.Read<char>();
-
-            topValue.set(topPosition++, obj);
-
-            break;
-        }
-        case webifc::IfcTokenType::STRING:
-        case webifc::IfcTokenType::ENUM:
-        case webifc::IfcTokenType::REAL:
-        case webifc::IfcTokenType::REF:
-        {
-            auto obj = emscripten::val::object(); 
-            obj.set("type", emscripten::val(static_cast<uint32_t>(t)));
-            obj.set("value", ReadValue(_tape, t));
-
-            topValue.set(topPosition++, obj);
-
-            break;
-        }
-        default:
-            break;
+            case webifc::parsing::IfcTokenType::SET_BEGIN:
+            {
+                arguments.set(size++,GetArgs(modelID, false, true));
+                break;
+            }
+            case webifc::parsing::IfcTokenType::SET_END:
+            {
+                endOfLine = true;
+                break;
+            }
+            case webifc::parsing::IfcTokenType::LABEL:
+            {
+                // read label
+                auto obj = emscripten::val::object(); 
+                obj.set("type", emscripten::val(static_cast<uint32_t>(webifc::parsing::IfcTokenType::LABEL)));
+                loader->StepBack();
+                auto s=loader->GetStringArgument();
+                auto typeCode = schemaManager.IfcTypeToTypeCode(s);
+                obj.set("typecode", emscripten::val(typeCode));
+                // read set open
+                loader->GetTokenType();
+                obj.set("value", GetArgs(modelID,true));
+                arguments.set(size++, obj);
+                break;
+            }
+            case webifc::parsing::IfcTokenType::STRING:
+            case webifc::parsing::IfcTokenType::ENUM:
+            case webifc::parsing::IfcTokenType::REAL:
+            case webifc::parsing::IfcTokenType::INTEGER:
+            case webifc::parsing::IfcTokenType::REF:
+            {
+                loader->StepBack();
+                emscripten::val obj;
+                if (inObject) obj = ReadValue(modelID,t);
+                else {
+                    obj = emscripten::val::object(); 
+                    obj.set("type", emscripten::val(static_cast<uint32_t>(t)));
+                    obj.set("value", ReadValue(modelID,t));
+                }
+                arguments.set(size++, obj);
+                break;
+            }
+            default:
+                break;
         }
     }
-
+    if (size == 0 && !inList) return emscripten::val::null();
+    if (size == 1 && inObject) return arguments[0];
     return arguments;
 }
 
 emscripten::val GetHeaderLine(uint32_t modelID, uint32_t headerType)
 {
-    auto& loader = loaders[modelID];
-    
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return emscripten::val::undefined();
     }
-
     auto lines = loader->GetHeaderLinesWithType(headerType);
 
     if(lines.size() <= 0){
         return emscripten::val::undefined(); 
     }
     auto line = lines[0];
-    loader->MoveToHeaderArgumentOffset(line, 0);
+    loader->MoveToHeaderLineArgument(line, 0);
 
-    auto arguments = emscripten::val::array();
-
-    GetArgs(loader, arguments);
-
-    std::string s(GetReadableNameFromTypeCode(line.ifcType));
+    std::string s(schemaManager.IfcTypeCodeToType(headerType));
+    auto arguments = GetArgs(modelID);
     auto retVal = emscripten::val::object();
-    retVal.set(emscripten::val("ID"), line.lineIndex);
-    retVal.set(emscripten::val("type"), s);
-    retVal.set(emscripten::val("arguments"), arguments);
-
+    retVal.set("ID", line);
+    retVal.set("type", s);
+    retVal.set("arguments", arguments);
     return retVal;
 }
 
 emscripten::val GetLine(uint32_t modelID, uint32_t expressID)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return emscripten::val::undefined();
     }
 
-    auto& line = loader->GetLine(loader->ExpressIDToLineID(expressID));
+    if (!loader->IsValidExpressID(expressID)) return emscripten::val::object();
+    uint32_t lineType = loader->GetLineType(expressID);
+    if (lineType==0) return emscripten::val::object();
 
-    loader->MoveToArgumentOffset(line, 0);
+    loader->MoveToArgumentOffset(expressID, 0);
 
-    auto arguments = emscripten::val::array();
-
-    GetArgs(loader, arguments);
+    auto arguments = GetArgs(modelID);
 
     auto retVal = emscripten::val::object();
-    retVal.set(emscripten::val("ID"), line.expressID);
-    retVal.set(emscripten::val("type"), line.ifcType);
+    retVal.set(emscripten::val("ID"), expressID);
+    retVal.set(emscripten::val("type"), lineType);
     retVal.set(emscripten::val("arguments"), arguments);
-
     return retVal;
 }
 
 uint32_t GetLineType(uint32_t modelID, uint32_t expressID)
 {
-    auto& loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
-        return -1;
+        return 0;
     }
+    return loader->GetLineType(expressID);
+}
 
-    auto& line = loader->GetLine(loader->ExpressIDToLineID(expressID));
-    return line.ifcType;
+std::string GetVersion() 
+{
+    return std::string(WEB_IFC_VERSION_NUMBER);
 }
 
 uint32_t GetMaxExpressID(uint32_t modelID)
 {
-    auto &loader = loaders[modelID];
+    auto loader = models[modelID].GetLoader();
     return loader->GetMaxExpressId();
-}
-
-uint32_t IncrementMaxExpressID(uint32_t modelID, uint32_t incrementSize)
-{
-    auto &loader = loaders[modelID];
-    return loader->IncreaseMaxExpressId(incrementSize);
 }
 
 extern "C" bool IsModelOpen(uint32_t modelID)
 {
-    auto& loader = loaders[modelID];
+    if (modelID >= models.size()) return false;
+    auto loader = models[modelID].GetLoader();
     if (!loader)
     {
         return false;
     }
 
-    return loader->IsOpen();
+    return true;
 }
 
 // TODO(pablo): the level param ought to be LogLevel, but I couldn't
@@ -1022,23 +999,17 @@ extern "C" bool IsModelOpen(uint32_t modelID)
  */
 void SetLogLevel(int levelArg)
 {
-    if (levelArg < static_cast<int>(webifc::LogLevel::DEBUG)) {
-        webifc::LOG_LEVEL = webifc::LogLevel::DEBUG;
-    } else if (levelArg > static_cast<int>(webifc::LogLevel::OFF)) {
-        webifc::LOG_LEVEL = webifc::LogLevel::OFF;
-    } else {
-        webifc::LOG_LEVEL = static_cast<webifc::LogLevel>(levelArg);
-    }
+    webifc::utility::setLogLevel(levelArg);
 }
 
 EMSCRIPTEN_BINDINGS(my_module) {
 
-    emscripten::class_<webifc::IfcGeometry>("IfcGeometry")
+    emscripten::class_<webifc::geometry::IfcGeometry>("IfcGeometry")
         .constructor<>()
-        .function("GetVertexData", &webifc::IfcGeometry::GetVertexData)
-        .function("GetVertexDataSize", &webifc::IfcGeometry::GetVertexDataSize)
-        .function("GetIndexData", &webifc::IfcGeometry::GetIndexData)
-        .function("GetIndexDataSize", &webifc::IfcGeometry::GetIndexDataSize)
+        .function("GetVertexData", &webifc::geometry::IfcGeometry::GetVertexData)
+        .function("GetVertexDataSize", &webifc::geometry::IfcGeometry::GetVertexDataSize)
+        .function("GetIndexData", &webifc::geometry::IfcGeometry::GetIndexData)
+        .function("GetIndexDataSize", &webifc::geometry::IfcGeometry::GetIndexDataSize)
         ;
 
 
@@ -1049,15 +1020,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
         .field("w", &glm::dvec4::w)
         ;
 
-
-    emscripten::value_object<webifc::LoaderSettings>("LoaderSettings")
-        .field("COORDINATE_TO_ORIGIN", &webifc::LoaderSettings::COORDINATE_TO_ORIGIN)
-        .field("USE_FAST_BOOLS", &webifc::LoaderSettings::USE_FAST_BOOLS)
-        .field("CIRCLE_SEGMENTS_LOW", &webifc::LoaderSettings::CIRCLE_SEGMENTS_LOW)
-        .field("CIRCLE_SEGMENTS_MEDIUM", &webifc::LoaderSettings::CIRCLE_SEGMENTS_MEDIUM)
-        .field("CIRCLE_SEGMENTS_HIGH", &webifc::LoaderSettings::CIRCLE_SEGMENTS_HIGH)
-        .field("BOOL_ABORT_THRESHOLD", &webifc::LoaderSettings::BOOL_ABORT_THRESHOLD)
-        ;
+    emscripten::value_object<webifc::utility::LoaderSettings>("LoaderSettings")
+        .field("OPTIMIZE_PROFILES", &webifc::utility::LoaderSettings::OPTIMIZE_PROFILES)
+        .field("COORDINATE_TO_ORIGIN", &webifc::utility::LoaderSettings::COORDINATE_TO_ORIGIN)
+        .field("CIRCLE_SEGMENTS", &webifc::utility::LoaderSettings::CIRCLE_SEGMENTS)
+        .field("TAPE_SIZE", &webifc::utility::LoaderSettings::TAPE_SIZE)
+        .field("MEMORY_LIMIT", &webifc::utility::LoaderSettings::MEMORY_LIMIT)
+    ;
 
     emscripten::value_array<std::array<double, 16>>("array_double_16")
             .element(emscripten::index<0>())
@@ -1078,60 +1047,97 @@ EMSCRIPTEN_BINDINGS(my_module) {
             .element(emscripten::index<15>())
             ;
 
-    emscripten::value_object<webifc::IfcPlacedGeometry>("IfcPlacedGeometry")
-        .field("color", &webifc::IfcPlacedGeometry::color)
-        .field("flatTransformation", &webifc::IfcPlacedGeometry::flatTransformation)
-        .field("geometryExpressID", &webifc::IfcPlacedGeometry::geometryExpressID)
+    emscripten::value_object<webifc::geometry::IfcPlacedGeometry>("IfcPlacedGeometry")
+        .field("color", &webifc::geometry::IfcPlacedGeometry::color)
+        .field("flatTransformation", &webifc::geometry::IfcPlacedGeometry::flatTransformation)
+        .field("geometryExpressID", &webifc::geometry::IfcPlacedGeometry::geometryExpressID)
         ;
 
-    emscripten::enum_<webifc::LogLevel>("LogLevel")
-        .value("DEBUG", webifc::LogLevel::DEBUG)
-        .value("INFO", webifc::LogLevel::INFO)
-        .value("WARN", webifc::LogLevel::WARN)
-        .value("ERROR", webifc::LogLevel::ERROR)
-        .value("OFF", webifc::LogLevel::OFF)
+    emscripten::enum_<webifc::utility::LogLevel>("LogLevel")
+        .value("DEBUG", webifc::utility::LogLevel::LOG_LEVEL_DEBUG)
+        .value("INFO", webifc::utility::LogLevel::LOG_LEVEL_INFO)
+        .value("WARN", webifc::utility::LogLevel::LOG_LEVEL_WARN)
+        .value("ERROR", webifc::utility::LogLevel::LOG_LEVEL_ERROR)
+        .value("OFF", webifc::utility::LogLevel::LOG_LEVEL_OFF)
         ;
 
-    emscripten::enum_<webifc::LoaderErrorType>("LoaderErrorType")
-        .value("BOOL_ERROR", webifc::LoaderErrorType::BOOL_ERROR)
-        .value("PARSING", webifc::LoaderErrorType::PARSING)
-        .value("UNSPECIFIED", webifc::LoaderErrorType::UNSPECIFIED)
-        .value("UNSUPPORTED_TYPE", webifc::LoaderErrorType::UNSUPPORTED_TYPE)
+    emscripten::enum_<webifc::utility::LoaderErrorType>("LoaderErrorType")
+        .value("BOOL_ERROR", webifc::utility::LoaderErrorType::BOOL_ERROR)
+        .value("PARSING", webifc::utility::LoaderErrorType::PARSING)
+        .value("UNSPECIFIED", webifc::utility::LoaderErrorType::UNSPECIFIED)
+        .value("UNSUPPORTED_TYPE", webifc::utility::LoaderErrorType::UNSUPPORTED_TYPE)
         ;
 
-    emscripten::value_object<webifc::LoaderError>("LoaderError")
-        .field("type", &webifc::LoaderError::type)
-        .field("message", &webifc::LoaderError::message)
-        .field("expressID", &webifc::LoaderError::expressID)
-        .field("ifcType", &webifc::LoaderError::ifcType)
+    emscripten::value_object<webifc::utility::LoaderError>("LoaderError")
+        .field("type", &webifc::utility::LoaderError::type)
+        .field("message", &webifc::utility::LoaderError::message)
+        .field("expressID", &webifc::utility::LoaderError::expressID)
+        .field("ifcType", &webifc::utility::LoaderError::ifcType)
         ;
 
     emscripten::register_vector<std::string>("stringVector");
 
-    emscripten::register_vector<webifc::LoaderError>("LoaderErrorVector");
+    emscripten::register_vector<webifc::utility::LoaderError>("LoaderErrorVector");
 
-    emscripten::register_vector<webifc::IfcPlacedGeometry>("IfcPlacedGeometryVector");
+    emscripten::register_vector<webifc::geometry::IfcPlacedGeometry>("IfcPlacedGeometryVector");
 
-    emscripten::value_object<webifc::IfcFlatMesh>("IfcFlatMesh")
-        .field("geometries", &webifc::IfcFlatMesh::geometries)
-        .field("expressID", &webifc::IfcFlatMesh::expressID)
+    emscripten::value_object<webifc::geometry::IfcFlatMesh>("IfcFlatMesh")
+        .field("geometries", &webifc::geometry::IfcFlatMesh::geometries)
+        .field("expressID", &webifc::geometry::IfcFlatMesh::expressID)
         ;
 
-    emscripten::register_vector<webifc::IfcFlatMesh>("IfcFlatMeshVector");
+    emscripten::register_vector<webifc::geometry::IfcFlatMesh>("IfcFlatMeshVector");
     emscripten::register_vector<uint32_t>("UintVector");
 
+    emscripten::register_vector<webifc::geometry::IfcCrossSections>("IfcCrossSectionsVector");
+
+    emscripten::value_object<webifc::geometry::IfcCrossSections>("IfcCrossSections")
+        .field("curves", &webifc::geometry::IfcCrossSections::curves)
+        .field("expressID", &webifc::geometry::IfcCrossSections::expressID);
+
+    emscripten::register_vector<webifc::geometry::IfcAlignment>("IfcAlignmentVector");
+
+    emscripten::value_object<webifc::geometry::IfcAlignment>("IfcAlignment")
+        .field("Horizontal", &webifc::geometry::IfcAlignment::Horizontal)
+        .field("Vertical", &webifc::geometry::IfcAlignment::Vertical);
+
+    emscripten::value_object<glm::dvec3>("glmDvec3")
+        .field("x", &glm::dvec3::x)
+        .field("y", &glm::dvec3::y)
+        .field("z", &glm::dvec3::z);
+
+    emscripten::value_object<webifc::geometry::IfcAlignmentSegment>("IfcAlignmentSegment")
+        .field("curves", &webifc::geometry::IfcAlignmentSegment::curves);
+
+    emscripten::register_vector<webifc::geometry::IfcCurve>("IfcCurveVector");
+
+    emscripten::value_object<webifc::geometry::IfcCurve>("IfcCurve")
+        .field("points", &webifc::geometry::IfcCurve::points);
+
+    emscripten::register_vector<glm::vec<2, glm::f64>>("vector2doubleVector");
+
+    emscripten::value_object<glm::vec<2, glm::f64>>("vector2double")
+        .field("x", &glm::vec<2, glm::f64>::x)
+        .field("y", &glm::vec<2, glm::f64>::y);
+
+    emscripten::register_vector<glm::vec<3, double>>("vector3double");
+
+    emscripten::register_vector<double>("DoubleVector");
+
+    emscripten::function("ExtendLineStorage", &ExtendLineStorage);
     emscripten::function("LoadAllGeometry", &LoadAllGeometry);
-    emscripten::function("Serialize", &serialize);
-    emscripten::function("OpenSerialized", &openSerialized);
+    emscripten::function("GetAllCrossSections2D", &GetAllCrossSections2D);
+    emscripten::function("GetAllCrossSections3D", &GetAllCrossSections3D);
+    emscripten::function("GetAllAlignments", &GetAllAlignments);
     emscripten::function("OpenModel", &OpenModel);
     emscripten::function("CreateModel", &CreateModel);
     emscripten::function("GetMaxExpressID", &GetMaxExpressID);
-    emscripten::function("IncrementMaxExpressID", &IncrementMaxExpressID);
     emscripten::function("CloseModel", &CloseModel);
+    emscripten::function("GetModelSize", &GetModelSize);
     emscripten::function("IsModelOpen", &IsModelOpen);
     emscripten::function("GetGeometry", &GetGeometry);
     emscripten::function("GetFlatMesh", &GetFlatMesh);
-    emscripten::function("StreamMeshes", &StreamMeshes);
+    emscripten::function("StreamMeshes", &StreamMeshesWithExpressID);
     emscripten::function("GetCoordinationMatrix", &GetCoordinationMatrix);
     emscripten::function("StreamAllMeshes", &StreamAllMeshes);
     emscripten::function("StreamAllMeshesWithTypes", &StreamAllMeshesWithTypesVal);
@@ -1140,7 +1146,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::function("GetLineType", &GetLineType);
     emscripten::function("GetHeaderLine", &GetHeaderLine);
     emscripten::function("WriteLine", &WriteLine);
-    emscripten::function("ExportFileAsIFC", &ExportFileAsIFC);
+    emscripten::function("RemoveLine", &RemoveLine);
+    emscripten::function("WriteHeaderLine", &WriteHeaderLine);
+    emscripten::function("SaveModel", &SaveModel);
     emscripten::function("ValidateExpressID", &ValidateExpressID);
     emscripten::function("GetNextExpressID", &GetNextExpressID);
     emscripten::function("GetLineIDsWithType", &GetLineIDsWithType);
@@ -1148,4 +1156,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
     emscripten::function("GetAllLines", &GetAllLines);
     emscripten::function("SetGeometryTransformation", &SetGeometryTransformation);
     emscripten::function("SetLogLevel", &SetLogLevel);
+    emscripten::function("GetNameFromTypeCode", &GetNameFromTypeCode);
+    emscripten::function("GetTypeCodeFromName", &GetTypeCodeFromName);
+    emscripten::function("IsIfcElement", &IsIfcElement);
+    emscripten::function("GetVersion", &GetVersion);
 }

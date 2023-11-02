@@ -15,6 +15,81 @@ inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0;
 }
 
+inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
+                              const glm::dvec3 &p3, uint16_t circleSegments,
+                              double EPS_MINSIZE) {
+  // Calculate the center of the circle
+  glm::dvec3 v1 = p2 - p1;
+  glm::dvec3 v2 = p3 - p1;
+  glm::dvec3 normal = glm::normalize(glm::cross(v1, v2));
+  glm::dvec3 mid1 = 0.5 * (p1 + p2);
+  glm::dvec3 mid2 = 0.5 * (p1 + p3);
+  glm::dvec3 center;
+
+  if (glm::length(glm::cross(v1, v2)) < EPS_MINSIZE) {
+    // Points are collinear, so there's no unique circle.
+    // You can handle this case differently or return an error.
+    // For simplicity, let's return an empty curve.
+    return IfcCurve();
+  } else {
+    // Calculate the center of the circle
+    double Cx = p2.x - p1.x;
+    double Cy = p2.y - p1.y;
+    double Cz = p2.z - p1.z;
+    double Bx = p3.x - p1.x;
+    double By = p3.y - p1.y;
+    double Bz = p3.z - p1.z;
+    double B2 = p1.x * p1.x - p3.x * p3.x + p1.y * p1.y - p3.y * p3.y +
+                p1.z * p1.z - p3.z * p3.z;
+    double C2 = p1.x * p1.x - p2.x * p2.x + p1.y * p1.y - p2.y * p2.y +
+                p1.z * p1.z - p2.z * p2.z;
+
+    double CByz = Cy * Bz - Cz * By;
+    double CBxz = Cx * Bz - Cz * Bx;
+    double CBxy = Cx * By - Cy * Bx;
+    double ZZ1 = -(Bz - Cz * Bx / Cx) / (By - Cy * Bx / Cx);
+    double Z01 = -(B2 - Bx / Cx * C2) / (2 * (By - Cy * Bx / Cx));
+    double ZZ2 = -(ZZ1 * Cy + Cz) / Cx;
+    double Z02 = -(2 * Z01 * Cy + C2) / (2 * Cx);
+
+    double dz = -((Z02 - p1.x) * CByz - (Z01 - p1.y) * CBxz - p1.z * CBxy) /
+                (ZZ2 * CByz - ZZ1 * CBxz + CBxy);
+    double dx = ZZ2 * dz + Z02;
+    double dy = ZZ1 * dz + Z01;
+
+    center = glm::dvec3(dx, dy, dz);
+  }
+
+  // Calculate the radius
+  double radius = glm::distance(center, p1);
+
+  // Using geometrical subdivision to create points on the arc
+  std::vector<glm::dvec3> pointList;
+  pointList.push_back(p1);
+  pointList.push_back(p2);
+  pointList.push_back(p3);
+
+  while (pointList.size() < (size_t)circleSegments) {
+    std::vector<glm::dvec3> tempPointList;
+    for (size_t j = 0; j < pointList.size() - 1; j++) {
+      glm::dvec3 pt = (pointList[j] + pointList[j + 1]) / 2.0;
+      glm::dvec3 vc = glm::normalize(pt - center);
+      pt = center + vc * radius;
+      tempPointList.push_back(pointList[j]);
+      tempPointList.push_back(pt);
+    }
+    tempPointList.push_back(pointList.back());
+    pointList = tempPointList;
+  }
+
+  IfcCurve curve;
+  for (size_t j = 0; j < pointList.size(); j++) {
+    curve.Add3d(pointList.at(j));
+  }
+
+  return curve;
+}
+
 inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
                             const glm::dvec2 &p3, uint16_t circleSegments) {
   double f1 = (p1.x * p1.x - p2.x * p2.x + p1.y * p1.y - p2.y * p2.y);
@@ -189,6 +264,20 @@ inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
   return point;
 }
 
+// Helper function to calculate the points of the fillet arc
+void createFilletArc(std::vector<glm::dvec3>& points, glm::dvec3 center, 
+                     double radius, double startAngle, double endAngle, glm::dmat3 placement) {
+    int segments = 10; // Choose the number of segments based on the desired resolution
+    double angleIncrement = (endAngle - startAngle) / segments;
+
+    for (int i = 0; i <= segments; ++i) {
+        double angle = startAngle + i * angleIncrement;
+        glm::dvec3 arcPoint = center + radius * glm::dvec3(cos(angle), sin(angle), 0.0);
+        arcPoint = placement * glm::dvec4(arcPoint, 1.0); // Apply the placement matrix
+        points.push_back(arcPoint);
+    }
+}
+
 inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
     int degree, std::vector<glm::dvec3> points, std::vector<double> knots,
     std::vector<double> weights) {
@@ -252,7 +341,7 @@ inline bool MatrixFlipsTriangles(const glm::dmat3 &mat) {
 inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
                                 glm::dmat3 placement = glm::dmat3(1),
                                 double startRad = 0,
-                                double endRad = CONST_PI * 2,
+                                double endRad = (double)CONST_PI * 2,
                                 bool swap = true) {
   IfcCurve c;
 
@@ -273,8 +362,7 @@ inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
   }
 
   // check for a closed curve
-  //NOTE* must cast here to double, check broken on wasm builds otherwise - nickcastel50
-  if (endRad == (double)CONST_PI * 2 && startRad == 0) {
+  if (endRad == CONST_PI * 2 && startRad == 0) {
     c.points.push_back(c.points[0]);
 
     if (MatrixFlipsTriangles(placement)) {
@@ -447,20 +535,24 @@ inline IfcCurve GetLShapedCurve(double width, double depth, double thickness,
   double hd = depth / 2;
   double hweb = thickness / 2;
 
-  c.points.push_back(placement * glm::dvec3(+hw, +hd, 1));
-  c.points.push_back(placement * glm::dvec3(+hw, -hd, 1));
+  c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
   c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
+  c.points.push_back(placement * glm::dvec3(+hw, -hd, 1));
 
   if (hasFillet) {
     // TODO: Create interpolation and sloped lines
-  } else {
-    c.points.push_back(placement * glm::dvec3(-hw, -hd + thickness, 1));
+    c.points.push_back(placement * glm::dvec3(+hw, -hd + thickness, 1));
     c.points.push_back(placement *
-                       glm::dvec3(+hw - thickness, -hd + thickness, 1));
-    c.points.push_back(placement * glm::dvec3(+hw - thickness, +hd, 1));
+                       glm::dvec3(-hw + thickness, -hd + thickness, 1));
+    c.points.push_back(placement * glm::dvec3(-hw + thickness, +hd, 1));
+  } else {
+    c.points.push_back(placement * glm::dvec3(+hw, -hd + thickness, 1));
+    c.points.push_back(placement *
+                       glm::dvec3(-hw + thickness, -hd + thickness, 1));
+    c.points.push_back(placement * glm::dvec3(-hw + thickness, +hd, 1));
   }
 
-  c.points.push_back(placement * glm::dvec3(+hw, +hd, 1));
+  c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
 
   if (MatrixFlipsTriangles(placement)) {
     c.Invert();
@@ -482,8 +574,35 @@ inline IfcCurve GetTShapedCurve(double width, double depth, double thickness,
   c.points.push_back(placement * glm::dvec3(hw, hd, 1));
 
   if (hasFillet) {
-    // TODO: Create interpolation and sloped lines
+    // Calculate the points for the fillet arc
+    glm::dvec3 start = placement * glm::dvec3(hw, hd - thickness, 1);
+    glm::dvec3 end =
+        placement * glm::dvec3(hweb + filletRadius, hd - thickness, 1);
+
+    // Create fillet arc from start to end
+    int filletPoints = 10;  // Number of points to approximate the fillet, more
+                            // points for smoother curve
+    for (int i = 0; i <= filletPoints; ++i) {
+      double angle = M_PI_2 * i / filletPoints;
+      double x = hw - filletRadius * cos(angle);
+      double y = (hd - thickness) - filletRadius * sin(angle);
+      c.points.push_back(placement * glm::dvec3(x, y, 1));
+    }
+
+    c.points.push_back(end);
+
+    // TODO: Add sloped lines logic here if necessary
+    // ...
+
+    // Complete the rest of the T shape
+    c.points.push_back(placement * glm::dvec3(hweb, hd - thickness, 1));
+    c.points.push_back(placement * glm::dvec3(hweb, -hd, 1));
+    c.points.push_back(placement * glm::dvec3(-hweb, -hd, 1));
+    c.points.push_back(placement * glm::dvec3(-hweb, hd - thickness, 1));
+    c.points.push_back(placement * glm::dvec3(-hw, hd - thickness, 1));
+    c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
   } else {
+    // No fillet, just straight lines
     c.points.push_back(placement * glm::dvec3(hw, hd - thickness, 1));
     c.points.push_back(placement * glm::dvec3(hweb, hd - thickness, 1));
     c.points.push_back(placement * glm::dvec3(hweb, -hd, 1));
@@ -493,8 +612,10 @@ inline IfcCurve GetTShapedCurve(double width, double depth, double thickness,
     c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
   }
 
-  c.points.push_back(placement * glm::dvec3(hw, hd, 1));
+  // Close the profile by connecting the last point to the first
+  c.points.push_back(c.points.front());
 
+  // Check for triangle orientation and invert if necessary
   if (MatrixFlipsTriangles(placement)) {
     c.Invert();
   }
@@ -502,46 +623,44 @@ inline IfcCurve GetTShapedCurve(double width, double depth, double thickness,
   return c;
 }
 
-inline IfcCurve GetCShapedCurve(double width, double depth, double girth,
-                                double thickness, bool hasFillet,
-                                double filletRadius,
-                                glm::dmat3 placement = glm::dmat3(1)) {
-  IfcCurve c;
+inline IfcCurve GetCShapedCurve(double width, double depth, double girth, double thickness, bool hasFillet, double filletRadius, glm::dmat3 placement = glm::dmat3(1))
+	{
+		IfcCurve c;
 
-  double hw = width / 2;
-  double hd = depth / 2;
-  // double hweb = thickness / 2;
+		double hw = width / 2;
+		double hd = depth / 2;
+		// double hweb = thickness / 2;
 
-  c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
-  c.points.push_back(placement * glm::dvec3(hw, hd, 1));
+		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
+		c.points.push_back(placement * glm::dvec3(hw, hd, 1));
 
-  if (hasFillet) {
-    // TODO: Create interpolation and sloped lines
-  } else {
-    c.points.push_back(placement * glm::dvec3(hw, hd - girth, 1));
-    c.points.push_back(placement * glm::dvec3(hw - thickness, hd - girth, 1));
-    c.points.push_back(placement *
-                       glm::dvec3(hw - thickness, hd - thickness, 1));
-    c.points.push_back(placement *
-                       glm::dvec3(-hw + thickness, hd - thickness, 1));
-    c.points.push_back(placement *
-                       glm::dvec3(-hw + thickness, -hd + thickness, 1));
-    c.points.push_back(placement *
-                       glm::dvec3(hw - thickness, -hd + thickness, 1));
-    c.points.push_back(placement * glm::dvec3(hw - thickness, -hd + girth, 1));
-    c.points.push_back(placement * glm::dvec3(hw, -hd + girth, 1));
-    c.points.push_back(placement * glm::dvec3(hw, -hd, 1));
-    c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
-  }
+		if (hasFillet)
+		{
+			// TODO: Create interpolation and sloped lines
+		}
+		else
+		{
+			c.points.push_back(placement * glm::dvec3(hw, hd - girth, 1));
+			c.points.push_back(placement * glm::dvec3(hw - thickness, hd - girth, 1));
+			c.points.push_back(placement * glm::dvec3(hw - thickness, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(-hw + thickness, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(-hw + thickness, -hd + thickness, 1));
+			c.points.push_back(placement * glm::dvec3(hw - thickness, -hd + thickness, 1));
+			c.points.push_back(placement * glm::dvec3(hw - thickness, -hd + girth, 1));
+			c.points.push_back(placement * glm::dvec3(hw, -hd + girth, 1));
+			c.points.push_back(placement * glm::dvec3(hw, -hd, 1));
+			c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));
+		}
 
-  c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
+		c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
 
-  if (MatrixFlipsTriangles(placement)) {
-    c.Invert();
-  }
+		if (MatrixFlipsTriangles(placement))
+		{
+			c.Invert();
+		}
 
-  return c;
-}
+		return c;
+	}
 
 inline IfcCurve GetZShapedCurve(double depth, double flangeWidth,
                                 double webThickness, double flangeThickness,
@@ -574,9 +693,8 @@ inline IfcCurve BuildArc(const glm::dvec3 &pos, const glm::dvec3 &axis,
                          double angleRad, uint16_t _circleSegments) {
   IfcCurve curve;
 
-  // double radius = glm::length(pos);
-
   // project pos onto axis
+
   double pdota = glm::dot(axis, pos);
   glm::dvec3 pproja = pdota * axis;
 

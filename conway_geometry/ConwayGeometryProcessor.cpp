@@ -2,9 +2,9 @@
 
 #include <glm/glm.hpp>
 
-// #include "fuzzy/fuzzy-bools.h"
-#include "legacy/math/bool-mesh-mesh.h"
-#include "legacy/math/intersect-mesh-mesh.h"
+#include "fuzzy/fuzzy-bools.h"
+// #include "legacy/math/bool-mesh-mesh.h"
+// #include "legacy/math/intersect-mesh-mesh.h"
 #include "operations/curve-utils.h"
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
@@ -25,7 +25,7 @@ fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
   fuzzybools::Geometry fbGeom;
 
   for (size_t i = 0; i < geom.numFaces; i++) {
-    const Face &f = geom.GetFace(i);
+    const fuzzybools::Face &f = geom.GetFace(i);
 
     auto a = geom.GetPoint(f.i0);
     auto b = geom.GetPoint(f.i1);
@@ -80,7 +80,7 @@ double normalDiff(glm::dvec3 extents) {
   }
 }
 
-IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
+/*IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
   IfcGeometry result;
 
   if (Geoms.size() == 0) {
@@ -121,18 +121,20 @@ IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
     }
     return result;
   }
-}
+}*/
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
+/*IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
     const std::vector<IfcGeometry> &firstGeoms,
     std::vector<IfcGeometry> &secondGeoms) {
-  IfcGeometry firstGeom = BoolJoinLegacy(firstGeoms);
-  IfcGeometry secondGeom = BoolJoinLegacy(secondGeoms);
+  IfcGeometry firstGeom = firstGeoms[0];//BoolJoinLegacy(firstGeoms);
+  IfcGeometry secondGeom = secondGeoms[0];//BoolJoinLegacy(secondGeoms);
 
   IfcGeometry result;
 
   if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
     printf("bool aborted due to empty source or target\n");
+    printf("firstGeom.numFaces: %i\n", firstGeom.numFaces);
+    printf("secondGeoms.size(): %i\n", secondGeoms.size());
 
     // bail out because we will get strange meshes
     // if this happens, probably there's an issue parsing the mesh that occurred
@@ -143,6 +145,78 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
   result = boolMultiOp_CSGJSCPP(firstGeom, secondGeoms);
 
   return result;
+}*/
+
+IfcCurve ConwayGeometryProcessor::GetCShapeCurve(ParamsGetCShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCShapedCurve(parameters.width, parameters.depth, parameters.girth, parameters.thickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetIShapeCurve(ParamsGetIShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetIShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.flangeThickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetLShapeCurve(ParamsGetLShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetLShapedCurve(parameters.width, parameters.depth, parameters.thickness,parameters.hasFillet, parameters.filletRadius, parameters.edgeRadius, parameters.legSlope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetTShapeCurve(ParamsGetTShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetTShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.hasFillet, parameters.filletRadius, parameters.flangeEdgeRadius, parameters.flangeScope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetUShapeCurve(ParamsGetUShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetUShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.flangeScope, parameters.placement);
+
+  return curve;
+}
+
+IfcCurve ConwayGeometryProcessor::GetZShapeCurve(ParamsGetZShapeCurve parameters) {
+  IfcCurve curve;
+  glm::dmat3 placement(1);
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetZShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.placement);
+
+  return curve;
 }
 
 IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
@@ -166,29 +240,120 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
   return curve;
 }
 
+IfcCurve ConwayGeometryProcessor::GetRectangleHollowProfileHole(
+    ParamsGetRectangleProfileCurve parameters) {
+  IfcCurve curve;
+  double xdim = parameters.xDim;
+  double ydim = parameters.yDim;
+
+  curve = GetRectangleCurve(xdim - parameters.thickness,
+                            ydim - parameters.thickness, parameters.matrix);
+
+  curve.Invert();
+
+  return curve;
+}
+
 glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
   return (geometry.min + geometry.max) * 0.5;
 }
 
 glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
-    glm::dvec3 centroid(0.0);
-    uint32_t numVertices = 0;
+  glm::dvec3 centroid(0.0);
+  uint32_t numVertices = 0;
 
-    // I'm assuming the IfcGeometry class provides a method to iterate over all vertices.
-    // If it doesn't, you might need to iterate over faces and access vertices via face indices.
-    for (uint32_t i = 0; i < geometry.numFaces; i++) {
-        Face f = geometry.GetFace(i);
-        centroid += geometry.GetPoint(f.i0);
-        centroid += geometry.GetPoint(f.i1);
-        centroid += geometry.GetPoint(f.i2);
-        numVertices += 3;
+  // I'm assuming the IfcGeometry class provides a method to iterate over all
+  // vertices. If it doesn't, you might need to iterate over faces and access
+  // vertices via face indices.
+  for (uint32_t i = 0; i < geometry.numFaces; i++) {
+    fuzzybools::Face f = geometry.GetFace(i);
+    centroid += geometry.GetPoint(f.i0);
+    centroid += geometry.GetPoint(f.i1);
+    centroid += geometry.GetPoint(f.i2);
+    numVertices += 3;
+  }
+
+  if (numVertices > 0) {
+    centroid /= static_cast<double>(numVertices);
+  }
+
+  return centroid;
+}
+
+IfcGeometry ConwayGeometryProcessor::BoolSubtract(
+    const std::vector<IfcGeometry> &firstGeoms,
+    std::vector<IfcGeometry> &secondGeoms) {
+  IfcGeometry finalResult;
+
+  for (auto &firstGeom : firstGeoms) {
+    fuzzybools::Geometry result = firstGeom;
+    for (auto &secondGeom : secondGeoms) {
+      bool doit = true;
+      if (secondGeom.numFaces == 0) {
+        printf("bool aborted due to empty source or target\n");
+
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        doit = false;
+      }
+
+      if (result.numFaces == 0) {
+        printf("bool aborted due to empty source or target\n");
+
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        break;
+      }
+
+      if (doit) {
+        if (secondGeom.halfSpace) {
+          glm::dvec3 origin = secondGeom.halfSpaceOrigin;
+          glm::dvec3 x = secondGeom.halfSpaceX - origin;
+          glm::dvec3 y = secondGeom.halfSpaceY - origin;
+          glm::dvec3 z = secondGeom.halfSpaceZ - origin;
+          glm::dmat4 trans =
+              glm::dmat4(glm::dvec4(x, 0), glm::dvec4(y, 0), glm::dvec4(z, 0),
+                         glm::dvec4(0, 0, 0, 1));
+          IfcGeometry newSecond;
+
+          double scaleX = 1;
+          double scaleY = 1;
+          double scaleZ = 1;
+
+          for (uint32_t i = 0; i < result.numPoints; i++) {
+            glm::dvec3 p = result.GetPoint(i);
+            glm::dvec3 vec = (p - origin);
+            double dx = glm::dot(vec, x);
+            double dy = glm::dot(vec, y);
+            double dz = glm::dot(vec, z);
+            if (glm::abs(dx) > scaleX) {
+              scaleX = glm::abs(dx);
+            }
+            if (glm::abs(dy) > scaleY) {
+              scaleY = glm::abs(dy);
+            }
+            if (glm::abs(dz) > scaleZ) {
+              scaleZ = glm::abs(dz);
+            }
+          }
+          newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
+                                scaleZ * 2, secondGeom.halfSpaceOrigin);
+          result = fuzzybools::Subtract(result, newSecond);
+        } else {
+          result = fuzzybools::Subtract(result, secondGeom);
+        }
+      }
     }
 
-    if (numVertices > 0) {
-        centroid /= static_cast<double>(numVertices);
-    }
+    IfcGeometry newResult;
+    newResult.AddGeometry(result);
+    finalResult.AddPart(newResult);
+    finalResult.AddGeometry(result);
+  }
 
-    return centroid;
+  return finalResult;
 }
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
@@ -208,7 +373,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   // get origin
   if (parameters.flatFirstMesh[0].numFaces) {
     for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      Face f = parameters.flatFirstMesh[0].GetFace(i);
+      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
       originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
       break;
     }
@@ -221,7 +386,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   IfcGeometry newGeomFirstMesh;
 
   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    Face f = parameters.flatFirstMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
@@ -241,7 +406,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   IfcGeometry newGeomSecondMesh;
 
   for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    Face f = parameters.flatSecondMesh[0].GetFace(i);
+    fuzzybools::Face f = parameters.flatSecondMesh[0].GetFace(i);
     glm::dvec3 a =
         newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
     glm::dvec3 b =
@@ -259,9 +424,12 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   parameters.flatSecondMesh[0] = newGeomSecondMesh;
 
   resultGeometry =
-      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
 
-  glm::dmat4 combinedMatrix = glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
+  // BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+
+  glm::dmat4 combinedMatrix =
+      glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
 
   resultGeometry.ApplyTransform(combinedMatrix);
 
@@ -275,76 +443,20 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 }
 
 IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
-    ParamsGetBooleanResult parameters) {
+    ParamsGetBooleanResult *parameters) {
   IfcGeometry resultGeometry;
-  if (parameters.flatFirstMesh.size() <= 0) {
+  if (parameters->flatFirstMesh.size() <= 0) {
     printf("first mesh zero\n");
     return resultGeometry;
   }
 
-  if (parameters.flatSecondMesh.size() <= 0) {
+  if (parameters->flatSecondMesh.size() <= 0) {
     printf("second mesh zero\n");
     return resultGeometry;
   }
 
-  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
-  // get origin
-  if (parameters.flatFirstMesh[0].numFaces) {
-    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      Face f = parameters.flatFirstMesh[0].GetFace(i);
-      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
-      break;
-    }
-  }
-
-  // TODO: clean this up, remove origin translation
-  auto normalizeMat = glm::translate(-originFirstMesh);
-  glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
-  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomFirstMesh;
-
-  for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    Face f = parameters.flatFirstMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
-
-    if (transformationBreaksWinding) {
-      newGeomFirstMesh.AddFace(b, a, c);
-    } else {
-      newGeomFirstMesh.AddFace(a, b, c);
-    }
-  }
-
-  parameters.flatFirstMesh[0] = newGeomFirstMesh;
-  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomSecondMesh;
-
-  for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    Face f = parameters.flatSecondMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
-
-    if (transformationBreaksWinding) {
-      newGeomSecondMesh.AddFace(b, a, c);
-    } else {
-      newGeomSecondMesh.AddFace(a, b, c);
-    }
-  }
-
-  parameters.flatSecondMesh[0] = newGeomSecondMesh;
-
   resultGeometry =
-      BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
-
-  resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
+      BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
 
   return resultGeometry;
 }
@@ -470,7 +582,8 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
       auto surface = parameters.surface;
 
       if (surface.BSplineSurface.Active) {
-        TriangulateBspline(geometry, parameters.boundsArray, surface);
+        TriangulateBspline(geometry, parameters.boundsArray, surface,
+                           parameters.scaling);
       } else if (surface.CylinderSurface.Active) {
         TriangulateCylindricalSurface(geometry, parameters.boundsArray,
                                       surface);
@@ -511,8 +624,8 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.UDegree = parameters.Udegree;
     surface.BSplineSurface.VDegree = parameters.Vdegree;
     surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
-    surface.BSplineSurface.ClosedU = parameters.closedU == "T";
-    surface.BSplineSurface.ClosedV = parameters.closedV == "T";
+    surface.BSplineSurface.ClosedU = parameters.closedU;
+    surface.BSplineSurface.ClosedV = parameters.closedV;
     surface.BSplineSurface.CurveType = parameters.curveType;
 
     // TODO(nickcastel50): Old implementation wasn't returning a surface for
@@ -596,6 +709,29 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   return IfcSurface();
 }
 
+IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile *parameters) {
+
+  if (!parameters->profile.isComposite)
+      {
+        for (uint32_t i = 0; i < parameters->profile.curve.points.size(); i++)
+        {
+          parameters->profile.curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.curve.points[i].x, parameters->profile.curve.points[i].y, 1);
+        }
+      }
+      else
+      {
+        for (uint32_t j = 0; j < parameters->profile.profiles.size(); j++)
+        {
+          for (uint32_t i = 0; i < parameters->profile.profiles[j].curve.points.size(); i++)
+          {
+            parameters->profile.profiles[j].curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.profiles[j].curve.points[i].x, parameters->profile.profiles[j].curve.points[i].y, 1);
+          }
+        }
+      }
+
+      return parameters->profile;
+}
+
 glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
     ParamsGetAxis2Placement2D parameters) {
   if (parameters.isAxis2Placement2D) {
@@ -613,6 +749,7 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 
   } else if (parameters.isCartesianTransformationOperator2D ||
              parameters.isCartesianTransformationOperator2DNonUniform) {
+
     double scale1 = 1.0;
     double scale2 = 1.0;
 
@@ -674,7 +811,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis1Placement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
-    const ParamsAxis2Placement3D& parameters) {
+    const ParamsAxis2Placement3D &parameters) {
   glm::dvec3 zAxis(0, 0, 1);
   glm::dvec3 xAxis(1, 0, 0);
 
@@ -696,7 +833,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
-    const ParamsLocalPlacement& parameters) {
+    const ParamsLocalPlacement &parameters) {
   if (parameters.useRelPlacement) {
     glm::dmat4 result = parameters.relPlacement * parameters.axis2Placement;
     return result;
@@ -708,7 +845,7 @@ glm::dmat4 ConwayGeometryProcessor::GetLocalPlacement(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
-    const ParamsCartesianTransformationOperator3D& parameters) {
+    const ParamsCartesianTransformationOperator3D &parameters) {
   double scale1 = 1.0;
   double scale2 = 1.0;
   double scale3 = 1.0;
@@ -743,61 +880,41 @@ glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
 
 IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
   IfcCurve curve;
-  if (!parameters.isEdgeLoop) {
+  if (parameters.edges.size() == 0) {
     if (parameters.points.size() > 0) {
       curve.points = parameters.points;
-      /*curve.points.reserve(parameters.numPoints);
-
-      glm::dvec3 prevPoint = parameters.points[0];
-
-      curve.points.push_back(prevPoint);
-
-      for (size_t index = 1; index < parameters.numPoints; index++) {
-        glm::dvec3 currentPoint = parameters.points[index];
-        // trim repeats
-        if (currentPoint.x != prevPoint.x && currentPoint.y != prevPoint.y &&
-            currentPoint.z != prevPoint.z) {
-          curve.points.push_back(parameters.points[index]);
-        }
-
-        prevPoint = currentPoint;
-      }*/
     }
   } else {
-    // TODO(nickcastel50): Handle edge loop
-    ;
-    /*auto edges = _loader.GetSetArgument();
     int id = 0;
-
-    for (auto &token : edges)
-    {
-            uint32_t edgeId = _loader.GetRefArgument(token);
-            IfcCurve<3> edgeCurve = GetOrientedEdge(edgeId);
-
-            // Important not to repeat the last point otherwise triangulation
-    fails
-            // if the list has zero points this is initial, no repetition is
-    possible, otherwise we must check if (curve.points.size() == 0)
-            {
-                    for (auto &pt : edgeCurve.points)
-                    {
-                            curve.points.push_back(pt);
-                            curve.indices.push_back(id);
-                    }
+    for (int edgeIndex = 0; edgeIndex < parameters.edges.size(); ++edgeIndex) {
+      // Important not to repeat the last point otherwise triangulation fails
+      // if the list has zero points this is initial, no repetition is possible,
+      // otherwise we must check
+      if (curve.points.size() == 0) {
+        for (auto &pt : parameters.edges[edgeIndex].points) {
+          curve.points.push_back(pt);
+          curve.indices.push_back(id);
+        }
+      } else {
+        for (int i = 0; i < parameters.edges[edgeIndex].points.size(); ++i)
+        // for (auto &pt : parameters.edges[edgeIndex].points)
+        {
+          glm::dvec3 pt = parameters.edges[edgeIndex].points[i];
+          /*if (i == 0) {
+            if (!notPresent(pt, curve.points)) {
+              printf("point is PRESENT! - Point: x: %.3f, y: %.3f, z: %.3f\n",
+                     pt.x, pt.y, pt.z);
             }
-            else
-            {
-                    for (auto &pt : edgeCurve.points)
-                    {
-                            if (notPresent(pt, curve.points))
-                            {
-                                    curve.points.push_back(pt);
-                                    curve.indices.push_back(id);
-                            }
-                    }
-            }
-            id++;
-    }*/
+          } else {*/
+          if (notPresent(pt, curve.points)) {
+            curve.points.push_back(pt);
+            curve.indices.push_back(id);
+          }
+          // }
+        }
+      }
+      id++;
+    }
   }
 
   return curve;
@@ -819,7 +936,7 @@ IfcBound3D ConwayGeometryProcessor::GetBound(ParamsGetBound parameters) {
 }
 
 std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
-    const ParamsReadIndexedPolygonalFace& parameters) {
+    const ParamsReadIndexedPolygonalFace &parameters) {
   std::vector<IfcBound3D> bounds;
 
   bounds.emplace_back();
@@ -877,13 +994,10 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
 ConwayGeometryProcessor::GeometryToGltf(
-    std::span<conway::geometry::IfcGeometryCollection > geoms,
-    std::span<conway::geometry::Material> materials,
-    bool isGlb,
-    bool outputDraco,
-    std::string filePath,
-    bool outputFile,
-    glm::dmat4 transform ) {
+    std::span<conway::geometry::IfcGeometryCollection> geoms,
+    std::span<conway::geometry::Material> materials, bool isGlb,
+    bool outputDraco, std::string filePath, bool outputFile,
+    glm::dmat4 transform) {
   ResultsGltf results;
 
   try {
@@ -982,7 +1096,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     // Create a Buffer - it will be the 'current' Buffer that all the
     // BufferViews created by this BufferBuilder will automatically reference
-    bufferBuilder.AddBuffer( bufferId );
+    bufferBuilder.AddBuffer(bufferId);
 
     if (outputDraco) {
       document.extensionsRequired.insert("KHR_draco_mesh_compression");
@@ -1211,6 +1325,9 @@ ConwayGeometryProcessor::GeometryToGltf(
         numPoints += component.numPoints;
         numIndices += component.GetIndexDataSize();
       }
+
+      // printf("numPoints: %i\n", numPoints);
+      // printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1624,7 +1741,7 @@ IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
-    const ParamsGetIfcIndexedPolyCurve& parameters) {
+    const ParamsGetIfcIndexedPolyCurve &parameters) {
   IfcCurve curve;
 
   if (parameters.dimensions == 2) {
@@ -1659,8 +1776,28 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve ConwayGeometryProcessor::getEllipseCurve(
+    const ParamsGetEllipseCurve &parameters) {
+  IfcCurve curve;
+
+  double radiusX = parameters.radiusX;
+  double radiusY = parameters.radiusY;
+
+  if (parameters.hasPlacement) {
+    curve = GetEllipseCurve(radiusX, radiusY, parameters.circleSegments,
+                            parameters.placement);
+  } else {
+    glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
+                                      glm::dvec3(0, 0, 1));
+    curve = GetEllipseCurve(radiusX, radiusY, parameters.circleSegments,
+                            placement);
+  }
+
+  return curve;
+}
+
 conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
-    const ParamsGetCircleCurve& parameters) {
+    const ParamsGetCircleCurve &parameters) {
   IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1677,13 +1814,86 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
   return curve;
 }
 
-
-conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
-    const ParamsGetBSplineCurve& parameters) {
-
+conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleHoleCurve(
+    const ParamsGetCircleCurve &parameters) {
   IfcCurve curve;
 
-  // * TODO - Implement - CS
+  double radius = parameters.radius - parameters.thickness;
+
+  glm::dmat3 placement(1);
+
+  if (parameters.hasPlacement) {
+    placement = parameters.placement;
+  }
+
+  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
+                         placement);
+
+  return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
+    const ParamsGetBSplineCurve &parameters) {
+  IfcCurve curve;
+
+  // bool condition = false;
+  /*if (edge) {
+    condition = !condition;
+  }*/
+
+  int dimensions = parameters.dimensions;
+  printf("dimensions: %i\n", parameters.dimensions);
+
+  int degree = parameters.degree;
+
+  if (dimensions == 2) {
+    printf("parameters.points2 size: %i\n", parameters.points2.size());
+    printf("degree: %i\n", degree);
+    printf("parameters.knots:\n");
+
+    for (int i = 0; i < parameters.knots.size(); ++i) {
+      printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    }
+
+    printf("parameters.weights:\n");
+
+    for (int i = 0; i < parameters.weights.size(); ++i) {
+      printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    }
+
+    std::vector<glm::dvec2> tempPoints = GetRationalBSplineCurveWithKnots(
+        degree, parameters.points2, parameters.knots, parameters.weights);
+    for (size_t i = 0; i < tempPoints.size(); i++) {
+      printf("Point %i: x: %.3f, y: %.3f\n", i, tempPoints[i].x,
+             tempPoints[i].y);
+      curve.Add2d(tempPoints[i]);
+    }
+  } else if (dimensions == 3) {
+    printf("parameters.points3 size: %i\n", parameters.points3.size());
+    printf("degree: %i\n", degree);
+    printf("parameters.knots:\n");
+
+    for (int i = 0; i < parameters.knots.size(); ++i) {
+      printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    }
+
+    printf("parameters.weights:\n");
+
+    for (int i = 0; i < parameters.weights.size(); ++i) {
+      printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    }
+    std::vector<glm::dvec3> tempPoints = GetRationalBSplineCurveWithKnots(
+        degree, parameters.points3, parameters.knots, parameters.weights);
+    for (size_t i = 0; i < tempPoints.size(); i++) {
+      printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, tempPoints[i].x,
+             tempPoints[i].y, tempPoints[i].z);
+      curve.Add3d(tempPoints[i]);
+    }
+  }
+
+  /*if (condition) {
+    std::reverse(curve.points.begin(), curve.points.end());
+  }*/
 
   return curve;
 }
@@ -1691,7 +1901,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
-    const ParamsGetIfcCircle& parameters) {
+    const ParamsGetIfcCircle &parameters) {
   conway::geometry::IfcCurve curve;
 
   double radius = parameters.radius;
@@ -1813,7 +2023,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
 }
 
 conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
-    const ParamsGetExtrudedAreaSolid& parameters) {
+    const ParamsGetExtrudedAreaSolid &parameters) {
   conway::geometry::IfcGeometry geom;
   double depth = parameters.depth;
 
@@ -1866,6 +2076,7 @@ conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
           geom_t.indexData[k * 3 + 1] = temp;
         }
       }
+      geom.AddPart(geom_t);
       geom.AppendGeometry(geom_t);
     }
   }

@@ -1,4 +1,8 @@
-/* MPL License: https://github.com/nickcastel50/conway-geom/blob/typescript_api/LICENSE.md */
+
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.  */
+
 //Curve Implementation of a Curve
 
 #pragma once
@@ -17,6 +21,7 @@ namespace webifc::geometry {
 		glm::dvec3 Get3d(size_t i) const;
 		void Invert();
 		bool IsCCW() const;
+		glm::dmat4 getPlacementAtDistance(double length);
 
 		private:
 			static constexpr double EPS_TINY = 1e-9;

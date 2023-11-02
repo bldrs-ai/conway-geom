@@ -6,12 +6,17 @@ case "${1}" in
         wasm_config=debugemscripten
         ;;
     "clean")
+        if [ -d "gmake" ]; then
         ( cd gmake && \
             make config=debug64 clean && \
             make config=debugemscripten clean && \
             make config=release64 clean && \
             make config=releaseemscripten clean
         ) && exit 0 || exit 1
+        else
+            echo "Directory 'gmake' does not exist, nothing to clean."
+            exit 0
+        fi
         ;;
     "debug")
         native_config=debug64

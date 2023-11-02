@@ -2,26 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 
- //#include "include/web-ifc.h"
-// #include "include/conway-geometry.h"
-// #include "include/ifc-schema.h"
-// #include "include/math/triangulate-with-boundaries.h"
-// #include "include/web-ifc-geometry.h"
-#include "fuzzy/obj-exporter.h"
-#include "geometry/IfcGeometryProcessor.h"
+// #include "geometry/IfcGeometryProcessor.h"
 #include "parsing/IfcLoader.h"
 #include "schema/IfcSchemaManager.h"
+#include "schema/ifc-schema.h"
+#include "test/io_helpers.h"
+#include "utility/LoaderError.h"
 #include "utility/LoaderSettings.h"
-#include "utility/Logging.h"
 #include "utility/ifcStatistics.h"
-// using namespace webifc::io;
 
-webifc::schema::IfcSchemaManager schema;
+using namespace webifc::io;
 
 long long ms() {
   using namespace std::chrono;
@@ -31,6 +26,11 @@ long long ms() {
   return millis.count();
 }
 
+double RandomDouble(double lo, double hi) {
+  return lo + static_cast<double>(rand()) /
+                  (static_cast<double>(RAND_MAX / (hi - lo)));
+}
+
 std::string ReadFile(std::string filename) {
   std::ifstream t(filename);
   std::stringstream buffer;
@@ -38,10 +38,81 @@ std::string ReadFile(std::string filename) {
   return buffer.str();
 }
 
-std::string GeometryToObj(const fuzzybools::Geometry &geom, size_t &offset,
+void SpecificLoadTest(webifc::parsing::IfcLoader &loader,
+                      webifc::geometry::IfcGeometryProcessor &geometryLoader,
+                      uint64_t num) {
+  auto walls = loader.GetExpressIDsWithType(webifc::schema::IFCSLAB);
+
+  bool writeFiles = true;
+
+  auto mesh = geometryLoader.GetMesh(num);
+
+  if (writeFiles) {
+    DumpMesh(mesh, geometryLoader, "TEST.obj");
+  }
+}
+
+std::vector<webifc::geometry::IfcAlignment> GetAlignments(
+    webifc::parsing::IfcLoader &loader,
+    webifc::geometry::IfcGeometryProcessor &geometryLoader) {
+  std::vector<webifc::geometry::IfcAlignment> alignments;
+
+  auto type = webifc::schema::IFCALIGNMENT;
+
+  auto elements = loader.GetExpressIDsWithType(type);
+
+  for (unsigned int i = 0; i < elements.size(); i++) {
+    auto alignment = geometryLoader.GetLoader().GetAlignment(elements[i]);
+    alignment.transform(geometryLoader.GetCoordinationMatrix());
+    alignments.push_back(alignment);
+  }
+
+  bool writeFiles = true;
+
+  if (writeFiles) {
+    DumpAlignment(alignments, "V_ALIGN.obj", "H_ALIGN.obj");
+  }
+
+  return alignments;
+}
+
+std::vector<webifc::geometry::IfcCrossSections> GetCrossSections3D(
+    webifc::parsing::IfcLoader &loader,
+    webifc::geometry::IfcGeometryProcessor &geometryLoader) {
+  std::vector<webifc::geometry::IfcCrossSections> crossSections;
+
+  std::vector<uint32_t> typeList;
+  typeList.push_back(webifc::schema::IFCSECTIONEDSOLID);
+  typeList.push_back(webifc::schema::IFCSECTIONEDSURFACE);
+  typeList.push_back(webifc::schema::IFCSECTIONEDSOLIDHORIZONTAL);
+
+  for (auto &type : typeList) {
+    auto elements = loader.GetExpressIDsWithType(type);
+
+    for (unsigned int i = 0; i < elements.size(); i++) {
+      auto crossSection =
+          geometryLoader.GetLoader().GetCrossSections3D(elements[i]);
+      crossSections.push_back(crossSection);
+    }
+  }
+
+  bool writeFiles = true;
+
+  if (writeFiles) {
+    DumpCrossSections(crossSections, "CrossSection.obj");
+  }
+
+  return crossSections;
+}
+
+std::string GeometryToObj(const webifc::geometry::IfcGeometry &geom,
+                          size_t &offset, std::string materialName,
                           glm::dmat4 transform = glm::dmat4(1)) {
   std::string obj;
   obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
+
+  obj.append("mtllib " + materialName + ".mtl\n");
+  obj.append("usemtl " + materialName + "\n");
 
   const char *vFormat = "v %.6f %.6f %.6f\n";
   const char *fFormat = "f %zu// %zu// %zu//\n";
@@ -67,32 +138,58 @@ std::string GeometryToObj(const fuzzybools::Geometry &geom, size_t &offset,
   return obj;
 }
 
-void writeFile(std::wstring filename, std::string data) {
+/*void writeFile(std::string filename, std::string data) {
   std::ofstream out(filename.c_str());
   out << data;
   out.close();
+}*/
+
+std::string ColorToMtl(const glm::dvec3 &color,
+                       const std::string &materialName) {
+  std::string mtl;
+  const char *mtlFormat =
+      "newmtl %s\n"
+      "Ka %f %f %f\n"            // Ambient color
+      "Kd %f %f %f\n"            // Diffuse color
+      "Ks 0.000 0.000 0.000\n";  // Specular color (set to black for simplicity)
+
+  char mtlBuffer[128];
+  snprintf(mtlBuffer, sizeof(mtlBuffer), mtlFormat, materialName.c_str(),
+           color.r, color.g, color.b, color.r, color.g, color.b);
+  mtl.append(mtlBuffer);
+
+  return mtl;
+}
+
+std::string DumpMeshToStr(webifc::geometry::IfcComposedMesh &mesh,
+              webifc::geometry::IfcGeometryProcessor &processor,
+              size_t &offset) {
+ // writeFile(filename,
+      //      ToObj(mesh, processor, offset, webifc::geometry::NormalizeIFC));
+   return ToObj(mesh, processor, offset, webifc::geometry::NormalizeIFC);
 }
 
 glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
-                          glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
-void DumpGeom(const fuzzybools::Geometry &geom,
-                         std::wstring filename) {
+                        glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
+void DumpGeom(const webifc::geometry::IfcGeometry &geom, glm::dvec3 &color,
+              std::string name) {
   size_t offset = 0;
-  writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
-}
+  std::string fileName = "./";
+  std::string objFileName = fileName + name + ".obj";
+  std::string mtlFileName = fileName + name + ".mtl";
+  writeFile(objFileName, GeometryToObj(geom, offset, name, NormalizeMat));
 
+  printf("name: %s\n", name.c_str());
+  writeFile(mtlFileName, ColorToMtl(color, name));
+}
 
 std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     webifc::parsing::IfcLoader &loader,
     webifc::geometry::IfcGeometryProcessor &geometryLoader) {
   std::vector<webifc::geometry::IfcFlatMesh> meshes;
+  webifc::schema::IfcSchemaManager schema;
 
-  std::vector<uint32_t> expressIDs;
-    auto numLines = loader.GetNumLines();
-    for (int i = 0; i < numLines; i++)
-    {
-        expressIDs.push_back(loader.GetLine(i).expressID);
-    }
+  webifc::geometry::IfcGeometry fullGeometry;
 
   for (auto type : schema.GetIfcElementList()) {
     auto elements = loader.GetExpressIDsWithType(type);
@@ -100,47 +197,171 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     for (unsigned int i = 0; i < elements.size(); i++) {
       auto mesh = geometryLoader.GetFlatMesh(elements[i]);
 
-      if (webifc::statistics::exportObjs) {
+      for (auto &geom : mesh.geometries) {
+        auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
+        glm::dvec3 color(geom.color.r, geom.color.g, geom.color.b);
+        if (webifc::statistics::exportObjs) {
+          webifc::geometry::IfcGeometry tmpGeometry;
+          std::string fileName = std::to_string(geom.geometryExpressID);
+          fileName += "_webifc";
 
-        for (auto& geom : mesh.geometries)
-        {
-            auto ifc_geom = geometryLoader.GetGeometry(geom.geometryExpressID);
-            fuzzybools::Geometry fbGeom;
-            std::string fileName = "./";
-            fileName += std::to_string(elements[i]);
-            fileName += "_webifc.obj";
+          DumpGeom(flatGeom, color, fileName);
 
-             std::wstring wsTmp(fileName.begin(), fileName.end());
-
-            for (size_t j = 0; j < ifc_geom.numFaces; j++) {
-            const webifc::geometry::Face &f = ifc_geom.GetFace(j);
-
-            auto a = ifc_geom.GetPoint(f.i0);
-            auto b = ifc_geom.GetPoint(f.i1);
-            auto c = ifc_geom.GetPoint(f.i2);
-
-            fbGeom.AddFace(a, b, c);
-            }
-
-            DumpGeom(fbGeom, wsTmp);
-
-            std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
+          std::cout << "Dumped mesh to file: " << fileName.c_str() << "\n";
         }
       }
-
-      /*for (auto &geom : mesh.geometries) {
-        auto flatGeom = geometryLoader.GetGeometry(geom.geometryExpressID);
-      }*/
 
       meshes.push_back(mesh);
     }
   }
 
+  /*if (webifc::statistics::exportObjs) {
+    webifc::geometry::IfcGeometry tmpGeometry;
+    size_t offset = 0;
+    std::string completeObj = "";
+    for (auto type : schema.GetIfcElementList()) {
+      if (type == webifc::schema::IFCOPENINGELEMENT ||
+          type == webifc::schema::IFCSPACE ||
+          type == webifc::schema::IFCOPENINGSTANDARDCASE) {
+        continue;
+      }
+      auto elements = loader.GetExpressIDsWithType(type);
+
+      for (unsigned int i = 0; i < elements.size(); i++) {
+        auto mesh = geometryLoader.GetMesh(elements[i]);
+        completeObj += DumpMeshToStr(mesh, geometryLoader, offset );
+      }
+    }
+
+    glm::dvec3 color(0, 0, 0);
+    std::string fullFileName = "fullOBJ_webifc_test.obj";
+    writeFile(fullFileName, completeObj);
+  }*/
+
   return meshes;
 }
 
+void DumpRefs(std::unordered_map<uint32_t, std::vector<uint32_t>> &refs) {
+  std::ofstream of("refs.txt");
+
+  int32_t prev = 0;
+  for (auto &it : refs) {
+    if (!it.second.empty()) {
+      for (auto &i : it.second) {
+        of << (((int32_t)i) - (prev));
+        prev = i;
+      }
+    }
+  }
+}
+
+struct BenchMarkResult {
+  std::string file;
+  long long timeMS;
+  long long sizeBytes;
+};
+
+void Benchmark() {
+  std::vector<BenchMarkResult> results;
+  std::string path = "../../../benchmark/ifcfiles";
+  for (const auto &entry : std::filesystem::directory_iterator(path)) {
+    if (entry.path().extension().string() != ".ifc") {
+      continue;
+    }
+
+    std::string filePath = entry.path().string();
+    std::string filename = entry.path().filename().string();
+
+    std::string content = ReadFile(filePath);
+
+    auto start = ms();
+    {
+      // loader.LoadFile(content);
+    }
+    auto time = ms() - start;
+
+    BenchMarkResult result;
+    result.file = filename;
+    result.timeMS = time;
+    result.sizeBytes = entry.file_size();
+    results.push_back(result);
+
+    std::cout << "Reading " << result.file << " took " << time << "ms"
+              << std::endl;
+  }
+
+  std::cout << std::endl;
+  std::cout << std::endl;
+  std::cout << "Results:" << std::endl;
+
+  double avgMBsec = 0;
+  for (auto &result : results) {
+    double MBsec = result.sizeBytes / 1000.0 / result.timeMS;
+    avgMBsec += MBsec;
+    std::cout << result.file << ": " << MBsec << " MB/sec" << std::endl;
+  }
+
+  avgMBsec /= results.size();
+
+  std::cout << std::endl;
+  std::cout << "Average: " << avgMBsec << " MB/sec" << std::endl;
+
+  std::cout << std::endl;
+  std::cout << std::endl;
+}
+
+void TestTriangleDecompose() {
+  const int NUM_TESTS = 100;
+  const int PTS_PER_TEST = 100;
+  const int EDGE_PTS_PER_TEST = 10;
+
+  const double scaleX = 650;
+  const double scaleY = 1;
+
+  glm::dvec2 a(0, 0);
+  glm::dvec2 b(scaleX, 0);
+  glm::dvec2 c(0, scaleY);
+
+  for (int i = 0; i < NUM_TESTS; i++) {
+    srand(i);
+
+    std::vector<glm::dvec2> points;
+
+    // random points
+    for (unsigned int j = 0; j < PTS_PER_TEST; j++) {
+      points.push_back({RandomDouble(0, scaleX), RandomDouble(0, scaleY)});
+    }
+
+    // points along the edges
+    for (unsigned int j = 0; j < EDGE_PTS_PER_TEST; j++) {
+      glm::dvec2 e1 = b - a;
+      glm::dvec2 e2 = c - a;
+      glm::dvec2 e3 = b - c;
+
+      points.push_back(a + e1 * RandomDouble(0, 1));
+      points.push_back(a + e2 * RandomDouble(0, 1));
+      points.push_back(c + e3 * RandomDouble(0, 1));
+    }
+
+    std::cout << "Start test " << i << std::endl;
+
+    bool swapped = false;
+
+    // webifc::IsValidTriangulation(triangles, points);
+
+    std::vector<webifc::io::Point> pts;
+
+    for (auto &pt : points) {
+      webifc::io::Point p;
+      p.x = pt.x;
+      p.y = pt.y;
+      pts.push_back(p);
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
-  std::cout << "Hello web IFC test!\n";
+  std::cout << "Hello web IFC test 0.44!\n";
 
   if (argc < 2) {
     std::cout
@@ -204,18 +425,6 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // TestTriangleDecompose();
-
-  // return 0;
-
-  // Benchmark();
-
-  // return 0;
-
-  // std::string content =
-  // ReadFile(L"C:/Users/qmoya/Desktop/PROGRAMES/VSCODE/IFC.JS/issues/#83
-  // processing/05111002_IFCR2_Geo_Columns_1.ifc");
-
   // from outside debugger
   std::string content;
   if (file_path.empty()) {
@@ -239,7 +448,7 @@ int main(int argc, char *argv[]) {
 
   webifc::utility::LoaderSettings set;
   set.COORDINATE_TO_ORIGIN = true;
-  set.USE_FAST_BOOLS = true;
+  set.OPTIMIZE_PROFILES = true;
 
   webifc::utility::LoaderErrorHandler errorHandler;
   webifc::schema::IfcSchemaManager schemaManager;
@@ -253,17 +462,15 @@ int main(int argc, char *argv[]) {
 
     return length;
   });
-
   auto time = ms() - start;
 
   std::cout << "Reading took " << time << "ms" << std::endl;
 
   webifc::geometry::IfcGeometryProcessor geometryLoader(
-      loader, errorHandler, schemaManager, set.CIRCLE_SEGMENTS_HIGH,
-      set.COORDINATE_TO_ORIGIN);
+      loader, errorHandler, schemaManager, set.CIRCLE_SEGMENTS,
+      set.COORDINATE_TO_ORIGIN, set.OPTIMIZE_PROFILES);
 
   start = ms();
-  // SpecificLoadTest(loader, geometryLoader, 2591);
   auto meshes = LoadAllTest(loader, geometryLoader);
   auto errors = errorHandler.GetErrors();
   errorHandler.ClearErrors();
@@ -281,9 +488,6 @@ int main(int argc, char *argv[]) {
   if (webifc::statistics::collectStats) {
     std::vector<uint32_t> currentlySupportedTypes = {
         webifc::schema::IFCPLANE,
-        webifc::schema::IFCBSPLINESURFACE,
-        webifc::schema::IFCBSPLINESURFACEWITHKNOTS,
-        webifc::schema::IFCRATIONALBSPLINESURFACEWITHKNOTS,
         webifc::schema::IFCAXIS2PLACEMENT2D,
         webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2D,
         webifc::schema::IFCCARTESIANTRANSFORMATIONOPERATOR2DNONUNIFORM,
@@ -304,7 +508,6 @@ int main(int argc, char *argv[]) {
         webifc::schema::IFCCLOSEDSHELL,
         webifc::schema::IFCOPENSHELL,
         webifc::schema::IFCFACE,
-        webifc::schema::IFCADVANCEDFACE,
         webifc::schema::IFCPOLYLOOP,
         webifc::schema::IFCINDEXEDPOLYGONALFACE,
         webifc::schema::IFCPOLYGONALFACESET,
@@ -314,7 +517,32 @@ int main(int argc, char *argv[]) {
         webifc::schema::IFCHALFSPACESOLID,
         webifc::schema::IFCPOLYGONALBOUNDEDHALFSPACE,
         webifc::schema::IFCFACEBASEDSURFACEMODEL,
-        webifc::schema::IFCSHELLBASEDSURFACEMODEL};
+        webifc::schema::IFCSHELLBASEDSURFACEMODEL,
+        webifc::schema::IFCSURFACESTYLE,
+        webifc::schema::IFCSURFACESTYLERENDERING,
+        webifc::schema::IFCCOLOURRGB,
+        webifc::schema::IFCSHAPEREPRESENTATION,
+        webifc::schema::IFCINDEXEDPOLYGONALFACEWITHVOIDS,
+        webifc::schema::IFCPRODUCTDEFINITIONSHAPE,
+        webifc::schema::IFCEXTRUDEDAREASOLID,
+        webifc::schema::IFCBUILDINGELEMENTPROXY,
+        webifc::schema::IFCARBITRARYCLOSEDPROFILEDEF,
+        webifc::schema::IFCSTYLEDITEM,
+        webifc::schema::IFCMATERIAL,
+        webifc::schema::IFCOPENINGELEMENT,
+        webifc::schema::IFCMATERIALCONSTITUENT,
+        webifc::schema::IFCMATERIALCONSTITUENTSET,
+        webifc::schema::IFCMATERIALPROFILESET,
+        webifc::schema::IFCMATERIALPROFILE,
+        webifc::schema::IFCCOMPOSITEPROFILEDEF,
+        webifc::schema::IFCREPRESENTATIONMAP,
+        webifc::schema::IFCFACEOUTERBOUND,
+        webifc::schema::IFCPRESENTATIONSTYLEASSIGNMENT,
+        webifc::schema::IFCFACETEDBREP,
+        webifc::schema::IFCMATERIALLAYERSET,
+        webifc::schema::IFCMATERIALLAYER,
+        webifc::schema::IFCMATERIALLAYERSETUSAGE,
+        webifc::schema::IFCMATERIALLIST};
 
     uint32_t uniqueTypeDefsSize = webifc::statistics::uniqueTypeDefs.size();
     std::vector<std::pair<unsigned int, unsigned int>> supportedTypes;
@@ -339,9 +567,10 @@ int main(int argc, char *argv[]) {
 
     for (const auto &ifcType : vectorUniqueTypeDefs) {
       if (webifc::statistics::verboseStats) {
-        std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
-       // std::cout << ifcType.second << "\t"
-           //       << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+        std::cout << schemaManager.IfcTypeCodeToType(ifcType.first) << "\t"
+                  << ifcType.second << std::endl;
+        // std::cout << ifcType.second << "\t"
+        //       << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
 
       if (std::find(currentlySupportedTypes.begin(),
@@ -357,12 +586,13 @@ int main(int argc, char *argv[]) {
     uint32_t unsupportedSize = unsupportedTypes.size();
     std::cout << "\nSupported Types: " << supportedSize << std::endl;
     if (webifc::statistics::verboseStats) {
-     std::cout << "Ifc Type\tFrequency\n" << std::endl;
+      std::cout << "Ifc Type\tFrequency\n" << std::endl;
 
       for (const auto &ifcType : supportedTypes) {
-         std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
-       // std::cout << ifcType.second << "\t"
-          //        << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+        std::cout << schemaManager.IfcTypeCodeToType(ifcType.first) << "\t"
+                  << ifcType.second << std::endl;
+        // std::cout << ifcType.second << "\t"
+        //        << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 
@@ -370,9 +600,10 @@ int main(int argc, char *argv[]) {
     if (webifc::statistics::verboseStats) {
       std::cout << "Ifc Type\tFrequency\n" << std::endl;
       for (const auto &ifcType : unsupportedTypes) {
-         std::cout << schema.IfcTypeCodeToType(ifcType.first) << "\t" << ifcType.second << std::endl;
-       // std::cout << ifcType.second << "\t"
-         //         << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
+        std::cout << schemaManager.IfcTypeCodeToType(ifcType.first) << "\t"
+                  << ifcType.second << std::endl;
+        // std::cout << ifcType.second << "\t"
+        //         << schema.IfcTypeCodeToType(ifcType.first) << std::endl;
       }
     }
 
@@ -380,7 +611,7 @@ int main(int argc, char *argv[]) {
               << ((double)supportedSize / (double)uniqueTypeDefsSize) * 100
               << "%" << std::endl;
     std::cout << "************************************" << std::endl;
-  }
 
-  std::cout << "Done." << std::endl;
+    std::cout << "Done" << std::endl;
+  }
 }

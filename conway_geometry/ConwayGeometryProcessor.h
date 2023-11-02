@@ -19,11 +19,11 @@
 #include <glm/gtx/transform.hpp>
 #include <iostream>
 #include <mapbox/earcut.hpp>
+#include <span>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <span>
 
 // draco
 #include <draco/compression/config/compression_shared.h>
@@ -69,7 +69,7 @@ class StreamWriter : public Microsoft::glTF::IStreamWriter {
   // Resolves the relative URIs of any external resources declared in the glTF
   // manifest
   std::shared_ptr<std::ostream> GetOutputStream(
-      const std::string &filename) const override {
+      const std::string& filename) const override {
     auto stream = std::make_shared<std::ostringstream>();
     uris.push_back(filename);
     return stream;
@@ -114,10 +114,10 @@ class ConwayGeometryProcessor {
   };
 
   IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
-  IfcGeometry BoolSubtract(const std::vector<IfcGeometry> &firstGroups,
-                           std::vector<IfcGeometry> &secondGroups);
-  IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry> &firstGeoms,
-                                 std::vector<IfcGeometry> &secondGeoms);
+  IfcGeometry BoolSubtract(const std::vector<IfcGeometry>& firstGroups,
+                           std::vector<IfcGeometry>& secondGroups);
+  IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
+                                 std::vector<IfcGeometry>& secondGeoms);
 
   // case ifc::IFCBOOLEANCLIPPINGRESULT:
   // case ifc::IFCBOOLEANRESULT:
@@ -126,7 +126,7 @@ class ConwayGeometryProcessor {
     std::vector<IfcGeometry> flatSecondMesh;
     int operatorType = 2;
   };
-  IfcGeometry GetBooleanResult(ParamsGetBooleanResult parameters);
+  IfcGeometry GetBooleanResult(ParamsGetBooleanResult *parameters);
 
   struct ParamsRelVoidSubtract {
     std::vector<IfcGeometry> flatFirstMesh;
@@ -136,8 +136,8 @@ class ConwayGeometryProcessor {
   };
   IfcGeometry RelVoidSubtract(ParamsRelVoidSubtract parameters);
 
-      // case ifc::IFCHALFSPACESOLID:
-      struct ParamsGetHalfspaceSolid {
+  // case ifc::IFCHALFSPACESOLID:
+  struct ParamsGetHalfspaceSolid {
     bool flipWinding = false;
     double optionalLinearScalingFactor = 1.0;
   };
@@ -167,6 +167,7 @@ class ConwayGeometryProcessor {
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
+    double scaling;
   };
 
   struct ParamsGetBrep {
@@ -184,7 +185,7 @@ class ConwayGeometryProcessor {
   // case ifc::IFCFACE:
   // case ifc::IFCADVANCEDFACE:
   void AddFaceToGeometry(ParamsAddFaceToGeometry parameters,
-                         IfcGeometry &geometry);
+                         IfcGeometry& geometry);
 
   // case ifc::IFCRECTANGLEPROFILEDEF:
   // case ifc::IFCROUNDEDRECTANGLEPROFILEDEF:
@@ -193,9 +194,96 @@ class ConwayGeometryProcessor {
     double yDim = 0.0f;
     bool hasPlacement = false;
     glm::dmat3 matrix;
+    double thickness = -1.0f;
   };
 
+  struct ParamsGetCShapeCurve {
+    bool hasPlacement = false;
+    glm::dmat3 placement;
+    bool hasFillet = false;
+    double depth = 0.0f;
+    double width = 0.0f;
+    double thickness = 0.0f;
+    double girth = 0.0f;
+    double filletRadius = 0.0f;
+  };
+
+  IfcCurve GetCShapeCurve(ParamsGetCShapeCurve parameters);
+
+  struct ParamsGetIShapeCurve {
+    bool hasPlacement = false;
+    // Assuming placement is some sort of matrix or object
+    glm::dmat3 placement;
+    bool hasFillet = false;
+    double width = 0.0f;
+    double depth = 0.0f;
+    double webThickness = 0.0f;
+    double flangeThickness = 0.0f;
+    double filletRadius = 0.0f;
+  };
+
+  IfcCurve GetIShapeCurve(ParamsGetIShapeCurve parameters);
+
+  struct ParamsGetLShapeCurve {
+    bool hasPlacement = false;
+    glm::dmat3 placement;
+    bool hasFillet = false;
+    double filletRadius = 0.0f;
+    double depth = 0.0f;
+    double width = 0.0f;
+    double thickness = 0.0f;
+    double edgeRadius = 0.0f;
+    double legSlope = 0.0f;
+  };
+
+  IfcCurve GetLShapeCurve(ParamsGetLShapeCurve parameters);
+
+  struct ParamsGetTShapeCurve {
+    bool hasPlacement = false;
+    glm::dmat3 placement;
+    bool hasFillet = false;
+    double depth = 0.0f;
+    double width = 0.0f;
+    double webThickness = 0.0f;
+    double filletRadius = 0.0f;
+    double flangeEdgeRadius = 0.0f;
+    double flangeScope = 0.0f;
+  };
+
+  IfcCurve GetTShapeCurve(ParamsGetTShapeCurve parameters);
+
+  struct ParamsGetUShapeCurve {
+    bool hasPlacement = false;
+    glm::dmat3 placement;
+    double depth = 0.0f;
+    double flangeWidth = 0.0f;
+    double webThickness = 0.0f;
+    double flangeThickness = 0.0f;
+    double filletRadius = 0.0f;
+    double edgeRadius = 0.0f;
+    double flangeScope = 0.0f;
+  };
+
+  IfcCurve GetUShapeCurve(ParamsGetUShapeCurve parameters);
+
+  struct ParamsGetZShapeCurve {
+    bool hasPlacement = false;
+    glm::dmat3 placement;
+    bool hasFillet = false;
+    double depth = 0.0f;
+    double flangeWidth = 0.0f;
+    double webThickness = 0.0f;
+    double flangeThickness = 0.0f;
+    double filletRadius = 0.0f;
+    double edgeRadius = 0.0f;
+  };
+
+  IfcCurve GetZShapeCurve(ParamsGetZShapeCurve parameters);
+
   IfcCurve GetRectangleProfileCurve(ParamsGetRectangleProfileCurve parameters);
+
+  IfcCurve GetRectangleHollowProfileHole(
+      ParamsGetRectangleProfileCurve parameters);
 
   // case ifc::IFCFACEBASEDSURFACEMODEL:
   // case ifc::IFCSHELLBASEDSURFACEMODEL:
@@ -219,8 +307,8 @@ class ConwayGeometryProcessor {
     // TODO(nickcastel50): How do we pass these across?
     std::vector<std::vector<glm::vec<3, glm::f64>>> ctrolPts;
     std::string curveType;
-    std::string closedU;
-    std::string closedV;
+    bool closedU;
+    bool closedV;
     std::string selfIntersect;
     bool isBsplineSurfaceWithKnots = false;
     std::vector<glm::f64> UMultiplicity;
@@ -317,6 +405,7 @@ class ConwayGeometryProcessor {
   struct ParamsGetLoop {
     bool isEdgeLoop = false;
     std::vector<glm::dvec3> points;
+    std::vector<conway::geometry::IfcCurve> edges;
   };
 
   IfcCurve GetLoop(ParamsGetLoop parameters);
@@ -339,8 +428,8 @@ class ConwayGeometryProcessor {
     const std::vector<glm::vec3>& points;
     const IndexedPolygonalFace& face;
 
-    ParamsReadIndexedPolygonalFace(const std::vector<glm::vec3> &points_ref,
-                                   const IndexedPolygonalFace &face_ref)
+    ParamsReadIndexedPolygonalFace(const std::vector<glm::vec3>& points_ref,
+                                   const IndexedPolygonalFace& face_ref)
         : points(points_ref), face(face_ref) {}
   };
   std::vector<IfcBound3D> ReadIndexedPolygonalFace(
@@ -351,16 +440,22 @@ class ConwayGeometryProcessor {
     std::vector<std::string> bufferUris;
     std::vector<std::vector<uint8_t>> buffers;
   };
-  ResultsGltf GeometryToGltf( 
-      std::span< conway::geometry::IfcGeometryCollection > geom,
-      std::span< conway::geometry::Material > materials,
-      bool isGlb, bool outputDraco, std::string filePath,
-      bool outputFile,
+  ResultsGltf GeometryToGltf(
+      std::span<conway::geometry::IfcGeometryCollection> geom,
+      std::span<conway::geometry::Material> materials, bool isGlb,
+      bool outputDraco, std::string filePath, bool outputFile,
       glm::dmat4 transform = glm::dmat4(1));
 
-  std::string GeometryToObj(const conway::geometry::IfcGeometry &geom,
-                            size_t &offset,
+  std::string GeometryToObj(const conway::geometry::IfcGeometry& geom,
+                            size_t& offset,
                             glm::dmat4 transform = glm::dmat4(1));
+
+  struct ParamsTransformProfile {
+    glm::dmat3 transformation;
+    IfcProfile profile;
+  };
+
+  IfcProfile transformProfile(ParamsTransformProfile *parameters);
 
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
@@ -391,9 +486,26 @@ class ConwayGeometryProcessor {
     float radius;
     bool hasPlacement = true;
     glm::dmat3 placement;
+    double thickness = -1.0f;
   };
 
-  conway::geometry::IfcCurve getCircleCurve(const ParamsGetCircleCurve& parameters);
+  conway::geometry::IfcCurve getCircleCurve(
+      const ParamsGetCircleCurve& parameters);
+
+  conway::geometry::IfcCurve getCircleHoleCurve(
+      const ParamsGetCircleCurve& parameters);
+
+  // case ifc::EllipseProfileDef
+  struct ParamsGetEllipseCurve {
+    float radiusX;
+    float radiusY;
+    bool hasPlacement = true;
+    glm::dmat3 placement;
+    int circleSegments = 12;
+  };
+
+  conway::geometry::IfcCurve getEllipseCurve(
+      const ParamsGetEllipseCurve& parameters);
 
   // case ifc::IFCTRIMMEDCURVE
   struct ParamsGetIfcTrimmedCurve {
@@ -422,14 +534,16 @@ class ConwayGeometryProcessor {
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
 
   struct ParamsGetBSplineCurve {
-      uint32_t degree;
-      std::vector< glm::dvec2 > points2;
-      std::vector< glm::dvec3> points3;
-      std::vector< double > knots;
-      std::vector< double > weights;
+    uint32_t dimensions;
+    uint32_t degree;
+    std::vector<glm::dvec2> points2;
+    std::vector<glm::dvec3> points3;
+    std::vector<double> knots;
+    std::vector<double> weights;
   };
-  
-  conway::geometry::IfcCurve getBSplineCurve(const ParamsGetBSplineCurve& parameters);
+
+  conway::geometry::IfcCurve getBSplineCurve(
+      const ParamsGetBSplineCurve& parameters);
 
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
@@ -442,8 +556,8 @@ class ConwayGeometryProcessor {
       const ParamsGetExtrudedAreaSolid& parameters);
 
  private:
-  fuzzybools::Geometry GeomToFBGeom(const IfcGeometry &geom);
-  IfcGeometry FBGeomToGeom(const fuzzybools::Geometry &fbGeom);
+  fuzzybools::Geometry GeomToFBGeom(const IfcGeometry& geom);
+  IfcGeometry FBGeomToGeom(const fuzzybools::Geometry& fbGeom);
 
   bool COORDINATE_TO_ORIGIN = false;
   bool USE_FAST_BOOLS = true;

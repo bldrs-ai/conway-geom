@@ -34,8 +34,8 @@ project "conway_geom_native"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+       -- "conway_geometry/legacy/**.*"
     }
     WebIfcSourceFiles = {"web-ifc-api.cpp"}
     WebIfcTestSourceFiles = {"test/*.cpp"}
@@ -198,10 +198,10 @@ project "conway_geom_native_tests"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+      --  "conway_geometry/legacy/**.*"
     }
-    ConwayTestSourceFiles = {"test/*.cpp"}
+    ConwayTestSourceFiles = {"test/ConwayGeometryProcessor_test.cpp", "test/main.cpp"}
 
     configuration {"windows or linux or macosx or ios or gmake"}
         buildoptions_cpp {
@@ -362,7 +362,9 @@ project "webifc_native"
         "geometry/**.*",
         "parsing/**.*",
         "utility/**.*",
-        "schema/**.*"
+        "schema/**.*",
+        "test/io_helpers.cpp",
+        "test/io_helpers.h"
     }
     WebIfcTestingMain = {"web-ifc-test.cpp"}
 
@@ -420,7 +422,8 @@ project "webifc_native"
             "external/manifold/src/sdf/include",
             "external/manifold/src/third_party/graphlite/include",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt"
+            "external/fuzzy-bools/deps/cdt",
+            "external/fast_float/include"
         }
 
         excludes {
@@ -480,8 +483,8 @@ project "ConwayGeomWasmNode"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+      --  "conway_geometry/legacy/**.*"
     }
     ConwaySourceFiles = {"conway-api.cpp"}
 
@@ -527,14 +530,14 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s FORCE_FILESYSTEM=1",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
-        "-sASSERTIONS",
+        --"-sASSERTIONS",
         "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         --"-s USE_ES6_IMPORT_META=0",
        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
-        "-sNO_DISABLE_EXCEPTION_CATCHING"
+        "-sNO_DISABLE_EXCEPTION_CATCHING",
     }
 else 
     configuration {"gmake"}
@@ -683,8 +686,8 @@ project "ConwayGeomWasmWeb"
         "conway_geometry/*.h",
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "conway_geomeetry/legacy/**.*"
+        "conway_geometry/representation/**.*"
+       -- "conway_geometry/legacy/**.*"
     }
     ConwaySourceFiles = {"conway-api.cpp"}
 
@@ -737,7 +740,8 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
-        "-sNO_DISABLE_EXCEPTION_CATCHING"
+        "-sNO_DISABLE_EXCEPTION_CATCHING",
+        "-s DISABLE_EXCEPTION_CATCHING=0",
     }
 else 
     configuration {"gmake"}

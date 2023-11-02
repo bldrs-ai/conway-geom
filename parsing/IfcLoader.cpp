@@ -1,9 +1,14 @@
-/* MPL License: https://github.com/nickcastel50/conway-geom/blob/typescript_api/LICENSE.md */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 #include "IfcLoader.h"
 
+#include <fast_float/fast_float.h>
+
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <sstream>
 #include <string>
 
@@ -14,37 +19,31 @@
 
 namespace webifc::parsing {
 
-std::string getAsStringWithBigE(double theNumber);
-std::string p21encode(std::string_view input);
+void p21encode(std::string_view input, std::ostringstream &output);
+std::string p21decode(std::string_view &str);
 
-IfcLoader::IfcLoader(size_t tapeSize, size_t memoryLimit,
+IfcLoader::IfcLoader(uint32_t tapeSize, uint32_t memoryLimit,
                      utility::LoaderErrorHandler &errorHandler,
                      schema::IfcSchemaManager &schemaManager)
     : _schemaManager(schemaManager), _errorHandler(errorHandler) {
-  _tokenStream = new IfcTokenStream(tapeSize, (memoryLimit / tapeSize));
+  _tokenStream = new IfcTokenStream(tapeSize, memoryLimit / tapeSize);
+  _nullLine = new IfcLine();
+  _nullLine->ifcType = 0;
+  _nullLine->tapeOffset = 0;
 }
 
 const std::vector<uint32_t> IfcLoader::GetExpressIDsWithType(
     const uint32_t type) const {
-  if (_ifcTypeToLineID.count(type) == 0) return {};
-  auto &list = _ifcTypeToLineID.at(type);
-  std::vector<uint32_t> ret(list.size());
-
-  std::transform(list.begin(), list.end(), ret.begin(),
-                 [&](uint32_t lineID) { return _lines[lineID].expressID; });
-
-  return ret;
+  if (_ifcTypeToExpressID.count(type) == 0) return {};
+  return _ifcTypeToExpressID.at(type);
 }
 
-const std::vector<IfcHeaderLine> IfcLoader::GetHeaderLinesWithType(
+const std::vector<uint32_t> IfcLoader::GetHeaderLinesWithType(
     const uint32_t type) const {
-  if (_ifcTypeToHeaderLineID.count(type) == 0) return {};
-  auto &list = _ifcTypeToHeaderLineID.at(type);
-  std::vector<IfcHeaderLine> ret(list.size());
-
-  std::transform(list.begin(), list.end(), ret.begin(),
-                 [&](uint32_t lineID) { return _headerLines[lineID]; });
-
+  std::vector<uint32_t> ret;
+  for (size_t i = 0; i < _headerLines.size(); i++) {
+    if (_headerLines[i]->ifcType == type) ret.push_back(i);
+  }
   return ret;
 }
 
@@ -56,7 +55,7 @@ void IfcLoader::LoadFile(
 
 IFC_SCHEMA IfcLoader::GetSchema() const {
   auto line = GetHeaderLinesWithType(schema::FILE_SCHEMA)[0];
-  MoveToHeaderLineArgument(line.lineIndex, 0);
+  MoveToHeaderLineArgument(line, 0);
   auto schemas = _schemaManager.GetAvailableSchemas();
 
   while (!_tokenStream->IsAtEnd()) {
@@ -92,155 +91,90 @@ void IfcLoader::SaveFile(
   output << "* Issues: https://github.com/IFCjs/web-ifc/issues" << std::endl;
   output << "******************************************************/"
          << std::endl;
-  for (uint32_t i = 0; i < _headerLines.size(); i++) {
-    _tokenStream->MoveTo(_headerLines[i].tapeOffset);
-    bool newLine = true;
-    bool insideSet = false;
-    IfcTokenType prev = IfcTokenType::EMPTY;
-    while (!_tokenStream->IsAtEnd()) {
-      IfcTokenType t = static_cast<IfcTokenType>(_tokenStream->Read<char>());
 
-      if (t != IfcTokenType::SET_END && t != IfcTokenType::LINE_END) {
-        if (insideSet && prev != IfcTokenType::SET_BEGIN &&
-            prev != IfcTokenType::LABEL && prev != IfcTokenType::LINE_END) {
-          output << ",";
-        }
-      }
+  const std::vector<IfcLine *> *totalLines[2] = {&_headerLines, &_lines};
+  for (uint8_t z = 0; z < 2; z++) {
+    const std::vector<IfcLine *> *currentLines = totalLines[z];
+    for (uint32_t i = 0; i < currentLines->size(); i++) {
+      IfcLine *line = (*currentLines)[i];
 
-      if (t == IfcTokenType::LINE_END) {
-        output << ";" << std::endl;
-        break;
-      }
+      if (line == _nullLine || line->ifcType == 0) continue;
+      _tokenStream->MoveTo(line->tapeOffset);
+      bool newLine = true;
+      bool insideSet = false;
+      IfcTokenType prev = IfcTokenType::EMPTY;
+      while (!_tokenStream->IsAtEnd()) {
+        IfcTokenType t = static_cast<IfcTokenType>(_tokenStream->Read<char>());
 
-      switch (t) {
-        case IfcTokenType::UNKNOWN: {
-          output << "*";
-          break;
+        if (t != IfcTokenType::SET_END && t != IfcTokenType::LINE_END) {
+          if (insideSet && prev != IfcTokenType::SET_BEGIN &&
+              prev != IfcTokenType::LABEL && prev != IfcTokenType::LINE_END) {
+            output << ",";
+          }
         }
-        case IfcTokenType::EMPTY: {
-          output << "$";
-          break;
-        }
-        case IfcTokenType::SET_BEGIN: {
-          output << "(";
-          insideSet = true;
-          break;
-        }
-        case IfcTokenType::SET_END: {
-          output << ")";
-          break;
-        }
-        case IfcTokenType::STRING: {
-          output << "'" << _tokenStream->ReadString() << "'";
-          break;
-        }
-        case IfcTokenType::ENUM: {
-          output << "." << _tokenStream->ReadString() << ".";
-          break;
-        }
-        case IfcTokenType::LABEL: {
-          output << _tokenStream->ReadString();
-          break;
-        }
-        case IfcTokenType::REF: {
-          output << "#" << _tokenStream->Read<uint32_t>();
-          if (newLine) output << "=";
-          break;
-        }
-        case IfcTokenType::REAL: {
-          output << getAsStringWithBigE(_tokenStream->Read<double>());
-          break;
-        }
-        default:
-          break;
-      }
 
-      if (t == IfcTokenType::LINE_END) {
-        newLine = true;
-        insideSet = false;
-      } else {
-        newLine = false;
+        if (t == IfcTokenType::LINE_END) {
+          output << ";" << std::endl;
+          break;
+        }
+
+        switch (t) {
+          case IfcTokenType::UNKNOWN: {
+            output << "*";
+            break;
+          }
+          case IfcTokenType::EMPTY: {
+            output << "$";
+            break;
+          }
+          case IfcTokenType::SET_BEGIN: {
+            output << "(";
+            insideSet = true;
+            break;
+          }
+          case IfcTokenType::SET_END: {
+            output << ")";
+            break;
+          }
+          case IfcTokenType::STRING: {
+            output << "'";
+            p21encode(_tokenStream->ReadString(), output);
+            output << "'";
+            break;
+          }
+          case IfcTokenType::ENUM: {
+            output << "." << _tokenStream->ReadString() << ".";
+            break;
+          }
+          case IfcTokenType::REF: {
+            output << "#" << _tokenStream->Read<uint32_t>();
+            if (newLine) output << "=";
+            break;
+          }
+          case IfcTokenType::LABEL:
+          case IfcTokenType::REAL:
+          case IfcTokenType::INTEGER: {
+            output << _tokenStream->ReadString();
+            break;
+          }
+          default:
+            break;
+        }
+
+        if (t == IfcTokenType::LINE_END) {
+          newLine = true;
+          insideSet = false;
+        } else {
+          newLine = false;
+        }
+        prev = t;
       }
-      prev = t;
     }
-  }
-  output << "ENDSEC;" << std::endl << "DATA;" << std::endl;
-  for (uint32_t i = 0; i < _lines.size(); i++) {
-    _tokenStream->MoveTo(_lines[i].tapeOffset);
-    bool newLine = true;
-    bool insideSet = false;
-    IfcTokenType prev = IfcTokenType::EMPTY;
-    while (!_tokenStream->IsAtEnd()) {
-      IfcTokenType t = static_cast<IfcTokenType>(_tokenStream->Read<char>());
-
-      if (t != IfcTokenType::SET_END && t != IfcTokenType::LINE_END) {
-        if (insideSet && prev != IfcTokenType::SET_BEGIN &&
-            prev != IfcTokenType::LABEL && prev != IfcTokenType::LINE_END) {
-          output << ",";
-        }
-      }
-
-      if (t == IfcTokenType::LINE_END) {
-        output << ";" << std::endl;
-        break;
-      }
-
-      switch (t) {
-        case IfcTokenType::UNKNOWN: {
-          output << "*";
-          break;
-        }
-        case IfcTokenType::EMPTY: {
-          output << "$";
-          break;
-        }
-        case IfcTokenType::SET_BEGIN: {
-          output << "(";
-          insideSet = true;
-          break;
-        }
-        case IfcTokenType::SET_END: {
-          output << ")";
-          break;
-        }
-        case IfcTokenType::STRING: {
-          output << "'" << p21encode(_tokenStream->ReadString()) << "'";
-          break;
-        }
-        case IfcTokenType::ENUM: {
-          output << "." << _tokenStream->ReadString() << ".";
-          break;
-        }
-        case IfcTokenType::LABEL: {
-          output << _tokenStream->ReadString();
-          break;
-        }
-        case IfcTokenType::REF: {
-          output << "#" << _tokenStream->Read<uint32_t>();
-          if (newLine) output << "=";
-          break;
-        }
-        case IfcTokenType::REAL: {
-          output << getAsStringWithBigE(_tokenStream->Read<double>());
-          break;
-        }
-        default:
-          break;
-      }
-
-      if (t == IfcTokenType::LINE_END) {
-        newLine = true;
-        insideSet = false;
-      } else {
-        newLine = false;
-      }
-      prev = t;
-    }
+    if (z == 0) output << "ENDSEC;" << std::endl << "DATA;" << std::endl;
   }
   output << "ENDSEC;" << std::endl << "END-ISO-10303-21;";
   std::string tmp = output.str();
-  const char *outputString = tmp.c_str();
-  outputData((char *)outputString, tmp.size());
+  outputData((char *)tmp.c_str(), tmp.size());
 }
 
 void IfcLoader::SaveFile(std::ostream &outputData) const {
@@ -258,36 +192,24 @@ void IfcLoader::ParseLines() {
     IfcTokenType t = static_cast<IfcTokenType>(_tokenStream->Read<char>());
     switch (t) {
       case IfcTokenType::LINE_END: {
-        if (currentExpressID != 0) {
-          IfcLine l;
-          l.expressID = currentExpressID;
-          l.ifcType = currentIfcType;
-          l.lineIndex = static_cast<uint32_t>(_lines.size());
-          l.tapeOffset = currentTapeOffset;
-          l.tapeEnd = _tokenStream->GetReadOffset();
-          _ifcTypeToLineID[l.ifcType].push_back(l.lineIndex);
-          maxExpressId = std::max(maxExpressId, l.expressID);
-
-          _lines.push_back(std::move(l));
-        } else if (currentIfcType != 0) {
+        if (currentIfcType != 0) {
+          IfcLine *l = new IfcLine();
+          l->ifcType = currentIfcType;
+          l->tapeOffset = currentTapeOffset;
           if (currentIfcType == webifc::schema::FILE_DESCRIPTION ||
               currentIfcType == webifc::schema::FILE_NAME ||
               currentIfcType == webifc::schema::FILE_SCHEMA) {
-            IfcHeaderLine l;
-            l.ifcType = currentIfcType;
-            l.lineIndex = static_cast<uint32_t>(_headerLines.size());
-            l.tapeOffset = currentTapeOffset;
-            l.tapeEnd = _tokenStream->GetReadOffset();
-            _ifcTypeToHeaderLineID[l.ifcType].push_back(l.lineIndex);
-            _headerLines.push_back(std::move(l));
+            _headerLines.push_back(l);
+          } else if (currentExpressID != 0) {
+            _ifcTypeToExpressID[currentIfcType].push_back(currentExpressID);
+            maxExpressId = std::max(maxExpressId, currentExpressID);
+            _lines.resize(maxExpressId, _nullLine);
+            _lines[currentExpressID - 1] = l;
+            currentExpressID = 0;
           }
+          currentIfcType = 0;
         }
-
-        // reset
-        currentExpressID = 0;
-        currentIfcType = 0;
         currentTapeOffset = _tokenStream->GetReadOffset();
-
         break;
       }
       case IfcTokenType::UNKNOWN:
@@ -296,105 +218,171 @@ void IfcLoader::ParseLines() {
       case IfcTokenType::SET_END:
         break;
       case IfcTokenType::STRING:
+      case IfcTokenType::REAL:
+      case IfcTokenType::INTEGER:
       case IfcTokenType::ENUM: {
-        _tokenStream->ReadString();
-
+        auto size = _tokenStream->Read<uint16_t>();
+        _tokenStream->Forward(size);
         break;
       }
       case IfcTokenType::LABEL: {
         std::string_view s = _tokenStream->ReadString();
-        if (currentIfcType == 0) {
+        if (currentIfcType == 0)
           currentIfcType = _schemaManager.IfcTypeToTypeCode(s);
-        }
-
         break;
       }
       case IfcTokenType::REF: {
         uint32_t ref = _tokenStream->Read<uint32_t>();
-        if (currentExpressID == 0) {
-          currentExpressID = ref;
-        }
-
-        break;
-      }
-      case IfcTokenType::REAL: {
-        _tokenStream->Forward(sizeof(double));
+        if (currentExpressID == 0) currentExpressID = ref;
         break;
       }
       default:
         break;
     }
   }
-  _expressIDToLine.resize(maxExpressId + 1);
-  for (uint32_t i = 1; i <= _lines.size(); i++)
-    _expressIDToLine[_lines[i - 1].expressID] = i;
 }
 
-size_t IfcLoader::GetNumLines() const { return _lines.size(); }
-
-const std::vector<uint32_t> IfcLoader::GetLineIDsWithType(
-    const uint32_t type) const {
-  if (_ifcTypeToLineID.count(type) == 0) return {};
-  return _ifcTypeToLineID.at(type);
-}
-
-uint32_t IfcLoader::GetMaxExpressId() const {
-  if (_expressIDToLine.size() == 0) return 0;
-  return _expressIDToLine.size() - 1;
-}
+uint32_t IfcLoader::GetMaxExpressId() const { return _lines.size(); }
 
 bool IfcLoader::IsValidExpressID(const uint32_t expressID) const {
-  if (_expressIDToLine[expressID] == 0)
+  if (expressID == 0 || expressID > _lines.size() ||
+      _lines[expressID - 1] == _nullLine)
     return false;
   else
     return true;
 }
 
-uint32_t IfcLoader::ExpressIDToLineID(const uint32_t expressID) const {
-  return _expressIDToLine[expressID] - 1;
-}
-
-uint32_t IfcLoader::LineIDToExpressID(const uint32_t lineID) const {
-  return _lines[lineID].expressID;
-}
-
-const IfcLine &IfcLoader::GetLine(const uint32_t lineID) const {
-  return _lines[lineID];
+uint32_t IfcLoader::GetLineType(const uint32_t expressID) const {
+  if (expressID == 0 || expressID > _lines.size()) {
+    _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
+                              "Attempt to Access Invalid ExpressID", expressID);
+    return 0;
+  }
+  return _lines[expressID - 1]->ifcType;
 }
 
 IfcLoader::~IfcLoader() { delete _tokenStream; }
 
-void IfcLoader::MoveToLineArgument(const uint32_t lineID,
+void IfcLoader::MoveToLineArgument(const uint32_t expressID,
                                    const uint32_t argumentIndex) const {
-  MoveToArgumentOffset(_lines[lineID], argumentIndex);
+  _tokenStream->MoveTo(_lines[expressID - 1]->tapeOffset);
+  ArgumentOffset(argumentIndex);
 }
 
 void IfcLoader::MoveToHeaderLineArgument(const uint32_t lineID,
                                          const uint32_t argumentIndex) const {
-  _tokenStream->MoveTo(_headerLines[lineID].tapeOffset);
+  _tokenStream->MoveTo(_headerLines[lineID]->tapeOffset);
   ArgumentOffset(argumentIndex);
 }
 
-std::string IfcLoader::GetStringArgument() const {
-  std::string s = std::string(GetStringViewArgument());
-  return s;
+std::string_view IfcLoader::GetStringArgument() const {
+  _tokenStream->Read<char>();  // string type
+  return _tokenStream->ReadString();
 }
 
-std::string_view IfcLoader::GetStringViewArgument() const {
-  _tokenStream->Read<char>();  // string type
-  std::string_view s = _tokenStream->ReadString();
-  return s;
+std::string IfcLoader::GetDecodedStringArgument() const {
+  std::string_view str = GetStringArgument();
+  return p21decode(str);
+}
+
+template <typename T>
+inline void format_helper(std::ostringstream &oss, std::string_view &str,
+                          const T &value) {
+  // find the {}
+  std::size_t openBracket = str.find('{');
+  if (openBracket == std::string::npos) {
+    return;
+  }
+  std::size_t closeBracket = str.find('}', openBracket + 1);
+  if (closeBracket == std::string::npos) {
+    return;
+  }
+
+  // After this line, the output stream will be:
+  // The output stream + the string view up to (but not including) {} + the
+  // value argument.
+  oss << str.substr(0, openBracket) << value;
+
+  // Change the string view reference so that subsequent recursive calls start
+  // after the {} that this function just took care of.
+  str = str.substr(closeBracket + 1);
+}
+
+// Given a string with any number of {} and any number of arguments, return a
+// string that has each subsequent {} replaced with one of the subsequent
+// arguments.
+//  e.g. format("Hello {} {}", world, 123) returns "Hello world 123"
+template <typename... Targs>
+inline std::string format(
+    std::string_view str,
+    Targs... args)  // Define a function that takes a string_view and any number
+                    // of arguments of type Targs.
+{
+  std::ostringstream oss;  // define an output string stream that allows us to
+                           // insert characters into a string buffer.
+  (format_helper(oss, str, args),
+   ...);  // recursively call format_helper on each argument. This takes the
+          // string stream, a reference of the string view, and one of the
+          // arguments.
+  oss << str;
+  return oss.str();
+}
+
+void IfcLoader::PushDouble(double input) {
+  std::string numberString = format("{}", input);
+  if (std::floor(input) == input) numberString += '.';
+  size_t eLoc = numberString.find_first_of('e');
+  if (eLoc != std::string::npos) numberString[eLoc] = 'E';
+  uint16_t length = numberString.size();
+  Push<uint16_t>((uint16_t)length);
+  Push((void *)numberString.c_str(), numberString.size());
+}
+
+void IfcLoader::PushInt(int input) {
+  std::string numberString = std::to_string(input);
+  uint16_t length = numberString.size();
+  Push<uint16_t>((uint16_t)length);
+  Push((void *)numberString.c_str(), numberString.size());
 }
 
 double IfcLoader::GetDoubleArgument() const {
-  _tokenStream->Read<char>();  // real type
-  return _tokenStream->Read<double>();
+  std::string_view str = GetStringArgument();
+  double number_value;
+  fast_float::from_chars(str.data(), str.data() + str.size(), number_value);
+  return number_value;
+}
+
+std::string_view IfcLoader::GetDoubleArgumentAsString() const {
+  return GetStringArgument();
+}
+
+int IfcLoader::GetIntArgument() const {
+  std::string_view str = GetStringArgument();
+  return std::stoi(std::string(str));
+}
+
+int IfcLoader::GetIntArgument(const uint32_t tapeOffset) const {
+  _tokenStream->MoveTo(tapeOffset);
+  return GetIntArgument();
+}
+
+uint32_t IfcLoader::GetCurrentLineExpressID() const {
+  if (_lines.size() == 0) return 0;
+  uint32_t pos = _tokenStream->GetReadOffset();
+  uint32_t prevLine = 0;
+  for (size_t i = 0; i < _lines.size(); i++) {
+    if (_lines[i] == _nullLine) continue;
+    if (_lines[i]->tapeOffset > pos) break;
+    prevLine = i;
+  }
+  return prevLine + 1;
 }
 
 uint32_t IfcLoader::GetRefArgument() const {
   if (_tokenStream->Read<char>() != IfcTokenType::REF) {
     _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
-                              "unexpected token type, expected REF");
+                              "unexpected token type, expected REF",
+                              GetCurrentLineExpressID());
     return 0;
   }
   return _tokenStream->Read<uint32_t>();
@@ -410,47 +398,34 @@ double IfcLoader::GetDoubleArgument(const uint32_t tapeOffset) const {
   return GetDoubleArgument();
 }
 
-void IfcLoader::UpdateLineTape(const uint32_t expressID, const uint32_t type,
-                               const uint32_t start, const uint32_t end) {
-  if (expressID >= _expressIDToLine.size()) {
-    // allocate some space
-    _expressIDToLine.resize(expressID + 1);
-  }
-
-  // new line?
-  if (_expressIDToLine[expressID] == 0) {
-    // create line object
-    int lineID = _lines.size();
-    _lines.emplace_back();
-
-    // create a line ID
-    _expressIDToLine[expressID] = lineID + 1;
-    auto &line = _lines[lineID];
-
-    // fill line data
-    line.expressID = expressID;
-    line.lineIndex = lineID;
-    line.ifcType = type;
-
-    _ifcTypeToLineID[type].push_back(lineID);
-  }
-
-  auto lineID = _expressIDToLine[expressID] - 1;
-  auto &line = _lines[lineID];
-
-  line.tapeOffset = start;
-  line.tapeEnd = end;
+void IfcLoader::RemoveLine(const uint32_t expressID) {
+  _lines[expressID - 1]->ifcType = 0;
 }
 
-void IfcLoader::AddHeaderLineTape(const uint32_t type, const uint32_t start,
-                                  const uint32_t end) {
-  IfcHeaderLine l;
-  l.ifcType = type;
-  l.lineIndex = static_cast<uint32_t>(_headerLines.size());
-  l.tapeOffset = start;
-  l.tapeEnd = end;
-  _ifcTypeToHeaderLineID[l.ifcType].push_back(l.lineIndex);
-  _headerLines.push_back(std::move(l));
+void IfcLoader::ExtendLineStorage(uint32_t lineStorageSize) {
+  _lines.reserve(_lines.size() + lineStorageSize);
+}
+
+void IfcLoader::UpdateLineTape(const uint32_t expressID, const uint32_t type,
+                               const uint32_t start) {
+  if (expressID > _lines.size()) {
+    // create line object
+    IfcLine *line = new IfcLine();
+    _lines.push_back(line);
+    // fill line data
+    line->ifcType = type;
+    line->tapeOffset = start;
+    _ifcTypeToExpressID[type].push_back(expressID);
+
+  } else
+    _lines[expressID - 1]->tapeOffset = start;
+}
+
+void IfcLoader::AddHeaderLineTape(const uint32_t type, const uint32_t start) {
+  IfcLine *l = new IfcLine();
+  l->ifcType = type;
+  l->tapeOffset = start;
+  _headerLines.push_back(l);
 }
 
 IfcTokenType IfcLoader::GetTokenType(uint32_t tapeOffset) const {
@@ -466,7 +441,8 @@ uint32_t IfcLoader::GetOptionalRefArgument() const {
     return _tokenStream->Read<uint32_t>();
   } else {
     _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
-                              "unexpected token type, expected REF or EMPTY");
+                              "unexpected token type, expected REF or EMPTY",
+                              GetCurrentLineExpressID());
     return 0;
   }
 }
@@ -496,19 +472,17 @@ const std::vector<uint32_t> IfcLoader::GetSetArgument() const {
     } else {
       tapeOffsets.push_back(offset);
 
-      if (t == IfcTokenType::REAL) {
-        _tokenStream->Read<double>();
-      } else if (t == IfcTokenType::REF) {
+      if (t == IfcTokenType::REF) {
         _tokenStream->Read<uint32_t>();
-      } else if (t == IfcTokenType::STRING) {
-        uint16_t length = _tokenStream->Read<uint16_t>();
-        _tokenStream->Forward(length);
-      } else if (t == IfcTokenType::LABEL) {
+      } else if (t == IfcTokenType::STRING || t == IfcTokenType::INTEGER ||
+                 t == IfcTokenType::REAL || t == IfcTokenType::LABEL ||
+                 t == IfcTokenType::ENUM) {
         uint16_t length = _tokenStream->Read<uint16_t>();
         _tokenStream->Forward(length);
       } else {
         _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
-                                  "unexpected token");
+                                  "unexpected token",
+                                  GetCurrentLineExpressID());
       }
     }
 
@@ -542,19 +516,17 @@ const std::vector<std::vector<uint32_t>> IfcLoader::GetSetListArgument() const {
     } else {
       tempSet.push_back(offset);
 
-      if (t == IfcTokenType::REAL) {
-        _tokenStream->Read<double>();
-      } else if (t == IfcTokenType::REF) {
+      if (t == IfcTokenType::REF) {
         _tokenStream->Read<uint32_t>();
-      } else if (t == IfcTokenType::STRING) {
-        uint16_t length = _tokenStream->Read<uint16_t>();
-        _tokenStream->Forward(length);
-      } else if (t == IfcTokenType::LABEL) {
+      } else if (t == IfcTokenType::STRING || t == IfcTokenType::INTEGER ||
+                 t == IfcTokenType::REAL || t == IfcTokenType::LABEL ||
+                 t == IfcTokenType::ENUM) {
         uint16_t length = _tokenStream->Read<uint16_t>();
         _tokenStream->Forward(length);
       } else {
         _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
-                                  "unexpected token");
+                                  "unexpected token",
+                                  GetCurrentLineExpressID());
       }
     }
 
@@ -583,7 +555,8 @@ void IfcLoader::ArgumentOffset(const uint32_t argumentIndex) const {
     switch (t) {
       case IfcTokenType::LINE_END: {
         _errorHandler.ReportError(utility::LoaderErrorType::PARSING,
-                                  "unexpected line end");
+                                  "unexpected line end",
+                                  GetCurrentLineExpressID());
         break;
       }
       case IfcTokenType::UNKNOWN:
@@ -600,7 +573,9 @@ void IfcLoader::ArgumentOffset(const uint32_t argumentIndex) const {
         break;
       case IfcTokenType::STRING:
       case IfcTokenType::ENUM:
-      case IfcTokenType::LABEL: {
+      case IfcTokenType::LABEL:
+      case IfcTokenType::INTEGER:
+      case IfcTokenType::REAL: {
         uint16_t length = _tokenStream->Read<uint16_t>();
         _tokenStream->Forward(length);
         break;
@@ -609,19 +584,15 @@ void IfcLoader::ArgumentOffset(const uint32_t argumentIndex) const {
         _tokenStream->Read<uint32_t>();
         break;
       }
-      case IfcTokenType::REAL: {
-        _tokenStream->Read<double>();
-        break;
-      }
       default:
         break;
     }
   }
 }
 
-void IfcLoader::MoveToArgumentOffset(const IfcLine &line,
+void IfcLoader::MoveToArgumentOffset(const uint32_t expressID,
                                      const uint32_t argumentIndex) const {
-  _tokenStream->MoveTo(line.tapeOffset);
+  _tokenStream->MoveTo(_lines[expressID - 1]->tapeOffset);
   ArgumentOffset(argumentIndex);
 }
 
@@ -632,6 +603,7 @@ double IfcLoader::GetOptionalDoubleParam(double defaultValue = 0) const {
     StepBack();
     return GetDoubleArgument();
   }
+  StepBack();
   return defaultValue;
 }
 
