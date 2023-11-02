@@ -710,6 +710,11 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
 }
 
 IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile *parameters) {
+
+  printf("parameters->transformation:\n");
+  printf("[0][0]: %.3f, [0][1]: %.3f, [0][2]: %.3f\n", parameters->transformation[0][0], parameters->transformation[0][1], parameters->transformation[0][2]);
+  printf("[1][0]: %.3f, [1][1]: %.3f, [1][2]: %.3f\n", parameters->transformation[1][0], parameters->transformation[1][1], parameters->transformation[1][2]);
+  printf("[2][0]: %.3f, [2][1]: %.3f, [2][2]: %.3f\n", parameters->transformation[2][0], parameters->transformation[2][1], parameters->transformation[2][2]);
   if (!parameters->profile.isComposite)
       {
         for (uint32_t i = 0; i < parameters->profile.curve.points.size(); i++)
@@ -748,6 +753,8 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 
   } else if (parameters.isCartesianTransformationOperator2D ||
              parameters.isCartesianTransformationOperator2DNonUniform) {
+
+    printf("parameters.isCartesianTransformationOperator2D: %s\n", (parameters.isCartesianTransformationOperator2D) ? "True" : "False");
     double scale1 = 1.0;
     double scale2 = 1.0;
 
@@ -777,11 +784,22 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
     if (parameters.isCartesianTransformationOperator2D) {
       scale2 = scale1;
     }
+    glm::dmat3 mat = glm::dmat3(glm::dvec3(Axis1 * scale1, 0),
+                      glm::dvec3(Axis2 * scale2, 0), glm::dvec3(pos, 1));
+    printf("axis1: x: %.3f, y: %.3f\n", Axis1.x, Axis1.y);
+    printf("axis2: x: %.3f, y: %.3f\n", Axis2.x, Axis2.y);
+    printf("scale1: %.3f\n",scale1);
+    printf("scale2: %.3f\n",scale2);
 
+      printf("mat:\n");
+  printf("[0][0]: %.3f, [0][1]: %.3f, [0][2]: %.3f\n", mat[0][0], mat[0][1], mat[0][2]);
+  printf("[1][0]: %.3f, [1][1]: %.3f, [1][2]: %.3f\n", mat[1][0], mat[1][1], mat[1][2]);
+  printf("[2][0]: %.3f, [2][1]: %.3f, [2][2]: %.3f\n", mat[2][0], mat[2][1], mat[2][2]);
     return glm::dmat3(glm::dvec3(Axis1 * scale1, 0),
                       glm::dvec3(Axis2 * scale2, 0), glm::dvec3(pos, 1));
   }
 
+  printf("wtf?\n");
   return glm::dmat3();
 }
 
