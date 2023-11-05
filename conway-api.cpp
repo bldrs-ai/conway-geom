@@ -455,6 +455,104 @@ glm::dmat4 GetIdentity3DMatrix() {
   return placementIdentity3D;
 }
 
+std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_, size_t length) {
+
+   const float* verticesArray = reinterpret_cast<float*>(verticesArray_);
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or accessible here
+  std::vector<glm::vec3> vec;
+  vec.resize(length / 3);
+  for (size_t i = 0; i < length / 3; ++i) {
+    glm::vec3 vertex = glm::vec3(
+      verticesArray[i * 3],
+      verticesArray[i * 3 + 1],
+      verticesArray[i * 3 + 2]
+    );
+
+   // printf("vertex %i: x: %.3f, y: %.3f, z: %5.3f\n", i, vertex.x, vertex.y, vertex.z);
+    vec[i] = vertex;
+  }
+
+  return vec;
+}
+
+std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>
+buildIndexedPolygonalFaceVector(uintptr_t indicesArray_, 
+                                uint32_t indicesArrayLength,
+                                uintptr_t startIndicesArray_, 
+                                uintptr_t polygonalFaceBufferOffsetsArray_,
+                                uint32_t polygonalFaceBufferOffsetsLength,
+                                uintptr_t startIndicesBufferOffsets_,
+                                uint32_t startIndicesBufferOffsetsLength) {
+
+    const uint32_t* indicesArray = reinterpret_cast<uint32_t*>(indicesArray_);
+    const uint32_t* startIndicesArray = reinterpret_cast<uint32_t*>(startIndicesArray_);
+    const uint32_t* polygonalFaceBufferOffsetsArray = reinterpret_cast<uint32_t*>(polygonalFaceBufferOffsetsArray_);
+    const uint32_t* startIndicesBufferOffsets = reinterpret_cast<uint32_t*>(startIndicesBufferOffsets_);
+    std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace> result;
+
+    /*for (int i = 0; i < 5; ++i) {
+      printf("indicesArray[%i]: %i\n", i, indicesArray[i]);
+    }
+
+        for (int i = 0; i < 5; ++i) {
+      printf("startIndicesArray[%i]: %i\n", i, startIndicesArray[i]);
+    }
+
+        for (int i = 0; i < 5; ++i) {
+      printf("polygonalFaceBufferOffsetsArray[%i]: %i\n", i, polygonalFaceBufferOffsetsArray[i]);
+    }
+
+        for (int i = 0; i < 5; ++i) {
+      printf("startIndicesBufferOffsets[%i]: %i\n", i, startIndicesBufferOffsets[i]);
+    }*/
+
+    // Loop through each polygonal face buffer offset
+    for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength; ++index) {
+        // Create a new IndexedPolygonalFace
+        conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace indexedPolygonalFace;
+
+        // The starting point for this face in the startIndicesArray
+        uint32_t startOffset = startIndicesBufferOffsets[index];
+        // The ending point for this face in the startIndicesArray
+        uint32_t endOffset = (index + 1 < startIndicesBufferOffsetsLength) ? startIndicesBufferOffsets[index + 1] : startIndicesBufferOffsetsLength;
+        
+      //printf("startOffset: %i\nendOffset: %i\n", startOffset, endOffset);
+        // Populate the face_starts vector with indices from the startIndicesArray
+        for (uint32_t j = startOffset; j < endOffset; ++j) {
+            indexedPolygonalFace.face_starts.push_back(startIndicesArray[j]);
+        }
+        
+        // Now, populate the indices vector
+        // If this is not the last face, the end index is the start index of the next face
+        // If this is the last face, the end index is the total length of indicesArray
+        uint32_t indicesStart = polygonalFaceBufferOffsetsArray[index];
+        uint32_t indicesEnd = (index + 1 < polygonalFaceBufferOffsetsLength) 
+                              ? polygonalFaceBufferOffsetsArray[index + 1] 
+                              : indicesArrayLength;
+
+       // printf("indicesStart: %i\nindicesEnd: %i\n", indicesStart, indicesEnd);
+
+        for (uint32_t k = indicesStart; k < indicesEnd; ++k) {
+            indexedPolygonalFace.indices.push_back(indicesArray[k]);
+        }
+
+        /*for (int i = 0; i < indexedPolygonalFace.face_starts.size(); ++i) {
+          printf("index: %i: face_starts[%i]: %i\n", index, i, indexedPolygonalFace.face_starts[i]);
+        }
+
+        for (int i = 0; i < indexedPolygonalFace.indices.size(); ++i) {
+          printf("index: %i: indices[%i] %i\n", index, i, indexedPolygonalFace.indices[i]);
+        }*/
+
+        // Add the constructed face to the result vector
+        result.push_back(indexedPolygonalFace);
+    }
+
+    return result;
+}
+
+
+
 EMSCRIPTEN_BINDINGS(my_module) {
   /*
     active: boolean
@@ -1124,6 +1222,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
 
+  emscripten::function("createVertexVector", &createVertexVector, emscripten::allow_raw_pointers());
   emscripten::function("getPolygonalFaceSetGeometry",
                        &GetPolygonalFaceSetGeometry);
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
@@ -1170,4 +1269,5 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getZShapeCurve", &GetZShapeCurve);
   emscripten::function("getIdentity2DMatrix", &GetIdentity2DMatrix);
   emscripten::function("getIdentity3DMatrix", &GetIdentity3DMatrix);
+  emscripten::function("buildIndexedPolygonalFaceVector", &buildIndexedPolygonalFaceVector, emscripten::allow_raw_pointers());
 }

@@ -737,7 +737,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s USE_ES6_IMPORT_META=0",
-        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_RUNTIME_METHODS=[\'wasmMemory','FS', 'WORKERFS', 'ccall','cwrap','getValue','setValue','allocate','intArrayFromString','intArrayToString','AsciiToString','stringToAscii','UTF8ArrayToString','UTF8ToString','stringToUTF8Array','stringToUTF8','lengthBytesUTF8','stackTrace','addOnPreRun','addOnInit','addOnPreMain','addOnExit','addOnPostRun','print','printErr','getMemory','HEAP8','HEAP16','HEAP32','HEAPU8','HEAPU16','HEAPU32','HEAPF32','HEAPF64','dynCall','addFunction','removeFunction','getFunction','getProcAddress','ALLOC_NORMAL','ALLOC_STACK','ALLOC_STATIC','ALLOC_DYNAMIC','ALLOC_NONE','calledRun']",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-sNO_DISABLE_EXCEPTION_CATCHING",
@@ -762,7 +762,7 @@ else
         "-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
-        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_RUNTIME_METHODS=[\"wasmMemory,ccall,cwrap,getValue,setValue,allocate,intArrayFromString,intArrayToString,AsciiToString,stringToAscii,UTF8ArrayToString,UTF8ToString,stringToUTF8Array,stringToUTF8,lengthBytesUTF8,stackTrace,addOnPreRun,addOnInit,addOnPreMain,addOnExit,addOnPostRun,print,printErr,getMemory,HEAP8,HEAP16,HEAP32,HEAPU8,HEAPU16,HEAPU32,HEAPF32,HEAPF64,dynCall,addFunction,removeFunction,getFunction,getProcAddress,ALLOC_NORMAL,ALLOC_STACK,ALLOC_STATIC,ALLOC_DYNAMIC,ALLOC_NONE,calledRun,FS, WORKERFS\"]",
         "-lworkerfs.js"
     }
 end
