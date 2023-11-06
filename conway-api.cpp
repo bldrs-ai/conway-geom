@@ -468,7 +468,6 @@ std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_, size_t lengt
       verticesArray[i * 3 + 2]
     );
 
-   // printf("vertex %i: x: %.3f, y: %.3f, z: %5.3f\n", i, vertex.x, vertex.y, vertex.z);
     vec[i] = vertex;
   }
 
@@ -489,22 +488,6 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
     const uint32_t* polygonalFaceBufferOffsetsArray = reinterpret_cast<uint32_t*>(polygonalFaceBufferOffsetsArray_);
     const uint32_t* startIndicesBufferOffsets = reinterpret_cast<uint32_t*>(startIndicesBufferOffsets_);
     std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace> result;
-
-    /*for (int i = 0; i < 5; ++i) {
-      printf("indicesArray[%i]: %i\n", i, indicesArray[i]);
-    }
-
-        for (int i = 0; i < 5; ++i) {
-      printf("startIndicesArray[%i]: %i\n", i, startIndicesArray[i]);
-    }
-
-        for (int i = 0; i < 5; ++i) {
-      printf("polygonalFaceBufferOffsetsArray[%i]: %i\n", i, polygonalFaceBufferOffsetsArray[i]);
-    }
-
-        for (int i = 0; i < 5; ++i) {
-      printf("startIndicesBufferOffsets[%i]: %i\n", i, startIndicesBufferOffsets[i]);
-    }*/
 
     // Loop through each polygonal face buffer offset
     for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength; ++index) {
@@ -530,19 +513,9 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
                               ? polygonalFaceBufferOffsetsArray[index + 1] 
                               : indicesArrayLength;
 
-       // printf("indicesStart: %i\nindicesEnd: %i\n", indicesStart, indicesEnd);
-
         for (uint32_t k = indicesStart; k < indicesEnd; ++k) {
             indexedPolygonalFace.indices.push_back(indicesArray[k]);
         }
-
-        /*for (int i = 0; i < indexedPolygonalFace.face_starts.size(); ++i) {
-          printf("index: %i: face_starts[%i]: %i\n", index, i, indexedPolygonalFace.face_starts[i]);
-        }
-
-        for (int i = 0; i < indexedPolygonalFace.indices.size(); ++i) {
-          printf("index: %i: indices[%i] %i\n", index, i, indexedPolygonalFace.indices[i]);
-        }*/
 
         // Add the constructed face to the result vector
         result.push_back(indexedPolygonalFace);
