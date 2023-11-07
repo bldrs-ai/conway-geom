@@ -495,7 +495,10 @@ project "ConwayGeomWasmNode"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20"
+            "-std=c++20",
+            -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
+            -- "-msimd128",
+            -- "-DGLM_FORCE_INTRINSICS=1"
         }
 
     configuration {"windows or macosx or linux"}

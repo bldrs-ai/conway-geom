@@ -951,7 +951,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve>(
-      "paramsGetIShapeCurve")
+      "ParamsGetIShapeCurve")
       .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetIShapeCurve::hasPlacement)
       .field("placement", &conway::geometry::ConwayGeometryProcessor::
