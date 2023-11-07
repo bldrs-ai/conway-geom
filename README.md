@@ -6,6 +6,22 @@
 2. Install the `gmake` and `node` dependencies via Homebrew (```brew install gmake node```).
 3. Clone this repo and navigate to the root of the repository.
 
+We've noticed some sentitivity in versions, so here's the most recent working ver:
+```
+emsdk % ./emsdk activate latest
+Resolving SDK alias 'latest' to '3.1.48'
+Resolving SDK version '3.1.48' to 'sdk-releases-694434b6d47c5f6eff2c8fbd9eeb016c977ae9dc-64bit'
+Setting the following tools as active:
+   node-16.20.0-64bit
+   python-3.9.2-64bit
+   releases-694434b6d47c5f6eff2c8fbd9eeb016c977ae9dc-64bit
+emscripten % ./emcc -v 
+emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.30 (cfe2bdfe2692457cb5f5770672f6e5ccb3ffc2f2)
+clang version 16.0.0 (https://github.com/llvm/llvm-project 800f0f1546b2352ba42a4777149afb13cb874fcd)
+Target: wasm32-unknown-emscripten
+Thread model: posix
+```
+
 ### Init Win
 1. [Install MinGW-64](https://github.com/msys2/msys2-installer/releases/download/2022-06-03/msys2-x86_64-20220603.exe) and add ```g++.exe``` location to your PATH variable. 
 
