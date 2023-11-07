@@ -495,7 +495,7 @@ project "ConwayGeomWasmNode"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20",
+            "-std=c++20"
             -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
             -- "-msimd128",
             -- "-DGLM_FORCE_INTRINSICS=1"
@@ -537,7 +537,8 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         --"-s USE_ES6_IMPORT_META=0",
-       "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-sNO_DISABLE_EXCEPTION_CATCHING",
@@ -562,6 +563,7 @@ else
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-lworkerfs.js"
     }
 end
@@ -741,6 +743,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s USE_ES6_IMPORT_META=0",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-sNO_DISABLE_EXCEPTION_CATCHING",
@@ -766,6 +769,7 @@ else
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
+        "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-lworkerfs.js"
     }
 end
