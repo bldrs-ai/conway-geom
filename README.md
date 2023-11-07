@@ -15,9 +15,9 @@ Setting the following tools as active:
    node-16.20.0-64bit
    python-3.9.2-64bit
    releases-694434b6d47c5f6eff2c8fbd9eeb016c977ae9dc-64bit
-emscripten % ./emcc -v 
-emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.30 (cfe2bdfe2692457cb5f5770672f6e5ccb3ffc2f2)
-clang version 16.0.0 (https://github.com/llvm/llvm-project 800f0f1546b2352ba42a4777149afb13cb874fcd)
+emscripten % ./emcc -v
+emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 3.1.48 (e967e20b4727956a30592165a3c1cde5c67fa0a8)
+clang version 18.0.0 (https://github.com/llvm/llvm-project a54545ba6514802178cf7cf1c1dd9f7efbf3cde7)
 Target: wasm32-unknown-emscripten
 Thread model: posix
 ```
