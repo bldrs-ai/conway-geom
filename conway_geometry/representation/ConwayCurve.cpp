@@ -10,6 +10,7 @@
 
 #include <glm/glm.hpp>
 #include <vector>
+#include <algorithm>
 
 //#include "../operations/geometryutils.h"
 

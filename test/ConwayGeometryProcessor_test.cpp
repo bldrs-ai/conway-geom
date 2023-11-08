@@ -136,7 +136,7 @@ void testGetBooleanResult() {
       conway::geometry::ConwayGeometryProcessor();
   conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult
       paramsGetBooleanResult;
-  conwayGeometryProcessor.GetBooleanResult(paramsGetBooleanResult);
+  conwayGeometryProcessor.GetBooleanResult(&paramsGetBooleanResult);
 }
 
 void testGetBound() {
