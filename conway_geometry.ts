@@ -55,7 +55,6 @@ export interface GeometryObject {
   getMax(): Vector3
   getParts(): StdVector<GeometryObject>
   normalized: boolean
-  toObj(expressID: number): void
   delete(): void
 }
 

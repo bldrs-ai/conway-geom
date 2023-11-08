@@ -306,27 +306,6 @@ std::string GeometryToObj(const IfcGeometry &geom, size_t &offset,
   return obj;
 }
 
-void writeFile(std::wstring filename, std::string data) {
-  std::ofstream out(filename.c_str());
-  out << data;
-  out.close();
-}
-
-glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
-                        glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
-void DumpGeom(const IfcGeometry &geom, std::wstring filename) {
-  size_t offset = 0;
-  writeFile(filename, GeometryToObj(geom, offset, NormalizeMat));
-}
-
-void IfcGeometry::ToObj(uint32_t expressID) {
-  std::string fileName = "/Users/soar/Documents/GitHub/conway/";
-  fileName += std::to_string(expressID);
-  fileName += "relvoid_conway.obj";
-  std::wstring wsTmp(fileName.begin(), fileName.end());
-  DumpGeom(*this, wsTmp);
-}
-
 IfcGeometry IfcGeometry::Clone() { return *this; }
 
 void IfcGeometry::AppendWithTransform(IfcGeometry &geom,
