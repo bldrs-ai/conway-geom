@@ -594,7 +594,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getMin", &conway::geometry::IfcGeometry::getMin)
       .function("getMax", &conway::geometry::IfcGeometry::getMax)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
-      .function("toObj", &conway::geometry::IfcGeometry::ToObj)
       .function("clone", &conway::geometry::IfcGeometry::Clone);
 
   emscripten::class_<conway::geometry::IfcGeometryCollection>(
