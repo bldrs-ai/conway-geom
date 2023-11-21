@@ -411,6 +411,7 @@ export interface ParamsGetTriangulatedFaceSetGeometry {
   pointsArrayLength:number
   indices:number
   indicesArrayLength: number
+  delete():unknown
 };
 
 export interface ParamsPolygonalFaceSet {

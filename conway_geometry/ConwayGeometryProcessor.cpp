@@ -1349,8 +1349,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         numIndices += component.GetIndexDataSize();
       }
 
-      printf("numPoints: %i\n", numPoints);
-      printf("numIndices: %i\n", numIndices);
+      //printf("numPoints: %i\n", numPoints);
+      //printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =

@@ -455,6 +455,12 @@ void deleteParamsTransformProfile(
   delete params;
 }
 
+void deleteParamsGetTriangulatedFaceSetGeometry(
+    conway::geometry::ConwayGeometryProcessor::
+        ParamsGetTriangulatedFaceSetGeometry* params) {
+  delete params;
+}
+
 glm::dmat3 placementIdentity2D(1);
 
 glm::dmat3 GetIdentity2DMatrix() { return placementIdentity2D; }
@@ -480,7 +486,8 @@ std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_,
 }
 
 conway::geometry::IfcGeometry GetTriangulatedFaceSetGeometry(
-    const conway::geometry::ConwayGeometryProcessor::ParamsGetTriangulatedFaceSetGeometry& parameters) {
+    const conway::geometry::ConwayGeometryProcessor::
+        ParamsGetTriangulatedFaceSetGeometry& parameters) {
   if (processor) {
     return processor->getTriangulatedFaceSetGeometry(parameters);
   }
@@ -804,20 +811,22 @@ EMSCRIPTEN_BINDINGS(my_module) {
                           ParamsGetPolygonalFaceSetGeometry::faces);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
-                               ParamsGetTriangulatedFaceSetGeometry>(
+  emscripten::class_<conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetTriangulatedFaceSetGeometry>(
       "ParamsGetTriangulatedFaceSetGeometry")
-      .field("points", &conway::geometry::ConwayGeometryProcessor::
-                           ParamsGetTriangulatedFaceSetGeometry::pointsArray_)
-      .field("pointsArrayLength",
-             &conway::geometry::ConwayGeometryProcessor::
-                 ParamsGetTriangulatedFaceSetGeometry::pointsArrayLength)
-      .field("indices",
-             &conway::geometry::ConwayGeometryProcessor::
-                 ParamsGetTriangulatedFaceSetGeometry::indicesArray_)
-      .field("indicesArrayLength",
-             &conway::geometry::ConwayGeometryProcessor::
-                 ParamsGetTriangulatedFaceSetGeometry::indicesArrayLength);
+      .constructor<>()
+      .property("points",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::pointsArray_)
+      .property("pointsArrayLength",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::pointsArrayLength)
+      .property("indices",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::indicesArray_)
+      .property("indicesArrayLength",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::indicesArrayLength);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement2D
   emscripten::value_object<
@@ -1258,7 +1267,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getPolygonalFaceSetGeometry",
                        &GetPolygonalFaceSetGeometry);
   emscripten::function("getTriangulatedFaceSetGeometry",
-                       &GetTriangulatedFaceSetGeometry, emscripten::allow_raw_pointers());
+                       &GetTriangulatedFaceSetGeometry,
+                       emscripten::allow_raw_pointers());
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
@@ -1287,6 +1297,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("deleteParamsTransformProfile",
                        &deleteParamsTransformProfile,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsGetTriangulatedFaceSetGeometry",
+                       &deleteParamsGetTriangulatedFaceSetGeometry,
                        emscripten::allow_raw_pointers());
   emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
