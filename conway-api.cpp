@@ -241,8 +241,8 @@ glm::dmat4 GetAxis2Placement3D(
 }
 
 conway::geometry::IfcGeometry GetBooleanResult(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult
-        *parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult*
+        parameters) {
   if (processor) {
     return processor->GetBooleanResult(parameters);
   }
@@ -261,7 +261,8 @@ conway::geometry::IfcGeometry RelVoidSubtract(
 }
 
 conway::geometry::IfcCurve GetCShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetCShapeCurve(parameters);
   }
@@ -270,7 +271,8 @@ conway::geometry::IfcCurve GetCShapeCurve(
 }
 
 conway::geometry::IfcCurve GetIShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetIShapeCurve(parameters);
   }
@@ -279,7 +281,8 @@ conway::geometry::IfcCurve GetIShapeCurve(
 }
 
 conway::geometry::IfcCurve GetLShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetLShapeCurve(parameters);
   }
@@ -288,7 +291,8 @@ conway::geometry::IfcCurve GetLShapeCurve(
 }
 
 conway::geometry::IfcCurve GetTShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetTShapeCurve(parameters);
   }
@@ -297,7 +301,8 @@ conway::geometry::IfcCurve GetTShapeCurve(
 }
 
 conway::geometry::IfcCurve GetUShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetUShapeCurve(parameters);
   }
@@ -305,7 +310,9 @@ conway::geometry::IfcCurve GetUShapeCurve(
   return curve;
 }
 
-conway::geometry::IfcCurve GetZShapeCurve(conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve parameters) {
+conway::geometry::IfcCurve GetZShapeCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve
+        parameters) {
   if (processor) {
     return processor->GetZShapeCurve(parameters);
   }
@@ -313,7 +320,9 @@ conway::geometry::IfcCurve GetZShapeCurve(conway::geometry::ConwayGeometryProces
   return curve;
 }
 
-conway::geometry::IfcCurve GetEllipseCurve(conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve parameters) {
+conway::geometry::IfcCurve GetEllipseCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve
+        parameters) {
   if (processor) {
     return processor->getEllipseCurve(parameters);
   }
@@ -421,8 +430,8 @@ conway::geometry::IfcProfile createNativeIfcProfile(
 }
 
 conway::geometry::IfcProfile TransformProfile(
-    conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile
-        *parameters) {
+    conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile*
+        parameters) {
   if (processor) {
     return processor->transformProfile(parameters);
   }
@@ -436,37 +445,39 @@ glm::dmat4 getIdentityTransform() {
                     glm::dvec4(0, 0, 1, 0), glm::dvec4(0, 0, 0, 1));
 }
 
-void deleteParamsGetBooleanResult(conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult* params) {
+void deleteParamsGetBooleanResult(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult* params) {
   delete params;
 }
 
-void deleteParamsTransformProfile(conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile *params) {
+void deleteParamsTransformProfile(
+    conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile* params) {
+  delete params;
+}
+
+void deleteParamsGetTriangulatedFaceSetGeometry(
+    conway::geometry::ConwayGeometryProcessor::
+        ParamsGetTriangulatedFaceSetGeometry* params) {
   delete params;
 }
 
 glm::dmat3 placementIdentity2D(1);
 
-glm::dmat3 GetIdentity2DMatrix() {
-  return placementIdentity2D;
-}
+glm::dmat3 GetIdentity2DMatrix() { return placementIdentity2D; }
 
 glm::dmat4 placementIdentity3D(1);
-glm::dmat4 GetIdentity3DMatrix() {
-  return placementIdentity3D;
-}
+glm::dmat4 GetIdentity3DMatrix() { return placementIdentity3D; }
 
-std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_, size_t length) {
-
-   const float* verticesArray = reinterpret_cast<float*>(verticesArray_);
-  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or accessible here
+std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_,
+                                          size_t length) {
+  const float* verticesArray = reinterpret_cast<float*>(verticesArray_);
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
   std::vector<glm::vec3> vec;
   vec.resize(length / 3);
   for (size_t i = 0; i < length / 3; ++i) {
-    glm::vec3 vertex = glm::vec3(
-      verticesArray[i * 3],
-      verticesArray[i * 3 + 1],
-      verticesArray[i * 3 + 2]
-    );
+    glm::vec3 vertex = glm::vec3(verticesArray[i * 3], verticesArray[i * 3 + 1],
+                                 verticesArray[i * 3 + 2]);
 
     vec[i] = vertex;
   }
@@ -474,57 +485,73 @@ std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_, size_t lengt
   return vec;
 }
 
+conway::geometry::IfcGeometry GetTriangulatedFaceSetGeometry(
+    const conway::geometry::ConwayGeometryProcessor::
+        ParamsGetTriangulatedFaceSetGeometry& parameters) {
+  if (processor) {
+    return processor->getTriangulatedFaceSetGeometry(parameters);
+  }
+
+  conway::geometry::IfcGeometry geom;
+  return geom;
+}
+
 std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>
-buildIndexedPolygonalFaceVector(uintptr_t indicesArray_, 
+buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
                                 uint32_t indicesArrayLength,
-                                uintptr_t startIndicesArray_, 
+                                uintptr_t startIndicesArray_,
                                 uintptr_t polygonalFaceBufferOffsetsArray_,
                                 uint32_t polygonalFaceBufferOffsetsLength,
                                 uintptr_t startIndicesBufferOffsets_,
                                 uint32_t startIndicesBufferOffsetsLength) {
+  const uint32_t* indicesArray = reinterpret_cast<uint32_t*>(indicesArray_);
+  const uint32_t* startIndicesArray =
+      reinterpret_cast<uint32_t*>(startIndicesArray_);
+  const uint32_t* polygonalFaceBufferOffsetsArray =
+      reinterpret_cast<uint32_t*>(polygonalFaceBufferOffsetsArray_);
+  const uint32_t* startIndicesBufferOffsets =
+      reinterpret_cast<uint32_t*>(startIndicesBufferOffsets_);
+  std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>
+      result;
 
-    const uint32_t* indicesArray = reinterpret_cast<uint32_t*>(indicesArray_);
-    const uint32_t* startIndicesArray = reinterpret_cast<uint32_t*>(startIndicesArray_);
-    const uint32_t* polygonalFaceBufferOffsetsArray = reinterpret_cast<uint32_t*>(polygonalFaceBufferOffsetsArray_);
-    const uint32_t* startIndicesBufferOffsets = reinterpret_cast<uint32_t*>(startIndicesBufferOffsets_);
-    std::vector<conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace> result;
+  // Loop through each polygonal face buffer offset
+  for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength; ++index) {
+    // Create a new IndexedPolygonalFace
+    conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
+        indexedPolygonalFace;
 
-    // Loop through each polygonal face buffer offset
-    for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength; ++index) {
-        // Create a new IndexedPolygonalFace
-        conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace indexedPolygonalFace;
+    // The starting point for this face in the startIndicesArray
+    uint32_t startOffset = startIndicesBufferOffsets[index];
+    // The ending point for this face in the startIndicesArray
+    uint32_t endOffset = (index + 1 < startIndicesBufferOffsetsLength)
+                             ? startIndicesBufferOffsets[index + 1]
+                             : startIndicesBufferOffsetsLength;
 
-        // The starting point for this face in the startIndicesArray
-        uint32_t startOffset = startIndicesBufferOffsets[index];
-        // The ending point for this face in the startIndicesArray
-        uint32_t endOffset = (index + 1 < startIndicesBufferOffsetsLength) ? startIndicesBufferOffsets[index + 1] : startIndicesBufferOffsetsLength;
-        
-      //printf("startOffset: %i\nendOffset: %i\n", startOffset, endOffset);
-        // Populate the face_starts vector with indices from the startIndicesArray
-        for (uint32_t j = startOffset; j < endOffset; ++j) {
-            indexedPolygonalFace.face_starts.push_back(startIndicesArray[j]);
-        }
-        
-        // Now, populate the indices vector
-        // If this is not the last face, the end index is the start index of the next face
-        // If this is the last face, the end index is the total length of indicesArray
-        uint32_t indicesStart = polygonalFaceBufferOffsetsArray[index];
-        uint32_t indicesEnd = (index + 1 < polygonalFaceBufferOffsetsLength) 
-                              ? polygonalFaceBufferOffsetsArray[index + 1] 
-                              : indicesArrayLength;
-
-        for (uint32_t k = indicesStart; k < indicesEnd; ++k) {
-            indexedPolygonalFace.indices.push_back(indicesArray[k]);
-        }
-
-        // Add the constructed face to the result vector
-        result.push_back(indexedPolygonalFace);
+    // printf("startOffset: %i\nendOffset: %i\n", startOffset, endOffset);
+    //  Populate the face_starts vector with indices from the startIndicesArray
+    for (uint32_t j = startOffset; j < endOffset; ++j) {
+      indexedPolygonalFace.face_starts.push_back(startIndicesArray[j]);
     }
 
-    return result;
+    // Now, populate the indices vector
+    // If this is not the last face, the end index is the start index of the
+    // next face If this is the last face, the end index is the total length of
+    // indicesArray
+    uint32_t indicesStart = polygonalFaceBufferOffsetsArray[index];
+    uint32_t indicesEnd = (index + 1 < polygonalFaceBufferOffsetsLength)
+                              ? polygonalFaceBufferOffsetsArray[index + 1]
+                              : indicesArrayLength;
+
+    for (uint32_t k = indicesStart; k < indicesEnd; ++k) {
+      indexedPolygonalFace.indices.push_back(indicesArray[k]);
+    }
+
+    // Add the constructed face to the result vector
+    result.push_back(indexedPolygonalFace);
+  }
+
+  return result;
 }
-
-
 
 EMSCRIPTEN_BINDINGS(my_module) {
   /*
@@ -782,6 +809,24 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("faces", &conway::geometry::ConwayGeometryProcessor::
                           ParamsGetPolygonalFaceSetGeometry::faces);
 
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+  emscripten::class_<conway::geometry::ConwayGeometryProcessor::
+                         ParamsGetTriangulatedFaceSetGeometry>(
+      "ParamsGetTriangulatedFaceSetGeometry")
+      .constructor<>()
+      .property("points",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::pointsArray_)
+      .property("pointsArrayLength",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::pointsArrayLength)
+      .property("indices",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::indicesArray_)
+      .property("indicesArrayLength",
+                &conway::geometry::ConwayGeometryProcessor::
+                    ParamsGetTriangulatedFaceSetGeometry::indicesArrayLength);
+
   // conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement2D
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D>(
@@ -923,16 +968,25 @@ EMSCRIPTEN_BINDINGS(my_module) {
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
                  paramsGetIfcTrimmedCurve);
 
-  emscripten::class_<conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>("ParamsGetBooleanResult")
-    .constructor<>()
-    .property("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::flatFirstMesh)
-    .property("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::flatSecondMesh)
-    .property("operatorType", &conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult::operatorType);
+  emscripten::class_<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
+      "ParamsGetBooleanResult")
+      .constructor<>()
+      .property("flatFirstMesh", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetBooleanResult::flatFirstMesh)
+      .property("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::
+                                      ParamsGetBooleanResult::flatSecondMesh)
+      .property("operatorType", &conway::geometry::ConwayGeometryProcessor::
+                                    ParamsGetBooleanResult::operatorType);
 
-  emscripten::class_<conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile>("ParamsTransformProfile")
-  .constructor<>()
-  .property("transformation", &conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile::transformation)
-  .property("profile", &conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile::profile);
+  emscripten::class_<
+      conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile>(
+      "ParamsTransformProfile")
+      .constructor<>()
+      .property("transformation", &conway::geometry::ConwayGeometryProcessor::
+                                      ParamsTransformProfile::transformation)
+      .property("profile", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsTransformProfile::profile);
 
   /*emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
@@ -1081,36 +1135,49 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("flangeScope", &conway::geometry::ConwayGeometryProcessor::
                                 ParamsGetTShapeCurve::flangeScope);
 
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve>(
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve>(
       "ParamsGetUShapeCurve")
-      .field("hasPlacement",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::hasPlacement)
-       .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::placement)
-      .field("depth", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::depth)
-      .field("flangeWidth",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeWidth)
-      .field("webThickness",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::webThickness)
-      .field("flangeThickness",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeThickness)
-      .field("filletRadius",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::filletRadius)
-      .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::edgeRadius)
-      .field("flangeScope",
-             &conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve::flangeScope);
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetUShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetUShapeCurve::placement)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetUShapeCurve::depth)
+      .field("flangeWidth", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetUShapeCurve::flangeWidth)
+      .field("webThickness", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetUShapeCurve::webThickness)
+      .field("flangeThickness", &conway::geometry::ConwayGeometryProcessor::
+                                    ParamsGetUShapeCurve::flangeThickness)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetUShapeCurve::filletRadius)
+      .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetUShapeCurve::edgeRadius)
+      .field("flangeScope", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetUShapeCurve::flangeScope);
 
-
-  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve>("ParamsGetZShapeCurve")
-    .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::hasPlacement)
-    .field("placement", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::placement)
-    .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::hasFillet)
-    .field("depth", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::depth)
-    .field("flangeWidth", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::flangeWidth)
-    .field("webThickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::webThickness)
-    .field("flangeThickness", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::flangeThickness)
-    .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::filletRadius)
-    .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve::edgeRadius);
-
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve>(
+      "ParamsGetZShapeCurve")
+      .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetZShapeCurve::hasPlacement)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetZShapeCurve::placement)
+      .field("hasFillet", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetZShapeCurve::hasFillet)
+      .field("depth", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetZShapeCurve::depth)
+      .field("flangeWidth", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetZShapeCurve::flangeWidth)
+      .field("webThickness", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetZShapeCurve::webThickness)
+      .field("flangeThickness", &conway::geometry::ConwayGeometryProcessor::
+                                    ParamsGetZShapeCurve::flangeThickness)
+      .field("filletRadius", &conway::geometry::ConwayGeometryProcessor::
+                                 ParamsGetZShapeCurve::filletRadius)
+      .field("edgeRadius", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetZShapeCurve::edgeRadius);
 
   // Define the ResultsGltf object
   emscripten::value_object<
@@ -1194,9 +1261,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::Segment>("VectorSegment");
 
-  emscripten::function("createVertexVector", &createVertexVector, emscripten::allow_raw_pointers());
+  emscripten::function("createVertexVector", &createVertexVector,
+                       emscripten::allow_raw_pointers());
   emscripten::function("getPolygonalFaceSetGeometry",
                        &GetPolygonalFaceSetGeometry);
+  emscripten::function("getTriangulatedFaceSetGeometry",
+                       &GetTriangulatedFaceSetGeometry,
+                       emscripten::allow_raw_pointers());
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
@@ -1216,10 +1287,19 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
-  emscripten::function("getBooleanResult", &GetBooleanResult, emscripten::allow_raw_pointers());
-  emscripten::function("deleteParamsGetBooleanResult", &deleteParamsGetBooleanResult, emscripten::allow_raw_pointers());
-  emscripten::function("transformProfile", &TransformProfile, emscripten::allow_raw_pointers());
-  emscripten::function("deleteParamsTransformProfile", &deleteParamsTransformProfile, emscripten::allow_raw_pointers());
+  emscripten::function("getBooleanResult", &GetBooleanResult,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsGetBooleanResult",
+                       &deleteParamsGetBooleanResult,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("transformProfile", &TransformProfile,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsTransformProfile",
+                       &deleteParamsTransformProfile,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsGetTriangulatedFaceSetGeometry",
+                       &deleteParamsGetTriangulatedFaceSetGeometry,
+                       emscripten::allow_raw_pointers());
   emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
   emscripten::function("getBSplineCurve", &GetBSplineCurve);
@@ -1241,5 +1321,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getZShapeCurve", &GetZShapeCurve);
   emscripten::function("getIdentity2DMatrix", &GetIdentity2DMatrix);
   emscripten::function("getIdentity3DMatrix", &GetIdentity3DMatrix);
-  emscripten::function("buildIndexedPolygonalFaceVector", &buildIndexedPolygonalFaceVector, emscripten::allow_raw_pointers());
+  emscripten::function("buildIndexedPolygonalFaceVector",
+                       &buildIndexedPolygonalFaceVector,
+                       emscripten::allow_raw_pointers());
 }

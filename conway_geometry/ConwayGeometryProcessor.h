@@ -457,6 +457,16 @@ class ConwayGeometryProcessor {
 
   IfcProfile transformProfile(ParamsTransformProfile *parameters);
 
+  //casae ifc::IFCTRIANGULATEDFACESET
+  struct ParamsGetTriangulatedFaceSetGeometry {
+    uintptr_t indicesArray_;
+    uint32_t indicesArrayLength = 0;
+    uintptr_t pointsArray_;
+    uint32_t pointsArrayLength = 0;
+  };
+
+  IfcGeometry getTriangulatedFaceSetGeometry(const ParamsGetTriangulatedFaceSetGeometry &parameters);
+
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
     uint32_t indicesPerFace = 0;

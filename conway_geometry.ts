@@ -405,6 +405,14 @@ export interface IndexedPolygonalFace {
   face_starts: any
 }
 
+export interface ParamsGetTriangulatedFaceSetGeometry {
+  points:number
+  pointsArrayLength:number
+  indices:number
+  indicesArrayLength: number
+  delete():unknown
+};
+
 export interface ParamsPolygonalFaceSet {
   indicesPerFace: number
   points: any
@@ -684,6 +692,16 @@ export class ConwayGeometry {
    */
   getPolygonalFaceSetGeometry(parameters: ParamsPolygonalFaceSet): GeometryObject {
     const result = this.wasmModule.getPolygonalFaceSetGeometry(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsGetPolygonalFaceSetGeometry parsed from data model
+   * @returns {GeometryObject} - Native Geometry Object
+   */
+  getTriangulatedFaceSetGeometry(parameters:ParamsGetTriangulatedFaceSetGeometry):GeometryObject {
+    const result = this.wasmModule.getTriangulatedFaceSetGeometry(parameters)
     return result
   }
 
