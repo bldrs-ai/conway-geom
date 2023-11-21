@@ -55,7 +55,6 @@ export interface GeometryObject {
   getMax(): Vector3
   getParts(): StdVector<GeometryObject>
   normalized: boolean
-  toObj(expressID: number): void
   delete(): void
 }
 
@@ -603,7 +602,12 @@ export class ConwayGeometry {
         y: from.specular[1],
         z: from.specular[2],
         w: from.specular[3],
-      } : void 0,
+      } : {
+        x: 0,
+        y: 0,
+        z: 0,
+        w: 1,
+      },
     }
     /* eslint-enable no-magic-numbers */
     return native
