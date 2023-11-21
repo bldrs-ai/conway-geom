@@ -147,74 +147,97 @@ double normalDiff(glm::dvec3 extents) {
   return result;
 }*/
 
-IfcCurve ConwayGeometryProcessor::GetCShapeCurve(ParamsGetCShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetCShapeCurve(
+    ParamsGetCShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetCShapedCurve(parameters.width, parameters.depth, parameters.girth, parameters.thickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+  curve = GetCShapedCurve(parameters.width, parameters.depth, parameters.girth,
+                          parameters.thickness, parameters.hasFillet,
+                          parameters.filletRadius, parameters.placement);
 
   return curve;
 }
 
-IfcCurve ConwayGeometryProcessor::GetIShapeCurve(ParamsGetIShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetIShapeCurve(
+    ParamsGetIShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetIShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.flangeThickness, parameters.hasFillet, parameters.filletRadius, parameters.placement);
+  curve = GetIShapedCurve(parameters.width, parameters.depth,
+                          parameters.webThickness, parameters.flangeThickness,
+                          parameters.hasFillet, parameters.filletRadius,
+                          parameters.placement);
 
   return curve;
 }
 
-IfcCurve ConwayGeometryProcessor::GetLShapeCurve(ParamsGetLShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetLShapeCurve(
+    ParamsGetLShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetLShapedCurve(parameters.width, parameters.depth, parameters.thickness,parameters.hasFillet, parameters.filletRadius, parameters.edgeRadius, parameters.legSlope, parameters.placement);
+  curve = GetLShapedCurve(parameters.width, parameters.depth,
+                          parameters.thickness, parameters.hasFillet,
+                          parameters.filletRadius, parameters.edgeRadius,
+                          parameters.legSlope, parameters.placement);
 
   return curve;
 }
 
-IfcCurve ConwayGeometryProcessor::GetTShapeCurve(ParamsGetTShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetTShapeCurve(
+    ParamsGetTShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetTShapedCurve(parameters.width, parameters.depth, parameters.webThickness, parameters.hasFillet, parameters.filletRadius, parameters.flangeEdgeRadius, parameters.flangeScope, parameters.placement);
+  curve = GetTShapedCurve(parameters.width, parameters.depth,
+                          parameters.webThickness, parameters.hasFillet,
+                          parameters.filletRadius, parameters.flangeEdgeRadius,
+                          parameters.flangeScope, parameters.placement);
 
   return curve;
 }
 
-IfcCurve ConwayGeometryProcessor::GetUShapeCurve(ParamsGetUShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetUShapeCurve(
+    ParamsGetUShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetUShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.flangeScope, parameters.placement);
+  curve = GetUShapedCurve(parameters.depth, parameters.flangeWidth,
+                          parameters.webThickness, parameters.flangeThickness,
+                          parameters.filletRadius, parameters.edgeRadius,
+                          parameters.flangeScope, parameters.placement);
 
   return curve;
 }
 
-IfcCurve ConwayGeometryProcessor::GetZShapeCurve(ParamsGetZShapeCurve parameters) {
+IfcCurve ConwayGeometryProcessor::GetZShapeCurve(
+    ParamsGetZShapeCurve parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
     placement = parameters.placement;
   }
 
-  curve = GetZShapedCurve(parameters.depth, parameters.flangeWidth, parameters.webThickness, parameters.flangeThickness, parameters.filletRadius, parameters.edgeRadius, parameters.placement);
+  curve = GetZShapedCurve(parameters.depth, parameters.flangeWidth,
+                          parameters.webThickness, parameters.flangeThickness,
+                          parameters.filletRadius, parameters.edgeRadius,
+                          parameters.placement);
 
   return curve;
 }
@@ -709,27 +732,28 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   return IfcSurface();
 }
 
-IfcProfile ConwayGeometryProcessor::transformProfile( ParamsTransformProfile *parameters) {
-
-  if (!parameters->profile.isComposite)
-      {
-        for (uint32_t i = 0; i < parameters->profile.curve.points.size(); i++)
-        {
-          parameters->profile.curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.curve.points[i].x, parameters->profile.curve.points[i].y, 1);
-        }
+IfcProfile ConwayGeometryProcessor::transformProfile(
+    ParamsTransformProfile *parameters) {
+  if (!parameters->profile.isComposite) {
+    for (uint32_t i = 0; i < parameters->profile.curve.points.size(); i++) {
+      parameters->profile.curve.points[i] =
+          parameters->transformation *
+          glm::dvec3(parameters->profile.curve.points[i].x,
+                     parameters->profile.curve.points[i].y, 1);
+    }
+  } else {
+    for (uint32_t j = 0; j < parameters->profile.profiles.size(); j++) {
+      for (uint32_t i = 0;
+           i < parameters->profile.profiles[j].curve.points.size(); i++) {
+        parameters->profile.profiles[j].curve.points[i] =
+            parameters->transformation *
+            glm::dvec3(parameters->profile.profiles[j].curve.points[i].x,
+                       parameters->profile.profiles[j].curve.points[i].y, 1);
       }
-      else
-      {
-        for (uint32_t j = 0; j < parameters->profile.profiles.size(); j++)
-        {
-          for (uint32_t i = 0; i < parameters->profile.profiles[j].curve.points.size(); i++)
-          {
-            parameters->profile.profiles[j].curve.points[i] = parameters->transformation * glm::dvec3(parameters->profile.profiles[j].curve.points[i].x, parameters->profile.profiles[j].curve.points[i].y, 1);
-          }
-        }
-      }
+    }
+  }
 
-      return parameters->profile;
+  return parameters->profile;
 }
 
 glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
@@ -749,7 +773,6 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 
   } else if (parameters.isCartesianTransformationOperator2D ||
              parameters.isCartesianTransformationOperator2DNonUniform) {
-
     double scale1 = 1.0;
     double scale2 = 1.0;
 
@@ -1326,8 +1349,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         numIndices += component.GetIndexDataSize();
       }
 
-      // printf("numPoints: %i\n", numPoints);
-      // printf("numIndices: %i\n", numIndices);
+      printf("numPoints: %i\n", numPoints);
+      printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1721,6 +1744,26 @@ std::string ConwayGeometryProcessor::GeometryToObj(
   return obj;
 }
 
+IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
+    const ParamsGetTriangulatedFaceSetGeometry &parameters) {
+  const uint32_t *indices =
+      reinterpret_cast<uint32_t *>(parameters.indicesArray_);
+  const float *points = reinterpret_cast<float *>(parameters.pointsArray_);
+
+  IfcGeometry geom;
+
+  for (size_t i = 0; i < parameters.indicesArrayLength; i += 3) {
+    int i1 = indices[i + 0] - 1;
+    int i2 = indices[i + 1] - 1;
+    int i3 = indices[i + 2] - 1;
+
+    geom.AddFace(points[i1], points[i2], points[i3]);
+    //printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1], points[i2], points[i3]);
+  }
+
+  return geom;
+}
+
 IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
     const ParamsGetPolygonalFaceSetGeometry &parameters) {
   IfcGeometry geom;
@@ -1789,8 +1832,8 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getEllipseCurve(
   } else {
     glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
                                       glm::dvec3(0, 0, 1));
-    curve = GetEllipseCurve(radiusX, radiusY, parameters.circleSegments,
-                            placement);
+    curve =
+        GetEllipseCurve(radiusX, radiusY, parameters.circleSegments, placement);
   }
 
   return curve;
