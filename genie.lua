@@ -771,7 +771,8 @@ else
         "-s MODULARIZE=1",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
-        "-lworkerfs.js"
+        "-lworkerfs.js",
+        "-sNO_DISABLE_EXCEPTION_CATCHING",
     }
 end
 
