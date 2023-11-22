@@ -42,7 +42,7 @@ export interface ParamsGetPolyCurve {
   pointsLength:number
   dimensions:number
   delete():unknown
-};
+}
 
 export interface GeometryObject {
   GetVertexData: () => any
