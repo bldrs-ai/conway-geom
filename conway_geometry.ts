@@ -37,6 +37,13 @@ export interface GeometryCollection {
   readonly currentSize: number
 }
 
+export interface ParamsGetPolyCurve {
+  points:number
+  pointsLength:number
+  dimensions:number
+  delete():unknown
+}
+
 export interface GeometryObject {
   GetVertexData: () => any
   GetPoint(parameter: number): Vector3
@@ -682,6 +689,16 @@ export class ConwayGeometry {
    */
   transformProfile(parameters: ParamsTransformProfile): ProfileObject {
     const result = this.wasmModule.transformProfile(parameters)
+    return result
+  }
+
+  /**
+   *
+   * @param parameters - ParamsGetPolyCurve parsed from data model
+   * @return {CurveObject} - Native Curve object
+   */
+  getPolyCurve(parameters: ParamsGetPolyCurve):CurveObject {
+    const result = this.wasmModule.getPolyCurve(parameters)
     return result
   }
 

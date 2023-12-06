@@ -732,6 +732,36 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
   return IfcSurface();
 }
 
+IfcCurve ConwayGeometryProcessor::getPolyCurve(
+    const ParamsGetPolyCurve &parameters) {
+  IfcCurve curve;
+  const float *points = reinterpret_cast<float *>(parameters.points_);
+
+  if (parameters.dimensions == 2) {
+    for (int i = 0; i < parameters.pointsLength * parameters.dimensions;
+         i += parameters.dimensions) {
+      glm::dvec3 point;
+      point.x = points[i];
+      point.y = points[i + 1];
+      point.z = 0;
+
+      curve.Add3d(point);
+    }
+  } else if (parameters.dimensions == 3) {
+    for (int i = 0; i < parameters.pointsLength * parameters.dimensions;
+         i += parameters.dimensions) {
+      glm::dvec3 point;
+      point.x = points[i];
+      point.y = points[i + 1];
+      point.z = points[i + 2];
+
+      curve.Add3d(point);
+    }
+  }
+
+  return curve;
+}
+
 IfcProfile ConwayGeometryProcessor::transformProfile(
     ParamsTransformProfile *parameters) {
   if (!parameters->profile.isComposite) {
@@ -1349,8 +1379,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         numIndices += component.GetIndexDataSize();
       }
 
-      //printf("numPoints: %i\n", numPoints);
-      //printf("numIndices: %i\n", numIndices);
+      // printf("numPoints: %i\n", numPoints);
+      // printf("numIndices: %i\n", numIndices);
 
       // Add an Accessor for the indices and positions
       // std::unique_ptr< std::vector< float > > positionsPtr    =
@@ -1758,7 +1788,8 @@ IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
     int i3 = indices[i + 2] - 1;
 
     geom.AddFace(points[i1], points[i2], points[i3]);
-    //printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1], points[i2], points[i3]);
+    // printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1],
+    // points[i2], points[i3]);
   }
 
   return geom;
