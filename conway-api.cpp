@@ -408,6 +408,17 @@ void setMatrixValues3x3(glm::dmat3& mat, emscripten::val array) {
   }
 }
 
+conway::geometry::IfcCurve GetPolyCurve(
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetPolyCurve&
+        parameters) {
+  if (processor) {
+    return processor->getPolyCurve(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+  return curve;
+}
+
 struct ParamsCreateNativeIfcProfile {
   conway::geometry::IfcCurve curve;
   std::vector<conway::geometry::IfcCurve> holes;
@@ -443,6 +454,11 @@ conway::geometry::IfcProfile TransformProfile(
 glm::dmat4 getIdentityTransform() {
   return glm::dmat4(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 1, 0, 0),
                     glm::dvec4(0, 0, 1, 0), glm::dvec4(0, 0, 0, 1));
+}
+
+void deleteParamsGetPolyCurve(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetPolyCurve* params) {
+  delete params;
 }
 
 void deleteParamsGetBooleanResult(
@@ -988,6 +1004,17 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("profile", &conway::geometry::ConwayGeometryProcessor::
                                ParamsTransformProfile::profile);
 
+  emscripten::class_<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetPolyCurve>(
+      "ParamsGetPolyCurve")
+      .constructor<>()
+      .property("points", &conway::geometry::ConwayGeometryProcessor::
+                              ParamsGetPolyCurve::points_)
+      .property("pointsLength", &conway::geometry::ConwayGeometryProcessor::
+                                    ParamsGetPolyCurve::pointsLength)
+      .property("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsGetPolyCurve::dimensions);
+
   /*emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
@@ -1292,6 +1319,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("deleteParamsGetBooleanResult",
                        &deleteParamsGetBooleanResult,
                        emscripten::allow_raw_pointers());
+  emscripten::function("deleteParamsGetPolyCurve",
+                       &deleteParamsGetPolyCurve,
+                       emscripten::allow_raw_pointers());
   emscripten::function("transformProfile", &TransformProfile,
                        emscripten::allow_raw_pointers());
   emscripten::function("deleteParamsTransformProfile",
@@ -1323,5 +1353,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getIdentity3DMatrix", &GetIdentity3DMatrix);
   emscripten::function("buildIndexedPolygonalFaceVector",
                        &buildIndexedPolygonalFaceVector,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("getPolyCurve", &GetPolyCurve,
                        emscripten::allow_raw_pointers());
 }
