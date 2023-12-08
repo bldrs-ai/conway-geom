@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "conway_geometry/ConwayGeometryProcessor.h"
+#include "logging/Logger.h"
 
 namespace conway::statistics {
 bool exportGltfs = false;
@@ -132,7 +133,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test1\n");
+  Logger::logInfo("test1\n");
 
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
@@ -147,7 +148,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.faces[0].indices[2] = 3;
   paramsGetPolygonalFaceSetGeometry.faces[0].indices[3] = 4;
 
-  printf("test2\n");
+  Logger::logInfo("test2\n");
 
   // IFCINDEXEDPOLYGONALFACE
   paramsGetPolygonalFaceSetGeometry.faces[1].indices[0] = 5;
@@ -225,7 +226,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test2\n");
+  Logger::logInfo("test2\n");
 
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
@@ -316,7 +317,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test3\n");
+  Logger::logInfo("test3\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
@@ -406,7 +407,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test4\n");
+  Logger::logInfo("test4\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
@@ -496,7 +497,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test5\n");
+  Logger::logInfo("test5\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
@@ -586,7 +587,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test6\n");
+  Logger::logInfo("test6\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
@@ -675,7 +676,7 @@ void genIndexIfc() {
   paramsGetPolygonalFaceSetGeometry.indicesPerFace = 4;
   paramsGetPolygonalFaceSetGeometry.faces.resize(6);
 
-  printf("test7\n");
+  Logger::logInfo("test7\n");
   for (size_t faceIndex = 0;
        faceIndex < paramsGetPolygonalFaceSetGeometry.faces.size();
        faceIndex++) {
@@ -767,9 +768,9 @@ void genIndexIfc() {
     if (conway::statistics::exportGltfs &&
         conway::statistics::exportIndividualGeometryFiles) {
       if (conway::statistics::exportDraco) {
-        printf("Writing GLTF (Draco)...\n");
+        Logger::logInfo("Writing GLTF (Draco)...\n");
       } else {
-        printf("Writing GLTF...\n");
+        Logger::logInfo("Writing GLTF...\n");
       }
 
       glm::dmat4 identityMatrix(1.0);
@@ -786,16 +787,16 @@ void genIndexIfc() {
               NormalizeMat);
 
       if (!results.success) {
-        printf("Error writing GLTF...");
+        Logger::logError("Error writing GLTF...");
       }
     }
 
     if (conway::statistics::exportGlbs &&
         conway::statistics::exportIndividualGeometryFiles) {
       if (conway::statistics::exportDraco) {
-        printf("Writing GLB (Draco)\n");
+        Logger::logInfo("Writing GLB (Draco)\n");
       } else {
-        printf("Writing GLB...\n");
+        Logger::logInfo("Writing GLB...\n");
       }
 
       glm::dmat4 identityMatrix(1.0);
@@ -812,7 +813,7 @@ void genIndexIfc() {
               NormalizeMat);
 
       if (!results.success) {
-        printf("Error writing GLTF...");
+        Logger::logError("Error writing GLTF...");
       }
     }
 
@@ -823,7 +824,7 @@ void genIndexIfc() {
       fileNameObj += std::to_string(geometryIndex);
       fileNameObj += "_conway.obj";
 
-      printf("Writing OBJ...\n");
+      Logger::logInfo("Writing OBJ...\n");
 #ifdef _WIN32
       std::wstring wsTmp(fileNameObj.begin(), fileNameObj.end());
       writeFile(wsTmp, singleObj);
@@ -851,9 +852,9 @@ void genIndexIfc() {
 
     if (conway::statistics::exportGltfs) {
       if (conway::statistics::exportDraco) {
-        printf("Writing Complete GLTF (Draco)...\n");
+        Logger::logInfo("Writing Complete GLTF (Draco)...\n");
       } else {
-        printf("Writing Complete GLTF...\n");
+        Logger::logInfo("Writing Complete GLTF...\n");
       }
 
       glm::dmat4 identityMatrix(1.0);
@@ -874,15 +875,15 @@ void genIndexIfc() {
               NormalizeMat);
 
       if (!results.success) {
-        printf("Error writing GLTF...");
+        Logger::logError("Error writing GLTF...");
       }
     }
 
     if (conway::statistics::exportGlbs) {
       if (conway::statistics::exportDraco) {
-        printf("Writing Complete GLB (Draco)...\n");
+        Logger::logInfo("Writing Complete GLB (Draco)...\n");
       } else {
-        printf("Writing Complete GLB...\n");
+        Logger::logInfo("Writing Complete GLB...\n");
       }
 
       glm::dmat4 identityMatrix(1.0);
@@ -902,7 +903,7 @@ void genIndexIfc() {
               fileNameGltf, true, NormalizeMat);
 
       if (!results.success) {
-        printf("Error writing GLB.");
+        Logger::logError("Error writing GLB.");
       }
     }
 

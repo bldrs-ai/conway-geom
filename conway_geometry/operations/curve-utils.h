@@ -8,6 +8,7 @@
 #pragma once
 
 #include "../representation/ConwayCurve.h"
+#include "../../logging/Logger.h"
 
 namespace conway::geometry {
 
@@ -150,7 +151,7 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
 
   double tPrime = t * (high - low) + low;
   if (tPrime < low || tPrime > high) {
-    printf("BSpline tPrime out of bounds\n");
+    Logger::logWarning("BSpline tPrime out of bounds\n");
     return glm::dvec3(0, 0, 0);
   }
 
@@ -215,7 +216,7 @@ inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
 
   double tPrime = t * (high - low) + low;
   if (tPrime < low || tPrime > high) {
-    printf("BSpline tPrime out of bounds\n");
+    Logger::logWarning("BSpline tPrime out of bounds\n");
     return glm::dvec2(0, 0);
   }
 

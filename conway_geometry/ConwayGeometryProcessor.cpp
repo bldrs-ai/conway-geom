@@ -9,6 +9,7 @@
 #include "operations/geometryutils.h"
 #include "operations/mesh_utils.h"
 #include "representation/geometry.h"
+#include "../logging/Logger.h"
 
 namespace conway::geometry {
 IfcComposedMesh ConwayGeometryProcessor::getMappedItem(
@@ -313,7 +314,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
     for (auto &secondGeom : secondGeoms) {
       bool doit = true;
       if (secondGeom.numFaces == 0) {
-        printf("bool aborted due to empty source or target\n");
+        Logger::logWarning("bool aborted due to empty source or target\n");
 
         // bail out because we will get strange meshes
         // if this happens, probably there's an issue parsing the mesh that
@@ -322,7 +323,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
       }
 
       if (result.numFaces == 0) {
-        printf("bool aborted due to empty source or target\n");
+        Logger::logWarning("bool aborted due to empty source or target\n");
 
         // bail out because we will get strange meshes
         // if this happens, probably there's an issue parsing the mesh that
@@ -383,12 +384,12 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     ParamsRelVoidSubtract parameters) {
   IfcGeometry resultGeometry;
   if (parameters.flatFirstMesh.size() <= 0) {
-    printf("first mesh zero\n");
+    Logger::logWarning("first mesh zero\n");
     return resultGeometry;
   }
 
   if (parameters.flatSecondMesh.size() <= 0) {
-    printf("second mesh zero\n");
+    Logger::logWarning("second mesh zero\n");
     return resultGeometry;
   }
 
@@ -469,12 +470,12 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult *parameters) {
   IfcGeometry resultGeometry;
   if (parameters->flatFirstMesh.size() <= 0) {
-    printf("first mesh zero\n");
+    Logger::logWarning("first mesh zero\n");
     return resultGeometry;
   }
 
   if (parameters->flatSecondMesh.size() <= 0) {
-    printf("second mesh zero\n");
+    Logger::logWarning("second mesh zero\n");
     return resultGeometry;
   }
 
@@ -1355,13 +1356,13 @@ ConwayGeometryProcessor::GeometryToGltf(
         timer.Stop();
 
         if (!status.ok()) {
-          printf("Failed to encode the mesh: %s\n", status.error_msg());
+          Logger::logError("Failed to encode the mesh: %s\n", status.error_msg());
           results.success = false;
           return results;
         }
 
         if (outputFile) {
-          printf("Encoded To Draco in %lld ms\n", timer.GetInMs());
+          Logger::logInfo("Encoded To Draco in %lld ms\n", timer.GetInMs());
         }
       }
 
@@ -1598,9 +1599,9 @@ ConwayGeometryProcessor::GeometryToGltf(
       // Serialize the glTF Document into a JSON manifest
       manifest = Serialize(document, Microsoft::glTF::SerializeFlags::Pretty);
     } catch (const Microsoft::glTF::GLTFException &ex) {
-      printf("Microsoft::glTF::Serialize failed: %s\n", ex.what());
+      Logger::logError("Microsoft::glTF::Serialize failed: %s\n", ex.what());
     } catch (...) {
-      printf("Microsoft::glTF::Serialize failed: <unknown>\n");
+      Logger::logError("Microsoft::glTF::Serialize failed: <unknown>\n");
     }
 
     auto &genericResourceWriter = bufferBuilder.GetResourceWriter();
@@ -1651,7 +1652,7 @@ ConwayGeometryProcessor::GeometryToGltf(
           // Close the file
           outfile.close();
         } else {
-          printf("Unable to open file %s\n", filePath.c_str());
+          Logger::logError("Unable to open file %s\n", filePath.c_str());
         }
       }
     } else {
@@ -1710,7 +1711,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       // write file
       if (outputFile) {
-        printf("Writing: %s\n", filePath.c_str());
+        Logger::logInfo("Writing: %s\n", filePath.c_str());
 
         std::ofstream outfile(filePath);  // Open the file for writing
 
@@ -1738,7 +1739,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     return results;
   } catch (const std::exception &ex) {
-    printf("Couldn't write GLB file: %s\n", ex.what());
+    Logger::logError("Couldn't write GLB file: %s\n", ex.what());
     results.success = false;
     return results;
   }
@@ -1844,7 +1845,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
       }
     }
   } else {
-    printf("Parsing ifcindexedpolycurve in 3D is not possible\n");
+    Logger::logWarning("Parsing ifcindexedpolycurve in 3D is not possible\n");
   }
 
   return curve;
@@ -1916,7 +1917,6 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
   }*/
 
   int dimensions = parameters.dimensions;
-  printf("dimensions: %i\n", parameters.dimensions);
 
   int degree = parameters.degree;
 

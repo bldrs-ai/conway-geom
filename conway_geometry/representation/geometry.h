@@ -19,6 +19,7 @@
 
 #include "ConwayCurve.h"
 #include "ConwayProfile.h"
+#include "../../logging/Logger.h"
 
 #define CONST_PI 3.141592653589793238462643383279502884L
 
@@ -257,13 +258,13 @@ struct IfcSurface {
       return transformation[2];
     } else {
       if (BSplineSurface.Active) {
-        printf("Normal to bspline still not implemented\n");
+        Logger::logWarning("Normal to bspline still not implemented\n");
       }
       if (CylinderSurface.Active) {
-        printf("Normal to cylinder still not implemented\n");
+        Logger::logWarning("Normal to cylinder still not implemented\n");
       }
       if (RevolutionSurface.Active) {
-        printf("Normal to revolution still not implemented\n");
+        Logger::logWarning("Normal to revolution still not implemented\n");
       }
       return glm::dvec3(0);
     }
