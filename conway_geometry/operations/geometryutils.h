@@ -12,6 +12,7 @@
 #include "../../utility/LoaderError.h"
 #include "../representation/IfcGeometry.h"
 #include "../representation/geometry.h"
+#include "../../logging/Logger.h"
 
 namespace conway::geometry {
 
@@ -31,7 +32,7 @@ inline glm::dvec3 projectOntoPlane(const glm::dvec3 &origin,
   // project {et} onto the plane, following the extrusion normal
   double ldotn = glm::dot(dir, normal);
   if (ldotn == 0) {
-    printf("0 direction in extrude\n");
+    Logger::logWarning("0 direction in extrude");
     return glm::dvec3(0);
   } else {
     glm::dvec3 dpos = origin - glm::dvec3(point);
@@ -135,7 +136,7 @@ inline IfcGeometry Sweep(
         // this is bad news, as it nans the points added to the final mesh
         // also, it's hard to bail out now :/
         // see curve.add() for more info on how this is currently "solved"
-        printf("NaN perp!\n");
+        Logger::logWarning("NaN perp!");
       }
 
       glm::dvec3 u1 = glm::normalize(glm::cross(n1, p));
@@ -188,7 +189,7 @@ inline IfcGeometry Sweep(
       }
 
       if (left == glm::dvec3(0, 0, 0)) {
-        printf("0 left vec in sweep!\n");
+        Logger::logWarning("0 left vec in sweep!");
       }
 
       // project profile onto planeNormal, place on planeOrigin
@@ -338,7 +339,7 @@ inline IfcGeometry SweepCircular(
         // this is bad news, as it nans the points added to the final mesh
         // also, it's hard to bail out now :/
         // see curve.add() for more info on how this is currently "solved"
-        printf("NaN perp!\n");
+        Logger::logWarning("NaN perp!");
       }
 
       glm::dvec3 u1 = glm::normalize(glm::cross(n1, p));
@@ -411,7 +412,7 @@ inline IfcGeometry SweepCircular(
       }
 
       if (left == glm::dvec3(0, 0, 0)) {
-        printf("0 left vec in sweep!\n");
+        Logger::logWarning("0 left vec in sweep!");
       }
 
       // project profile onto planeNormal, place on planeOrigin
@@ -578,7 +579,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
       }
 
       if (outerIndex == -1) {
-        printf("Expected outer bound!\n");
+        Logger::logWarning("Expected outer bound!");
       } else {
         // swap the outer bound to the first position
         std::swap(bounds[0], bounds[outerIndex]);
@@ -587,14 +588,13 @@ inline void TriangulateBounds(IfcGeometry &geometry,
 
     // if the first bound is not an outer bound now, this is unexpected
     if (bounds[0].type != IfcBoundType::OUTERBOUND) {
-      printf("Expected outer bound first!\n");
+      Logger::logWarning("Expected outer bound first!");
     }
 
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
-      // printf("No basis found for brep! Count: %i\n",
-      // ++triangulateBoundsCount);
+       Logger::logError("No basis found for brep! Count: %i");
       return;
     }
 
@@ -645,7 +645,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
                        offset + indices[i + 2]);
     }
   } else {
-    printf("bad bound\n");
+    Logger::logError("bad bound");
   }
 }
 
@@ -662,8 +662,8 @@ inline IfcGeometry SectionedSurface(
 
     // Check that the profiles have the same number of points
     if (profile1.points.size() != profile2.points.size()) {
-      printf(
-          "profiles must have the same number of points in SectionedSurface\n");
+      Logger::logWarning(
+          "profiles must have the same number of points in SectionedSurface");
     }
 
     std::vector<uint32_t> indices;
@@ -749,17 +749,17 @@ inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
 
     std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
 
-    for (int i = 0; i < polygon.size(); ++i) {
+    /*for (int i = 0; i < polygon.size(); ++i) {
       auto _polygon = polygon[i];
       for (int j = 0; j < _polygon.size(); ++j) {
         auto _point = _polygon[j];
-       // printf("Polygon[%i] Point %i: x: %.3f, y: %.3f\n", i, j, _point[0], _point[1]);
+       // printf("Polygon[%i] Point %i: x: %.3f, y: %.3f", i, j, _point[0], _point[1]);
       }
-    }
+    }*/
 
     if (indices.size() < 3) {
       // probably a degenerate polygon
-      printf("degenerate polygon in extrude\n");
+      Logger::logError("degenerate polygon in extrude");
       return geom;
     }
 
@@ -794,7 +794,7 @@ inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
         // project {et} onto the plane, following the extrusion normal
         double ldotn = glm::dot(transDir, cuttingPlaneNormal);
         if (ldotn == 0) {
-          printf("0 direction in extrude\n");
+          Logger::logWarning("0 direction in extrude");
         } else {
           glm::dvec3 dpos = cuttingPlanePos - glm::dvec3(et);
           double dist = glm::dot(dpos, cuttingPlaneNormal) / ldotn;

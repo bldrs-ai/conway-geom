@@ -371,14 +371,9 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
   }
 }
 
-std::vector<IfcGeometry> IfcGeometry::getParts() {
-  return part;
-}
+std::vector<IfcGeometry> IfcGeometry::getParts() { return part; }
 
-void IfcGeometry::AddPart(IfcGeometry geom)
-	{
-		part.push_back(geom);
-	}
+void IfcGeometry::AddPart(IfcGeometry geom) { part.push_back(geom); }
 
 void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans,
                               double scx, double scy, double scz,
@@ -414,7 +409,7 @@ uint32_t IfcGeometry::GetAllocationSize() const {
 }
 
 uint32_t IfcGeometry::GetVertexDataSize() {
-  return (uint32_t)fvertexData.size();
+  return (uint32_t)vertexData.size();
 }
 
 uint32_t IfcGeometry::GetIndexData() { return (uint32_t)(size_t)&indexData[0]; }

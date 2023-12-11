@@ -9,6 +9,7 @@
 #include <string>
 
 #include "conway_geometry/ConwayGeometryProcessor.h"
+#include "logging/Logger.h"
 
 std::unique_ptr<conway::geometry::ConwayGeometryProcessor> processor;
 
@@ -175,7 +176,7 @@ conway::geometry::IfcBound3D createBound3D(ParamsCreateBound3D parameters) {
       bounds3D.type = conway::geometry::IfcBoundType::BOUND;
       break;
     default:
-      printf("Invalid value for IfcBoundType enum!\n");
+      Logger::logWarning("Invalid value for IfcBoundType enum!\n");
       // Handle the case when the uint32_t value doesn't correspond to any enum
       // value. You might want to provide a default or throw an exception here.
       break;
@@ -520,6 +521,7 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
                                 uint32_t polygonalFaceBufferOffsetsLength,
                                 uintptr_t startIndicesBufferOffsets_,
                                 uint32_t startIndicesBufferOffsetsLength) {
+  
   const uint32_t* indicesArray = reinterpret_cast<uint32_t*>(indicesArray_);
   const uint32_t* startIndicesArray =
       reinterpret_cast<uint32_t*>(startIndicesArray_);
@@ -543,7 +545,6 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
                              ? startIndicesBufferOffsets[index + 1]
                              : startIndicesBufferOffsetsLength;
 
-    // printf("startOffset: %i\nendOffset: %i\n", startOffset, endOffset);
     //  Populate the face_starts vector with indices from the startIndicesArray
     for (uint32_t j = startOffset; j < endOffset; ++j) {
       indexedPolygonalFace.face_starts.push_back(startIndicesArray[j]);
@@ -1319,8 +1320,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("deleteParamsGetBooleanResult",
                        &deleteParamsGetBooleanResult,
                        emscripten::allow_raw_pointers());
-  emscripten::function("deleteParamsGetPolyCurve",
-                       &deleteParamsGetPolyCurve,
+  emscripten::function("deleteParamsGetPolyCurve", &deleteParamsGetPolyCurve,
                        emscripten::allow_raw_pointers());
   emscripten::function("transformProfile", &TransformProfile,
                        emscripten::allow_raw_pointers());
