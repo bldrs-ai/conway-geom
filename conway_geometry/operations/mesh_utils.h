@@ -181,6 +181,10 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
                                           IfcSurface &surface) {
   // First we get the cylinder data
 
+  if ( bounds.empty() ) {
+    return;
+  }
+
   double radius = surface.CylinderSurface.Radius;
   glm::dvec3 cent = surface.transformation[3];
   glm::dvec3 vecX = glm::normalize(surface.transformation[0]);
@@ -211,8 +215,8 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
   }
 
   for (int r = 0; r < numRots; r++) {
-    std::vector<glm::dvec3> newList;
-    newPoints.push_back(newList);
+
+    newPoints.emplace_back();
   }
 
   std::vector<glm::dvec3> bounding;
@@ -222,6 +226,7 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
   // Find the max. curve index in the boundary
 
   int maxTeam = 0;
+
   for (size_t i = 0; i < bounds.size(); i++) {
     for (size_t j = 0; j < bounds[i].curve.indices.size(); j++) {
       if (bounds[i].curve.indices[j] > maxTeam) {
