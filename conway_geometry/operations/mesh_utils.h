@@ -510,9 +510,9 @@ inline double InverseMethod(glm::dvec3 pt, tinynurbs::RationalSurface3d srf,
       }
     }
     divisor *= 3;
-    printf("divisor: %.3f\n", divisor);
-    printf("maxError: %.3f\n", maxError);
-    printf("minError: %.3f\n", minError);
+    // printf("divisor: %.3f\n", divisor);
+    // printf("maxError: %.3f\n", maxError);
+    // printf("minError: %.3f\n", minError);
   }
   return maxDistance;
 }
@@ -538,8 +538,19 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
   double maxDistance = 1e+100;
 
   //printf("scaling: %.3f\n", scaling);
-  maxDistance = InverseMethod(pt, srf, pr, rotations, minError / scaling,
-                              maxError / scaling, fU, fV, divisor, maxDistance);
+  maxDistance =
+    InverseMethod(
+        pt,
+        srf,
+        pr,
+        rotations,
+        minError / scaling,
+        maxError / scaling,
+        fU,
+        fV,
+        divisor,
+        maxDistance );
+
   return glm::dvec2(fU, fV);
 }
 
@@ -551,14 +562,14 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
   // First: We define the Nurbs surface
 
-  printf("surface.BSplineSurface.UDegree: %.3f\n",
-         surface.BSplineSurface.UDegree);
-  printf("surface.BSplineSurface.VDegree: %.3f\n",
-         surface.BSplineSurface.VDegree);
-  printf("surface.BSplineSurface.ControlPoints size: %i\n",
-         surface.BSplineSurface.ControlPoints.size());
-  printf("surface.BSplineSurface.ControlPoints[0] size: %i\n",
-         surface.BSplineSurface.ControlPoints[0].size());
+  // printf("surface.BSplineSurface.UDegree: %.3f\n",
+  //        surface.BSplineSurface.UDegree);
+  // printf("surface.BSplineSurface.VDegree: %.3f\n",
+  //        surface.BSplineSurface.VDegree);
+  // printf("surface.BSplineSurface.ControlPoints size: %i\n",
+  //        surface.BSplineSurface.ControlPoints.size());
+  // printf("surface.BSplineSurface.ControlPoints[0] size: %i\n",
+  //        surface.BSplineSurface.ControlPoints[0].size());
 
   tinynurbs::RationalSurface3d srf;
   srf.degree_u = surface.BSplineSurface.UDegree;
@@ -568,10 +579,10 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
   auto test = surface.BSplineSurface.ControlPoints[0];
 
-  printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y,
-         test[0].z);
-  printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y,
-         test[1].z);
+  // printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y,
+  //        test[0].z);
+  // printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y,
+  //        test[1].z);
 
   std::vector<glm::dvec3> controlPoints;
   for (std::vector<glm::dvec3> row : surface.BSplineSurface.ControlPoints) {
@@ -618,8 +629,8 @@ inline void TriangulateBspline(IfcGeometry &geometry,
     std::vector<Point> points;
     for (size_t j = 0; j < bounds[0].curve.points.size(); j++) {
       glm::dvec3 pt = bounds[0].curve.points[j];
-      printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f\n", j, pt.x,
-             pt.y, pt.z);
+      // printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f\n", j, pt.x,
+      //        pt.y, pt.z);
 
       //hack 
       pt.x *= scaling;
@@ -694,13 +705,13 @@ inline void TriangulateBspline(IfcGeometry &geometry,
       geometry.AddFace(pt00, pt01, pt10);
     }
 
-    printf("result surface geometry:\n");
+    // printf("result surface geometry:\n");
 
-    for (int i = 0; i < geometry.numPoints; ++i) {
-      glm::dvec3 pt__ = geometry.GetPoint(i);
+    // for (int i = 0; i < geometry.numPoints; ++i) {
+    //   glm::dvec3 pt__ = geometry.GetPoint(i);
 
-      printf("point %i: x: %.3f, y: %.3f, z: %.3f\n", i, pt__.x, pt__.y, pt__.z);
-    }
+    //   printf("point %i: x: %.3f, y: %.3f, z: %.3f\n", i, pt__.x, pt__.y, pt__.z);
+    // }
   } else {
     printf("surface was not valid!\n");
   }
