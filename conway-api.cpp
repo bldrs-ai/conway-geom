@@ -521,6 +521,7 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
                                 uint32_t polygonalFaceBufferOffsetsLength,
                                 uintptr_t startIndicesBufferOffsets_,
                                 uint32_t startIndicesBufferOffsetsLength) {
+
   
   const uint32_t* indicesArray = reinterpret_cast<uint32_t*>(indicesArray_);
   const uint32_t* startIndicesArray =
@@ -533,7 +534,7 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
       result;
 
   // Loop through each polygonal face buffer offset
-  for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength; ++index) {
+  for (uint32_t index = 0; index < polygonalFaceBufferOffsetsLength - 1; ++index) {
     // Create a new IndexedPolygonalFace
     conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace
         indexedPolygonalFace;
@@ -541,9 +542,7 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
     // The starting point for this face in the startIndicesArray
     uint32_t startOffset = startIndicesBufferOffsets[index];
     // The ending point for this face in the startIndicesArray
-    uint32_t endOffset = (index + 1 < startIndicesBufferOffsetsLength)
-                             ? startIndicesBufferOffsets[index + 1]
-                             : startIndicesBufferOffsetsLength;
+    uint32_t endOffset = startIndicesBufferOffsets[index + 1];
 
     //  Populate the face_starts vector with indices from the startIndicesArray
     for (uint32_t j = startOffset; j < endOffset; ++j) {
@@ -555,9 +554,7 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
     // next face If this is the last face, the end index is the total length of
     // indicesArray
     uint32_t indicesStart = polygonalFaceBufferOffsetsArray[index];
-    uint32_t indicesEnd = (index + 1 < polygonalFaceBufferOffsetsLength)
-                              ? polygonalFaceBufferOffsetsArray[index + 1]
-                              : indicesArrayLength;
+    uint32_t indicesEnd = polygonalFaceBufferOffsetsArray[index + 1];
 
     for (uint32_t k = indicesStart; k < indicesEnd; ++k) {
       indexedPolygonalFace.indices.push_back(indicesArray[k]);
