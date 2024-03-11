@@ -139,8 +139,8 @@ inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
 }
 
 inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
-    double t, int degree, std::vector<glm::dvec3> points,
-    std::vector<double> knots, std::vector<double> weights) {
+    double t, int degree, const std::vector<glm::dvec3>& points,
+    const std::vector<double>& knots, const std::vector<double>& weights) {
   glm::dvec3 point;
 
   int domainLow = degree;
@@ -174,6 +174,8 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
     homogeneousPoints.push_back(h);
   }
 
+  // printf( "Degree %d HP %zu\n", degree, homogeneousPoints.size() );
+
   // l (level) goes from 1 to the curve degree + 1
   double alpha;
   for (int l = 1; l <= degree + 1; l++) {
@@ -204,8 +206,8 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
 }
 
 inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
-    double t, int degree, std::vector<glm::dvec2> points,
-    std::vector<double> knots, std::vector<double> weights) {
+    double t, int degree, const std::vector<glm::dvec2>& points,
+    const std::vector<double>& knots, const std::vector<double>& weights) {
   glm::dvec2 point;
 
   int domainLow = degree;
@@ -274,17 +276,19 @@ void createFilletArc(std::vector<glm::dvec3>& points, glm::dvec3 center,
     for (int i = 0; i <= segments; ++i) {
         double angle = startAngle + i * angleIncrement;
         glm::dvec3 arcPoint = center + radius * glm::dvec3(cos(angle), sin(angle), 0.0);
-        arcPoint = placement * glm::dvec4(arcPoint, 1.0); // Apply the placement matrix
+        arcPoint = placement * glm::dvec4(arcPoint, 1.0); // Appl y the placement matrix
         points.push_back(arcPoint);
     }
 }
 
 inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
-    int degree, std::vector<glm::dvec3> points, std::vector<double> knots,
-    std::vector<double> weights) {
+    int degree,
+    const std::vector<glm::dvec3>& points,
+    const std::vector<double>& knots,
+    const std::vector<double>& weights ) {
   std::vector<glm::dvec3> c;
 
-  for (double i = 0; i < 1; i += 0.05) {
+  for (double i = 0; i < 1.0; i += 0.05) {
     glm::dvec3 point = InterpolateRationalBSplineCurveWithKnots(
         i, degree, points, knots, weights);
     c.push_back(point);
@@ -302,13 +306,22 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
 }
 
 inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
-    int degree, std::vector<glm::dvec2> points, std::vector<double> knots,
-    std::vector<double> weights) {
+    int degree,
+    const std::vector<glm::dvec2>& points,
+    const std::vector<double>& knots,
+    const std::vector<double>& weights ) {
+
   std::vector<glm::dvec2> c;
 
-  for (double i = 0; i < 1; i += 0.05) {
-    glm::dvec2 point = InterpolateRationalBSplineCurveWithKnots(
-        i, degree, points, knots, weights);
+  for (double i = 0; i < 1.0; i += 0.05) {
+    glm::dvec2 point =
+      InterpolateRationalBSplineCurveWithKnots(
+        i,
+        degree,
+        points,
+        knots,
+        weights );
+
     c.push_back(point);
   }
   // TODO: flip triangles?

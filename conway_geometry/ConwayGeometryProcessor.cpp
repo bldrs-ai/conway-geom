@@ -1916,51 +1916,57 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
     condition = !condition;
   }*/
 
+  curve.points.clear();
+
   int dimensions = parameters.dimensions;
 
   int degree = parameters.degree;
 
   if (dimensions == 2) {
-    printf("parameters.points2 size: %i\n", parameters.points2.size());
-    printf("degree: %i\n", degree);
-    printf("parameters.knots:\n");
+    // printf("parameters.points2 size: %i\n", parameters.points2.size());
+    // printf("degree: %i\n", degree);
+    // printf("parameters.knots:\n");
 
-    for (int i = 0; i < parameters.knots.size(); ++i) {
-      printf("knot %i: %.3f\n", i, parameters.knots[i]);
-    }
+    // for (int i = 0; i < parameters.knots.size(); ++i) {
+    //   printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    // }
 
-    printf("parameters.weights:\n");
+    // printf("parameters.weights:\n");
 
-    for (int i = 0; i < parameters.weights.size(); ++i) {
-      printf("weight %i: %.3f\n", i, parameters.weights[i]);
-    }
+    // for (int i = 0; i < parameters.weights.size(); ++i) {
+    //   printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    // }
 
     std::vector<glm::dvec2> tempPoints = GetRationalBSplineCurveWithKnots(
         degree, parameters.points2, parameters.knots, parameters.weights);
     for (size_t i = 0; i < tempPoints.size(); i++) {
-      printf("Point %i: x: %.3f, y: %.3f\n", i, tempPoints[i].x,
-             tempPoints[i].y);
+      // printf("Point %i: x: %.3f, y: %.3f\n", i, tempPoints[i].x,
+      //        tempPoints[i].y);
       curve.Add2d(tempPoints[i]);
     }
   } else if (dimensions == 3) {
-    printf("parameters.points3 size: %i\n", parameters.points3.size());
-    printf("degree: %i\n", degree);
-    printf("parameters.knots:\n");
+    // printf("parameters.points3 size: %i\n", parameters.points3.size());
+    // printf("degree: %i\n", degree);
+    // printf("parameters.knots:\n");
 
-    for (int i = 0; i < parameters.knots.size(); ++i) {
-      printf("knot %i: %.3f\n", i, parameters.knots[i]);
-    }
+    // for (int i = 0; i < parameters.knots.size(); ++i) {
+    //   printf("knot %i: %.3f\n", i, parameters.knots[i]);
+    // }
 
-    printf("parameters.weights:\n");
+    // printf("parameters.weights:\n");
 
-    for (int i = 0; i < parameters.weights.size(); ++i) {
-      printf("weight %i: %.3f\n", i, parameters.weights[i]);
-    }
+    // for (int i = 0; i < parameters.weights.size(); ++i) {
+    //   printf("weight %i: %.3f\n", i, parameters.weights[i]);
+    // }
+    
     std::vector<glm::dvec3> tempPoints = GetRationalBSplineCurveWithKnots(
         degree, parameters.points3, parameters.knots, parameters.weights);
-    for (size_t i = 0; i < tempPoints.size(); i++) {
-      printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, tempPoints[i].x,
-             tempPoints[i].y, tempPoints[i].z);
+    
+    // printf( "Output points: %zu\n", tempPoints.size() );
+
+     for (size_t i = 0; i < tempPoints.size(); i++) {
+    //   printf("Point %i: x: %.3f, y: %.3f, z: %.3f\n", i, tempPoints[i].x,
+    //          tempPoints[i].y, tempPoints[i].z);
       curve.Add3d(tempPoints[i]);
     }
   }
