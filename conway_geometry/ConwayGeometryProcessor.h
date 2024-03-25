@@ -581,9 +581,9 @@ class ConwayGeometryProcessor {
   bool USE_FAST_BOOLS = true;
 
   bool DUMP_CSG_MESHES = false;
-  int CIRCLE_SEGMENTS_LOW = 5;
-  int CIRCLE_SEGMENTS_MEDIUM = 8;
-  int CIRCLE_SEGMENTS_HIGH = 12;
+  int CIRCLE_SEGMENTS_LOW = 24;
+  int CIRCLE_SEGMENTS_MEDIUM = 48;
+  int CIRCLE_SEGMENTS_HIGH = 96;
   bool MESH_CACHE = false;
   int BOOL_ABORT_THRESHOLD = 10000;  // 10k verts
 };

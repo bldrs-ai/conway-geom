@@ -156,7 +156,8 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
   }
 
   // find s (the spline segment) for the [t] value provided
-  int s = 0;
+  int s = domainHigh - 1;
+
   for (int i = domainLow; i < domainHigh; i++) {
     if (knots[i] <= tPrime && tPrime < knots[i + 1]) {
       s = i;
@@ -202,6 +203,7 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
   point = glm::dvec3(homogeneousPoints[s].x / homogeneousPoints[s].w,
                      homogeneousPoints[s].y / homogeneousPoints[s].w,
                      homogeneousPoints[s].z / homogeneousPoints[s].w);
+
   return point;
 }
 
@@ -223,7 +225,7 @@ inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
   }
 
   // find s (the spline segment) for the [t] value provided
-  int s = 0;
+  int s = domainHigh - 1;
   for (int i = domainLow; i < domainHigh; i++) {
     if (knots[i] <= tPrime && tPrime < knots[i + 1]) {
       s = i;
@@ -294,6 +296,15 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
     c.push_back(point);
   }
 
+  // Fix - the above floating point loop terminated at < 1, meaning the curve was unterminated 
+  // but also, due to the imprecision of floating point math <= would not necessarily guarantee a 
+  // '1.0' for t - CS
+  {
+    glm::dvec3 endPoint = InterpolateRationalBSplineCurveWithKnots(
+      1.0, degree, points, knots, weights);
+    c.push_back(endPoint);
+  }
+
   // TODO: flip triangles?
   /*
                   if (MatrixFlipsTriangles(placement))
@@ -324,6 +335,13 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
 
     c.push_back(point);
   }
+
+  {
+    glm::dvec2 endPoint = InterpolateRationalBSplineCurveWithKnots(
+      1.0, degree, points, knots, weights);
+    c.push_back(endPoint);
+  }
+
   // TODO: flip triangles?
   /*
                   if (MatrixFlipsTriangles(placement))
