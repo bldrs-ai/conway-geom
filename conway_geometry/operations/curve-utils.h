@@ -139,8 +139,8 @@ inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
 }
 
 inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
-    double t, int degree, std::vector<glm::dvec3> points,
-    std::vector<double> knots, std::vector<double> weights) {
+    double t, int degree, const std::vector<glm::dvec3>& points,
+    const std::vector<double>& knots, const std::vector<double>& weights) {
   glm::dvec3 point;
 
   int domainLow = degree;
@@ -156,7 +156,8 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
   }
 
   // find s (the spline segment) for the [t] value provided
-  int s = 0;
+  int s = domainHigh - 1;
+
   for (int i = domainLow; i < domainHigh; i++) {
     if (knots[i] <= tPrime && tPrime < knots[i + 1]) {
       s = i;
@@ -173,6 +174,8 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
                               p.z * weights[i], weights[i]);
     homogeneousPoints.push_back(h);
   }
+
+  // printf( "Degree %d HP %zu\n", degree, homogeneousPoints.size() );
 
   // l (level) goes from 1 to the curve degree + 1
   double alpha;
@@ -200,12 +203,13 @@ inline glm::dvec3 InterpolateRationalBSplineCurveWithKnots(
   point = glm::dvec3(homogeneousPoints[s].x / homogeneousPoints[s].w,
                      homogeneousPoints[s].y / homogeneousPoints[s].w,
                      homogeneousPoints[s].z / homogeneousPoints[s].w);
+
   return point;
 }
 
 inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
-    double t, int degree, std::vector<glm::dvec2> points,
-    std::vector<double> knots, std::vector<double> weights) {
+    double t, int degree, const std::vector<glm::dvec2>& points,
+    const std::vector<double>& knots, const std::vector<double>& weights) {
   glm::dvec2 point;
 
   int domainLow = degree;
@@ -221,7 +225,7 @@ inline glm::dvec2 InterpolateRationalBSplineCurveWithKnots(
   }
 
   // find s (the spline segment) for the [t] value provided
-  int s = 0;
+  int s = domainHigh - 1;
   for (int i = domainLow; i < domainHigh; i++) {
     if (knots[i] <= tPrime && tPrime < knots[i + 1]) {
       s = i;
@@ -274,20 +278,31 @@ void createFilletArc(std::vector<glm::dvec3>& points, glm::dvec3 center,
     for (int i = 0; i <= segments; ++i) {
         double angle = startAngle + i * angleIncrement;
         glm::dvec3 arcPoint = center + radius * glm::dvec3(cos(angle), sin(angle), 0.0);
-        arcPoint = placement * glm::dvec4(arcPoint, 1.0); // Apply the placement matrix
+        arcPoint = placement * glm::dvec4(arcPoint, 1.0); // Appl y the placement matrix
         points.push_back(arcPoint);
     }
 }
 
 inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
-    int degree, std::vector<glm::dvec3> points, std::vector<double> knots,
-    std::vector<double> weights) {
+    int degree,
+    const std::vector<glm::dvec3>& points,
+    const std::vector<double>& knots,
+    const std::vector<double>& weights ) {
   std::vector<glm::dvec3> c;
 
-  for (double i = 0; i < 1; i += 0.05) {
+  for (double i = 0; i < 1.0; i += 0.05) {
     glm::dvec3 point = InterpolateRationalBSplineCurveWithKnots(
         i, degree, points, knots, weights);
     c.push_back(point);
+  }
+
+  // Fix - the above floating point loop terminated at < 1, meaning the curve was unterminated 
+  // but also, due to the imprecision of floating point math <= would not necessarily guarantee a 
+  // '1.0' for t - CS
+  {
+    glm::dvec3 endPoint = InterpolateRationalBSplineCurveWithKnots(
+      1.0, degree, points, knots, weights);
+    c.push_back(endPoint);
   }
 
   // TODO: flip triangles?
@@ -302,15 +317,31 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
 }
 
 inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
-    int degree, std::vector<glm::dvec2> points, std::vector<double> knots,
-    std::vector<double> weights) {
+    int degree,
+    const std::vector<glm::dvec2>& points,
+    const std::vector<double>& knots,
+    const std::vector<double>& weights ) {
+
   std::vector<glm::dvec2> c;
 
-  for (double i = 0; i < 1; i += 0.05) {
-    glm::dvec2 point = InterpolateRationalBSplineCurveWithKnots(
-        i, degree, points, knots, weights);
+  for (double i = 0; i < 1.0; i += 0.05) {
+    glm::dvec2 point =
+      InterpolateRationalBSplineCurveWithKnots(
+        i,
+        degree,
+        points,
+        knots,
+        weights );
+
     c.push_back(point);
   }
+
+  {
+    glm::dvec2 endPoint = InterpolateRationalBSplineCurveWithKnots(
+      1.0, degree, points, knots, weights);
+    c.push_back(endPoint);
+  }
+
   // TODO: flip triangles?
   /*
                   if (MatrixFlipsTriangles(placement))

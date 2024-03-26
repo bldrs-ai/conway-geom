@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "geometryutils.h"
+#include "tesselation_utils.h"
 
 #define CONST_PI 3.141592653589793238462643383279502884L
 
@@ -240,7 +241,9 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
   // We group each point with their boundary
 
   for (int r = 0; r < maxTeam; r++) {
+    
     std::vector<glm::dvec3> boundingTemp = std::vector<glm::dvec3>();
+
     for (size_t i = 0; i < bounds.size(); i++) {
       for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
         if (bounds[i].curve.indices[j] == r) {
@@ -248,7 +251,7 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
         }
       }
     }
-    boundingGroups.push_back(boundingTemp);
+    boundingGroups.push_back( std::move( boundingTemp ) );
   }
 
   int repeats = 0;
@@ -471,7 +474,7 @@ inline void TriangulateExtrusion(IfcGeometry &geometry,
   }
 }
 
-inline double InverseMethod(glm::dvec3 pt, tinynurbs::RationalSurface3d srf,
+inline double InverseMethod(glm::dvec3 pt, const tinynurbs::RationalSurface3d& srf,
                             double pr, double rotations, double minError,
                             double maxError, double &fU, double &fV,
                             double &divisor, double maxDistance) {
@@ -510,15 +513,15 @@ inline double InverseMethod(glm::dvec3 pt, tinynurbs::RationalSurface3d srf,
       }
     }
     divisor *= 3;
-    printf("divisor: %.3f\n", divisor);
-    printf("maxError: %.3f\n", maxError);
-    printf("minError: %.3f\n", minError);
+    // printf("divisor: %.3f\n", divisor);
+    // printf("maxError: %.3f\n", maxError);
+    // printf("minError: %.3f\n", minError);
   }
   return maxDistance;
 }
 
 inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
-                                           tinynurbs::RationalSurface3d srf,
+                                           const tinynurbs::RationalSurface3d& srf,
                                            double scaling) {
   glm::highp_dvec3 ptc = tinynurbs::surfacePoint(srf, 0.0, 0.0);
   glm::highp_dvec3 pth = tinynurbs::surfacePoint(srf, 1.0, 0.0);
@@ -528,8 +531,8 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
   double dv = glm::distance(ptc, ptv);
   double pr = (dh + 1) / (dv + 1);
 
-  double minError = 0.0001;
-  double maxError = 0.01;
+  double minError = 0.00001;
+  double maxError = 0.001;
   double rotations = 6;
 
   double fU = 0.5;
@@ -538,27 +541,38 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
   double maxDistance = 1e+100;
 
   //printf("scaling: %.3f\n", scaling);
-  maxDistance = InverseMethod(pt, srf, pr, rotations, minError / scaling,
-                              maxError / scaling, fU, fV, divisor, maxDistance);
+  maxDistance =
+    InverseMethod(
+        pt,
+        srf,
+        pr,
+        rotations,
+        minError / scaling,
+        maxError / scaling,
+        fU,
+        fV,
+        divisor,
+        maxDistance );
+
   return glm::dvec2(fU, fV);
 }
 
 // TODO: review and simplify
 inline void TriangulateBspline(IfcGeometry &geometry,
-                               std::vector<IfcBound3D> &bounds,
+                               const std::vector<IfcBound3D> &bounds,
                                IfcSurface &surface, double scaling) {
   //			double limit = 1e-4;
 
   // First: We define the Nurbs surface
 
-  printf("surface.BSplineSurface.UDegree: %.3f\n",
-         surface.BSplineSurface.UDegree);
-  printf("surface.BSplineSurface.VDegree: %.3f\n",
-         surface.BSplineSurface.VDegree);
-  printf("surface.BSplineSurface.ControlPoints size: %i\n",
-         surface.BSplineSurface.ControlPoints.size());
-  printf("surface.BSplineSurface.ControlPoints[0] size: %i\n",
-         surface.BSplineSurface.ControlPoints[0].size());
+  // printf("surface.BSplineSurface.UDegree: %.3f\n",
+  //        surface.BSplineSurface.UDegree);
+  // printf("surface.BSplineSurface.VDegree: %.3f\n",
+  //        surface.BSplineSurface.VDegree);
+  // printf("surface.BSplineSurface.ControlPoints size: %i\n",
+  //        surface.BSplineSurface.ControlPoints.size());
+  // printf("surface.BSplineSurface.ControlPoints[0] size: %i\n",
+  //        surface.BSplineSurface.ControlPoints[0].size());
 
   tinynurbs::RationalSurface3d srf;
   srf.degree_u = surface.BSplineSurface.UDegree;
@@ -568,10 +582,10 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
   auto test = surface.BSplineSurface.ControlPoints[0];
 
-  printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y,
-         test[0].z);
-  printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y,
-         test[1].z);
+  // printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y,
+  //        test[0].z);
+  // printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y,
+  //        test[1].z);
 
   std::vector<glm::dvec3> controlPoints;
   for (std::vector<glm::dvec3> row : surface.BSplineSurface.ControlPoints) {
@@ -588,11 +602,13 @@ inline void TriangulateBspline(IfcGeometry &geometry,
       weights.push_back(weight);
     }
   }
+
   if (weights.size() != num_u * num_v) {
     for (size_t i = 0; i < num_u * num_v; i++) {
       weights.push_back(1.0);
     }
   }
+  
   srf.weights = tinynurbs::array2(num_u, num_v, weights);
 
   for (size_t i = 0; i < surface.BSplineSurface.UMultiplicity.size(); i++) {
@@ -616,21 +632,30 @@ inline void TriangulateBspline(IfcGeometry &geometry,
     std::vector<std::vector<Point>> uvBoundaryValues;
 
     std::vector<Point> points;
+    std::vector<ParameterVertex> vertices;
+
+    WingedEdgeMesh< ParameterVertex > mesh;
+
     for (size_t j = 0; j < bounds[0].curve.points.size(); j++) {
       glm::dvec3 pt = bounds[0].curve.points[j];
-      printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f\n", j, pt.x,
-             pt.y, pt.z);
 
       //hack 
       pt.x *= scaling;
       pt.y *= scaling;
       pt.z *= scaling;
+
       glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf, 1.0f);
 
-      //pInv.x /= scaling;
-      //pInv.y /= scaling;
+      // printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f u: %.3f v: %.3f\n", j, pt.x,
+      //         pt.y, pt.z, pInv.x, pInv.y);
+
+      // pInv.x /= scaling;
+      // pInv.y /= scaling;
+      
       points.push_back({pInv.x, pInv.y});
+      mesh.makeVertex( { pt, pInv } );
     }
+
     uvBoundaryValues.push_back(points);
 
     // Triangulate projected boundary
@@ -640,67 +665,22 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
     std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
 
-    for (size_t r = 0; r < 3; r++) {
-      std::vector<uint32_t> newIndices;
-      std::vector<Point> newUVPoints;
-
-      for (size_t i = 0; i < indices.size(); i += 3) {
-        Point p0 = uvBoundaryValues[0][indices[i + 0]];
-        Point p1 = uvBoundaryValues[0][indices[i + 1]];
-        Point p2 = uvBoundaryValues[0][indices[i + 2]];
-
-        newUVPoints.push_back(p0);
-        newUVPoints.push_back(p1);
-        newUVPoints.push_back(p2);
-
-        Point p3 = {(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2};
-        Point p4 = {(p0[0] + p2[0]) / 2, (p0[1] + p2[1]) / 2};
-        Point p5 = {(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2};
-
-        newUVPoints.push_back(p3);
-        newUVPoints.push_back(p4);
-        newUVPoints.push_back(p5);
-
-        int offset = newUVPoints.size() - 6;
-
-        newIndices.push_back(offset + 0);
-        newIndices.push_back(offset + 3);
-        newIndices.push_back(offset + 4);
-
-        newIndices.push_back(offset + 3);
-        newIndices.push_back(offset + 5);
-        newIndices.push_back(offset + 4);
-
-        newIndices.push_back(offset + 3);
-        newIndices.push_back(offset + 1);
-        newIndices.push_back(offset + 5);
-
-        newIndices.push_back(offset + 4);
-        newIndices.push_back(offset + 5);
-        newIndices.push_back(offset + 2);
-      }
-
-      uvBoundaryValues[0] = newUVPoints;
-      indices = newIndices;
-    }
-
     for (size_t i = 0; i < indices.size(); i += 3) {
-      Point p0 = uvBoundaryValues[0][indices[i + 0]];
-      Point p1 = uvBoundaryValues[0][indices[i + 1]];
-      Point p2 = uvBoundaryValues[0][indices[i + 2]];
-      glm::dvec3 pt00 = tinynurbs::surfacePoint(srf, p0[0], p0[1]);
-      glm::dvec3 pt01 = tinynurbs::surfacePoint(srf, p1[0], p1[1]);
-      glm::dvec3 pt10 = tinynurbs::surfacePoint(srf, p2[0], p2[1]);
-      geometry.AddFace(pt00, pt01, pt10);
+
+      mesh.makeTriangle( 
+        indices[ i  + 0 ], 
+        indices[ i  + 1 ], 
+        indices[ i  + 2 ] );
     }
 
-    printf("result surface geometry:\n");
+    tesselate(
+      mesh,
+      [&srf]( const glm::dvec2& from ) { return tinynurbs::surfacePoint(srf, from.x, from.y); }, 
+      mesh.triangles.size() * 32,
+      0.001 );
 
-    for (int i = 0; i < geometry.numPoints; ++i) {
-      glm::dvec3 pt__ = geometry.GetPoint(i);
+    appendMeshToGeometry( mesh, geometry );
 
-      printf("point %i: x: %.3f, y: %.3f, z: %.3f\n", i, pt__.x, pt__.y, pt__.z);
-    }
   } else {
     printf("surface was not valid!\n");
   }
