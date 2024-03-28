@@ -428,8 +428,8 @@ int main(int argc, char *argv[]) {
   // from outside debugger
   std::string content;
   if (file_path.empty()) {
-    file_path = "../../../index.ifc";
-    content = ReadFile("../../../index.ifc");
+    file_path = "../../../data/index.ifc";
+    content = ReadFile("../../../data/index.ifc");
   } else {
     content = ReadFile(file_path);
   }

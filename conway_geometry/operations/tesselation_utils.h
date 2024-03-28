@@ -172,7 +172,7 @@ namespace conway::geometry {
 
       glm::dvec3 averagePoint = ( v0.point + v1.point ) * 0.5;
       glm::dvec2 newUV        = ( v0.uv + v1.uv ) * 0.5;
-      glm::dvec3 newPoint     = surface( newUV );
+      glm::dvec3 newPoint     = surface( averagePoint, newUV );
 
       double deflection = glm::distance( averagePoint, newPoint );
 
@@ -180,9 +180,12 @@ namespace conway::geometry {
         return;
       }
 
-      candidates.push( CandidateEdge { deflection / glm::distance( v0.point, v1.point ), edgeIndex, ParameterVertex { newPoint, newUV } } );
+      candidates.push( CandidateEdge { 
+        deflection * glm::distance( v0.point, v1.point ),
+        edgeIndex,
+        ParameterVertex { newPoint, newUV } 
+        } );
     };
-
 
     for (
       uint32_t edgeIndex = 0, end = static_cast< uint32_t >( mesh.edges.size() );
