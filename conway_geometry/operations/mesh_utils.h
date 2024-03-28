@@ -22,6 +22,9 @@
 
 namespace conway::geometry {
 
+constexpr double MAX_DEFLECTION            = 0.001;
+constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
+
 // TODO: review and simplify
 inline void TriangulateRevolution(IfcGeometry &geometry,
                                   std::vector<IfcBound3D> &bounds,
@@ -194,203 +197,104 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
 
   std::vector<std::vector<glm::dvec3>> newPoints;
 
-  double numRots = 10;
-  double minZ = 1e+10;
-  double maxZ = -1e+10;
+  double minZ = DBL_MAX;
+  double maxZ = -DBL_MAX;
+
+  std::priority_queue< std::pair< double, size_t > > outsideMostBoundaries;
 
   // Find the relative coordinates of each curve point in the cylinder reference
   // plane Only retain the max and min relative Z
   for (size_t i = 0; i < bounds.size(); i++) {
+
+    double localMaxZ = -DBL_MAX;
+    double localMinZ = DBL_MAX;
+
     for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
       glm::dvec3 vv = bounds[i].curve.points[j] - cent;
       //					double dx = glm::dot(vecX, vv);
       //					double dy = glm::dot(vecY, vv);
       double dz = glm::dot(vecZ, vv);
-      if (maxZ < dz) {
-        maxZ = dz;
-      }
-      if (minZ > dz) {
-        minZ = dz;
-      }
+      
+      localMaxZ = std::max( localMaxZ, dz );
+      localMinZ = std::min( localMinZ, dz );
     }
+
+    outsideMostBoundaries.push( std::make_pair( localMaxZ, i ) );
+
+    maxZ = std::max( maxZ, localMaxZ );
+    minZ = std::min( minZ, localMinZ );
   }
 
-  for (int r = 0; r < numRots; r++) {
+   using Point = std::array<double, 2>;
+  std::vector<std::vector<Point>> uvBoundaryValues;
+  std::vector<ParameterVertex> vertices;
 
-    newPoints.emplace_back();
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  double zBias = ( maxZ - minZ ) / radius;
+
+  while ( !outsideMostBoundaries.empty() ) {
+
+    std::vector<Point> points;
+
+    size_t boundsIndex = outsideMostBoundaries.top().second;
+
+    outsideMostBoundaries.pop();
+
+    for (size_t j = 0; j < bounds[boundsIndex].curve.points.size(); j++) {
+
+      glm::dvec3 pt = bounds[ boundsIndex ].curve.points[ j ];
+      glm::dvec3 vv = pt - cent;
+
+      double dx = glm::dot(vecX, vv);
+      double dy = glm::dot(vecY, vv);
+      double dz = glm::dot(vecZ, vv);
+
+      glm::dvec2 pInv =
+        glm::dvec2( dx, dy ) * ( zBias + ( dz - minZ ) );
+
+      points.push_back({pInv.x, pInv.y});
+      mesh.makeVertex( { pt, pInv } );
+    }
+
+    uvBoundaryValues.push_back( points );
   }
 
-  std::vector<glm::dvec3> bounding;
-  std::vector<double> angleVec;
-  std::vector<double> angleDsp;
+  // Triangulate projected boundary
+  // Subdivide resulting triangles to increase definition
+  // r indicates the level of subdivision, currently 3 you can increase it to
+  // 5
 
-  // Find the max. curve index in the boundary
+  std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
 
-  int maxTeam = 0;
+  for (size_t i = 0; i < indices.size(); i += 3) {
 
-  for (size_t i = 0; i < bounds.size(); i++) {
-    for (size_t j = 0; j < bounds[i].curve.indices.size(); j++) {
-      if (bounds[i].curve.indices[j] > maxTeam) {
-        maxTeam = bounds[i].curve.indices[j];
-      }
-    }
+    mesh.makeTriangle( 
+      indices[ i  + 0 ], 
+      indices[ i  + 1 ], 
+      indices[ i  + 2 ] );
   }
 
-  std::vector<std::vector<glm::dvec3>> boundingGroups;
 
-  // We group each point with their boundary
+  tesselate(
+    mesh,
+    [&]( const glm::dvec3& point, [[maybe_unused]]const glm::dvec2& from ) { 
+      
+      glm::dvec3 vv       = point - cent;
+      double     dx       = glm::dot(vecX, vv);
+      double     dy       = glm::dot(vecY, vv);
+      double     dz       = glm::dot(vecZ, vv);
+      glm::dvec2 inPlane  = glm::dvec2( dx, dy );
+      double     distance = glm::length( inPlane );
 
-  for (int r = 0; r < maxTeam; r++) {
-    
-    std::vector<glm::dvec3> boundingTemp = std::vector<glm::dvec3>();
+      glm::dvec2 newInPlane = inPlane * ( radius / distance );
 
-    for (size_t i = 0; i < bounds.size(); i++) {
-      for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
-        if (bounds[i].curve.indices[j] == r) {
-          boundingTemp.push_back(bounds[i].curve.points[j]);
-        }
-      }
-    }
-    boundingGroups.push_back( std::move( boundingTemp ) );
-  }
+      return cent + newInPlane.x * vecX + newInPlane.y * vecY + vecZ * dz;
+    },
+    mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
+    MAX_DEFLECTION );
 
-  int repeats = 0;
-  bool start = false;
-  bool end = false;
-  size_t id = 0;
-
-  // In the case of boundary lines having only 2 endings...
-  //... we omit these lines and add solely curves having > 2 points...
-  //... starting from a 2 point line, by doing it this way we don't have
-  // repeated points
-  while (!end && repeats < maxTeam * 3) {
-    if (id >= boundingGroups.size()) {
-      id = 0;
-    }
-    if (boundingGroups[id].size() < 3) {
-      if (!start) {
-        start = true;
-      } else {
-        break;
-      }
-    }
-    if (boundingGroups[id].size() > 2 && start) {
-      for (size_t i = 0; i < boundingGroups[id].size(); i++) {
-        bounding.push_back(boundingGroups[id][i]);
-      }
-    }
-    id++;
-    repeats++;
-  }
-
-  // If the previous method finds nothing, then we don't have straight lines ...
-  //... then we add all boundary points directly
-  if (bounding.size() == 0) {
-    for (size_t j = 0; j < boundingGroups.size(); j++) {
-      for (size_t i = 0; i < boundingGroups[j].size(); i++) {
-        bounding.push_back(boundingGroups[j][i]);
-      }
-    }
-  }
-
-  double startDegrees = 0;
-  double endDegrees = 360;
-
-  // Now we project the points in the cylinder surface
-  // There is a problem when points in the cylinder are around 0 degrees
-  // Numerical instabilities can make these points to jump from 0 to 360
-  // It causes lots of trouble when drawing the boundaries in the cylinder
-
-  // The method presented here finds the angle of each point, measures the ...
-  //  ... angular difference and then, if the difference is bigger than 180 ...
-  //  ... corrects it to a lesser value. Finally it gets the first angle and ...
-  //  ... adds the angular differences again, reconstructing a corrected
-  //  boundary.
-
-  // Now we find the angle of each point in the reference plane of the cylinder
-  for (size_t j = 0; j < bounding.size(); j++) {
-    glm::dvec3 vv = bounding[j] - cent;
-    double dx = glm::dot(vecX, vv);
-    double dy = glm::dot(vecY, vv);
-    // double dz = glm::dot(vecZ, vv);
-    double temp = VectorToAngle(dx, dy);
-    while (temp < 0) {
-      temp += 360;
-    }
-    while (temp > 360) {
-      temp -= 360;
-    }
-    angleVec.push_back(temp);
-  }
-
-  // Then we find the angular difference
-  for (size_t i = 0; i < angleVec.size() - 1; i++) {
-    if (angleVec[i] - angleVec[i + 1] > 180) {
-      angleDsp.push_back(360 - (angleVec[i] - angleVec[i + 1]));
-    } else if (angleVec[i] - angleVec[i + 1] < -180) {
-      angleDsp.push_back(-(angleVec[i] - angleVec[i + 1] + 360));
-    } else {
-      angleDsp.push_back(angleVec[i + 1] - angleVec[i]);
-    }
-  }
-
-  startDegrees = angleVec[0];
-  endDegrees = angleVec[0];
-
-  // Add angular differences starting from the first angle. We also correct the
-  // start and end angles
-
-  double temp = angleVec[0];
-  for (size_t i = 0; i < angleDsp.size(); i++) {
-    temp += angleDsp[i];
-    if (endDegrees < temp) {
-      endDegrees = temp;
-    }
-    if (startDegrees > temp) {
-      startDegrees = temp;
-    }
-  }
-
-  // Then we use the start and end angles as bounding boxes of the boundary ...
-  //  ... we will represent this bounding box.
-
-  while (startDegrees < -360) {
-    startDegrees += 360;
-  }
-  double startRad = startDegrees / 180 * (double)CONST_PI;
-  double endRad = endDegrees / 180 * (double)CONST_PI;
-  double radSpan = endRad - startRad;
-  double radStep = radSpan / (numRots - 1);
-
-  for (int r = 0; r < numRots; r++) {
-    double angle = startRad + r * radStep;
-    double dtempX = sin(angle) * radius;
-    double dtempY = cos(angle) * radius;
-    double newPx = dtempX * vecX.x + dtempY * vecY.x + minZ * vecZ.x + cent.x;
-    double newPy = dtempX * vecX.y + dtempY * vecY.y + minZ * vecZ.y + cent.y;
-    double newPz = dtempX * vecX.z + dtempY * vecY.z + minZ * vecZ.z + cent.z;
-    glm::dvec3 newPt = glm::dvec3(newPx, newPy, newPz);
-    newPoints[r].push_back(newPt);
-  }
-  for (int r = 0; r < numRots; r++) {
-    double angle = startRad + r * radStep;
-    double dtempX = sin(angle) * radius;
-    double dtempY = cos(angle) * radius;
-    double newPx = dtempX * vecX.x + dtempY * vecY.x + maxZ * vecZ.x + cent.x;
-    double newPy = dtempX * vecX.y + dtempY * vecY.y + maxZ * vecZ.y + cent.y;
-    double newPz = dtempX * vecX.z + dtempY * vecY.z + maxZ * vecZ.z + cent.z;
-    glm::dvec3 newPt = glm::dvec3(newPx, newPy, newPz);
-    newPoints[r].push_back(newPt);
-  }
-
-  for (int r = 0; r < numRots - 1; r++) {
-    int r1 = r + 1;
-    for (size_t s = 0; s < newPoints[r].size() - 1; s++) {
-      geometry.AddFace(newPoints[r][s], newPoints[r][s + 1], newPoints[r1][s]);
-      geometry.AddFace(newPoints[r1][s], newPoints[r][s + 1],
-                       newPoints[r1][s + 1]);
-    }
-  }
+  appendMeshToGeometry( mesh, geometry );
 }
 
 // TODO: review and simplify
@@ -631,32 +535,36 @@ inline void TriangulateBspline(IfcGeometry &geometry,
     using Point = std::array<double, 2>;
     std::vector<std::vector<Point>> uvBoundaryValues;
 
-    std::vector<Point> points;
     std::vector<ParameterVertex> vertices;
 
     WingedEdgeMesh< ParameterVertex > mesh;
 
-    for (size_t j = 0; j < bounds[0].curve.points.size(); j++) {
-      glm::dvec3 pt = bounds[0].curve.points[j];
+    for ( size_t i = 0; i < bounds.size(); ++i ) {
 
-      //hack 
-      pt.x *= scaling;
-      pt.y *= scaling;
-      pt.z *= scaling;
+      std::vector<Point> points;
 
-      glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf, 1.0f);
+      for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
+        glm::dvec3 pt = bounds[i].curve.points[j];
 
-      // printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f u: %.3f v: %.3f\n", j, pt.x,
-      //         pt.y, pt.z, pInv.x, pInv.y);
+        //hack 
+        pt.x *= scaling;
+        pt.y *= scaling;
+        pt.z *= scaling;
 
-      // pInv.x /= scaling;
-      // pInv.y /= scaling;
-      
-      points.push_back({pInv.x, pInv.y});
-      mesh.makeVertex( { pt, pInv } );
+        glm::dvec2 pInv = BSplineInverseEvaluation(pt, srf, 1.0f);
+
+        // printf("[bounds[0]]: point %i, x: %.3f, y: %.3f, z: %.3f u: %.3f v: %.3f\n", j, pt.x,
+        //         pt.y, pt.z, pInv.x, pInv.y);
+
+        // pInv.x /= scaling;
+        // pInv.y /= scaling;
+        
+        points.push_back({pInv.x, pInv.y});
+        mesh.makeVertex( { pt, pInv } );
+      }
+
+      uvBoundaryValues.push_back(points);
     }
-
-    uvBoundaryValues.push_back(points);
 
     // Triangulate projected boundary
     // Subdivide resulting triangles to increase definition
@@ -675,9 +583,11 @@ inline void TriangulateBspline(IfcGeometry &geometry,
 
     tesselate(
       mesh,
-      [&srf]( const glm::dvec2& from ) { return tinynurbs::surfacePoint(srf, from.x, from.y); }, 
-      mesh.triangles.size() * 32,
-      0.001 );
+      [&srf]( [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) { 
+        return tinynurbs::surfacePoint(srf, from.x, from.y); 
+      },
+      mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
+      MAX_DEFLECTION );
 
     appendMeshToGeometry( mesh, geometry );
 

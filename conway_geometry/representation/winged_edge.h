@@ -105,8 +105,6 @@ namespace conway::geometry {
 
     void deleteTriangle( uint32_t index ) {
 
-      printf( "a %u\n", index );
-
       const Triangle& toDelete = triangles[ index ];
 
       for ( uint32_t localEdge = 0; localEdge < 3; ++localEdge ) {
@@ -120,16 +118,9 @@ namespace conway::geometry {
         } 
 
         edge.triangles[ 1 ] = EMPTY_INDEX;
-        
-        printf( "ed %u %u %u\n", toDelete.edges[ localEdge ], edge.triangles[ 0 ], edge.triangles[ 1 ] );
       }
 
-      printf( "b\n" );
-
       uint32_t backIndex = static_cast< uint32_t >( triangles.size() - 1 );
-
-      printf( "c\n" );
-
       if ( index != backIndex ) {
 
         const Triangle& back = triangles.back();
@@ -149,8 +140,6 @@ namespace conway::geometry {
 
         triangles[ index ] = back;
       } 
-
-      printf( "d\n" );
 
       triangles.pop_back();
     }
@@ -188,8 +177,6 @@ namespace conway::geometry {
         Edge& currentEdge = edges[ mapIterator->second ];
 
         currentEdge.triangles[ currentEdge.triangles[ 0 ] == EMPTY_INDEX ? 0 : 1 ] = triangleIndex;
-
-        printf( "e %u %u %u %u %u\n", mapIterator->second, currentEdge.triangles[ 0 ], currentEdge.triangles[ 1 ], currentEdge.vertices[ 0 ], currentEdge.vertices[ 1 ] );
       }
 
       return mapIterator->second;
