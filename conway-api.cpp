@@ -146,7 +146,7 @@ conway::geometry::IfcCurve GetLoop(
 }
 
 void AddFaceToGeometry(
-    conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+    conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry&
         parameters,
     conway::geometry::IfcGeometry& geometry) {
   if (processor) {

@@ -184,7 +184,7 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCFACE:
   // case ifc::IFCADVANCEDFACE:
-  void AddFaceToGeometry(ParamsAddFaceToGeometry parameters,
+  void AddFaceToGeometry(ParamsAddFaceToGeometry& parameters,
                          IfcGeometry& geometry);
 
   // case ifc::IFCRECTANGLEPROFILEDEF:

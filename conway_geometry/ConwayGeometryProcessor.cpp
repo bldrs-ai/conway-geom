@@ -596,7 +596,7 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 }*/
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
-    ParamsAddFaceToGeometry parameters, IfcGeometry &geometry) {
+    ParamsAddFaceToGeometry& parameters, IfcGeometry &geometry) {
   if (!parameters.advancedBrep) {
     if (parameters.boundsArray.size() > 0) {
       TriangulateBounds(geometry, parameters.boundsArray);
