@@ -181,7 +181,7 @@ inline void TriangulateRevolution(IfcGeometry &geometry,
 
 // TODO: review and simplify
 inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
-                                          std::vector<IfcBound3D> &bounds,
+                                          const std::vector<IfcBound3D> &bounds,
                                           IfcSurface &surface) {
   // First we get the cylinder data
 

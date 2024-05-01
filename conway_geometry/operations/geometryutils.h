@@ -645,7 +645,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
                        offset + indices[i + 2]);
     }
   } else {
-    Logger::logError("bad bound");
+    Logger::logError("bad bound %zu %zu\n", bounds.size(), bounds[0].curve.points.size());
   }
 }
 
