@@ -51,7 +51,13 @@ namespace conway::geometry {
 
     glm::dvec3 norm = glm::cross(v01, v02);
 
-    return glm::length( norm );
+    double result = glm::length( norm );
+
+    if ( isnan( result ) ) {
+      result = 0.001;
+    }
+
+    return result;
   }
 
   /**
@@ -113,10 +119,14 @@ namespace conway::geometry {
           mesh.vertices[ triangle.vertices[ 0 ] ],
           mesh.vertices[ triangle.vertices[ 1 ] ],
           mesh.vertices[ triangle.vertices[ 2 ] ] ) *
-        computeArea(   
+        ( computeArea(   
           mesh.vertices[ triangle.vertices[ 0 ] ],
           mesh.vertices[ triangle.vertices[ 1 ] ],
-          mesh.vertices[ triangle.vertices[ 2 ] ] );
+          mesh.vertices[ triangle.vertices[ 2 ] ] ) );
+
+      if ( isnan( triangleAreaNormal.x ) ) {
+        continue;
+      }
 
       for ( uint32_t localVertex = 0; localVertex < 3; ++localVertex ) {
         normals[ triangle.vertices[ localVertex ] ] += triangleAreaNormal;
@@ -126,7 +136,9 @@ namespace conway::geometry {
     for ( size_t vertexIndex = 0, end = mesh.vertices.size(); vertexIndex < end; ++vertexIndex ) {
 
       glm::dvec3 vertex = mesh.vertices[ vertexIndex ].point;
-      glm::dvec3 normal = glm::normalize( normals[ vertexIndex ] );
+      const glm::dvec3& prenormal = normals[ vertexIndex ];
+      glm::dvec3 normal = glm::normalize( prenormal );
+
 
       // Note, we have to have local versions of vertex and normal
       // cos addpoint isn't const correct.
