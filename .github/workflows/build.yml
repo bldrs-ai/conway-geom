@@ -65,8 +65,11 @@ jobs:
           version: ${{env.EMSDK_VERSION}}
           actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
 
-      - name: Verify Emsdk
-        run: em++ -v
+      - name: Add mmsdk to env
+        run: |
+          em++ -v
+          echo "EMSDK=$(which em++ | sed s|upstream/emscripten/||g)" >> $GITHUB_ENV
+          echo "EMSCRIPTEN=$(which em++)" >> $GITHUB_ENV
 
       - name: Checkout
         id: checkout
@@ -151,8 +154,8 @@ jobs:
       - name: Build Node
         id: build-node
         run: |
-          em++ -v
-          which em++
+          echo emsdk: $EMSDK
+          echo emscripten bin dir: $EMSCRIPTEN
 #          cd gmake
 #          EMSCRIPTEN=$EMSDK/upstream/emscripten make config=releaseemscripten ConwayGeomWasmNode
 
