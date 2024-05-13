@@ -151,7 +151,7 @@ jobs:
       - name: Build Node
         id: build-node
         run: |
-          echo "which em++:"
+          ls -R $EMSDK
           which em++
 #          cd gmake
 #          EMSCRIPTEN=$EMSDK/upstream/emscripten make config=releaseemscripten ConwayGeomWasmNode
