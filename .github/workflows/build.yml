@@ -1,7 +1,7 @@
 name: Development Build
 
 env:
-  EMSDK_VERSION: 1.39.18
+  EMSDK_VERSION: 3.1.58
   EMSDK_CACHE_FOLDER: 'cache/emsdk'
 
 on:
@@ -51,53 +51,11 @@ jobs:
       - name: Create Build Cache Directory
         run: mkdir -p cache/
 
-      - name: Enable Emscripten System Library Cache
-        id: emscripten-cache
-        uses: actions/cache@v3
-        with:
-          path: ${{env.EMSDK_CACHE_FOLDER}}
-          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
-
-      - name: Install Emscripten
-        id: emscripten
-        uses: mymindstorm/setup-emsdk@v12
-        with:
-          version: ${{env.EMSDK_VERSION}}
-          actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
-
       - name: Checkout
         id: checkout
         uses: actions/checkout@v3
         with:
           submodules: recursive
-
-      - name: Identify dependency versions
-        id: dependency-versions
-        run: |
-          echo "DRACO_VERSION=$( cd external/draco/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
-          echo "MANIFOLD_VERSION=$( cd external/manifold/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
-          echo "GLTFSDK_VERSION=$( cd external/gltf-sdk/ && git rev-parse --short HEAD )" >> $GITHUB_ENV
-
-      - name: Load Draco from Build Cache
-        id: draco-cache
-        uses: actions/cache@v3
-        with:
-          path: build/draco/
-          key: draco-${{env.DRACO_VERSION}}-${{ runner.os }}
-
-      - name: Load Manifold from Build Cache
-        id: manifold-cache
-        uses: actions/cache@v3
-        with:
-          path: build/manifold/
-          key: manifold-${{env.MANIFOLD_VERSION}}-${{ runner.os }}
-
-      - name: Load glTF SDK from Build Cache
-        id: gltf-sdk-cache
-        uses: actions/cache@v3
-        with:
-          path: build/gtlf-sdk/
-          key: gltf-sdk-${{env.GLTFSDK_VERSION}}-${{ runner.os }}
 
       - name: Use cached GENie
         id: use-cached-genie
@@ -112,41 +70,45 @@ jobs:
           chmod +x ./bin/linux/genie
           ./bin/linux/genie gmake
 
-      - name: Build Draco
-        id: build-draco
-        if: steps.draco-cache.outputs.cache-hit != 'true'
+      - name: Unzip wasm library dependencies
         run: |
-          mkdir -p build/draco
-          cd build/draco
-          cmake ../../external/draco
-          make
+          cd dependencies/wasm
+          unzip dependencies.zip
 
-      - name: Build Manifold
-        id: build-manifold
-        if: steps.manifold-cache.outputs.cache-hit != 'true'
+      - name: Enable Emscripten System Library Cache
+        id: emscripten-cache
+        uses: actions/cache@v3
+        with:
+          path: ${{env.EMSDK_CACHE_FOLDER}}
+          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
+
+      - name: Install Emscripten
+        id: emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{env.EMSDK_VERSION}}
+          actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
+
+      - name: Add emsdk to env
         run: |
-          mkdir -p build/manifold
-          cd build/manifold
-          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ../../external/manifold
-          make
+          echo 'which em++:'
+          which em++
+          em++ -v
+          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
+          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
+          echo "emsdk: $EMSDK"
+          echo "emscripten bin dir: $EMSCRIPTEN"
+          echo "EMSDK=$EMSDK" >> $GITHUB_ENV
+          echo "EMSCRIPTEN=$EMSCRIPTEN" >> $GITHUB_ENV
 
-      - name: Build glTF SDK
-        id: build-gltf-sdk
-        if: steps.gltf-sdk-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p build/gltf-sdk
-          cd build/gltf-sdk
-          cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
-          make
-
-      - name: Build Native Artifacts
-        id: build-native
+      - name: Build Node
+        id: build-node
         run: |
           cd gmake
-          make config=release64 conway_geom_native webifc_native
+          make config=releaseemscripten ConwayGeomWasmNode
 
       - name: Build WASM
         id: build-wasm
         run: |
           cd gmake
-          make config=releaseemscripten ConwayGeomWasm
+          make config=releaseemscripten ConwayGeomWasmWeb
