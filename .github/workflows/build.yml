@@ -65,11 +65,11 @@ jobs:
           version: ${{env.EMSDK_VERSION}}
           actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
 
-      - name: Add mmsdk to env
+      - name: Add emsdk to env
         run: |
           em++ -v
-          echo "EMSDK=$(which em++ | sed s|upstream/emscripten/||g)" >> $GITHUB_ENV
-          echo "EMSCRIPTEN=$(which em++)" >> $GITHUB_ENV
+          echo "EMSDK=$(which em++ | sed 's|/upstream/emscripten/em++||')" >> $GITHUB_ENV
+          echo "EMSCRIPTEN=$(which em++ | sed 's|/em++||')" >> $GITHUB_ENV
 
       - name: Checkout
         id: checkout
@@ -156,11 +156,13 @@ jobs:
         run: |
           echo emsdk: $EMSDK
           echo emscripten bin dir: $EMSCRIPTEN
-#          cd gmake
-#          EMSCRIPTEN=$EMSDK/upstream/emscripten make config=releaseemscripten ConwayGeomWasmNode
+          cd gmake
+          make config=releaseemscripten ConwayGeomWasmNode
 
       - name: Build WASM
         id: build-wasm
         run: |
+          echo emsdk: $EMSDK
+          echo emscripten bin dir: $EMSCRIPTEN
           cd gmake
-          EMSCRIPTEN=$EMSDK/upstream/emscripten make config=releaseemscripten ConwayGeomWasmWeb
+          make config=releaseemscripten ConwayGeomWasmWeb
