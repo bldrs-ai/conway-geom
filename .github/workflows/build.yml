@@ -125,12 +125,6 @@ jobs:
           cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
           make
 
-      - name: Build Native Artifacts
-        id: build-native
-        run: |
-          cd gmake
-          make config=release64 conway_geom_native webifc_native
-
       - name: Enable Emscripten System Library Cache
         id: emscripten-cache
         uses: actions/cache@v3
