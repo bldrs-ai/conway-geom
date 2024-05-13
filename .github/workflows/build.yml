@@ -152,10 +152,10 @@ jobs:
         id: build-node
         run: |
           cd gmake
-          make config=releaseemscripten ConwayGeomWasmNode
+          EMSCRIPTEN=$EMSDK make config=releaseemscripten ConwayGeomWasmNode
 
       - name: Build WASM
         id: build-wasm
         run: |
           cd gmake
-          make config=releaseemscripten ConwayGeomWasmWeb
+          EMSCRIPTEN=$EMSDK make config=releaseemscripten ConwayGeomWasmWeb
