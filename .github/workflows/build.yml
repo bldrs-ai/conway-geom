@@ -68,8 +68,12 @@ jobs:
       - name: Add emsdk to env
         run: |
           em++ -v
-          echo "EMSDK=$(which em++ | sed 's|/upstream/emscripten/em++||')" >> $GITHUB_ENV
-          echo "EMSCRIPTEN=$(which em++ | sed 's|/em++||')" >> $GITHUB_ENV
+          EMSDK=$(which em++ | sed 's|/upstream/bin/em++||')
+          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
+          echo "emsdk: $EMSDK"
+          echo "emscripten bin dir: $EMSCRIPTEN"
+          echo "EMSDK=$EMSDK" >> $GITHUB_ENV
+          echo "EMSCRIPTEN=$EMSCRIPTEN" >> $GITHUB_ENV
 
       - name: Checkout
         id: checkout
