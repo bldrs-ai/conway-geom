@@ -67,8 +67,10 @@ jobs:
 
       - name: Add emsdk to env
         run: |
+          echo 'which em++:'
+          which em++
           em++ -v
-          EMSDK=$(which em++ | sed 's|/upstream/bin/em++||')
+          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
           EMSCRIPTEN=$(which em++ | sed 's|/em++||')
           echo "emsdk: $EMSDK"
           echo "emscripten bin dir: $EMSCRIPTEN"
@@ -158,6 +160,11 @@ jobs:
       - name: Build Node
         id: build-node
         run: |
+          echo 'which em++:'
+          which em++
+          em++ -v
+          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
+          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
           echo emsdk: $EMSDK
           echo emscripten bin dir: $EMSCRIPTEN
           cd gmake
@@ -166,6 +173,11 @@ jobs:
       - name: Build WASM
         id: build-wasm
         run: |
+          echo 'which em++:'
+          which em++
+          em++ -v
+          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
+          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
           echo emsdk: $EMSDK
           echo emscripten bin dir: $EMSCRIPTEN
           cd gmake
