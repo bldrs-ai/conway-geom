@@ -51,32 +51,6 @@ jobs:
       - name: Create Build Cache Directory
         run: mkdir -p cache/
 
-      - name: Enable Emscripten System Library Cache
-        id: emscripten-cache
-        uses: actions/cache@v3
-        with:
-          path: ${{env.EMSDK_CACHE_FOLDER}}
-          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
-
-      - name: Install Emscripten
-        id: emscripten
-        uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: ${{env.EMSDK_VERSION}}
-          actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
-
-      - name: Add emsdk to env
-        run: |
-          echo 'which em++:'
-          which em++
-          em++ -v
-          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
-          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
-          echo "emsdk: $EMSDK"
-          echo "emscripten bin dir: $EMSCRIPTEN"
-          echo "EMSDK=$EMSDK" >> $GITHUB_ENV
-          echo "EMSCRIPTEN=$EMSCRIPTEN" >> $GITHUB_ENV
-
       - name: Checkout
         id: checkout
         uses: actions/checkout@v3
@@ -156,6 +130,32 @@ jobs:
       #   run: |
       #     cd gmake
       #     make config=release64 conway_geom_native webifc_native
+
+      - name: Enable Emscripten System Library Cache
+        id: emscripten-cache
+        uses: actions/cache@v3
+        with:
+          path: ${{env.EMSDK_CACHE_FOLDER}}
+          key: ${{env.EMSDK_VERSION}}-${{ runner.os }}
+
+      - name: Install Emscripten
+        id: emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{env.EMSDK_VERSION}}
+          actions-cache-folder: ${{env.EMSDK_CACHE_FOLDER}}
+
+      - name: Add emsdk to env
+        run: |
+          echo 'which em++:'
+          which em++
+          em++ -v
+          EMSDK=$(which em++ | sed 's|upstream/emscripten/em++||')
+          EMSCRIPTEN=$(which em++ | sed 's|/em++||')
+          echo "emsdk: $EMSDK"
+          echo "emscripten bin dir: $EMSCRIPTEN"
+          echo "EMSDK=$EMSDK" >> $GITHUB_ENV
+          echo "EMSCRIPTEN=$EMSCRIPTEN" >> $GITHUB_ENV
 
       - name: Build Node
         id: build-node
