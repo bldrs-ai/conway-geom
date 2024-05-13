@@ -152,9 +152,9 @@ jobs:
         id: build-node
         run: |
           cd gmake
-          ls -$ EMSCRIPTEN=$EMSDK/upstream/emscripten
-          ls -$ EMSCRIPTEN=$EMSDK/upstream
-          ls -$ EMSCRIPTEN=$EMSDK
+          ls -R EMSCRIPTEN=$EMSDK/upstream/emscripten
+          ls -R EMSCRIPTEN=$EMSDK/upstream
+          ls -R EMSCRIPTEN=$EMSDK
 #          EMSCRIPTEN=$EMSDK/upstream/emscripten make config=releaseemscripten ConwayGeomWasmNode
 
       - name: Build WASM
