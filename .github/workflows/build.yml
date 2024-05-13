@@ -112,18 +112,18 @@ jobs:
       #     cmake -DCMAKE_CXX_STANDARD=14 -DCMAKE_CXX_STANDARD_REQUIRED=on ../../external/gltf-sdk/
       #     make
 
-      # - name: Use cached GENie
-      #   id: use-cached-genie
-      #   uses: actions/cache/restore@v3
-      #   with:
-      #     path: bin/linux/genie
-      #     key: genie-${{ runner.os }}
+      - name: Use cached GENie
+        id: use-cached-genie
+        uses: actions/cache/restore@v3
+        with:
+          path: bin/linux/genie
+          key: genie-${{ runner.os }}
 
-      # - name: Generate Makefiles
-      #   id: generate-makefiles
-      #   run: |
-      #     chmod +x ./bin/linux/genie
-      #     ./bin/linux/genie gmake
+      - name: Generate Makefiles
+        id: generate-makefiles
+        run: |
+          chmod +x ./bin/linux/genie
+          ./bin/linux/genie gmake
 
       - name: Unzip wasm library dependencies
         run: |
