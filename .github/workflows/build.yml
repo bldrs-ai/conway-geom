@@ -145,8 +145,14 @@ jobs:
 #          cd gmake
 #          make config=release64 conway_geom_native webifc_native
 
+      - name: Build Node
+        id: build-wasm
+        run: |
+          cd gmake
+          make config=releaseemscripten ConwayGeomWasmNode
+
       - name: Build WASM
         id: build-wasm
         run: |
           cd gmake
-          make config=releaseemscripten ConwayGeomWasm
+          make config=releaseemscripten ConwayGeomWasmWeb
