@@ -852,16 +852,16 @@ inline double VectorToAngle(double x, double y) {
     double sinv = sin(angle);
     cosv = cos(angle);
     if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5) {
-      angle = angle + (CONST_PI - angle) * 2;
+      angle = angle + ((double)CONST_PI - angle) * 2;
       sinv = sin(angle);
       cosv = cos(angle);
       if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5) {
-        angle = angle + CONST_PI;
+        angle = angle + (double)CONST_PI;
       }
     }
   }
 
-  return (angle / (2 * CONST_PI)) * 360;
+  return (angle / (2 * (double)CONST_PI)) * 360;
 }
 
 inline bool MatrixFlipsTriangles(const glm::dmat4 &mat) {

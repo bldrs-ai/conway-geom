@@ -215,7 +215,7 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     }
   }
 
-  /*if (webifc::statistics::exportObjs) {
+  if (webifc::statistics::exportObjs) {
     webifc::geometry::IfcGeometry tmpGeometry;
     size_t offset = 0;
     std::string completeObj = "";
@@ -236,7 +236,7 @@ std::vector<webifc::geometry::IfcFlatMesh> LoadAllTest(
     glm::dvec3 color(0, 0, 0);
     std::string fullFileName = "fullOBJ_webifc_test.obj";
     writeFile(fullFileName, completeObj);
-  }*/
+  }
 
   return meshes;
 }

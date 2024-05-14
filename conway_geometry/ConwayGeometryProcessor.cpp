@@ -501,6 +501,7 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
   profile.curve = GetRectangleCurve(d, d, glm::dmat3(1));
 
   auto geom = Extrude(profile, extrusionNormal, d);
+  geom.halfSpace = true;
 
   // @Refactor: duplicate of extrudedareasolid
   if (parameters.flipWinding) {
@@ -517,9 +518,9 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
 
 IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
     ParamsGetPolygonalBoundedHalfspace parameters) {
-  if (!parameters.curve.IsCCW()) {
+  /*if (!parameters.curve.IsCCW()) {
     parameters.curve.Invert();
-  }
+  }*/
 
   glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
   glm::dvec3 planeNormal = parameters.surface.transformation[2];
@@ -531,8 +532,8 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 
   bool flipWinding = false;
   double extrudeDistance =
-      EXTRUSION_DISTANCE_HALFSPACE_M / parameters.optionalLinearScalingFactor;
-  bool halfSpaceInPlaneDirection = parameters.halfSpaceInPlaneDirection;
+      EXTRUSION_DISTANCE_HALFSPACE_M / parameters.scaleFactor;
+  bool halfSpaceInPlaneDirection = parameters.agreement;
   bool extrudeInPlaneDirection =
       glm::dot(localPlaneNormal, extrusionNormal) > 0;
   bool ignoreDistanceInExtrude =
@@ -2042,8 +2043,8 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
     }
   }
 
-  double startRad = startDegrees / 180 * CONST_PI;
-  double endRad = endDegrees / 180 * CONST_PI;
+  double startRad = startDegrees / 180 * (double)CONST_PI;
+  double endRad = endDegrees / 180 * (double)CONST_PI;
   double lengthDegrees = endDegrees - startDegrees;
 
   // unset or true
@@ -2060,7 +2061,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
     }
   }
 
-  double lengthRad = lengthDegrees / 180 * CONST_PI;
+  double lengthRad = lengthDegrees / 180 * (double)CONST_PI;
 
   size_t startIndex = curve.points.size();
 

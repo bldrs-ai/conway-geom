@@ -262,6 +262,14 @@ export interface ParamsCreateNativeIfcProfile {
   profiles: any | undefined // std::vector<conway::geometry::IfcProfile>;
 }
 
+export interface ParamsGetPolygonalBoundedHalfspace {
+  scaleFactor:number
+  agreement:boolean
+  curve:CurveObject | undefined
+  surface:SurfaceObject | undefined
+  position: any // glm::dmat4
+}
+
 export interface ParamsGetExtrudedAreaSolid {
   depth: number
   dir: any // glm::dvec3
@@ -891,6 +899,16 @@ export class ConwayGeometry {
    */
   getRectangleHollowProfileHole(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleHollowProfileHole(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters 
+   * @returns 
+   */
+  getPolygonalBoundedHalfspace(parameters:ParamsGetPolygonalBoundedHalfspace):GeometryObject {
+    const result = this.wasmModule.getPolygonalBoundedHalfspace(parameters)
     return result
   }
 

@@ -124,6 +124,14 @@ conway::geometry::IfcCurve GetBSplineCurve(
   return curve;
 }
 
+conway::geometry::IfcGeometry GetPolygonalBoundedHalfspace(
+  conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace
+  parameters) {
+    if (processor) {
+      return processor->GetPolygonalBoundedHalfspace(parameters);
+    }
+  }
+
 conway::geometry::IfcGeometry GetExtrudedAreaSolid(
     conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
         parameters) {
@@ -1246,6 +1254,21 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("start", &conway::geometry::IfcTrimmingArguments::start)
       .field("end", &conway::geometry::IfcTrimmingArguments::end);
 
+  /**
+   * bool agreement = false;
+    double scaleFactor = 1.0;
+    conway::geometry::IfcCurve curve;
+    IfcSurface surface;
+    glm::dmat4 position;
+  */
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace>(
+    "ParamsGetPolygonalBoundedHalfspace")
+    .field("agreement", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::agreement)
+    .field("scaleFactor", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::scaleFactor)
+    .field("curve", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::curve)
+    .field("position", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::position);
+
   emscripten::value_array<std::array<double, 16>>("array_double_16")
       .element(emscripten::index<0>())
       .element(emscripten::index<1>())
@@ -1311,6 +1334,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getPolygonalBoundedHalfspace", &GetPolygonalBoundedHalfspace);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult,
                        emscripten::allow_raw_pointers());

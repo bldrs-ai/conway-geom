@@ -146,12 +146,20 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
   struct ParamsGetPolygonalBoundedHalfspace {
+    bool agreement = false;
+    double scaleFactor = 1.0;
+    conway::geometry::IfcCurve curve;
     IfcSurface surface;
     glm::dmat4 position;
-    conway::geometry::IfcCurve curve;
-    bool halfSpaceInPlaneDirection = false;  // agreement != "T"
-    double optionalLinearScalingFactor = 1.0;
   };
+
+  /**
+   * scaleFactor:number
+  agreement:boolean
+  curve:CurveObject | undefined
+  surface:SurfaceObject | undefined
+  matrix: any // glm::dmat4
+  */
 
   IfcGeometry GetPolygonalBoundedHalfspace(
       ParamsGetPolygonalBoundedHalfspace parameters);

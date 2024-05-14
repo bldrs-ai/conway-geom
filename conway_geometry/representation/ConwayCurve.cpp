@@ -58,10 +58,11 @@ void IfcCurve::Invert() { std::reverse(points.begin(), points.end()); }
 bool IfcCurve::IsCCW() const
 	{
 		double sum = 0;
+		auto n = points.size();
 
-		for (size_t i = 0; i < points.size(); i++)
+		for (size_t i = 0; i < n; i++)
 		{
-			glm::dvec3 pt1 = points.at((i - 1) % points.size());
+			glm::dvec3 pt1 = points.at((i + n - 1) % n);
 			glm::dvec3 pt2 = points.at(i);
 
 			sum += (pt2.x - pt1.x) * (pt2.y + pt1.y);
@@ -69,6 +70,7 @@ bool IfcCurve::IsCCW() const
 
 		return sum < 0;
 	}
+
 
   glm::dmat4 IfcCurve::getPlacementAtDistance(double length)
 	{
