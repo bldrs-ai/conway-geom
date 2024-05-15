@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <glm/glm.hpp>
 
 #include "../representation/winged_edge.h"
@@ -53,7 +54,7 @@ namespace conway::geometry {
 
     double result = glm::length( norm );
 
-    if ( isnan( result ) ) {
+    if ( std::isnan( result ) ) {
       result = 0.001;
     }
 
@@ -124,7 +125,7 @@ namespace conway::geometry {
           mesh.vertices[ triangle.vertices[ 1 ] ],
           mesh.vertices[ triangle.vertices[ 2 ] ] ) );
 
-      if ( isnan( triangleAreaNormal.x ) ) {
+      if ( std::isnan( triangleAreaNormal.x ) ) {
         continue;
       }
 
