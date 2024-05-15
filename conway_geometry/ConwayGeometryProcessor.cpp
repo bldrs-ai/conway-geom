@@ -279,7 +279,10 @@ IfcCurve ConwayGeometryProcessor::GetRectangleHollowProfileHole(
 }
 
 glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
-  return (geometry.min + geometry.max) * 0.5;
+  
+  fuzzybools::AABB box = geometry.GetAABB();
+
+  return box.min + ( ( box.max - box.min ) * 0.5 );
 }
 
 glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {

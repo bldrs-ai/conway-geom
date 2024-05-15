@@ -44,10 +44,17 @@ export interface ParamsGetPolyCurve {
   delete():unknown
 }
 
+export interface AABB {
+  index:number
+  min:Vector3
+  max:Vector3
+  center:Vector3
+}
+
 export interface GeometryObject {
   GetVertexData: () => any
   GetPoint(parameter: number): Vector3
-  NormalizeInPlace(): void
+  Normalize(): Vector3
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
@@ -58,8 +65,7 @@ export interface GeometryObject {
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  getMin(): Vector3
-  getMax(): Vector3
+  getAABB(): AABB
   getParts(): StdVector<GeometryObject>
   normalized: boolean
   delete(): void

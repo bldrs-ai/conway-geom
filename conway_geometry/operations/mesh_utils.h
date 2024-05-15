@@ -465,31 +465,12 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
 inline void TriangulateBspline(IfcGeometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
                                IfcSurface &surface, double scaling) {
-  //			double limit = 1e-4;
-
-  // First: We define the Nurbs surface
-
-  // printf("surface.BSplineSurface.UDegree: %.3f\n",
-  //        surface.BSplineSurface.UDegree);
-  // printf("surface.BSplineSurface.VDegree: %.3f\n",
-  //        surface.BSplineSurface.VDegree);
-  // printf("surface.BSplineSurface.ControlPoints size: %i\n",
-  //        surface.BSplineSurface.ControlPoints.size());
-  // printf("surface.BSplineSurface.ControlPoints[0] size: %i\n",
-  //        surface.BSplineSurface.ControlPoints[0].size());
 
   tinynurbs::RationalSurface3d srf;
   srf.degree_u = surface.BSplineSurface.UDegree;
   srf.degree_v = surface.BSplineSurface.VDegree;
   size_t num_u = surface.BSplineSurface.ControlPoints.size();
   size_t num_v = surface.BSplineSurface.ControlPoints[0].size();
-
-  auto test = surface.BSplineSurface.ControlPoints[0];
-
-  // printf("test[0] x: %.3f, y: %.3f, z: %.3f\n", test[0].x, test[0].y,
-  //        test[0].z);
-  // printf("test[1] x: %.3f, y: %.3f, z: %.3f\n", test[1].x, test[1].y,
-  //        test[1].z);
 
   std::vector<glm::dvec3> controlPoints;
   for (std::vector<glm::dvec3> row : surface.BSplineSurface.ControlPoints) {

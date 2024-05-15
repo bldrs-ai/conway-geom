@@ -620,14 +620,21 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
       .constructor<>();
 
+  emscripten::class_<fuzzybools::AABB>("AABB")
+  .constructor<>()
+  .property("index", &fuzzybools::AABB::index)
+  .property("min", &fuzzybools::AABB::min)
+  .property("max", &fuzzybools::AABB::max)
+  .property("center", &fuzzybools::AABB::center);
+
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
       .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
       .function("GetVertexDataSize",
                 &conway::geometry::IfcGeometry::GetVertexDataSize)
       .function("GetPoint", &conway::geometry::IfcGeometry::GetPoint)
-      .function("NormalizeInPlace",
-                &conway::geometry::IfcGeometry::NormalizeInPlace)
+      .function("Normalize",
+                &conway::geometry::IfcGeometry::Normalize)
       .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("GetIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
@@ -639,9 +646,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendWithTransform)
       .function("getAllocationSize",
                 &conway::geometry::IfcGeometry::GetAllocationSize)
+      .function("getAABB", &fuzzybools::Geometry::GetAABB)
       .function("getParts", &conway::geometry::IfcGeometry::getParts)
-      .function("getMin", &conway::geometry::IfcGeometry::getMin)
-      .function("getMax", &conway::geometry::IfcGeometry::getMax)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
       .function("clone", &conway::geometry::IfcGeometry::Clone);
 
