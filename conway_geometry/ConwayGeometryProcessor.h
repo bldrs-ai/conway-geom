@@ -115,7 +115,7 @@ class ConwayGeometryProcessor {
 
   IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
   IfcGeometry BoolSubtract(const std::vector<IfcGeometry>& firstGroups,
-                           std::vector<IfcGeometry>& secondGroups);
+                           const std::vector<IfcGeometry>& secondGroups);
   IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
                                  std::vector<IfcGeometry>& secondGeoms);
 

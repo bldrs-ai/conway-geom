@@ -646,7 +646,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendWithTransform)
       .function("getAllocationSize",
                 &conway::geometry::IfcGeometry::GetAllocationSize)
-      .function("getAABB", &fuzzybools::Geometry::GetAABB)
+      .function("getAABB", &conway::geometry::IfcGeometry::getAABB)
+      .function("getAABBCenter", &conway::geometry::IfcGeometry::GetAABBCenter)
       .function("getParts", &conway::geometry::IfcGeometry::getParts)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
       .function("clone", &conway::geometry::IfcGeometry::Clone);

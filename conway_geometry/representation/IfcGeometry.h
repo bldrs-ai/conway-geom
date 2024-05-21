@@ -35,6 +35,7 @@ struct IfcGeometry : fuzzybools::Geometry {
   //new additions 0.0.44
   bool halfSpace = false;
   std::vector<IfcGeometry> part;
+  glm::dvec3 center = glm::dvec3(0,0,0);
   glm::dvec3 halfSpaceX = glm::dvec3(1, 0, 0);
   glm::dvec3 halfSpaceY = glm::dvec3(0, 1, 0);
   glm::dvec3 halfSpaceZ = glm::dvec3(0, 0, 1);
@@ -42,6 +43,8 @@ struct IfcGeometry : fuzzybools::Geometry {
   //end new additions 0.0.44
 
   std::vector<IfcGeometry> getParts();
+  fuzzybools::AABB getAABB() const;
+  glm::dvec3 GetAABBCenter() const;
   bool normalized = false;
 
   uint32_t GetAllocationSize() const;
@@ -55,12 +58,12 @@ struct IfcGeometry : fuzzybools::Geometry {
   void AppendGeometry(IfcGeometry &geom);
   void AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, glm::dvec3 origin = glm::dvec3(0, 0, 0));
   void MergeGeometry(fuzzybools::Geometry geom);
-  void AppendWithTransform(IfcGeometry &geom, glm::dmat4x4 transform);
+  void AppendWithTransform(const IfcGeometry &geom, const glm::dmat4x4& transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();
   glm::dvec3 Normalize();
-  void ApplyTransform(glm::dmat4x4 transform);
+  void ApplyTransform(const glm::dmat4x4& transform);
   IfcGeometry Clone();
 
  private:

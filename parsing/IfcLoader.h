@@ -12,7 +12,6 @@
 #include <string_view>
 
 #include "IfcTokenStream.h"
-#include "../utility/LoaderError.h"
 #include "../schema/IfcSchemaManager.h"
 
 namespace webifc::parsing
@@ -21,7 +20,7 @@ namespace webifc::parsing
 	class IfcLoader {
   
     public:
-      IfcLoader(uint32_t tapeSize, uint32_t memoryLimit,utility::LoaderErrorHandler &errorHandler,schema::IfcSchemaManager &schemaManager);  
+      IfcLoader(uint32_t tapeSize, uint32_t memoryLimit,uint32_t lineWriterBuffer, const schema::IfcSchemaManager &schemaManager);  
       ~IfcLoader();
       const std::vector<uint32_t> GetHeaderLinesWithType(const uint32_t type) const;
       void LoadFile(const std::function<uint32_t(char *, size_t, size_t)> &requestData);
@@ -38,8 +37,8 @@ namespace webifc::parsing
       std::string_view GetStringArgument() const;
       std::string GetDecodedStringArgument() const;
       double GetDoubleArgument() const;
-      int GetIntArgument() const;
-      int GetIntArgument(const uint32_t tapeOffset) const;
+      long GetIntArgument() const;
+      long GetIntArgument(const uint32_t tapeOffset) const;
       double GetDoubleArgument(const uint32_t tapeOffset) const;
       std::string_view  GetDoubleArgumentAsString() const;
       double GetOptionalDoubleParam(double defaultValue) const;
@@ -49,6 +48,7 @@ namespace webifc::parsing
       IfcTokenType GetTokenType() const;
       IfcTokenType GetTokenType(const uint32_t tapeOffset) const;
       const std::vector<uint32_t> GetSetArgument() const;
+      std::vector<uint32_t> GetAllLines() const;
       const std::vector<std::vector<uint32_t>> GetSetListArgument() const;
       void MoveToArgumentOffset(const uint32_t expressID, const uint32_t argumentIndex) const;
       void StepBack() const;
@@ -62,6 +62,7 @@ namespace webifc::parsing
       void PushDouble(double input);
       void PushInt(int input);
       void ExtendLineStorage(uint32_t lineStorageSize);
+      uint32_t GetNextExpressID(uint32_t expressId) const;
       template <typename T> void Push(T input)
       {
         _tokenStream->Push(input);
@@ -73,9 +74,8 @@ namespace webifc::parsing
         uint32_t ifcType;
         uint32_t tapeOffset;
       };
-
+      const uint32_t _lineWriterBuffer;
       const schema::IfcSchemaManager &_schemaManager;
-      utility::LoaderErrorHandler &_errorHandler;
       IfcTokenStream * _tokenStream;
       IfcLine * _nullLine;
       std::vector<IfcLine*> _lines;

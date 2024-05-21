@@ -29,7 +29,6 @@ void IfcGeometry::ReverseFaces() {
 
 glm::dvec3 IfcGeometry::Normalize()
 {
-  glm::dvec3 center(0,0,0);
   if (!normalized)
   {
     glm::dvec3 extents;
@@ -44,6 +43,15 @@ glm::dvec3 IfcGeometry::Normalize()
     normalized = true;
   }
   return center;
+}
+
+glm::dvec3 IfcGeometry::GetAABBCenter() const {
+   glm::dvec3 center(0,0,0);
+   glm::dvec3 extents;
+
+   GetCenterExtents(center, extents);
+
+   return center;
 }
 
 glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
@@ -101,8 +109,8 @@ std::string GeometryToObj(const IfcGeometry &geom, size_t &offset,
 
 IfcGeometry IfcGeometry::Clone() { return *this; }
 
-void IfcGeometry::AppendWithTransform(IfcGeometry &geom,
-                                      glm::dmat4x4 transform) {
+void IfcGeometry::AppendWithTransform(const IfcGeometry &geom,
+                                      const glm::dmat4x4& transform) {
   uint32_t maxIndex = numPoints;
   numPoints += geom.numPoints;
 
@@ -177,6 +185,11 @@ void IfcGeometry::AddPart(fuzzybools::Geometry geom)
   part.push_back(newGeom);
 }
 
+fuzzybools::AABB IfcGeometry::getAABB() const
+{
+  return GetAABB();
+}
+
 void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans,
                               double scx, double scy, double scz,
                               glm::dvec3 origin) {
@@ -236,32 +249,49 @@ uint32_t IfcGeometry::GetIndexData() { return (uint32_t)(size_t)&indexData[0]; }
 
 uint32_t IfcGeometry::GetIndexDataSize() { return (uint32_t)indexData.size(); }
 
-void IfcGeometry::ApplyTransform(glm::dmat4 transform) {
+void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
+
   for (uint32_t index = 0; index < numPoints; ++index) {
+
+    size_t floatIndex = index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS;
+
     glm::dvec4 t =
         transform *
         glm::dvec4(
             glm::dvec3(
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0],
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1],
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]),
+                vertexData[floatIndex + 0],
+                vertexData[floatIndex + 1],
+                vertexData[floatIndex + 2]),
             1);
 
     glm::dvec4 n =
         transform *
         glm::dvec4(
             glm::dvec3(
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 3],
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 4],
-                vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 5]),
+                vertexData[floatIndex + 3],
+                vertexData[floatIndex + 4],
+                vertexData[floatIndex + 5]),
             0);
 
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 0] = t.x;
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 1] = t.y;
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2] = t.z;
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 3] = n.x;
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 4] = n.y;
-    vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 5] = n.z;
+    vertexData[floatIndex + 0] = t.x;
+    vertexData[floatIndex + 1] = t.y;
+    vertexData[floatIndex + 2] = t.z;
+    vertexData[floatIndex + 3] = n.x;
+    vertexData[floatIndex + 4] = n.y;
+    vertexData[floatIndex + 5] = n.z;
+  }
+
+  if ( glm::determinant( transform ) < 0 ) {
+
+    uint32_t* indexPtr = indexData.data();
+
+    for ( uint32_t* indexPtr = indexData.data(), 
+                  * end = indexData.data() + indexData.size(); 
+          indexPtr < end; 
+          indexPtr += 3 ) {
+
+      std::swap( *indexPtr, indexPtr[ 2 ] );
+    }
   }
 }
 

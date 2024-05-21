@@ -9,13 +9,14 @@
 
 namespace webifc::geometry {
 
-	inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c)
-	{
-		return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0;
-	}
+inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c)
+{
+	return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0;
+}
 
 inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const glm::dvec3 &p3, uint16_t circleSegments, double EPS_MINSIZE)
 {
+    printf("[Build3DArc3Pt({})]");
     // Calculate the center of the circle
     glm::dvec3 v1 = p2 - p1;
     glm::dvec3 v2 = p3 - p1;
@@ -93,6 +94,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 
 	inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2, const glm::dvec2 &p3,uint16_t circleSegments)
 	{
+		printf("[BuildArc3Pt({})]");
 		double f1 = (p1.x * p1.x - p2.x * p2.x + p1.y * p1.y - p2.y * p2.y);
 		double f2 = (p1.x * p1.x - p3.x * p3.x + p1.y * p1.y - p3.y * p3.y);
 		double v = 2 * (p1.x - p2.x) * (p1.y - p3.y) - 2 * (p1.x - p3.x) * (p1.y - p2.y);
@@ -144,6 +146,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 	
 	inline	glm::dvec3 InterpolateRationalBSplineCurveWithKnots(double t, int degree, std::vector<glm::dvec3> points, std::vector<double> knots, std::vector<double> weights)
 	{
+		printf("[InterpolateRationalBSplineCurveWithKnots({})]");
 		glm::dvec3 point;
 
 		int domainLow = degree;
@@ -208,6 +211,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 	inline	glm::dvec2 InterpolateRationalBSplineCurveWithKnots(double t, int degree, std::vector<glm::dvec2> points, std::vector<double> knots, std::vector<double> weights)
 	{
 
+		printf("[InterpolateRationalBSplineCurveWithKnots({})]");
 		glm::dvec2 point;
 
 		int domainLow = degree;
@@ -274,6 +278,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 	inline	std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(int degree, std::vector<glm::dvec3> points, std::vector<double> knots, std::vector<double> weights)
 	{
 
+		printf("[GetRationalBSplineCurveWithKnots({})]");
 		std::vector<glm::dvec3> c;
 
 		for (double i = 0; i < 1; i += 0.05)
@@ -295,6 +300,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 
 	inline	std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(int degree, std::vector<glm::dvec2> points, std::vector<double> knots, std::vector<double> weights)
 	{
+		printf("[GetRationalBSplineCurveWithKnots({})]");
 		std::vector<glm::dvec2> c;
 
 		for (double i = 0; i < 1; i += 0.05)
@@ -334,43 +340,99 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 		return glm::determinant(mat) < 0;
 	}
 
-	inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments, glm::dmat3 placement = glm::dmat3(1), double startRad = 0, double endRad = CONST_PI * 2, bool swap = true)
+	inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments, glm::dmat3 placement = glm::dmat3(1), double startRad = 0, double endRad = CONST_PI * 2, bool swap = true, bool normalToCenterEnding = false)
 	{
+		printf("[GetEllipseCurve({})]");
 		IfcCurve c;
-
-		for (int i = 0; i < numSegments; i++)
+		if(normalToCenterEnding)
 		{
-			double ratio = static_cast<double>(i) / (numSegments - 1);
-			double angle = startRad + ratio * (endRad - startRad);
+			double sweep_angle = (endRad - startRad);
 
-			glm::dvec2 circleCoordinate;
-			if (swap)
+			double step = sweep_angle / (numSegments - 1);
+
+			if(endRad > startRad)
 			{
-				circleCoordinate = glm::dvec2(
-					radiusX * std::cos(angle),
-					radiusY * std::sin(angle));
+				startRad -= step /2;
+				endRad += step /2;
 			}
-			else
+			if(endRad <= startRad)
 			{
-				circleCoordinate = glm::dvec2(
-					radiusX * std::sin(angle),
-					radiusY * std::cos(angle));
+				startRad += step /2;
+				endRad -= step /2;
 			}
-			glm::dvec2 pos = placement * glm::dvec3(circleCoordinate, 1);
-			c.points.push_back(glm::dvec3(pos,0));
+
+			for (int i = 0; i < numSegments; i++)
+			{
+				double ratio = static_cast<double>(i) / (numSegments - 1);
+				double angle = startRad + ratio * (endRad - startRad);
+
+				glm::dvec2 circleCoordinate;
+				if (swap)
+				{
+					circleCoordinate = glm::dvec2(
+						radiusX * std::cos(angle),
+						radiusY * std::sin(angle));
+				}
+				else
+				{
+					circleCoordinate = glm::dvec2(
+						radiusX * std::sin(angle),
+						radiusY * std::cos(angle));
+				}
+				glm::dvec2 pos = placement * glm::dvec3(circleCoordinate, 1);
+				c.points.push_back(glm::dvec3(pos,0));
+			}
+
+			c.points[0] = (c.points[0] + c.points[1]) * 0.5;
+
+			c.points[c.points.size() - 1] = (c.points[c.points.size() - 1] + c.points[c.points.size() - 2]) * 0.5;
+
+			// check for a closed curve
+			if (endRad == CONST_PI * 2 && startRad == 0)
+			{
+				c.points.push_back(c.points[0]);
+
+				if (MatrixFlipsTriangles(placement))
+				{
+					c.Invert();
+				}
+			}
 		}
-
-		// check for a closed curve
-		if (endRad == CONST_PI * 2 && startRad == 0)
+		else
 		{
-			c.points.push_back(c.points[0]);
-
-			if (MatrixFlipsTriangles(placement))
+			for (int i = 0; i < numSegments; i++)
 			{
-				c.Invert();
+				double ratio = static_cast<double>(i) / (numSegments - 1);
+				double angle = startRad + ratio * (endRad - startRad);
+
+				glm::dvec2 circleCoordinate;
+				if (swap)
+				{
+					circleCoordinate = glm::dvec2(
+						radiusX * std::cos(angle),
+						radiusY * std::sin(angle));
+				}
+				else
+				{
+					circleCoordinate = glm::dvec2(
+						radiusX * std::sin(angle),
+						radiusY * std::cos(angle));
+				}
+				glm::dvec2 pos = placement * glm::dvec3(circleCoordinate, 1);
+				c.points.push_back(glm::dvec3(pos,0));
+			}
+
+			// check for a closed curve
+			if (endRad == CONST_PI * 2 && startRad == 0)
+			{
+				c.points.push_back(c.points[0]);
+
+				if (MatrixFlipsTriangles(placement))
+				{
+					c.Invert();
+				}
 			}
 		}
-
 		return c;
 	}
 
@@ -549,6 +611,13 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 		if (hasFillet)
 		{
 			// TODO: Create interpolation and sloped lines
+			c.points.push_back(placement * glm::dvec3(hw, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(hweb, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(hweb, -hd, 1));
+			c.points.push_back(placement * glm::dvec3(-hweb, -hd, 1));
+			c.points.push_back(placement * glm::dvec3(-hweb, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(-hw, hd - thickness, 1));
+			c.points.push_back(placement * glm::dvec3(-hw, hd, 1));
 		}
 		else
 		{
@@ -635,9 +704,37 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 
 		return c;
 	}
-	
-	inline IfcCurve BuildArc(const glm::dvec3 &pos, const glm::dvec3 &axis, double angleRad,uint16_t _circleSegments)
+
+	inline IfcCurve GetTrapeziumCurve(double bottomXDim, double topXDim, double yDim, double topXOffset, glm::dmat3 placement = glm::dmat3(1))
 	{
+		double halfX = bottomXDim / 2;
+		double halfY = yDim / 2;
+
+		glm::dvec2 bl = placement * glm::dvec3(-halfX, -halfY, 1);
+		glm::dvec2 br = placement * glm::dvec3(halfX, -halfY, 1);
+
+		glm::dvec2 tl = placement * glm::dvec3(-halfX + topXOffset, halfY, 1);
+		glm::dvec2 tr = placement * glm::dvec3(-halfX + topXOffset + topXDim, halfY, 1);
+
+		IfcCurve c;
+		c.Add(bl);
+		c.Add(br);
+		c.Add(tr);
+		c.Add(tl);
+		c.Add(bl);
+
+		if (MatrixFlipsTriangles(placement))
+		{
+			c.Invert();
+		}
+
+		return c;
+	}
+
+	inline IfcCurve BuildArc(double scale, const glm::dvec3 &pos, const glm::dvec3 &axis, double angleRad,uint16_t _circleSegments)
+	{
+		
+		printf("[BuildArc({})]");
 		IfcCurve curve;
 
 		// project pos onto axis
@@ -646,14 +743,31 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2, const 
 		glm::dvec3 pproja = pdota * axis;
 
 		glm::dvec3 right = -(pos - pproja);
-		glm::dvec3 up = glm::cross(axis, right);
 
-		auto curve2D = GetEllipseCurve(1, 1, _circleSegments, glm::dmat3(1), 0, angleRad, true);
-
-		for (auto &pt2D : curve2D.points)
+		if(glm::length(right) == 0)
 		{
-			glm::dvec3 pt3D = pos + pt2D.x * right + pt2D.y * up;
-			curve.Add(pt3D);
+			right = glm::dvec3(EPS_BIG2, 0, 0);
+			glm::dvec3 up = glm::cross(axis, right);
+
+			auto curve2D = GetEllipseCurve(1, 1, _circleSegments, glm::dmat3(1), 0, angleRad, true, true);
+
+			for (auto &pt2D : curve2D.points)
+			{
+				glm::dvec3 pt3D = pos + pt2D.x * right + pt2D.y * up;
+				curve.Add(pt3D);
+			}	
+		}
+		else
+		{
+			glm::dvec3 up = glm::cross(axis, right);
+
+			auto curve2D = GetEllipseCurve(1, 1, _circleSegments, glm::dmat3(1), 0, angleRad, true);
+
+			for (auto &pt2D : curve2D.points)
+			{
+				glm::dvec3 pt3D = pos + pt2D.x * right + pt2D.y * up;
+				curve.Add(pt3D);
+			}
 		}
 
 		return curve;

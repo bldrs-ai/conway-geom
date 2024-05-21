@@ -309,7 +309,7 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
 
 IfcGeometry ConwayGeometryProcessor::BoolSubtract(
     const std::vector<IfcGeometry> &firstGeoms,
-    std::vector<IfcGeometry> &secondGeoms) {
+    const std::vector<IfcGeometry> &secondGeoms) {
   IfcGeometry finalResult;
 
   for (auto &firstGeom : firstGeoms) {
@@ -374,9 +374,6 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
       }
     }
 
-    IfcGeometry newResult;
-    newResult.AddGeometry(result);
-    finalResult.AddPart(newResult);
     finalResult.AddGeometry(result);
   }
 

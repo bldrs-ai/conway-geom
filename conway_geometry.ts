@@ -66,6 +66,7 @@ export interface GeometryObject {
   clone(): GeometryObject
   applyTransform(parameter: any): void
   getAABB(): AABB
+  getAABBCenter(): Vector3
   getParts(): StdVector<GeometryObject>
   normalized: boolean
   delete(): void

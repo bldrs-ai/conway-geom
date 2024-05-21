@@ -27,12 +27,16 @@ namespace webifc::geometry {
 		void ReverseFaces();
 		uint32_t GetVertexData();
 		void AddPart(IfcGeometry geom);
+		void AddPart(fuzzybools::Geometry geom);
 		void AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, glm::dvec3 origin = glm::dvec3(0, 0, 0));
+		void MergeGeometry(fuzzybools::Geometry geom);
 		uint32_t GetVertexDataSize();
 		uint32_t GetIndexData();
 		uint32_t GetIndexDataSize();
+		glm::dvec3 Normalize();
 		private:
 			void ReverseFace(uint32_t index);
+			bool normalized = false;
 
 	};
 

@@ -450,10 +450,9 @@ int main(int argc, char *argv[]) {
   set.COORDINATE_TO_ORIGIN = true;
   set.OPTIMIZE_PROFILES = true;
 
-  webifc::utility::LoaderErrorHandler errorHandler;
+  
   webifc::schema::IfcSchemaManager schemaManager;
-  webifc::parsing::IfcLoader loader(set.TAPE_SIZE, set.MEMORY_LIMIT,
-                                    errorHandler, schemaManager);
+  webifc::parsing::IfcLoader loader(set.TAPE_SIZE, set.MEMORY_LIMIT, set.LINEWRITER_BUFFER, schemaManager);
 
   auto start = ms();
   loader.LoadFile([&](char *dest, size_t sourceOffset, size_t destSize) {
@@ -466,20 +465,10 @@ int main(int argc, char *argv[]) {
 
   std::cout << "Reading took " << time << "ms" << std::endl;
 
-  webifc::geometry::IfcGeometryProcessor geometryLoader(
-      loader, errorHandler, schemaManager, set.CIRCLE_SEGMENTS,
-      set.COORDINATE_TO_ORIGIN, set.OPTIMIZE_PROFILES);
+  webifc::geometry::IfcGeometryProcessor geometryLoader(loader, schemaManager, set.CIRCLE_SEGMENTS, set.COORDINATE_TO_ORIGIN, set.OPTIMIZE_PROFILES);
 
   start = ms();
   auto meshes = LoadAllTest(loader, geometryLoader);
-  auto errors = errorHandler.GetErrors();
-  errorHandler.ClearErrors();
-
-  for (auto error : errors) {
-    std::cout << error.expressID << " " << error.ifcType << " "
-              << std::to_string((int)error.type) << " " << error.message
-              << std::endl;
-  }
 
   time = ms() - start;
 
