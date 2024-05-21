@@ -18,6 +18,14 @@ namespace conway::geometry {
 
 constexpr double EPS_BIG2 = 1e-3;
 
+inline double areaOfTriangle2(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c) {
+  glm::dvec3 ab = b - a;
+  glm::dvec3 ac = c - a;
+
+  glm::dvec3 norm = glm::cross(ab, ac);
+  return glm::dot(norm, norm);
+}
+
 inline double angleConversion(double angle) {
   if (abs(angle > 2) - EPS_SMALL * (double)CONST_PI) {
     angle = (angle / 360) * 2 * (double)CONST_PI;
@@ -519,36 +527,53 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {
   v1 = points[0];
+  v2 = points[1];
+  v3 = points[2];
+
+  if ( areaOfTriangle2( v1, v2, v3 ) > 0.01 ) {
+    return true;
+  }
+
+  double distanceSqr = 0;
+
+  constexpr double EARLY_OUT = 0.001;
 
   for (auto &p : points) {
-    if (v1 != p) {
+
+    glm::dvec3 v1p = v1 - p;
+    double candidate2 =  glm::dot( v1p, v1p );
+
+    if ( candidate2 > distanceSqr ) {
       v2 = p;
-      break;
+
+      if ( candidate2 > EARLY_OUT ) {
+        break;
+      }
+
+      distanceSqr = candidate2;
     }
   }
 
   glm::dvec3 normal;
-  // multiple tries to find the best match
-  for (double i = 0; i < 4; i++) {
-    double EPS = EPS_SMALL;
-    if (i == 0) {
-      EPS = 100;
-    }
-    if (i == 1) {
-      EPS = 1;
-    }
-    if (i == 2) {
-      EPS = 0.01;
-    }
-    for (auto &p : points) {
-      if (computeSafeNormal(v1, v2, p, normal, EPS)) {
-        v3 = p;
+
+  double bestArea = 0;
+
+  for (auto &p : points) {
+
+    double area = areaOfTriangle2( v1, v2, p );
+
+    if ( area > bestArea ) {
+      v3 = p;
+
+      if ( area > EARLY_OUT ) {
         return true;
       }
+
+      bestArea = area;
     }
   }
 
-  return false;
+  return ( bestArea > 0 );
 }
 
 inline void TriangulateBounds(IfcGeometry &geometry,
@@ -557,7 +582,6 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     auto c = bounds[0].curve;
 
     // size_t offset = geometry.numPoints;
-
     geometry.AddFace(c.points[0], c.points[1], c.points[2]);
   } else if (bounds.size() > 0 && bounds[0].curve.points.size() >= 3) {
     // bound greater than 4 vertices or with holes, triangulate
@@ -645,6 +669,7 @@ inline void TriangulateBounds(IfcGeometry &geometry,
                        offset + indices[i + 2]);
     }
   } else {
+    
     Logger::logError("bad bound %zu %zu\n", bounds.size(), bounds[0].curve.points.size());
   }
 }
