@@ -632,8 +632,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
       .function("GetVertexDataSize",
                 &conway::geometry::IfcGeometry::GetVertexDataSize)
-      .function("GetPoint", &conway::geometry::IfcGeometry::GetPoint)
-      .function("Normalize",
+      .function("getPoint", &conway::geometry::IfcGeometry::GetPoint)
+      .function("normalize",
                 &conway::geometry::IfcGeometry::Normalize)
       .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("GetIndexDataSize",

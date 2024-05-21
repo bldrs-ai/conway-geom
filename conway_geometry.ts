@@ -53,8 +53,8 @@ export interface AABB {
 
 export interface GeometryObject {
   GetVertexData: () => any
-  GetPoint(parameter: number): Vector3
-  Normalize(): Vector3
+  getPoint(parameter: number): Vector3
+  normalize(): Vector3
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
