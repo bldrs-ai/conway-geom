@@ -886,6 +886,7 @@ glm::dmat4 ConwayGeometryProcessor::GetAxis2Placement3D(
   glm::dvec3 yAxis = glm::normalize(glm::cross(zAxis, xAxis));
   xAxis = glm::normalize(glm::cross(yAxis, zAxis));
 
+  
   return glm::dmat4(glm::dvec4(xAxis, 0), glm::dvec4(yAxis, 0),
                     glm::dvec4(zAxis, 0), glm::dvec4(pos, 1));
 }
