@@ -115,7 +115,7 @@ class ConwayGeometryProcessor {
 
   IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
   IfcGeometry BoolSubtract(const std::vector<IfcGeometry>& firstGroups,
-                           std::vector<IfcGeometry>& secondGroups);
+                           const std::vector<IfcGeometry>& secondGroups);
   IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
                                  std::vector<IfcGeometry>& secondGeoms);
 
@@ -146,12 +146,20 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
   struct ParamsGetPolygonalBoundedHalfspace {
+    bool agreement = false;
+    double scaleFactor = 1.0;
+    conway::geometry::IfcCurve curve;
     IfcSurface surface;
     glm::dmat4 position;
-    conway::geometry::IfcCurve curve;
-    bool halfSpaceInPlaneDirection = false;  // agreement != "T"
-    double optionalLinearScalingFactor = 1.0;
   };
+
+  /**
+   * scaleFactor:number
+  agreement:boolean
+  curve:CurveObject | undefined
+  surface:SurfaceObject | undefined
+  matrix: any // glm::dmat4
+  */
 
   IfcGeometry GetPolygonalBoundedHalfspace(
       ParamsGetPolygonalBoundedHalfspace parameters);

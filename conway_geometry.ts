@@ -44,10 +44,17 @@ export interface ParamsGetPolyCurve {
   delete():unknown
 }
 
+export interface AABB {
+  index:number
+  min:Vector3
+  max:Vector3
+  center:Vector3
+}
+
 export interface GeometryObject {
   GetVertexData: () => any
-  GetPoint(parameter: number): Vector3
-  NormalizeInPlace(): void
+  getPoint(parameter: number): Vector3
+  normalize(): Vector3
   GetVertexDataSize: () => number
   GetIndexData: () => any
   GetIndexDataSize: () => number
@@ -58,8 +65,8 @@ export interface GeometryObject {
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  getMin(): Vector3
-  getMax(): Vector3
+  getAABB(): AABB
+  getAABBCenter(): Vector3
   getParts(): StdVector<GeometryObject>
   normalized: boolean
   delete(): void
@@ -260,6 +267,14 @@ export interface ParamsCreateNativeIfcProfile {
   isConvex: boolean
   isComposite: boolean
   profiles: any | undefined // std::vector<conway::geometry::IfcProfile>;
+}
+
+export interface ParamsGetPolygonalBoundedHalfspace {
+  scaleFactor:number
+  agreement:boolean
+  curve:CurveObject | undefined
+  surface:SurfaceObject | undefined
+  position: any // glm::dmat4
 }
 
 export interface ParamsGetExtrudedAreaSolid {
@@ -891,6 +906,16 @@ export class ConwayGeometry {
    */
   getRectangleHollowProfileHole(parameters: ParamsGetRectangleProfileCurve): CurveObject {
     const result = this.wasmModule.getRectangleHollowProfileHole(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters 
+   * @returns 
+   */
+  getPolygonalBoundedHalfspace(parameters:ParamsGetPolygonalBoundedHalfspace):GeometryObject {
+    const result = this.wasmModule.getPolygonalBoundedHalfspace(parameters)
     return result
   }
 

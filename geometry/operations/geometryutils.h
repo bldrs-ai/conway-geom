@@ -7,15 +7,18 @@
 #include <cstdint>
 #include "../representation/geometry.h"
 #include "../representation/IfcGeometry.h"
-#include "../../utility/LoaderError.h"
 #include <mapbox/earcut.hpp>
 
 namespace webifc::geometry
 {
 
-	inline double angleConversion(double angle)
+	inline double angleConversion(double angle, std::string angleUnits)
 	{
-		if (abs(angle > 2) - EPS_SMALL * CONST_PI)
+		if(angleUnits == "RADIAN")
+		{
+			return angle;
+		}
+		else
 		{
 			angle = (angle / 360) * 2 * CONST_PI;
 		}
@@ -62,8 +65,9 @@ namespace webifc::geometry
 	//! This implementation generates much more vertices than needed, and does not have smoothed normals
 		// TODO: Review rotate90 value, as it should be inferred from IFC but the source data had not been identified yet
 		// An arbitrary value has been added in IFCSURFACECURVESWEPTAREASOLID but this is a bad solution
-	inline	IfcGeometry Sweep(const double scaling, const bool closed, const IfcProfile &profile, const IfcCurve &directrix, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false)
+	inline	IfcGeometry Sweep(const double scaling, const bool closed, const IfcProfile &profile, const IfcCurve &directrix, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false, const bool optimize = true)
 	{
+		printf("[Sweep({})]");
 		IfcGeometry geom;
 
 		std::vector<glm::vec<3, glm::f64>> dpts;
@@ -73,7 +77,7 @@ namespace webifc::geometry
 		{
 			if (i < directrix.points.size() - 1)
 			{
-				if (glm::distance(directrix.points[i], directrix.points[i + 1]) > EPS_BIG2 / scaling)
+				if (glm::distance(directrix.points[i], directrix.points[i + 1]) > EPS_BIG2 / scaling || !optimize)
 				{
 					dpts.push_back(directrix.points[i]);
 				}
@@ -245,36 +249,32 @@ namespace webifc::geometry
 				glm::dvec3 p1 = dpts[i - 1];
 				glm::dvec3 p2 = dpts[i];
 
-				const double di = glm::distance(p1, p2);
+				const auto &c1 = curves[i - 1].points;
+				const auto &c2 = curves[i].points;
 
-				//Only segments smaller than 10 cm will be represented, those that are bigger will be standardized
+				uint32_t capSize = c1.size();
+				for (size_t j = 1; j < capSize; j++)
+				{
+					glm::dvec3 bl = c1[j - 1];
+					glm::dvec3 br = c1[j - 0];
 
-					const auto &c1 = curves[i - 1].points;
-					const auto &c2 = curves[i].points;
+					glm::dvec3 tl = c2[j - 1];
+					glm::dvec3 tr = c2[j - 0];
 
-					uint32_t capSize = c1.size();
-					for (size_t j = 1; j < capSize; j++)
-					{
-						glm::dvec3 bl = c1[j - 1];
-						glm::dvec3 br = c1[j - 0];
-
-						glm::dvec3 tl = c2[j - 1];
-						glm::dvec3 tr = c2[j - 0];
-
-						geom.AddFace(tl, br, bl);
-						geom.AddFace(tl, tr, br);
-					}
-				
+					geom.AddFace(tl, br, bl);
+					geom.AddFace(tl, tr, br);
+				}	
 			}
 
-			// DumpSVGCurve(directrix.points, glm::dvec3(), "directrix.html");
+			// io::DumpSVGCurve(directrix.points, "directrix.html");
 			// DumpIfcGeometry(geom, "sweep.obj");
 
 			return geom;
 		}
 
-	inline	IfcGeometry SweepCircular(const double scaling, IfcComposedMesh &mesh, const bool optimizeProfiles, const bool closed, const IfcProfile &profile, const double radius, const IfcCurve &directrix, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false)
+	inline	IfcGeometry SweepCircular(const double scaling, IfcComposedMesh &mesh, const bool optimizeProfiles, const bool closed, const IfcProfile &profile, const double radius, const IfcCurve &directrix, uint32_t expressIdCyl, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false)
 	{
+		printf("[SweepCircular({})]");
 		IfcGeometry geom;
 
 		std::vector<glm::vec<3, glm::f64>> dpts;
@@ -510,7 +510,7 @@ namespace webifc::geometry
 				{
 					transforms[i] = glm::dmat4(transforms[i][0], transforms[i][1], ddir, transforms[i][3]);
 					IfcComposedMesh newMesh;
-					newMesh.expressID = 1;
+					newMesh.expressID = expressIdCyl;
 					newMesh.hasColor = mesh.hasColor;
 					newMesh.color = mesh.color;
 					newMesh.hasGeometry = true;
@@ -587,8 +587,9 @@ namespace webifc::geometry
 		return false;
 	}
 
-	inline void TriangulateBounds(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, utility::LoaderErrorHandler &_errorHandler, uint32_t expressID)
+	inline void TriangulateBounds(IfcGeometry &geometry, std::vector<IfcBound3D> &bounds, uint32_t expressID)
 	{
+		printf("[TriangulateBounds({})]");
 		if (bounds.size() == 1 && bounds[0].curve.points.size() == 3)
 		{
 			auto c = bounds[0].curve;
@@ -622,7 +623,7 @@ namespace webifc::geometry
 
 				if (outerIndex == -1)
 				{
-					_errorHandler.ReportError(utility::LoaderErrorType::PARSING, "Expected outer bound!", expressID);
+					printf("[TriangulateBounds()] Expected outer bound! {}", expressID);
 				}
 				else
 				{
@@ -634,14 +635,14 @@ namespace webifc::geometry
 			// if the first bound is not an outer bound now, this is unexpected
 			if (bounds[0].type != IfcBoundType::OUTERBOUND)
 			{
-				_errorHandler.ReportError(utility::LoaderErrorType::PARSING, "Expected outer bound first!", expressID);
+				printf("[TriangulateBounds() Expected outer bound first! {}", expressID);
 			}
 
 			glm::dvec3 v1, v2, v3;
 			if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3))
 			{
 				// these points are on a line
-				_errorHandler.ReportError(utility::LoaderErrorType::PARSING, "No basis found for brep!", expressID);
+				printf("[TriangulateBounds()] No basis found for brep! {}", expressID);
 				return;
 			}
 
@@ -701,12 +702,13 @@ namespace webifc::geometry
 		}
 		else
 		{
-			_errorHandler.ReportError(utility::LoaderErrorType::PARSING, "bad bound", expressID);
+			printf("[TriangulateBounds()] bad bound {}", expressID);
 		}
 	}
 
-	inline IfcGeometry SectionedSurface(IfcCrossSections profiles, webifc::utility::LoaderErrorHandler _errorHandler)
+	inline IfcGeometry SectionedSurface(IfcCrossSections profiles)
 	{
+		printf("[SectionedSurface({})]");
 		IfcGeometry geom;
 
 		// Iterate over each profile, and create a surface by connecting the corresponding points with faces.
@@ -718,7 +720,7 @@ namespace webifc::geometry
 			// Check that the profiles have the same number of points
 			if (profile1.points.size() != profile2.points.size())
 			{
-				_errorHandler.ReportError(utility::LoaderErrorType::UNSPECIFIED, "profiles must have the same number of points in SectionedSurface");
+				printf("[SectionedSurface()] profiles must have the same number of points in SectionedSurface");
 			}
 
 			std::vector<uint32_t> indices;
@@ -763,8 +765,9 @@ namespace webifc::geometry
 		return geom;
 	}
 
-	inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance, webifc::utility::LoaderErrorHandler _errorHandler, glm::dvec3 cuttingPlaneNormal = glm::dvec3(0), glm::dvec3 cuttingPlanePos = glm::dvec3(0))
+	inline IfcGeometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance, glm::dvec3 cuttingPlaneNormal = glm::dvec3(0), glm::dvec3 cuttingPlanePos = glm::dvec3(0))
 	{
+		printf("[Extrude({})]");
 		IfcGeometry geom;
 		std::vector<bool> holesIndicesHash;
 
@@ -813,7 +816,7 @@ namespace webifc::geometry
 			if (indices.size() < 3)
 			{
 				// probably a degenerate polygon
-				_errorHandler.ReportError(utility::LoaderErrorType::UNSPECIFIED, "degenerate polygon in extrude");
+				printf("[Extrude()] degenerate polygon in extrude");
 				return geom;
 			}
 
@@ -904,6 +907,35 @@ namespace webifc::geometry
 		}
 
 		return geom;
+	}
+
+    inline double VectorToAngle2D(double x, double y)
+	{
+		double dd = sqrt(x * x + y * y);
+		double xx = x / dd;
+		double yy = y / dd;
+
+		double angle = acos(xx);
+		double cosv = cos(angle);
+		double sinv = sin(angle);
+		if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
+		{
+			angle = asin(yy);
+			sinv = sin(angle);
+			cosv = cos(angle);
+			if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
+			{
+				angle = angle + (CONST_PI - angle) * 2;
+				sinv = sin(angle);
+				cosv = cos(angle);
+				if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
+				{
+					angle = angle + CONST_PI;
+				}
+			}
+		}
+
+		return (angle / (2 * CONST_PI)) * 360;
 	}
 
 	inline double VectorToAngle(double x, double y)
@@ -1121,6 +1153,38 @@ namespace webifc::geometry
 		std::vector<IfcGeometry> geoms;
 		flattenRecursive(mesh, geometryMap, geoms, mat);
 		return geoms;
+	}
+
+	inline std::vector<IfcGeometry> flattenSolids(std::vector<IfcGeometry> geoms)
+	{
+		std::vector<IfcGeometry> newGeoms;
+		IfcGeometry newGeom;
+		for (uint32_t g = 0; g < geoms.size(); g++)
+		{
+			if(!geoms[g].halfSpace)
+			{
+					if (geoms[g].numFaces)
+					{
+						for (uint32_t i = 0; i < geoms[g].numFaces; i++)
+						{
+							fuzzybools::Face f = geoms[g].GetFace(i);
+							glm::dvec3 a = geoms[g].GetPoint(f.i0);
+							glm::dvec3 b = geoms[g].GetPoint(f.i1);
+							glm::dvec3 c = geoms[g].GetPoint(f.i2);
+							newGeom.AddFace(a, b, c);
+						}
+					}
+			}
+		}
+		newGeoms.push_back(newGeom);
+		for (uint32_t g = 0; g < geoms.size(); g++)
+		{
+			if(geoms[g].halfSpace)
+			{
+				newGeoms.push_back(geoms[g]);
+			}
+		}
+		return newGeoms;
 	}
 
 	inline std::array<double, 16> FlattenTransformation(const glm::dmat4 &transformation)

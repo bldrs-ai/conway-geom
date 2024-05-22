@@ -15,13 +15,18 @@ namespace webifc::parsing
     _currentSize = 0;
     if (_fileStream!=nullptr) Load();
   }
-  
-  bool IfcTokenStream::IfcTokenChunk::Clear()
+
+  bool IfcTokenStream::IfcTokenChunk::Clear(bool force)
   {
-    if (_fileStream==nullptr) return false; 
-    delete[] _chunkData;
+    if (_fileStream==nullptr && !force) return false; 
+    if (_chunkData!=nullptr) delete[] _chunkData;
     _loaded=false;
     return true;
+  }
+
+  bool IfcTokenStream::IfcTokenChunk::Clear()
+  {
+    return Clear(false);
   }
   
   size_t IfcTokenStream::IfcTokenChunk::GetTokenRef()
@@ -156,7 +161,7 @@ namespace webifc::parsing
           while ((c >= '0' && c <= '9') || (c == '.') || c == 'e' || c == 'E' || c == '-'|| c == '+')
           {
             temp.push_back(c);
-            if (c=='.') isFrac = true;
+            if (c=='.' || c == 'E') isFrac = true;
             _fileStream->Forward();
             c = _fileStream->Get();
           }

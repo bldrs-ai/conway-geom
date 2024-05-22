@@ -124,6 +124,14 @@ conway::geometry::IfcCurve GetBSplineCurve(
   return curve;
 }
 
+conway::geometry::IfcGeometry GetPolygonalBoundedHalfspace(
+  conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace
+  parameters) {
+    if (processor) {
+      return processor->GetPolygonalBoundedHalfspace(parameters);
+    }
+  }
+
 conway::geometry::IfcGeometry GetExtrudedAreaSolid(
     conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
         parameters) {
@@ -612,14 +620,21 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
       .constructor<>();
 
+  emscripten::class_<fuzzybools::AABB>("AABB")
+  .constructor<>()
+  .property("index", &fuzzybools::AABB::index)
+  .property("min", &fuzzybools::AABB::min)
+  .property("max", &fuzzybools::AABB::max)
+  .property("center", &fuzzybools::AABB::center);
+
   emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
       .constructor<>()
       .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
       .function("GetVertexDataSize",
                 &conway::geometry::IfcGeometry::GetVertexDataSize)
-      .function("GetPoint", &conway::geometry::IfcGeometry::GetPoint)
-      .function("NormalizeInPlace",
-                &conway::geometry::IfcGeometry::NormalizeInPlace)
+      .function("getPoint", &conway::geometry::IfcGeometry::GetPoint)
+      .function("normalize",
+                &conway::geometry::IfcGeometry::Normalize)
       .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
       .function("GetIndexDataSize",
                 &conway::geometry::IfcGeometry::GetIndexDataSize)
@@ -631,9 +646,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::IfcGeometry::AppendWithTransform)
       .function("getAllocationSize",
                 &conway::geometry::IfcGeometry::GetAllocationSize)
+      .function("getAABB", &conway::geometry::IfcGeometry::getAABB)
+      .function("getAABBCenter", &conway::geometry::IfcGeometry::GetAABBCenter)
       .function("getParts", &conway::geometry::IfcGeometry::getParts)
-      .function("getMin", &conway::geometry::IfcGeometry::getMin)
-      .function("getMax", &conway::geometry::IfcGeometry::getMax)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
       .function("clone", &conway::geometry::IfcGeometry::Clone);
 
@@ -1246,6 +1261,21 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("start", &conway::geometry::IfcTrimmingArguments::start)
       .field("end", &conway::geometry::IfcTrimmingArguments::end);
 
+  /**
+   * bool agreement = false;
+    double scaleFactor = 1.0;
+    conway::geometry::IfcCurve curve;
+    IfcSurface surface;
+    glm::dmat4 position;
+  */
+
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace>(
+    "ParamsGetPolygonalBoundedHalfspace")
+    .field("agreement", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::agreement)
+    .field("scaleFactor", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::scaleFactor)
+    .field("curve", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::curve)
+    .field("position", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::position);
+
   emscripten::value_array<std::array<double, 16>>("array_double_16")
       .element(emscripten::index<0>())
       .element(emscripten::index<1>())
@@ -1311,6 +1341,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getPolygonalBoundedHalfspace", &GetPolygonalBoundedHalfspace);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBooleanResult", &GetBooleanResult,
                        emscripten::allow_raw_pointers());
