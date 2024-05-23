@@ -315,18 +315,17 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
   for (auto &firstGeom : firstGeoms) {
     fuzzybools::Geometry result = firstGeom;
     for (auto &secondGeom : secondGeoms) {
-      bool doit = true;
       if (secondGeom.numFaces == 0) {
-        Logger::logWarning("bool aborted due to empty source or target\n");
+        Logger::logWarning("bool aborted due to empty source or target");
 
         // bail out because we will get strange meshes
         // if this happens, probably there's an issue parsing the mesh that
         // occurred earlier
-        doit = false;
+        continue;
       }
 
       if (result.numFaces == 0) {
-        Logger::logWarning("bool aborted due to empty source or target\n");
+        Logger::logWarning("bool aborted due to empty source or target");
 
         // bail out because we will get strange meshes
         // if this happens, probably there's an issue parsing the mesh that
@@ -334,43 +333,41 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         break;
       }
 
-      if (doit) {
-        if (secondGeom.halfSpace) {
-          glm::dvec3 origin = secondGeom.halfSpaceOrigin;
-          glm::dvec3 x = secondGeom.halfSpaceX - origin;
-          glm::dvec3 y = secondGeom.halfSpaceY - origin;
-          glm::dvec3 z = secondGeom.halfSpaceZ - origin;
-          glm::dmat4 trans =
-              glm::dmat4(glm::dvec4(x, 0), glm::dvec4(y, 0), glm::dvec4(z, 0),
-                         glm::dvec4(0, 0, 0, 1));
-          IfcGeometry newSecond;
+      if (secondGeom.halfSpace) {
+        glm::dvec3 origin = secondGeom.halfSpaceOrigin;
+        glm::dvec3 x = secondGeom.halfSpaceX - origin;
+        glm::dvec3 y = secondGeom.halfSpaceY - origin;
+        glm::dvec3 z = secondGeom.halfSpaceZ - origin;
+        glm::dmat4 trans =
+            glm::dmat4(glm::dvec4(x, 0), glm::dvec4(y, 0), glm::dvec4(z, 0),
+                        glm::dvec4(0, 0, 0, 1));
+        IfcGeometry newSecond;
 
-          double scaleX = 1;
-          double scaleY = 1;
-          double scaleZ = 1;
+        double scaleX = 1;
+        double scaleY = 1;
+        double scaleZ = 1;
 
-          for (uint32_t i = 0; i < result.numPoints; i++) {
-            glm::dvec3 p = result.GetPoint(i);
-            glm::dvec3 vec = (p - origin);
-            double dx = glm::dot(vec, x);
-            double dy = glm::dot(vec, y);
-            double dz = glm::dot(vec, z);
-            if (glm::abs(dx) > scaleX) {
-              scaleX = glm::abs(dx);
-            }
-            if (glm::abs(dy) > scaleY) {
-              scaleY = glm::abs(dy);
-            }
-            if (glm::abs(dz) > scaleZ) {
-              scaleZ = glm::abs(dz);
-            }
+        for (uint32_t i = 0; i < result.numPoints; i++) {
+          glm::dvec3 p = result.GetPoint(i);
+          glm::dvec3 vec = (p - origin);
+          double dx = glm::dot(vec, x);
+          double dy = glm::dot(vec, y);
+          double dz = glm::dot(vec, z);
+          if (glm::abs(dx) > scaleX) {
+            scaleX = glm::abs(dx);
           }
-          newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
-                                scaleZ * 2, secondGeom.halfSpaceOrigin);
-          result = fuzzybools::Subtract(result, newSecond);
-        } else {
-          result = fuzzybools::Subtract(result, secondGeom);
+          if (glm::abs(dy) > scaleY) {
+            scaleY = glm::abs(dy);
+          }
+          if (glm::abs(dz) > scaleZ) {
+            scaleZ = glm::abs(dz);
+          }
         }
+        newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
+                              scaleZ * 2, secondGeom.halfSpaceOrigin);
+        result = fuzzybools::Subtract(result, newSecond);
+      } else {
+        result = fuzzybools::Subtract(result, secondGeom);
       }
     }
 
