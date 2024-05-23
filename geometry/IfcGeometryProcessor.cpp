@@ -294,11 +294,36 @@ namespace webifc::geometry
                 auto firstMesh = GetMesh(firstOperandID);
                 auto secondMesh = GetMesh(secondOperandID);
 
+                printf("[BooleanClippingResult] firstOperandMesh express ID: %i\n", firstMesh.expressID);
+                printf("[BooleanClippingResult] secondOperandMesh express ID: %i\n", secondMesh.expressID);
+
                 auto origin = GetOrigin(firstMesh, _expressIDToGeometry);
                 auto normalizeMat = glm::translate(-origin);
 
                 auto flatFirstMeshes = flatten(firstMesh, _expressIDToGeometry, normalizeMat);
                 auto flatSecondMeshes = flatten(secondMesh, _expressIDToGeometry, normalizeMat);
+
+                printf("firstOperandMeshes geometry:\n");
+                for (int i = 0; i < flatFirstMeshes.size(); ++i) {
+
+                    printf("Mesh %i:\n", i);
+                    for (int j = 0; j < flatFirstMeshes[i].numPoints; ++j) {
+                        auto point = flatFirstMeshes[i].GetPoint(j);
+
+                        printf("point %i: X:%.3f, Y:%.3f, Z:%.3f\n", j, point.x, point.y, point.z);
+                    }
+                }
+
+                printf("secondOperandMeshes geometry:\n");
+                for (int i = 0; i < flatSecondMeshes.size(); ++i) {
+
+                    printf("Mesh %i:\n", i);
+                    for (int j = 0; j < flatSecondMeshes[i].numPoints; ++j) {
+                        auto point = flatSecondMeshes[i].GetPoint(j);
+
+                        printf("point %i: X:%.3f, Y:%.3f, Z:%.3f\n", j, point.x, point.y, point.z);
+                    }
+                }
 
                 IfcGeometry resultMesh = BoolProcess(flatFirstMeshes, flatSecondMeshes, "DIFFERENCE");
 
@@ -340,11 +365,36 @@ namespace webifc::geometry
                 auto firstMesh = GetMesh(firstOperandID, nestLevel2);
                 auto secondMesh = GetMesh(secondOperandID, nestLevel2);
 
+                printf("firstOperandMesh express ID: %i\n", firstMesh.expressID);
+                printf("secondOperandMesh express ID: %i\n", secondMesh.expressID);
+
                 auto origin = GetOrigin(firstMesh, _expressIDToGeometry);
                 auto normalizeMat = glm::translate(-origin);
 
                 auto flatFirstMeshes = flatten(firstMesh, _expressIDToGeometry, normalizeMat);
                 auto flatSecondMeshes = flatten(secondMesh, _expressIDToGeometry, normalizeMat);
+
+                printf("firstOperandMeshes geometry:\n");
+                for (int i = 0; i < flatFirstMeshes.size(); ++i) {
+
+                    printf("Mesh %i:\n", i);
+                    for (int j = 0; j < flatFirstMeshes[i].numPoints; ++j) {
+                        auto point = flatFirstMeshes[i].GetPoint(j);
+
+                        printf("point %i: X:%.3f, Y:%.3f, Z:%.3f\n", j, point.x, point.y, point.z);
+                    }
+                }
+
+                printf("secondOperandMeshes geometry:\n");
+                for (int i = 0; i < flatSecondMeshes.size(); ++i) {
+
+                    printf("Mesh %i:\n", i);
+                    for (int j = 0; j < flatSecondMeshes[i].numPoints; ++j) {
+                        auto point = flatSecondMeshes[i].GetPoint(j);
+
+                        printf("point %i: X:%.3f, Y:%.3f, Z:%.3f\n", j, point.x, point.y, point.z);
+                    }
+                }
 
                 if (flatFirstMeshes.size() == 0)
                 {
