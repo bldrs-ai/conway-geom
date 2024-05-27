@@ -420,6 +420,7 @@ export interface ParamsGetIfcTrimmedCurve {
   trim2Cartesian2D: any
   trim2Cartesian3D: any
   trim2Double: number
+  trimExists:boolean
 }
 
 export interface IndexedPolygonalFace {
