@@ -427,25 +427,28 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 
   parameters.flatFirstMesh[0] = newGeomFirstMesh;
   transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomSecondMesh;
 
-  for (uint32_t i = 0; i < parameters.flatSecondMesh[0].numFaces; i++) {
-    fuzzybools::Face f = parameters.flatSecondMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatSecondMesh[0].GetPoint(f.i2), 1);
+   for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
+    IfcGeometry newGeomSecondMesh;
 
-    if (transformationBreaksWinding) {
-      newGeomSecondMesh.AddFace(b, a, c);
-    } else {
-      newGeomSecondMesh.AddFace(a, b, c);
+    for (uint32_t i = 0; i < parameters.flatSecondMesh[j].numFaces; i++) {
+      fuzzybools::Face f = parameters.flatSecondMesh[j].GetFace(i);
+      glm::dvec3 a =
+          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i0), 1);
+      glm::dvec3 b =
+          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i1), 1);
+      glm::dvec3 c =
+          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i2), 1);
+
+      if (transformationBreaksWinding) {
+        newGeomSecondMesh.AddFace(b, a, c);
+      } else {
+        newGeomSecondMesh.AddFace(a, b, c);
+      }
     }
-  }
 
-  parameters.flatSecondMesh[0] = newGeomSecondMesh;
+    parameters.flatSecondMesh[j] = newGeomSecondMesh;
+  }
 
   resultGeometry =
       BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
