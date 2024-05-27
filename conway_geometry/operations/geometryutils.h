@@ -537,17 +537,18 @@ inline bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
 inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {
+
+  constexpr double EARLY_OUT = 0.001;
+
   v1 = points[0];
   v2 = points[1];
   v3 = points[2];
 
-  if ( areaOfTriangle2( v1, v2, v3 ) > 0.01 ) {
+  if ( areaOfTriangle2( v1, v2, v3 ) > EARLY_OUT ) {
     return true;
   }
 
   double distanceSqr = 0;
-
-  constexpr double EARLY_OUT = 0.001;
 
   for (auto &p : points) {
 
@@ -629,6 +630,13 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
+
+      printf( "\n\n\n" );
+
+      for ( const auto& point : bounds[0].curve.points ) {
+        printf( "%f %f %f\n", point.x, point.y, point.z );
+      }
+
        Logger::logError("No basis found for brep!");
       return;
     }
