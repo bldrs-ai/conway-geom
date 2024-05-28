@@ -544,6 +544,7 @@ class ConwayGeometryProcessor {
     glm::dvec2 trim2Cartesian2D;
     glm::dvec3 trim2Cartesian3D;
     double trim2Double;
+    bool trimExists;
   };
   conway::geometry::IfcCurve getTrimmedCurve(
       const ParamsGetIfcTrimmedCurve& parameters);

@@ -979,7 +979,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("trim2Cartesian3D", &conway::geometry::ConwayGeometryProcessor::
                                      ParamsGetIfcTrimmedCurve::trim2Cartesian3D)
       .field("trim2Double", &conway::geometry::ConwayGeometryProcessor::
-                                ParamsGetIfcTrimmedCurve::trim2Double);
+                                ParamsGetIfcTrimmedCurve::trim2Double)
+      .field("trimExists", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsGetIfcTrimmedCurve::trimExists);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle
   emscripten::value_object<

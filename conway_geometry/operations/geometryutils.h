@@ -26,24 +26,10 @@ inline double areaOfTriangle2(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c) {
   return glm::dot(norm, norm);
 }
 
-inline double angleConversion(double angle) {
-  if (abs(angle > 2) - EPS_SMALL * (double)CONST_PI) {
-    angle = (angle / 360) * 2 * (double)CONST_PI;
-  }
-  return angle;
-}
+constexpr double DOUBLE_TO_RADIANS = static_cast< double >( CONST_PI ) / 180.0;
 
-inline double angleConversion(double angle, const std::string& angleUnits)
-{
-  if(angleUnits == "RADIAN")
-  {
-    return angle;
-  }
-  else
-  {
-    angle = (angle / 360.0) * 2.0 * (double)CONST_PI;
-  }
-  return angle;
+inline constexpr double degreesToRadians(double angle) {
+  return angle * DOUBLE_TO_RADIANS;
 }
 
 inline glm::dvec3 projectOntoPlane(const glm::dvec3 &origin,
@@ -644,12 +630,6 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     glm::dvec3 v1, v2, v3;
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
-
-      printf( "\n\n\n" );
-
-      for ( const auto& point : bounds[0].curve.points ) {
-        printf( "%f %f %f\n", point.x, point.y, point.z );
-      }
 
        Logger::logError("No basis found for brep!");
       return;

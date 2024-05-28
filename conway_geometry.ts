@@ -420,6 +420,7 @@ export interface ParamsGetIfcTrimmedCurve {
   trim2Cartesian2D: any
   trim2Cartesian3D: any
   trim2Double: number
+  trimExists:boolean
 }
 
 export interface IndexedPolygonalFace {
@@ -910,9 +911,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters 
-   * @returns 
+   *
+   * @param parameters
+   * @return {GeometryObject}
    */
   getPolygonalBoundedHalfspace(parameters:ParamsGetPolygonalBoundedHalfspace):GeometryObject {
     const result = this.wasmModule.getPolygonalBoundedHalfspace(parameters)
