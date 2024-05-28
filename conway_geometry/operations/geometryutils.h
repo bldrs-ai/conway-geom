@@ -631,12 +631,6 @@ inline void TriangulateBounds(IfcGeometry &geometry,
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
 
-      printf( "\n\n\n" );
-
-      for ( const auto& point : bounds[0].curve.points ) {
-        printf( "%f %f %f\n", point.x, point.y, point.z );
-      }
-
        Logger::logError("No basis found for brep!");
       return;
     }
