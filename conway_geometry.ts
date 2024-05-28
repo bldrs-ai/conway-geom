@@ -911,9 +911,9 @@ export class ConwayGeometry {
   }
 
   /**
-   * 
-   * @param parameters 
-   * @returns 
+   *
+   * @param parameters
+   * @return {GeometryObject}
    */
   getPolygonalBoundedHalfspace(parameters:ParamsGetPolygonalBoundedHalfspace):GeometryObject {
     const result = this.wasmModule.getPolygonalBoundedHalfspace(parameters)
