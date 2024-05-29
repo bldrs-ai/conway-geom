@@ -1275,6 +1275,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
     "ParamsGetPolygonalBoundedHalfspace")
     .field("agreement", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::agreement)
     .field("scaleFactor", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::scaleFactor)
+    .field("surface", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::surface)
     .field("curve", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::curve)
     .field("position", &conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace::position);
 
