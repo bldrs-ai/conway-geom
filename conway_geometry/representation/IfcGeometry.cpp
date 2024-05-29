@@ -300,6 +300,10 @@ void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
       std::swap( *indexPtr, indexPtr[ 2 ] );
     }
   }
+
+  for ( auto& localPart : part ) {
+    localPart.ApplyTransform( transform );
+  }
 }
 
 }  // namespace conway::geometry
