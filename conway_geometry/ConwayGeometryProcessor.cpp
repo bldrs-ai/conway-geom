@@ -443,7 +443,7 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
         newGeomSecondMesh.AddFace(a, b, c);
       }
     }
-
+    newGeomSecondMesh.halfSpace = parameters.flatSecondMesh[j].halfSpace;
     parameters.flatSecondMesh[j] = newGeomSecondMesh;
   }
 
@@ -493,8 +493,7 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
     extrusionNormal *= -1;
   }
 
-  double d =
-      EXTRUSION_DISTANCE_HALFSPACE_M / parameters.optionalLinearScalingFactor;
+  double d = 1;
 
   IfcProfile profile;
   profile.isConvex = false;
@@ -518,13 +517,16 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
 
 IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
     ParamsGetPolygonalBoundedHalfspace parameters) {
-  /*if (!parameters.curve.IsCCW()) {
+  
+  
+  if (!parameters.curve.IsCCW()) {
     parameters.curve.Invert();
-  }*/
+  }
 
   glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
   glm::dvec3 planeNormal = parameters.surface.transformation[2];
   glm::dvec3 planePosition = parameters.surface.transformation[3];
+
 
   glm::dmat4 invPosition = glm::inverse(parameters.position);
   glm::dvec3 localPlaneNormal = invPosition * glm::dvec4(planeNormal, 0);
@@ -533,7 +535,7 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   bool flipWinding = false;
   double extrudeDistance =
       EXTRUSION_DISTANCE_HALFSPACE_M / parameters.scaleFactor;
-  bool halfSpaceInPlaneDirection = parameters.agreement;
+  bool halfSpaceInPlaneDirection = !parameters.agreement;
   bool extrudeInPlaneDirection =
       glm::dot(localPlaneNormal, extrusionNormal) > 0;
   bool ignoreDistanceInExtrude =

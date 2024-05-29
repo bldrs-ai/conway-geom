@@ -251,6 +251,13 @@ uint32_t IfcGeometry::GetIndexDataSize() { return (uint32_t)indexData.size(); }
 
 void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
 
+  if (halfSpace) {
+    halfSpaceOrigin = transform * glm::dvec4(halfSpaceOrigin, 1);
+    halfSpaceX = transform * glm::dvec4(halfSpaceX, 1);
+    halfSpaceY = transform * glm::dvec4(halfSpaceY, 1);
+    halfSpaceZ = transform * glm::dvec4(halfSpaceZ, 1);
+  }
+
   for (uint32_t index = 0; index < numPoints; ++index) {
 
     size_t floatIndex = index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS;
