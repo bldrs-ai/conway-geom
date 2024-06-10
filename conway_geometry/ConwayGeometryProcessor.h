@@ -329,7 +329,7 @@ class ConwayGeometryProcessor {
     double radius = 0;
     bool isSurfaceOfRevolution = false;
     glm::dmat4 revolutionDirection;
-    IfcProfile3D revolutionProfile;
+    IfcProfile revolutionProfile;
     bool includeTransformation = false;
     bool isSurfaceOfLinearExtrusion = false;
     glm::dvec3 extrusionDirection;
@@ -557,6 +557,18 @@ class ConwayGeometryProcessor {
     double radius;
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
   };
+
+  struct ParamsGetIfcLine {
+    uint32_t dimensions;
+    glm::dvec2 cartesianPoint2D;
+    glm::dvec3 cartesianPoint3D;
+    glm::dvec3 vectorOrientation;
+    double vectorMagnitude;
+    ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
+  };
+
+  conway::geometry::IfcCurve getIfcLine(
+  const ParamsGetIfcLine &parameters);
 
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
 

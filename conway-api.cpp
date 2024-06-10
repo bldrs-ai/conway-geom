@@ -112,6 +112,17 @@ conway::geometry::IfcCurve GetIfcCircle(
   return curve;
 }
 
+conway::geometry::IfcCurve GetIfcLine(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine parameters) {
+  if (processor) {
+    return processor->getIfcLine(parameters);
+  }
+
+  conway::geometry::IfcCurve curve;
+
+  return curve;
+}
+
 conway::geometry::IfcCurve GetBSplineCurve(
     conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve
         parameters) {
@@ -575,6 +586,10 @@ buildIndexedPolygonalFaceVector(uintptr_t indicesArray_,
   return result;
 }
 
+void resizeVectorVectorDouble(std::vector<std::vector<double>>& vec, size_t newSize) {
+    vec.resize(newSize);
+}
+
 EMSCRIPTEN_BINDINGS(my_module) {
   /*
     active: boolean
@@ -999,6 +1014,24 @@ EMSCRIPTEN_BINDINGS(my_module) {
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
                  paramsGetIfcTrimmedCurve);
 
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine>(
+      "ParamsGetIfcCircle")
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetIfcLine::dimensions)
+      .field("cartesianPoint2D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcLine::cartesianPoint2D)
+      .field("cartesianPoint3D", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetIfcLine::cartesianPoint3D)
+      .field("vectorOrientation", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcLine::vectorOrientation)
+      .field("vectorMagnitude", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcLine::vectorMagnitude)
+      .field("paramsGetIfcTrimmedCurve",
+             &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine::
+                 paramsGetIfcTrimmedCurve);
+
   emscripten::class_<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
@@ -1363,6 +1396,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("relVoidSubtract", &RelVoidSubtract);
   emscripten::function("getIfcCircle", &GetIfcCircle);
+  emscripten::function("getIfcLine", &GetIfcLine);
   emscripten::function("getBSplineCurve", &GetBSplineCurve);
   emscripten::function("getLoop", &GetLoop);
   emscripten::function("createBound3D", &createBound3D);
@@ -1387,4 +1421,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("getPolyCurve", &GetPolyCurve,
                        emscripten::allow_raw_pointers());
+
+  emscripten::function("resizeVectorVectorDouble", 
+  &resizeVectorVectorDouble, emscripten::allow_raw_pointers());
 }
