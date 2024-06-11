@@ -763,6 +763,12 @@ IfcCurve ConwayGeometryProcessor::getPolyCurve(
     }
   }
 
+  if (parameters.isEdge) {
+    if (parameters.senseAgreement) {
+      std::reverse(curve.points.begin(), curve.points.end());
+    }
+  }
+
   return curve;
 }
 
@@ -1915,10 +1921,10 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
     const ParamsGetBSplineCurve &parameters) {
   IfcCurve curve;
 
-  // bool condition = false;
-  /*if (edge) {
+   bool condition = !parameters.senseAgreement;
+  if (parameters.isEdge) {
     condition = !condition;
-  }*/
+  }
 
   curve.points.clear();
 
@@ -1975,9 +1981,9 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
     }
   }
 
-  /*if (condition) {
+  if (condition) {
     std::reverse(curve.points.begin(), curve.points.end());
-  }*/
+  }
 
   return curve;
 }
@@ -1990,11 +1996,10 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcLine(
 
   bool condition = parameters.paramsGetIfcTrimmedCurve.senseAgreement;
 
-  //TODO: add edge support
-  /*if (edge)
+  if (parameters.isEdge)
   {
     condition = !condition;
-  }*/
+  }
 
   if (parameters.dimensions == 2 && parameters.paramsGetIfcTrimmedCurve.trimExists)
   {

@@ -41,6 +41,8 @@ export interface ParamsGetPolyCurve {
   points:number
   pointsLength:number
   dimensions:number
+  senseAgreement:boolean
+  isEdge:boolean
   delete():unknown
 }
 
@@ -80,6 +82,8 @@ export interface ParamsGetBSplineCurve {
   points3: StdVector<Vector3>
   knots: StdVector<number>
   weights: StdVector<number>
+  senseAgreement:boolean
+  isEdge:boolean
 }
 
 
@@ -416,6 +420,7 @@ export interface ParamsGetIfcLine {
   cartesianPoint3D: any
   vectorOrientation: any
   vectorMagnitude:number
+  isEdge:boolean
   paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
 }
 

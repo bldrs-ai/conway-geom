@@ -1028,6 +1028,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                            ParamsGetIfcLine::vectorOrientation)
       .field("vectorMagnitude", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetIfcLine::vectorMagnitude)
+      .field("isEdge", &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine::isEdge)
       .field("paramsGetIfcTrimmedCurve",
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine::
                  paramsGetIfcTrimmedCurve);
@@ -1061,7 +1062,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("pointsLength", &conway::geometry::ConwayGeometryProcessor::
                                     ParamsGetPolyCurve::pointsLength)
       .property("dimensions", &conway::geometry::ConwayGeometryProcessor::
-                                  ParamsGetPolyCurve::dimensions);
+                                  ParamsGetPolyCurve::dimensions)
+      .property("senseAgreement", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsGetPolyCurve::senseAgreement)
+      .property("isEdge", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsGetPolyCurve::isEdge);
 
   /*emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
@@ -1279,7 +1284,11 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("knots", &conway::geometry::ConwayGeometryProcessor::
                           ParamsGetBSplineCurve::knots)
       .field("weights", &conway::geometry::ConwayGeometryProcessor::
-                            ParamsGetBSplineCurve::weights);
+                            ParamsGetBSplineCurve::weights)
+      .field("senseAgreement", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetBSplineCurve::senseAgreement)
+      .field("isEdge", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetBSplineCurve::isEdge);
 
   emscripten::value_object<conway::geometry::IfcTrimmingSelect>(
       "TrimmingSelect")

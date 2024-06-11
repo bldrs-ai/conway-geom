@@ -469,6 +469,8 @@ class ConwayGeometryProcessor {
     uintptr_t points_ = 0;
     uint32_t pointsLength = 0;
     uint32_t dimensions = 0;
+    bool senseAgreement = true;
+    bool isEdge = false;
   };
 
   IfcCurve getPolyCurve(const ParamsGetPolyCurve &parameters);
@@ -564,6 +566,7 @@ class ConwayGeometryProcessor {
     glm::dvec3 cartesianPoint3D;
     glm::dvec3 vectorOrientation;
     double vectorMagnitude;
+    bool isEdge;
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
   };
 
@@ -579,6 +582,8 @@ class ConwayGeometryProcessor {
     std::vector<glm::dvec3> points3;
     std::vector<double> knots;
     std::vector<double> weights;
+    bool senseAgreement;
+    bool isEdge;
   };
 
   conway::geometry::IfcCurve getBSplineCurve(
