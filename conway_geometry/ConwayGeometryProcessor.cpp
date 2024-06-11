@@ -763,6 +763,12 @@ IfcCurve ConwayGeometryProcessor::getPolyCurve(
     }
   }
 
+  if (parameters.isEdge) {
+    if (parameters.senseAgreement) {
+      std::reverse(curve.points.begin(), curve.points.end());
+    }
+  }
+
   return curve;
 }
 
@@ -1915,10 +1921,10 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
     const ParamsGetBSplineCurve &parameters) {
   IfcCurve curve;
 
-  // bool condition = false;
-  /*if (edge) {
+   bool condition = !parameters.senseAgreement;
+  if (parameters.isEdge) {
     condition = !condition;
-  }*/
+  }
 
   curve.points.clear();
 
@@ -1975,14 +1981,124 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
     }
   }
 
-  /*if (condition) {
+  if (condition) {
     std::reverse(curve.points.begin(), curve.points.end());
-  }*/
+  }
 
   return curve;
 }
 
 enum IfcTrimmingPreference { CARTESIAN = 0, PARAMETER = 1, UNSPECIFIED = 2 };
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcLine(
+  const ParamsGetIfcLine &parameters) {
+    conway::geometry::IfcCurve curve;
+
+  bool condition = parameters.paramsGetIfcTrimmedCurve.senseAgreement;
+
+  if (parameters.isEdge)
+  {
+    condition = !condition;
+  }
+
+  if (parameters.dimensions == 2 && parameters.paramsGetIfcTrimmedCurve.trimExists)
+  {
+    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+      IfcTrimmingPreference::CARTESIAN) 
+    {
+      if (condition)
+      {
+        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D);
+        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D);
+      }
+      else
+      {
+        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D);
+        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D);
+      }
+    }
+    else if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+      IfcTrimmingPreference::PARAMETER)
+    {
+
+      glm::dvec3 placement = glm::dvec3( parameters.cartesianPoint2D, 0);
+      glm::dvec3 vector;
+
+      vector.x = parameters.vectorOrientation[0] * parameters.vectorMagnitude;
+      vector.y = parameters.vectorOrientation[1] * parameters.vectorMagnitude;
+      vector.z = parameters.vectorOrientation[2] * parameters.vectorMagnitude;
+
+      if (condition)
+      {
+        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
+        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
+        curve.Add2d(p1);
+        curve.Add2d(p2);
+      }
+      else
+      {
+        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
+        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
+        curve.Add2d(p1);
+        curve.Add2d(p2);
+      }
+    }
+    else
+    {
+      
+      Logger::logError("[ComputeCurve()] Unsupported trimmingselect 2D IFCLINE {}");
+    }
+  }
+  else if (parameters.dimensions == 3 &&  parameters.paramsGetIfcTrimmedCurve.trimExists)
+  {
+    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+      IfcTrimmingPreference::CARTESIAN)
+    {
+      if (condition)
+      {
+        curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D);
+        curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D);
+      }
+      else
+      {
+        curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D);
+        curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D);
+      }
+    }
+    else if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
+      IfcTrimmingPreference::PARAMETER)
+    {
+      glm::dvec3 placement = parameters.cartesianPoint3D;
+      glm::dvec3 vector;
+
+      vector.x = parameters.vectorOrientation[0] * parameters.vectorMagnitude;
+      vector.y = parameters.vectorOrientation[1] * parameters.vectorMagnitude;
+      vector.z = parameters.vectorOrientation[2] * parameters.vectorMagnitude;
+
+      if (condition)
+      {
+        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
+        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
+        curve.Add3d(p1);
+        curve.Add3d(p2);
+      }
+      else
+      {
+        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
+        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
+        curve.Add3d(p1);
+        curve.Add3d(p2);
+      }
+    }
+    else
+    {
+       Logger::logError("[ComputeCurve()] Unsupported trimmingselect 3D IFCLINE {}");
+    }
+
+  }
+
+  return curve;
+}
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
     const ParamsGetIfcCircle &parameters) {

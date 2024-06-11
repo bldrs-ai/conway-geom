@@ -41,6 +41,8 @@ export interface ParamsGetPolyCurve {
   points:number
   pointsLength:number
   dimensions:number
+  senseAgreement:boolean
+  isEdge:boolean
   delete():unknown
 }
 
@@ -80,6 +82,8 @@ export interface ParamsGetBSplineCurve {
   points3: StdVector<Vector3>
   knots: StdVector<number>
   weights: StdVector<number>
+  senseAgreement:boolean
+  isEdge:boolean
 }
 
 
@@ -113,7 +117,7 @@ export interface IfcProfile3D {
 export interface RevolutionSurface {
   active: boolean
   direction: NativeTransform
-  profile: IfcProfile3D
+  profile: ProfileObject
 }
 
 export interface ExtrusionSurface {
@@ -407,6 +411,16 @@ export interface ParamsGetIfcCircle {
   axis2Placement2D: any
   axis2Placement3D: any
   radius: number
+  paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
+}
+
+export interface ParamsGetIfcLine {
+  dimensions: number
+  cartesianPoint2D: any
+  cartesianPoint3D: any
+  vectorOrientation: any
+  vectorMagnitude:number
+  isEdge:boolean
   paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
 }
 
@@ -806,6 +820,16 @@ export class ConwayGeometry {
    */
   getIfcCircle(parameters: ParamsGetIfcCircle): CurveObject {
     const result = this.wasmModule.getIfcCircle(parameters)
+    return result
+  }
+
+  /**
+   *
+   * @param parameters
+   * @return {CurveObject} - Native Curve Object
+   */
+  getIfcLine(parameters: ParamsGetIfcLine): CurveObject {
+    const result = this.wasmModule.getIfcLine(parameters)
     return result
   }
 
