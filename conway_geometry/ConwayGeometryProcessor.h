@@ -329,7 +329,7 @@ class ConwayGeometryProcessor {
     double radius = 0;
     bool isSurfaceOfRevolution = false;
     glm::dmat4 revolutionDirection;
-    IfcProfile3D revolutionProfile;
+    IfcProfile revolutionProfile;
     bool includeTransformation = false;
     bool isSurfaceOfLinearExtrusion = false;
     glm::dvec3 extrusionDirection;
@@ -469,6 +469,8 @@ class ConwayGeometryProcessor {
     uintptr_t points_ = 0;
     uint32_t pointsLength = 0;
     uint32_t dimensions = 0;
+    bool senseAgreement = true;
+    bool isEdge = false;
   };
 
   IfcCurve getPolyCurve(const ParamsGetPolyCurve &parameters);
@@ -558,6 +560,19 @@ class ConwayGeometryProcessor {
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
   };
 
+  struct ParamsGetIfcLine {
+    uint32_t dimensions;
+    glm::dvec2 cartesianPoint2D;
+    glm::dvec3 cartesianPoint3D;
+    glm::dvec3 vectorOrientation;
+    double vectorMagnitude;
+    bool isEdge;
+    ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
+  };
+
+  conway::geometry::IfcCurve getIfcLine(
+  const ParamsGetIfcLine &parameters);
+
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
 
   struct ParamsGetBSplineCurve {
@@ -567,6 +582,8 @@ class ConwayGeometryProcessor {
     std::vector<glm::dvec3> points3;
     std::vector<double> knots;
     std::vector<double> weights;
+    bool senseAgreement;
+    bool isEdge;
   };
 
   conway::geometry::IfcCurve getBSplineCurve(

@@ -96,7 +96,7 @@ struct BSpline {
 struct Revolution {
   bool Active = false;
   glm::dmat4 Direction;
-  IfcProfile3D Profile;
+  IfcProfile Profile;
 };
 
 struct Extrusion {
