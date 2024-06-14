@@ -9,6 +9,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <vector>
+#include <string>
 
 namespace conway::geometry {
 
@@ -23,6 +24,10 @@ struct IfcCurve {
   void Invert();
   bool IsCCW() const;
   glm::dmat4 getPlacementAtDistance(double length);
+
+  std::string DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const;
+
+  std::string DumpToOBJ() const;
 
  private:
   static constexpr double EPS_TINY = 1e-9;

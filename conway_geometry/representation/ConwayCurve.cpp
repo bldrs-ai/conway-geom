@@ -11,10 +11,93 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <algorithm>
+#include <sstream>
+
+#include "SVGContext.h"
 
 //#include "../operations/geometryutils.h"
 
 namespace conway::geometry {
+
+std::string IfcCurve::DumpToOBJ() const {
+  
+  std::stringstream obj;
+
+  for ( const glm::dvec3& t : points ) {
+    
+    obj << "v " << t.x << " " << t.y << " " << t.z << "\n";
+  }
+
+  if ( indices.size() > 1 ) {
+
+      obj << "l";
+
+      for ( uint16_t indice : indices ) {
+
+          obj << " " << indice + 1;
+      }
+
+      obj << "\n";
+  
+  } else if ( points.size() > 1 ) {
+
+      obj << "l";
+
+      for ( size_t where = 1, end = points.size(); where <= end; ++where ) {
+
+          obj << " " << where;
+      }
+      
+      obj << "\n";
+  }
+
+  return obj.str();
+}
+
+std::string IfcCurve::DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const {
+  
+  glm::dvec2 min( FLT_MAX );
+  glm::dvec2 max( -FLT_MAX );
+
+  for ( const glm::dvec3& point : this->points ) {
+
+    min = glm::min( min, glm::dvec2( point ) );
+    max = glm::max( max, glm::dvec2( point ) );
+  }
+
+  SVGContext svg( size, offset, min, max );
+
+  svg.header();
+
+  if ( points.size() == 1 ) {
+
+    svg.point( points[ 0 ] );
+  
+  } else if ( !indices.empty() ) {
+
+    if ( indices.size() == 1 ) {
+      
+      svg.point( points[ indices[ 0 ] ] );
+    } else {
+
+      for ( size_t where = 0, end = indices.size() - 1; where < end; ++where ) {
+
+        svg.line( points[ indices[ where ] ], points[ indices[ where + 1 ] ] );
+      }
+    }
+  
+  } else {
+
+      for ( size_t where = 0, end = points.size() - 1; where < end; ++where ) {
+
+        svg.line( points[ where ], points[ where + 1 ] );
+      }
+  }
+
+  svg.trailer();
+
+  return svg.str();
+}
 
 inline bool equals(glm::dvec3 A, glm::dvec3 B, double eps = 0) {
   return std::fabs(A.x - B.x) <= eps && std::fabs(A.y - B.y) <= eps &&
