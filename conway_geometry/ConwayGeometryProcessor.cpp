@@ -806,7 +806,7 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 
     glm::dvec2 pos = parameters.position2D;
 
-    glm::dvec2 yAxis = glm::normalize(glm::dvec2(xAxis.y, -xAxis.x));
+    glm::dvec2 yAxis = glm::normalize(glm::dvec2(-xAxis.y, xAxis.x));
 
     return glm::dmat3(glm::dvec3(xAxis, 0), glm::dvec3(yAxis, 0),
                       glm::dvec3(pos, 1));
@@ -2110,7 +2110,6 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   double startDegrees = 0;
   double endDegrees = 360;
 
-
   bool byPos = false;
 
   if (parameters.paramsGetIfcTrimmedCurve.trimExists)
@@ -2169,7 +2168,6 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   }
 }
 
-
 while (startDegrees < 0)
 {
   startDegrees += 360;
@@ -2216,7 +2214,7 @@ double lengthRad = degreesToRadians(lengthDegrees);
 size_t startIndex = curve.points.size();
 
 for (int i = 0; i < CIRCLE_SEGMENTS_MEDIUM; i++)
-{
+{ 
   double ratio = static_cast<double>(i) / (CIRCLE_SEGMENTS_MEDIUM - 1);
   double angle = 0;
   angle = startRad + ratio * lengthRad;
