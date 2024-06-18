@@ -237,6 +237,8 @@ export interface CurveObject {
   get3d: (index: number) => any
   invert: () => void
   isCCW: () => boolean
+  dumpToSVG: ( size: Vector2, offset: Vector2 ) => string
+  dumpToOBJ: () => string
   delete(): void
   indices: any
 }
@@ -244,10 +246,13 @@ export interface CurveObject {
 export interface ProfileObject {
   getType: () => string
   getCurve: () => CurveObject
-  getHoles: () => any// CurveObject[];
+  getHoles: () => StdVector< CurveObject >
   isConvex: () => boolean
   isComposite: () => boolean
-  getProfiles: () => any// ProfileObject[];
+  getProfiles: () => StdVector< ProfileObject >
+  dumpToSVG: ( size: Vector2, offset: Vector2 ) => string
+  dumpToOBJ: () => string
+  delete(): void
 }
 
 export interface ParamsGetCircleCurve {

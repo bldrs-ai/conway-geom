@@ -22,5 +22,9 @@ struct IfcProfile {
   bool getIsComposite() const;
   std::vector<IfcProfile> getProfiles() const;
 
+  std::string DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const;
+
+  std::string DumpToOBJ() const;
+
 };
 }

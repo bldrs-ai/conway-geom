@@ -690,6 +690,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("get3d", &conway::geometry::IfcCurve::Get3d)
       .function("invert", &conway::geometry::IfcCurve::Invert)
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW)
+      .function("dumpToOBJ", &conway::geometry::IfcCurve::DumpToOBJ)
+      .function("dumpToSVG", &conway::geometry::IfcCurve::DumpToSVG)
       .property("indices", &conway::geometry::IfcCurve::indices);
 
   emscripten::class_<conway::geometry::IfcProfile>("IfcProfile")
@@ -699,7 +701,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getHoles", &conway::geometry::IfcProfile::getHoles)
       .function("isConvex", &conway::geometry::IfcProfile::getIsConvex)
       .function("isComposite", &conway::geometry::IfcProfile::getIsComposite)
-      .function("getProfiles", &conway::geometry::IfcProfile::getProfiles);
+      .function("getProfiles", &conway::geometry::IfcProfile::getProfiles)
+      .function("dumpToOBJ", &conway::geometry::IfcProfile::DumpToOBJ)
+      .function("dumpToSVG", &conway::geometry::IfcProfile::DumpToSVG);
 
   emscripten::class_<glm::dmat4>("Glmdmat4")
       .constructor<>()
