@@ -1014,6 +1014,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                      ParamsGetIfcCircle::axis2Placement3D)
       .field("radius", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetIfcCircle::radius)
+      .field("radius2", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcCircle::radius2)
       .field("paramsGetIfcTrimmedCurve",
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
                  paramsGetIfcTrimmedCurve);
