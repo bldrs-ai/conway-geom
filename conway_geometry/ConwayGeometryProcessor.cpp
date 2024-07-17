@@ -2105,7 +2105,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   conway::geometry::IfcCurve curve;
 
   double radius1 = parameters.radius;
-  double radius2 = radius1;
+  double radius2 = parameters.radius2;
 
   double startDegrees = 0;
   double endDegrees = 360;

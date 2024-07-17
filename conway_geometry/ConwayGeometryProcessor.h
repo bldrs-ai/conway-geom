@@ -557,6 +557,7 @@ class ConwayGeometryProcessor {
     glm::dmat3 axis2Placement2D;
     glm::dmat4 axis2Placement3D;
     double radius;
+    double radius2;
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
   };
 

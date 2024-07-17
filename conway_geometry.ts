@@ -416,6 +416,7 @@ export interface ParamsGetIfcCircle {
   axis2Placement2D: any
   axis2Placement3D: any
   radius: number
+  radius2: number
   paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
 }
 
