@@ -54,6 +54,7 @@ struct IfcGeometry : fuzzybools::Geometry {
   void AddPart(IfcGeometry geom);
   void AddPart(fuzzybools::Geometry geom);
   glm::dvec3 GetPoint(uint32_t index) const;
+  glm::dvec3 GetNormal(uint32_t index) const;
   uint32_t GetVertexData();
   void AppendGeometry(IfcGeometry &geom);
   void AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, glm::dvec3 origin = glm::dvec3(0, 0, 0));
@@ -65,6 +66,7 @@ struct IfcGeometry : fuzzybools::Geometry {
   glm::dvec3 Normalize();
   void ApplyTransform(const glm::dmat4x4& transform);
   IfcGeometry Clone();
+  std::string GeometryToObj( const std::string& preamble = "" ) const;
 
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
