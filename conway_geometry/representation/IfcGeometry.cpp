@@ -61,6 +61,13 @@ glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
       vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 2]);
 }
 
+glm::dvec3 IfcGeometry::GetNormal(uint32_t index) const {
+  return glm::dvec3(
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 3],
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 4],
+      vertexData[index * fuzzybools::VERTEX_FORMAT_SIZE_FLOATS + 5]);
+}
+
 uint32_t IfcGeometry::GetVertexData() {
   // unfortunately webgl can't do doubles
   if (fvertexData.size() != vertexData.size()) {
@@ -78,31 +85,34 @@ uint32_t IfcGeometry::GetVertexData() {
   return (uint32_t)(size_t)&fvertexData[0];
 }
 
-std::string GeometryToObj(const IfcGeometry &geom, size_t &offset,
-                          glm::dmat4 transform = glm::dmat4(1)) {
+std::string IfcGeometry::GeometryToObj(
+  const std::string& preamble) const {
+  
   std::string obj;
-  obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
+  obj.reserve(numPoints * 32 + numFaces * 32);  // preallocate memory
 
-  const char *vFormat = "v %.6f %.6f %.6f\n";
-  const char *fFormat = "f %zu// %zu// %zu//\n";
+  const char *vFormat = "v %.6f %.6f %.6f\nvn %.6f %.6f %.6f\n";
+  const char *fFormat = "f %zu//%zu %zu//%zu %zu//%zu\n";
 
-  for (uint32_t i = 0; i < geom.numPoints; ++i) {
-    glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
-    char vBuffer[64];
-    snprintf(vBuffer, sizeof(vBuffer), vFormat, t.x, t.y, t.z);
-    obj.append(vBuffer);
+  obj.append( preamble );
+
+  for (uint32_t i = 0; i < numPoints; ++i) {
+    glm::dvec3 t = GetPoint(i);
+    glm::dvec3 n = GetNormal(i);
+    char vBuffer[128];
+    snprintf(vBuffer, sizeof(vBuffer), vFormat, t.x, t.y, t.z, n.x, n.y, n.z);
+    obj.append(vBuffer);    
   }
 
-  for (uint32_t i = 0; i < geom.numFaces; ++i) {
-    size_t f1 = geom.indexData[i * 3 + 0] + 1 + offset;
-    size_t f2 = geom.indexData[i * 3 + 1] + 1 + offset;
-    size_t f3 = geom.indexData[i * 3 + 2] + 1 + offset;
-    char fBuffer[64];
-    snprintf(fBuffer, sizeof(fBuffer), fFormat, f1, f2, f3);
+  for (uint32_t i = 0; i < numFaces; ++i) {
+    size_t f1 = indexData[i * 3 + 0] + 1;
+    size_t f2 = indexData[i * 3 + 1] + 1;
+    size_t f3 = indexData[i * 3 + 2] + 1;
+
+    char fBuffer[128];
+    snprintf(fBuffer, sizeof(fBuffer), fFormat, f1, f1, f2, f2, f3, f3);
     obj.append(fBuffer);
   }
-
-  offset += geom.numPoints;
 
   return obj;
 }
