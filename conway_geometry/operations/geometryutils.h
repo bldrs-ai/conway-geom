@@ -515,25 +515,6 @@ inline IfcGeometry SweepCircular(
   return geom;
 }
 
-inline bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
-                              const glm::dvec3 v3, glm::dvec3 &normal,
-                              double eps = 0) {
-  glm::dvec3 v12(v2 - v1);
-  glm::dvec3 v13(v3 - v1);
-
-  glm::dvec3 norm = glm::cross(v12, v13);
-
-  double len = glm::length(norm);
-
-  if (len <= eps) {
-    return false;
-  }
-
-  normal = norm / len;
-
-  return true;
-}
-
 inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {

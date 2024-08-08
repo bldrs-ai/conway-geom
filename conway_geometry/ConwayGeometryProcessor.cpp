@@ -1794,11 +1794,12 @@ IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
   IfcGeometry geom;
 
   for (size_t i = 0; i < parameters.indicesArrayLength; i += 3) {
-    int i1 = indices[i + 0] - 1;
-    int i2 = indices[i + 1] - 1;
-    int i3 = indices[i + 2] - 1;
 
-    geom.AddFace(points[i1], points[i2], points[i3]);
+    int i1 = ( indices[i + 0] - 1 ) * 3;
+    int i2 = ( indices[i + 1] - 1 ) * 3;
+    int i3 = ( indices[i + 2] - 1 ) * 3;
+
+    geom.AddFaceFloat( points + i1, points + i2, points + i3 );
     // printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1],
     // points[i2], points[i3]);
   }

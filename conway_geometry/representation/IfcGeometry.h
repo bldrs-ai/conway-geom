@@ -31,6 +31,26 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
+inline bool computeSafeNormal(const glm::dvec3& v1, const glm::dvec3& v2,
+                              const glm::dvec3& v3, glm::dvec3 &normal,
+                              double eps = 0) {
+  glm::dvec3 v12(v2 - v1);
+  glm::dvec3 v13(v3 - v1);
+
+  glm::dvec3 norm = glm::cross(v12, v13);
+
+  double len = glm::length(norm);
+
+  if (len <= eps) {
+    return false;
+  }
+
+  normal = norm / len;
+
+  return true;
+}
+
+
 struct IfcGeometry : fuzzybools::Geometry {
   //new additions 0.0.44
   bool halfSpace = false;
@@ -48,6 +68,27 @@ struct IfcGeometry : fuzzybools::Geometry {
   bool normalized = false;
 
   uint32_t GetAllocationSize() const;
+
+  inline void AddFaceFloat(const float* af, const float* bf, const float* cf) {
+    glm::dvec3 normal;
+
+    glm::dvec3 a( af[ 0 ], af[ 1 ], af[ 2 ] );
+    glm::dvec3 b( bf[ 0 ], bf[ 1 ], bf[ 2 ] );
+    glm::dvec3 c( cf[ 0 ], cf[ 1 ], cf[ 2 ] );
+
+    if (!conway::geometry::computeSafeNormal(a, b, c, normal, EPS_SMALL))
+    {
+      // bail out, zero area triangle
+      //printf("zero tri");
+      return;
+    }
+
+    AddPoint(a, normal);
+    AddPoint(b, normal);
+    AddPoint(c, normal);
+
+    AddFace(numPoints - 3, numPoints - 2, numPoints - 1);
+  }
 
   void ReverseFace(uint32_t index);
   void ReverseFaces();
