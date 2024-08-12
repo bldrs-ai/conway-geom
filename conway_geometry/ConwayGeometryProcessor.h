@@ -25,6 +25,10 @@
 #include <unordered_map>
 #include <vector>
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+
+
 // draco
 #include <draco/compression/config/compression_shared.h>
 #include <draco/compression/encode.h>
@@ -608,9 +612,17 @@ class ConwayGeometryProcessor {
   bool USE_FAST_BOOLS = true;
 
   bool DUMP_CSG_MESHES = false;
-  int CIRCLE_SEGMENTS_LOW = 24;
-  int CIRCLE_SEGMENTS_MEDIUM = 48;
-  int CIRCLE_SEGMENTS_HIGH = 96;
+
+public:
+  static constexpr int CIRCLE_SEGMENTS_LOW = 6;
+  static constexpr int CIRCLE_SEGMENTS_MEDIUM = 24;
+  static constexpr int CIRCLE_SEGMENTS_HIGH = 96;
+
+  static constexpr double CIRCLE_SEGMENT_TO_DIAMETER = 0.05;
+  static constexpr double CIRCLE_SEGMENT_TO_RADIUS_RATIO = 0.05 / ( 2.0 * M_PI );
+
+private:
+
   bool MESH_CACHE = false;
   int BOOL_ABORT_THRESHOLD = 10000;  // 10k verts
 };
