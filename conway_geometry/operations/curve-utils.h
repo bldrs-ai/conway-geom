@@ -12,12 +12,17 @@
 
 namespace conway::geometry {
 
+constexpr double MIN_T_DELTA          = 0.01;
+constexpr double MAX_CURVE_DEFLECTION = 0.001;
+constexpr double MAX_CURVE_DEFLECTION2 = MAX_CURVE_DEFLECTION * MAX_CURVE_DEFLECTION;
+
+
 inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0;
 }
 
 inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
-                              const glm::dvec3 &p3, uint16_t circleSegments,
+                              const glm::dvec3 &p3,
                               double EPS_MINSIZE) {
   // Calculate the center of the circle
   glm::dvec3 v1 = p2 - p1;
@@ -63,6 +68,12 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
 
   // Calculate the radius
   double radius = glm::distance(center, p1);
+  
+  int circleSegments =
+    static_cast< int >( ceil( radius * ConwayGeometryProcessor::CIRCLE_SEGMENT_TO_RADIUS_RATIO ) );
+
+  circleSegments = std::max( circleSegments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_LOW );
+  circleSegments = std::min( circleSegments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_MEDIUM );
 
   // Using geometrical subdivision to create points on the arc
   std::vector<glm::dvec3> pointList;
@@ -92,7 +103,7 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
 }
 
 inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
-                            const glm::dvec2 &p3, uint16_t circleSegments) {
+                            const glm::dvec2 &p3) {
   double f1 = (p1.x * p1.x - p2.x * p2.x + p1.y * p1.y - p2.y * p2.y);
   double f2 = (p1.x * p1.x - p3.x * p3.x + p1.y * p1.y - p3.y * p3.y);
   double v =
@@ -111,6 +122,14 @@ inline IfcCurve BuildArc3Pt(const glm::dvec2 &p1, const glm::dvec2 &p2,
   pCen.y = cenY;
 
   double radius = sqrt(pow(cenX - p1.x, 2) + pow(cenY - p1.y, 2));
+
+  int circleSegments =
+    static_cast< int >( ceil( radius * ConwayGeometryProcessor::CIRCLE_SEGMENT_TO_RADIUS_RATIO ) );
+
+  circleSegments = std::max( circleSegments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_LOW );
+  circleSegments = std::min( circleSegments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_MEDIUM );
+
+  //printf( "Segments %d\n", circleSegments );
 
   // Using geometrical subdivision to avoid complex calculus with angles
 
@@ -274,32 +293,51 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
     const std::vector<glm::dvec3>& points,
     const std::vector<double>& knots,
     const std::vector<double>& weights ) {
-  std::vector<glm::dvec3> c;
 
-  for (double i = 0; i < 1.0; i += 0.05) {
-    glm::dvec3 point = InterpolateRationalBSplineCurveWithKnots(
-        i, degree, points, knots, weights);
-    c.push_back(point);
+  std::vector< glm::dvec3 > result;
+
+  std::vector< std::pair< double, glm::dvec3 > > spanStack;
+  
+  double acceptedT = 0;
+
+  result.push_back(
+    InterpolateRationalBSplineCurveWithKnots(
+        0, degree, points, knots, weights) );
+        
+  spanStack.emplace_back( 
+      1,
+      InterpolateRationalBSplineCurveWithKnots(
+          1, degree, points, knots, weights ) );
+
+
+  while ( !spanStack.empty() ) {
+
+    const glm::dvec3& acceptedPoint = result.back();
+
+    double nextT                = spanStack.back().first;
+    const glm::dvec3& nextPoint = spanStack.back().second;
+
+    double candidateT           = acceptedT + ( ( nextT - acceptedT ) * 0.5 );
+    double deltaT               = ( nextT - acceptedT ) * 0.5;
+    glm::dvec3 midPointLinear   = ( nextPoint - acceptedPoint ) * 0.5 + acceptedPoint;
+    glm::dvec3 midPointSpline   = InterpolateRationalBSplineCurveWithKnots(
+        acceptedT + deltaT, degree, points, knots, weights );
+
+    glm::dvec3 deflectionVector = midPointSpline - midPointLinear;
+    
+    if ( deltaT < MIN_T_DELTA || glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
+
+      spanStack.emplace_back( candidateT, midPointSpline );
+    
+    } else {
+
+      result.push_back( nextPoint );
+      spanStack.pop_back();
+      acceptedT = nextT;
+    }
   }
-
-  // Fix - the above floating point loop terminated at < 1, meaning the curve was unterminated 
-  // but also, due to the imprecision of floating point math <= would not necessarily guarantee a 
-  // '1.0' for t - CS
-  {
-    glm::dvec3 endPoint = InterpolateRationalBSplineCurveWithKnots(
-      1.0, degree, points, knots, weights);
-    c.push_back(endPoint);
-  }
-
-  // TODO: flip triangles?
-  /*
-                  if (MatrixFlipsTriangles(placement))
-                  {
-                          c.Invert();
-                  }
-  */
-
-  return c;
+  
+  return result;
 }
 
 inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
@@ -308,34 +346,50 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
     const std::vector<double>& knots,
     const std::vector<double>& weights ) {
 
-  std::vector<glm::dvec2> c;
+  std::vector< glm::dvec2 > result;
 
-  for (double i = 0; i < 1.0; i += 0.05) {
-    glm::dvec2 point =
+  std::vector< std::pair< double, glm::dvec2 > > spanStack;
+  
+  double acceptedT = 0;
+
+  result.push_back(
+    InterpolateRationalBSplineCurveWithKnots(
+        0, degree, points, knots, weights) );
+        
+  spanStack.emplace_back( 
+      1,
       InterpolateRationalBSplineCurveWithKnots(
-        i,
-        degree,
-        points,
-        knots,
-        weights );
+          1, degree, points, knots, weights ) );
 
-    c.push_back(point);
+
+  while ( !spanStack.empty() ) {
+
+    const glm::dvec2& acceptedPoint = result.back();
+
+    double nextT                = spanStack.back().first;
+    const glm::dvec2& nextPoint = spanStack.back().second;
+
+    double candidateT           = acceptedT + ( ( nextT - acceptedT ) * 0.5 );
+    double deltaT               = ( nextT - acceptedT ) * 0.5;
+    glm::dvec2 midPointLinear   = ( nextPoint - acceptedPoint ) * 0.5 + acceptedPoint;
+    glm::dvec2 midPointSpline   = InterpolateRationalBSplineCurveWithKnots(
+        acceptedT + deltaT, degree, points, knots, weights );
+
+    glm::dvec2 deflectionVector = midPointSpline - midPointLinear;
+    
+    if ( deltaT < MIN_T_DELTA || glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
+
+      spanStack.emplace_back( candidateT, midPointSpline );
+    
+    } else {
+
+      result.push_back( nextPoint );
+      spanStack.pop_back();
+      acceptedT = nextT;
+    }
   }
-
-  {
-    glm::dvec2 endPoint = InterpolateRationalBSplineCurveWithKnots(
-      1.0, degree, points, knots, weights);
-    c.push_back(endPoint);
-  }
-
-  // TODO: flip triangles?
-  /*
-                  if (MatrixFlipsTriangles(placement))
-                  {
-                          c.Invert();
-                  }
-  */
-  return c;
+  
+  return result;
 }
 
 inline bool IsCurveConvex(IfcCurve &curve) {
