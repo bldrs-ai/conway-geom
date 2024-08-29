@@ -23,6 +23,8 @@ struct IfcCurve {
   glm::dvec3 Get3d(size_t i) const;
   void Invert();
   bool IsCCW() const;
+  IfcCurve Clone() const;
+
   glm::dmat4 getPlacementAtDistance(double length);
 
   std::string DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const;

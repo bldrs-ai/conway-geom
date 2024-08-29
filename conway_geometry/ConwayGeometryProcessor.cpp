@@ -1794,11 +1794,12 @@ IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
   IfcGeometry geom;
 
   for (size_t i = 0; i < parameters.indicesArrayLength; i += 3) {
-    int i1 = indices[i + 0] - 1;
-    int i2 = indices[i + 1] - 1;
-    int i3 = indices[i + 2] - 1;
 
-    geom.AddFace(points[i1], points[i2], points[i3]);
+    int i1 = ( indices[i + 0] - 1 ) * 3;
+    int i2 = ( indices[i + 1] - 1 ) * 3;
+    int i3 = ( indices[i + 2] - 1 ) * 3;
+
+    geom.AddFaceFloat( points + i1, points + i2, points + i3 );
     // printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1],
     // points[i2], points[i3]);
   }
@@ -1839,10 +1840,13 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
           }
         }
         if (sg.isArcType) {
+
           auto pts = parameters.points;
+
           IfcCurve arc =
               BuildArc3Pt(pts[sg.indices[0] - 1], pts[sg.indices[1] - 1],
-                          pts[sg.indices[2] - 1], CIRCLE_SEGMENTS_MEDIUM);
+                          pts[sg.indices[2] - 1]);
+
           for (auto &pt : arc.points) {
             curve.Add2d(pt);
           }
@@ -1893,8 +1897,14 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleCurve(
     placement = parameters.placement;
   }
 
-  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
-                         placement);
+  int segments = static_cast< int >( ceil( radius * CIRCLE_SEGMENT_TO_RADIUS_RATIO ) );
+
+  segments = std::max( segments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_LOW );
+  segments = std::min( segments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH );
+
+ // printf( "Segments %d\n", segments );
+
+  curve = GetCircleCurve( radius, segments, placement );
 
   return curve;
 }
@@ -1911,8 +1921,14 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getCircleHoleCurve(
     placement = parameters.placement;
   }
 
-  curve = GetCircleCurve(radius, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH,
-                         placement);
+  int segments = static_cast< int >( ceil( radius * CIRCLE_SEGMENT_TO_RADIUS_RATIO ) );
+
+  segments = std::max( segments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_LOW );
+  segments = std::min( segments, ConwayGeometryProcessor::CIRCLE_SEGMENTS_HIGH );
+
+ // printf( "Segments %d\n", segments );
+
+  curve = GetCircleCurve( radius, segments, placement );
 
   return curve;
 }
@@ -2105,7 +2121,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   conway::geometry::IfcCurve curve;
 
   double radius1 = parameters.radius;
-  double radius2 = radius1;
+  double radius2 = parameters.radius2;
 
   double startDegrees = 0;
   double endDegrees = 360;

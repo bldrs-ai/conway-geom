@@ -63,13 +63,14 @@ export interface GeometryObject {
   getAllocationSize(): number
   appendGeometry(parameter: GeometryObject): void
   addComponentTransform(transform: any): void
-  appendWithTransform(geometry: GeometryObject, transform: any): void
+  appendWithTransform(geometry: GeometryObject, transform: NativeTransform): void
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
   getAABB(): AABB
   getAABBCenter(): Vector3
   getParts(): StdVector<GeometryObject>
+  dumpToOBJ( preamble: string ): string
   normalized: boolean
   delete(): void
 }
@@ -240,6 +241,7 @@ export interface CurveObject {
   dumpToSVG: ( size: Vector2, offset: Vector2 ) => string
   dumpToOBJ: () => string
   delete(): void
+  clone(): CurveObject
   indices: any
 }
 
@@ -416,6 +418,7 @@ export interface ParamsGetIfcCircle {
   axis2Placement2D: any
   axis2Placement3D: any
   radius: number
+  radius2: number
   paramsGetIfcTrimmedCurve: ParamsGetIfcTrimmedCurve
 }
 

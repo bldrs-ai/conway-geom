@@ -665,7 +665,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("getAABBCenter", &conway::geometry::IfcGeometry::GetAABBCenter)
       .function("getParts", &conway::geometry::IfcGeometry::getParts)
       .property("normalized", &conway::geometry::IfcGeometry::normalized)
-      .function("clone", &conway::geometry::IfcGeometry::Clone);
+      .function("clone", &conway::geometry::IfcGeometry::Clone)
+      .function("dumpToOBJ", &conway::geometry::IfcGeometry::GeometryToObj );
 
   emscripten::class_<conway::geometry::IfcGeometryCollection>(
       "IfcGeometryCollection")
@@ -692,7 +693,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("isCCW", &conway::geometry::IfcCurve::IsCCW)
       .function("dumpToOBJ", &conway::geometry::IfcCurve::DumpToOBJ)
       .function("dumpToSVG", &conway::geometry::IfcCurve::DumpToSVG)
-      .property("indices", &conway::geometry::IfcCurve::indices);
+      .property("indices", &conway::geometry::IfcCurve::indices)
+      .function("clone", &conway::geometry::IfcCurve::Clone);
 
   emscripten::class_<conway::geometry::IfcProfile>("IfcProfile")
       .constructor<>()
@@ -1014,6 +1016,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                      ParamsGetIfcCircle::axis2Placement3D)
       .field("radius", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetIfcCircle::radius)
+      .field("radius2", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcCircle::radius2)
       .field("paramsGetIfcTrimmedCurve",
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle::
                  paramsGetIfcTrimmedCurve);
