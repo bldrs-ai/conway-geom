@@ -69,7 +69,7 @@ conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
 }
 
 conway::geometry::IfcCurve GetIndexedPolyCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve&
         parameters) {
   if (processor) {
     return processor->getIndexedPolyCurve(parameters);
@@ -80,7 +80,7 @@ conway::geometry::IfcCurve GetIndexedPolyCurve(
 }
 
 conway::geometry::IfcCurve GetCircleCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve&
         parameters) {
   if (processor) {
     return processor->getCircleCurve(parameters);
@@ -91,7 +91,7 @@ conway::geometry::IfcCurve GetCircleCurve(
 }
 
 conway::geometry::IfcCurve GetCircleHoleCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve&
         parameters) {
   if (processor) {
     return processor->getCircleHoleCurve(parameters);
@@ -102,7 +102,7 @@ conway::geometry::IfcCurve GetCircleHoleCurve(
 }
 
 conway::geometry::IfcCurve GetIfcCircle(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle parameters) {
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetIfcCircle& parameters) {
   if (processor) {
     return processor->getIfcCircle(parameters);
   }
@@ -113,7 +113,7 @@ conway::geometry::IfcCurve GetIfcCircle(
 }
 
 conway::geometry::IfcCurve GetIfcLine(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine parameters) {
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine& parameters) {
   if (processor) {
     return processor->getIfcLine(parameters);
   }
@@ -124,7 +124,7 @@ conway::geometry::IfcCurve GetIfcLine(
 }
 
 conway::geometry::IfcCurve GetBSplineCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve
+    conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve&
         parameters) {
   if (processor) {
     return processor->getBSplineCurve(parameters);
@@ -178,7 +178,8 @@ struct ParamsCreateBound3D {
   bool orientation;
   uint32_t type;
 };
-conway::geometry::IfcBound3D createBound3D(ParamsCreateBound3D parameters) {
+
+conway::geometry::IfcBound3D createBound3D(const ParamsCreateBound3D& parameters) {
   conway::geometry::IfcBound3D bounds3D;
   bounds3D.curve = parameters.curve;
   bounds3D.orientation = parameters.orientation;
@@ -205,7 +206,7 @@ conway::geometry::IfcBound3D createBound3D(ParamsCreateBound3D parameters) {
 }
 
 conway::geometry::IfcGeometry GetHalfSpaceSolid(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid&
         parameters) {
   if (processor) {
     return processor->GetHalfSpaceSolid(parameters);
@@ -216,7 +217,7 @@ conway::geometry::IfcGeometry GetHalfSpaceSolid(
 }
 
 glm::dmat4 GetLocalPlacement(
-    conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement
+    const conway::geometry::ConwayGeometryProcessor::ParamsLocalPlacement&
         parameters) {
   if (processor) {
     return processor->GetLocalPlacement(parameters);
@@ -228,7 +229,7 @@ glm::dmat4 GetLocalPlacement(
 }
 
 glm::dmat3 GetAxis2Placement2D(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetAxis2Placement2D&
         parameters) {
   if (processor) {
     return processor->GetAxis2Placement2D(parameters);
@@ -239,7 +240,7 @@ glm::dmat3 GetAxis2Placement2D(
 }
 
 glm::dmat4 GetAxis1Placement(
-    conway::geometry::ConwayGeometryProcessor::ParamsAxis1Placement3D
+    const conway::geometry::ConwayGeometryProcessor::ParamsAxis1Placement3D&
         parameters) {
   if (processor) {
     return processor->GetAxis1Placement(parameters);
@@ -250,7 +251,7 @@ glm::dmat4 GetAxis1Placement(
 }
 
 glm::dmat4 GetAxis2Placement3D(
-    conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D
+    const conway::geometry::ConwayGeometryProcessor::ParamsAxis2Placement3D&
         parameters) {
   if (processor) {
     return processor->GetAxis2Placement3D(parameters);
@@ -271,7 +272,7 @@ conway::geometry::IfcGeometry GetBooleanResult(
 }
 
 conway::geometry::IfcGeometry RelVoidSubtract(
-    conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract
+    const conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract&
         parameters) {
   if (processor) {
     return processor->RelVoidSubtract(parameters);
@@ -281,7 +282,7 @@ conway::geometry::IfcGeometry RelVoidSubtract(
 }
 
 conway::geometry::IfcCurve GetCShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetCShapeCurve(parameters);
@@ -291,7 +292,7 @@ conway::geometry::IfcCurve GetCShapeCurve(
 }
 
 conway::geometry::IfcCurve GetIShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetIShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetIShapeCurve(parameters);
@@ -301,7 +302,7 @@ conway::geometry::IfcCurve GetIShapeCurve(
 }
 
 conway::geometry::IfcCurve GetLShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetLShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetLShapeCurve(parameters);
@@ -311,7 +312,7 @@ conway::geometry::IfcCurve GetLShapeCurve(
 }
 
 conway::geometry::IfcCurve GetTShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetTShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetTShapeCurve(parameters);
@@ -321,7 +322,7 @@ conway::geometry::IfcCurve GetTShapeCurve(
 }
 
 conway::geometry::IfcCurve GetUShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetUShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetUShapeCurve(parameters);
@@ -331,7 +332,7 @@ conway::geometry::IfcCurve GetUShapeCurve(
 }
 
 conway::geometry::IfcCurve GetZShapeCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetZShapeCurve&
         parameters) {
   if (processor) {
     return processor->GetZShapeCurve(parameters);
@@ -341,7 +342,7 @@ conway::geometry::IfcCurve GetZShapeCurve(
 }
 
 conway::geometry::IfcCurve GetEllipseCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetEllipseCurve&
         parameters) {
   if (processor) {
     return processor->getEllipseCurve(parameters);
@@ -351,7 +352,7 @@ conway::geometry::IfcCurve GetEllipseCurve(
 }
 
 conway::geometry::IfcCurve GetRectangleProfileCurve(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve&
         parameters) {
   if (processor) {
     return processor->GetRectangleProfileCurve(parameters);
@@ -362,7 +363,7 @@ conway::geometry::IfcCurve GetRectangleProfileCurve(
 }
 
 conway::geometry::IfcCurve GetRectangleHollowProfileHole(
-    conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve&
         parameters) {
   if (processor) {
     return processor->GetRectangleHollowProfileHole(parameters);
@@ -447,7 +448,7 @@ struct ParamsCreateNativeIfcProfile {
   std::vector<conway::geometry::IfcProfile> profiles;
 };
 conway::geometry::IfcProfile createNativeIfcProfile(
-    ParamsCreateNativeIfcProfile parameters) {
+    const ParamsCreateNativeIfcProfile& parameters) {
   conway::geometry::IfcProfile profile;
 
   profile.type = "testType";

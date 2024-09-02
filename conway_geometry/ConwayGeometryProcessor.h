@@ -146,7 +146,7 @@ class ConwayGeometryProcessor {
     double optionalLinearScalingFactor = 1.0;
   };
 
-  IfcGeometry GetHalfSpaceSolid(ParamsGetHalfspaceSolid parameters);
+  IfcGeometry GetHalfSpaceSolid(const ParamsGetHalfspaceSolid& parameters);
 
   // case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
   struct ParamsGetPolygonalBoundedHalfspace {
@@ -166,7 +166,7 @@ class ConwayGeometryProcessor {
   */
 
   IfcGeometry GetPolygonalBoundedHalfspace(
-      ParamsGetPolygonalBoundedHalfspace parameters);
+      const ParamsGetPolygonalBoundedHalfspace& parameters);
 
   // case ifc::IFCREPRESENTATIONMAP
   // TODO(nickcastel50) : see if this is needed
@@ -220,7 +220,7 @@ class ConwayGeometryProcessor {
     double filletRadius = 0.0f;
   };
 
-  IfcCurve GetCShapeCurve(ParamsGetCShapeCurve parameters);
+  IfcCurve GetCShapeCurve(const ParamsGetCShapeCurve& parameters);
 
   struct ParamsGetIShapeCurve {
     bool hasPlacement = false;
@@ -234,7 +234,7 @@ class ConwayGeometryProcessor {
     double filletRadius = 0.0f;
   };
 
-  IfcCurve GetIShapeCurve(ParamsGetIShapeCurve parameters);
+  IfcCurve GetIShapeCurve(const ParamsGetIShapeCurve& parameters);
 
   struct ParamsGetLShapeCurve {
     bool hasPlacement = false;
@@ -248,7 +248,7 @@ class ConwayGeometryProcessor {
     double legSlope = 0.0f;
   };
 
-  IfcCurve GetLShapeCurve(ParamsGetLShapeCurve parameters);
+  IfcCurve GetLShapeCurve(const ParamsGetLShapeCurve& parameters);
 
   struct ParamsGetTShapeCurve {
     bool hasPlacement = false;
@@ -262,7 +262,7 @@ class ConwayGeometryProcessor {
     double flangeScope = 0.0f;
   };
 
-  IfcCurve GetTShapeCurve(ParamsGetTShapeCurve parameters);
+  IfcCurve GetTShapeCurve(const ParamsGetTShapeCurve& parameters);
 
   struct ParamsGetUShapeCurve {
     bool hasPlacement = false;
@@ -276,7 +276,7 @@ class ConwayGeometryProcessor {
     double flangeScope = 0.0f;
   };
 
-  IfcCurve GetUShapeCurve(ParamsGetUShapeCurve parameters);
+  IfcCurve GetUShapeCurve(const ParamsGetUShapeCurve& parameters);
 
   struct ParamsGetZShapeCurve {
     bool hasPlacement = false;
@@ -290,12 +290,12 @@ class ConwayGeometryProcessor {
     double edgeRadius = 0.0f;
   };
 
-  IfcCurve GetZShapeCurve(ParamsGetZShapeCurve parameters);
+  IfcCurve GetZShapeCurve(const ParamsGetZShapeCurve& parameters);
 
-  IfcCurve GetRectangleProfileCurve(ParamsGetRectangleProfileCurve parameters);
+  IfcCurve GetRectangleProfileCurve(const ParamsGetRectangleProfileCurve& parameters);
 
   IfcCurve GetRectangleHollowProfileHole(
-      ParamsGetRectangleProfileCurve parameters);
+      const ParamsGetRectangleProfileCurve& parameters);
 
   // case ifc::IFCFACEBASEDSURFACEMODEL:
   // case ifc::IFCSHELLBASEDSURFACEMODEL:
@@ -341,7 +341,7 @@ class ConwayGeometryProcessor {
     bool customLength = false;
     double length = 0;
   };
-  IfcSurface GetSurface(ParamsGetSurface parameters);
+  IfcSurface GetSurface(const ParamsGetSurface& parameters);
 
   // case ifc::IFCAXIS2PLACEMENT2D:
   // case ifc::IFCCARTESIANTRANSFORMATIONOPERATOR2D:
@@ -361,7 +361,7 @@ class ConwayGeometryProcessor {
     double scale2 = 0;
   };
 
-  glm::dmat3 GetAxis2Placement2D(ParamsGetAxis2Placement2D parameters);
+  glm::dmat3 GetAxis2Placement2D(const ParamsGetAxis2Placement2D& parameters);
 
   // case ifc::IFCAXIS1PLACEMENT:
   struct ParamsAxis1Placement3D {
@@ -369,7 +369,7 @@ class ConwayGeometryProcessor {
     glm::dvec3 zAxisRef;
     bool normalizeZ = false;
   };
-  glm::dmat4 GetAxis1Placement(ParamsAxis1Placement3D parameters);
+  glm::dmat4 GetAxis1Placement(const ParamsAxis1Placement3D& parameters);
 
   // case ifc::IFCAXIS2PLACEMENT3D:
   struct ParamsAxis2Placement3D {
@@ -420,14 +420,14 @@ class ConwayGeometryProcessor {
     std::vector<conway::geometry::IfcCurve> edges;
   };
 
-  IfcCurve GetLoop(ParamsGetLoop parameters);
+  IfcCurve GetLoop(const ParamsGetLoop& parameters);
 
   struct ParamsGetBound {
     bool isFaceOuterBound = false;
     bool orient = false;
     ParamsGetLoop parametersGetLoop;
   };
-  IfcBound3D GetBound(ParamsGetBound parameters);
+  IfcBound3D GetBound(const ParamsGetBound& parameters);
 
   struct IndexedPolygonalFace {
     std::vector<uint32_t> indices;

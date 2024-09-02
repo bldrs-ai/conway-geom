@@ -149,7 +149,7 @@ double normalDiff(glm::dvec3 extents) {
 }*/
 
 IfcCurve ConwayGeometryProcessor::GetCShapeCurve(
-    ParamsGetCShapeCurve parameters) {
+    const ParamsGetCShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -164,7 +164,7 @@ IfcCurve ConwayGeometryProcessor::GetCShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetIShapeCurve(
-    ParamsGetIShapeCurve parameters) {
+    const ParamsGetIShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -180,7 +180,7 @@ IfcCurve ConwayGeometryProcessor::GetIShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetLShapeCurve(
-    ParamsGetLShapeCurve parameters) {
+    const ParamsGetLShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -196,7 +196,7 @@ IfcCurve ConwayGeometryProcessor::GetLShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetTShapeCurve(
-    ParamsGetTShapeCurve parameters) {
+    const ParamsGetTShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -212,7 +212,7 @@ IfcCurve ConwayGeometryProcessor::GetTShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetUShapeCurve(
-    ParamsGetUShapeCurve parameters) {
+    const ParamsGetUShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -228,7 +228,7 @@ IfcCurve ConwayGeometryProcessor::GetUShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetZShapeCurve(
-    ParamsGetZShapeCurve parameters) {
+    const ParamsGetZShapeCurve& parameters) {
   IfcCurve curve;
   glm::dmat3 placement(1);
   if (parameters.hasPlacement) {
@@ -244,7 +244,7 @@ IfcCurve ConwayGeometryProcessor::GetZShapeCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
-    ParamsGetRectangleProfileCurve parameters) {
+    const ParamsGetRectangleProfileCurve& parameters) {
   IfcCurve curve;
   double xdim = parameters.xDim;
   double ydim = parameters.yDim;
@@ -265,7 +265,7 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
 }
 
 IfcCurve ConwayGeometryProcessor::GetRectangleHollowProfileHole(
-    ParamsGetRectangleProfileCurve parameters) {
+    const ParamsGetRectangleProfileCurve& parameters) {
   IfcCurve curve;
   double xdim = parameters.xDim;
   double ydim = parameters.yDim;
@@ -486,7 +486,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
 }
 
 IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
-    ParamsGetHalfspaceSolid parameters) {
+    const ParamsGetHalfspaceSolid& parameters) {
   glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
 
   if (parameters.flipWinding) {
@@ -516,12 +516,12 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
 }
 
 IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
-    ParamsGetPolygonalBoundedHalfspace parameters) {
+    const ParamsGetPolygonalBoundedHalfspace& parameters) {
   
   
-  if (!parameters.curve.IsCCW()) {
-    parameters.curve.Invert();
-  }
+  // if (!parameters.curve.IsCCW()) {
+  //   parameters.curve.Invert();
+  // }
 
   glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
   glm::dvec3 planeNormal = parameters.surface.transformation[2];
@@ -637,7 +637,7 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
   return geometryArray;
 }*/
 
-IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
+IfcSurface ConwayGeometryProcessor::GetSurface(const ParamsGetSurface& parameters) {
   if (parameters.isPlane) {
     IfcSurface surface;
 
@@ -662,21 +662,26 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
              parameters.isRationalBsplineSurfaceWithKnots) {
     IfcSurface surface;
 
-    if (parameters.UKnots[parameters.UKnots.size() - 1] !=
-        (int)parameters.UKnots[parameters.UKnots.size() - 1]) {
-      for (uint32_t i = 0; i < parameters.UKnots.size(); i++) {
-        parameters.UKnots[i] = parameters.UKnots[i] *
-                               (parameters.UKnots.size() - 1) /
-                               parameters.UKnots[parameters.UKnots.size() - 1];
+    surface.BSplineSurface.UKnots = parameters.UKnots;
+    surface.BSplineSurface.VKnots = parameters.VKnots;
+
+    if (surface.BSplineSurface.UKnots[parameters.UKnots.size() - 1] !=
+        (int)surface.BSplineSurface.UKnots[surface.BSplineSurface.UKnots.size() - 1]) {
+      for (uint32_t i = 0; i < surface.BSplineSurface.UKnots.size(); i++) {
+        surface.BSplineSurface.UKnots[i] =
+          surface.BSplineSurface.UKnots[i] *
+          (surface.BSplineSurface.UKnots.size() - 1) /
+          surface.BSplineSurface.UKnots[surface.BSplineSurface.UKnots.size() - 1];
       }
     }
 
-    if (parameters.VKnots[parameters.VKnots.size() - 1] !=
-        (int)parameters.VKnots[parameters.VKnots.size() - 1]) {
-      for (uint32_t i = 0; i < parameters.VKnots.size(); i++) {
-        parameters.VKnots[i] = parameters.VKnots[i] *
-                               (parameters.VKnots.size() - 1) /
-                               parameters.VKnots[parameters.VKnots.size() - 1];
+    if (surface.BSplineSurface.VKnots[surface.BSplineSurface.VKnots.size() - 1] !=
+        (int)surface.BSplineSurface.VKnots[surface.BSplineSurface.VKnots.size() - 1]) {
+      for (uint32_t i = 0; i < surface.BSplineSurface.VKnots.size(); i++) {
+        surface.BSplineSurface.VKnots[i] =
+          surface.BSplineSurface.VKnots[i] *
+          (surface.BSplineSurface.VKnots.size() - 1) /
+          surface.BSplineSurface.VKnots[surface.BSplineSurface.VKnots.size() - 1];
       }
     }
 
@@ -686,8 +691,6 @@ IfcSurface ConwayGeometryProcessor::GetSurface(ParamsGetSurface parameters) {
     surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
     surface.BSplineSurface.UMultiplicity = parameters.UMultiplicity;
     surface.BSplineSurface.VMultiplicity = parameters.VMultiplicity;
-    surface.BSplineSurface.UKnots = parameters.UKnots;
-    surface.BSplineSurface.VKnots = parameters.VKnots;
 
     if (parameters.isRationalBsplineSurfaceWithKnots) {
       surface.BSplineSurface.WeightPoints = parameters.weightPts;
@@ -797,7 +800,7 @@ IfcProfile ConwayGeometryProcessor::transformProfile(
 }
 
 glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
-    ParamsGetAxis2Placement2D parameters) {
+    const ParamsGetAxis2Placement2D& parameters) {
   if (parameters.isAxis2Placement2D) {
     glm::dvec2 xAxis = glm::dvec2(1, 0);
     if (parameters.customAxis1Ref) {
@@ -851,7 +854,7 @@ glm::dmat3 ConwayGeometryProcessor::GetAxis2Placement2D(
 }
 
 glm::dmat4 ConwayGeometryProcessor::GetAxis1Placement(
-    ParamsAxis1Placement3D parameters) {
+    const ParamsAxis1Placement3D& parameters) {
   glm::dvec3 zAxis(0, 0, 1);
   glm::dvec3 xAxis(1, 0, 0);
 
@@ -942,7 +945,7 @@ glm::dmat4 ConwayGeometryProcessor::GetCartesianTransformationOperator3D(
                     glm::dvec4(Axis3 * scale3, 0), glm::dvec4(pos, 1));
 }
 
-IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
+IfcCurve ConwayGeometryProcessor::GetLoop(const ParamsGetLoop& parameters) {
   IfcCurve curve;
   if (parameters.edges.size() == 0) {
     if (parameters.points.size() > 0) {
@@ -984,7 +987,7 @@ IfcCurve ConwayGeometryProcessor::GetLoop(ParamsGetLoop parameters) {
   return curve;
 }
 
-IfcBound3D ConwayGeometryProcessor::GetBound(ParamsGetBound parameters) {
+IfcBound3D ConwayGeometryProcessor::GetBound(const ParamsGetBound& parameters) {
   bool orient = parameters.orient;
 
   IfcBound3D bound;
