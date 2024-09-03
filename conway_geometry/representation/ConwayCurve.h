@@ -29,7 +29,7 @@ struct IfcCurve {
 
   std::string DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const;
 
-  std::string DumpToOBJ() const;
+  std::string DumpToOBJ( const std::string& preamble ) const;
 
  private:
   static constexpr double EPS_TINY = 1e-9;
