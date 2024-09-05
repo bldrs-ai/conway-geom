@@ -14,9 +14,11 @@
 namespace conway::geometry {
 
 
-std::string IfcProfile::DumpToOBJ() const {
+std::string IfcProfile::DumpToOBJ( const std::string& preamble ) const {
   
   std::stringstream obj; 
+
+  obj << preamble;
 
   for ( const glm::dvec3& t : curve.points ) {
     
