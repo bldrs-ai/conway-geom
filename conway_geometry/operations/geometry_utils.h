@@ -7,7 +7,12 @@
 
 #pragma once
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+#pragma clang diagnostic ignored "-Wunused-function"
 #include <mapbox/earcut.hpp>
+#pragma clang diagnostic pop
 
 #include "../../utility/LoaderError.h"
 #include "../representation/IfcGeometry.h"
@@ -253,9 +258,6 @@ inline IfcGeometry Sweep(
     // connect the curves
     for (size_t i = 1; i < dpts.size(); i++)
     {
-      glm::dvec3 p1 = dpts[i - 1];
-      glm::dvec3 p2 = dpts[i];
-
       const auto &c1 = curves[i - 1].points;
       const auto &c2 = curves[i].points;
 
@@ -546,8 +548,6 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
       distanceSqr = candidate2;
     }
   }
-
-  glm::dvec3 normal;
 
   double bestArea = 0;
 
@@ -946,8 +946,6 @@ inline std::optional<glm::dvec3> GetOriginRec(
     IfcComposedMesh &mesh,
     std::unordered_map<uint32_t, IfcGeometry> &geometryMap, glm::dmat4 mat) {
   glm::dmat4 newMat = mat * mesh.transformation;
-
-  bool transformationBreaksWinding = MatrixFlipsTriangles(newMat);
 
   auto geomIt = geometryMap.find(mesh.expressID);
 

@@ -86,6 +86,8 @@ project "conway_geom_native"
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -248,6 +250,8 @@ project "conway_geom_native_tests"
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -582,6 +586,8 @@ end
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -790,6 +796,8 @@ end
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",

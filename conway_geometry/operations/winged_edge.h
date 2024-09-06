@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <vector>
 #include <unordered_map>
-#include "IfcGeometry.h"
+#include "representation/IfcGeometry.h"
 
 namespace conway::geometry {
 
@@ -182,5 +182,4 @@ namespace conway::geometry {
       return mapIterator->second;
     }
   };
-
 }

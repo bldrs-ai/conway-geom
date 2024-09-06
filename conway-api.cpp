@@ -13,12 +13,6 @@
 
 std::unique_ptr<conway::geometry::ConwayGeometryProcessor> processor;
 
-#ifdef __EMSCRIPTEN_PTHREADS__
-constexpr bool MT_ENABLED = true;
-#else
-constexpr bool MT_ENABLED = false;
-#endif
-
 // use to construct API placeholders
 int main() { return 0; }
 
@@ -141,6 +135,8 @@ conway::geometry::IfcGeometry GetPolygonalBoundedHalfspace(
     if (processor) {
       return processor->GetPolygonalBoundedHalfspace(parameters);
     }
+
+    return conway::geometry::IfcGeometry();
   }
 
 conway::geometry::IfcGeometry GetExtrudedAreaSolid(

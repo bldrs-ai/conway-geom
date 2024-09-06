@@ -300,8 +300,6 @@ void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
 
   if ( glm::determinant( transform ) < 0 ) {
 
-    uint32_t* indexPtr = indexData.data();
-
     for ( uint32_t* indexPtr = indexData.data(), 
                   * end = indexData.data() + indexData.size(); 
           indexPtr < end; 
