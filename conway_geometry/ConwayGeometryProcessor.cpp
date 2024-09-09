@@ -2,14 +2,20 @@
 
 #include <glm/glm.hpp>
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+#pragma clang diagnostic ignored "-Wunused-function"
+#pragma clang diagnostic ignored "-Wunknown-pragmas"
+#pragma clang diagnostic ignored "-Wreturn-type"
 #include "fuzzy/fuzzy-bools.h"
-// #include "legacy/math/bool-mesh-mesh.h"
-// #include "legacy/math/intersect-mesh-mesh.h"
-#include "operations/curve-utils.h"
-#include "operations/geometryutils.h"
+#pragma clang diagnostic pop
+
+#include "operations/curve_utils.h"
+#include "operations/geometry_utils.h"
 #include "operations/mesh_utils.h"
 #include "representation/geometry.h"
-#include "../logging/Logger.h"
+#include "Logger.h"
 
 namespace conway::geometry {
 IfcComposedMesh ConwayGeometryProcessor::getMappedItem(
@@ -1034,13 +1040,10 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
       bounds.emplace_back();
       size_t startIdx = parameters.face.face_starts[i];
       size_t endIdx = 0;
-      size_t faceVoidsSize = 0;
       if (i + 1 >= parameters.face.face_starts.size()) {
         endIdx = parameters.face.indices.size();
-        faceVoidsSize = endIdx - startIdx;
       } else {
         endIdx = parameters.face.face_starts[i + 1];
-        faceVoidsSize = endIdx - startIdx;
       }
 
       for (size_t index = startIdx; index < endIdx; index++) {
@@ -1052,8 +1055,6 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
         bounds.back().curve.points.push_back(point);
       }
     }
-
-    ;
   }
 
   return bounds;
@@ -1102,6 +1103,10 @@ ConwayGeometryProcessor::GeometryToGltf(
         case BLEND_MODE::MASK:
 
           material.alphaMode = Microsoft::glTF::AlphaMode::ALPHA_MASK;
+          break;
+
+        default:
+
           break;
       }
 
@@ -1193,8 +1198,6 @@ ConwayGeometryProcessor::GeometryToGltf(
           dracoMeshCompression;
 
       int32_t pos_att_id = -1;
-      int32_t tex_att_id = -1;
-      int32_t material_att_id = -1;
 
       // this internally populates the vertex float array, current storage type
       // is double
@@ -1234,11 +1237,6 @@ ConwayGeometryProcessor::GeometryToGltf(
                   draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
           pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
         }
-
-        // TODO(nickcastel50): support multiple materials at some point when we
-        // add that
-        int32_t numMaterials = 1;
-        int32_t numTexCoords = 0;
 
         // populate position attribute
 
@@ -1286,7 +1284,6 @@ ConwayGeometryProcessor::GeometryToGltf(
             const draco::PointIndex vert_id_0(compositeIndiceIndex);
             const draco::PointIndex vert_id_1(compositeIndiceIndex + 1);
             const draco::PointIndex vert_id_2(compositeIndiceIndex + 2);
-            const int triangulated_index = 0;
 
             // map vertex to face index
             dracoMesh->attribute(pos_att_id)
@@ -1410,8 +1407,6 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       positions.resize(numPoints * 3);
       indexData.reserve(numIndices);
-
-      uint32_t numFaces = numIndices / 3;
 
       std::vector<float> minValues(3U, std::numeric_limits<float>::max());
       std::vector<float> maxValues(3U, std::numeric_limits<float>::lowest());
@@ -2156,7 +2151,6 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
       glm::dmat4 placement = parameters.axis2Placement3D;
       glm::dvec4 vecX = placement[0];
       glm::dvec4 vecY = placement[1];
-      glm::dvec4 vecZ = placement[2];
 
       glm::dvec3 v1 =
           glm::dvec3(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D.x -
@@ -2227,7 +2221,6 @@ else
 }
 
 double startRad = degreesToRadians(startDegrees);
-double endRad = degreesToRadians(endDegrees);
 double lengthRad = degreesToRadians(lengthDegrees);
 
 size_t startIndex = curve.points.size();

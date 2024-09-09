@@ -31,10 +31,12 @@ namespace conway::geometry {
 
     SVGContext& header() {
       stream << "<svg width=\"" << size.x << "\" height=\"" << size.y << " \" xmlns=\"http://www.w3.org/2000/svg\">";
+      return *this;
     }
 
     SVGContext& trailer() {
       stream << "</svg>";
+      return *this;
     }
 
     glm::dvec2 toSvg( const glm::dvec2& from ) const {

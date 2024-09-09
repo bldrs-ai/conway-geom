@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "../representation/ConwayCurve.h"
-#include "../../logging/Logger.h"
+#include "representation/ConwayCurve.h"
+#include "Logger.h"
 
 namespace conway::geometry {
 
@@ -27,9 +27,6 @@ inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
   // Calculate the center of the circle
   glm::dvec3 v1 = p2 - p1;
   glm::dvec3 v2 = p3 - p1;
-  glm::dvec3 normal = glm::normalize(glm::cross(v1, v2));
-  glm::dvec3 mid1 = 0.5 * (p1 + p2);
-  glm::dvec3 mid2 = 0.5 * (p1 + p3);
   glm::dvec3 center;
 
   if (glm::length(glm::cross(v1, v2)) < EPS_MINSIZE) {
@@ -653,7 +650,6 @@ inline IfcCurve GetLShapedCurve(double width, double depth, double thickness,
 
   double hw = width / 2;
   double hd = depth / 2;
-  double hweb = thickness / 2;
 
   c.points.push_back(placement * glm::dvec3(-hw, +hd, 1));
   c.points.push_back(placement * glm::dvec3(-hw, -hd, 1));

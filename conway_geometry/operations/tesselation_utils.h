@@ -3,9 +3,9 @@
 #include <cmath>
 #include <glm/glm.hpp>
 
-#include "../representation/winged_edge.h"
+#include "winged_edge.h"
 #include <queue>
-#include "../representation/IfcGeometry.h"
+#include "representation/IfcGeometry.h"
 
 namespace conway::geometry {
 
