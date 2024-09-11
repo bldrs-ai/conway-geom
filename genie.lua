@@ -86,6 +86,8 @@ project "conway_geom_native"
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -248,6 +250,8 @@ project "conway_geom_native_tests"
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -477,7 +481,7 @@ project "ConwayGeomWasmNode"
     kind "ConsoleApp"
     files {}
 
-    targetname "ConwayGeomWasm"
+    targetname "ConwayGeomWasmNode"
 
     targetextension ".js"
 
@@ -582,6 +586,8 @@ end
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",
@@ -687,7 +693,7 @@ project "ConwayGeomWasmWeb"
     kind "ConsoleApp"
     files {}
 
-    targetname "ConwayGeomWasm"
+    targetname "ConwayGeomWasmWeb"
 
     targetextension ".js"
 
@@ -790,6 +796,8 @@ end
         }
 
         includedirs {
+            "conway_geometry",
+            "logging",
             "external/tinynurbs/include",
             "external/manifold/src",
             "external/manifold/src/utilities/include",

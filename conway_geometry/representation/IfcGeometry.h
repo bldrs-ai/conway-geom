@@ -9,7 +9,13 @@
 
 #pragma once
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-function"
+
 #include <fuzzy/geometry.h>
+
+#pragma clang diagnostic pop
 
 #include <glm/glm.hpp>
 #include <optional>

@@ -18,7 +18,14 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <iostream>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-variable"
+#pragma clang diagnostic ignored "-Wunused-but-set-variable"
+#pragma clang diagnostic ignored "-Wunused-function"
 #include <mapbox/earcut.hpp>
+#pragma clang diagnostic push
+
 #include <span>
 #include <sstream>
 #include <string>
@@ -47,7 +54,7 @@
 #include <GLTFSDK/IStreamWriter.h>
 #include <GLTFSDK/Serialize.h>
 
-#include "operations/geometryutils.h"
+#include "operations/geometry_utils.h"
 #include "representation/IfcGeometry.h"
 #include "representation/geometry.h"
 

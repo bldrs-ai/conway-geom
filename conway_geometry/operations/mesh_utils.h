@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "geometryutils.h"
+#include "geometry_utils.h"
 #include "tesselation_utils.h"
 
 #define CONST_PI 3.141592653589793238462643383279502884L

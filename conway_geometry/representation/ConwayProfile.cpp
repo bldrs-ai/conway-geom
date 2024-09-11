@@ -6,7 +6,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-#include "../operations/geometryutils.h"
+#include "operations/geometry_utils.h"
 
 #include <sstream>
 #include "SVGContext.h"
@@ -29,7 +29,7 @@ std::string IfcProfile::DumpToOBJ( const std::string& preamble ) const {
 
   for ( const IfcCurve& hole : holes ) {
 
-    for ( const glm::dvec3& t : curve.points ) {
+    for ( const glm::dvec3& t : hole.points ) {
     
       obj << "v " << t.x << " " << t.y << " " << t.z << "\n";
     }
