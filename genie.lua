@@ -481,7 +481,7 @@ project "ConwayGeomWasmNode"
     kind "ConsoleApp"
     files {}
 
-    targetname "ConwayGeomWasm"
+    targetname "ConwayGeomWasmNode"
 
     targetextension ".js"
 
@@ -693,7 +693,7 @@ project "ConwayGeomWasmWeb"
     kind "ConsoleApp"
     files {}
 
-    targetname "ConwayGeomWasm"
+    targetname "ConwayGeomWasmWeb"
 
     targetextension ".js"
 

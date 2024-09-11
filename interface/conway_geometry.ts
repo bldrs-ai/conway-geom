@@ -6,7 +6,6 @@ import { GeometryObject } from './geometry_object'
 import { MaterialObject } from './material_object'
 import { ParamsGetLoop } from './parameters/params_get_loop'
 import { StdVector } from './std_vector'
-import { default as ConwayGeomWasm } from '../Dist/ConwayGeomWasm.js'
 import { ParamsAddFaceToGeometry } from './parameters/params_add_face_to_geometry'
 import {
   ParamsCartesianTransformationOperator3D,
@@ -46,6 +45,25 @@ import { ParamsAxis1Placement3D } from './parameters/params_axis_1_placement_3D'
 import { ParamsGetAxis2Placement2D } from './parameters/params_get_axis_2_placement_2D'
 import { ParamsAxis2Placement3D } from './parameters/params_axis_2_placement_3D'
 import { ParamsLocalPlacement } from './parameters/params_local_placement'
+
+let ConwayGeomWasm: any;
+
+/**
+ * Load the WebAssembly module based on the environment
+ */
+async function loadWasmModule() {
+  if (process.env.PLATFORM === 'web') {
+        // Load browser-specific WebAssembly module
+        const module = await import('../Dist/ConwayGeomWasmWeb.js');
+        ConwayGeomWasm = module.default;
+  } else {
+      // Load Node.js-specific WebAssembly module
+      const module = await import('../Dist/ConwayGeomWasmNode.js');
+      ConwayGeomWasm = module.default;
+  }
+}
+
+export default ConwayGeomWasm;
 
 
 export type ConwayGeometryWasm = typeof ConwayGeomWasm
@@ -173,6 +191,11 @@ export class ConwayGeometry {
    * @return {Promise<boolean>} - initialization status
    */
   async initialize(fileHandler?: FileHandlerFunction): Promise<boolean> {
+    // Wait for the WebAssembly module to load if it's not already set
+    if (!ConwayGeomWasm) {
+      await loadWasmModule();
+    }
+
     if (this.wasmModule === void 0) {
       // eslint-disable-next-line new-cap
       this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
