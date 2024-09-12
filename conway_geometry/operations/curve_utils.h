@@ -322,7 +322,7 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
 
     glm::dvec3 deflectionVector = midPointSpline - midPointLinear;
     
-    if ( deltaT > MIN_T_DELTA || glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
+    if ( deltaT > MIN_T_DELTA && glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
 
       spanStack.emplace_back( candidateT, midPointSpline );
     
@@ -374,7 +374,7 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
 
     glm::dvec2 deflectionVector = midPointSpline - midPointLinear;
     
-    if ( deltaT > MIN_T_DELTA || glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
+    if ( deltaT > MIN_T_DELTA && glm::dot( deflectionVector, deflectionVector ) > MAX_CURVE_DEFLECTION2 ) {
 
       spanStack.emplace_back( candidateT, midPointSpline );
     
