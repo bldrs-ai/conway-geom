@@ -1,6 +1,6 @@
 # conway-geom
 
-## Init
+## Init 
 
 1. [Install EMSDK](https://github.com/emscripten-core/emsdk) and follow the instructions for your platform. 
 2. Install the `gmake` and `node` dependencies via Homebrew (```brew install gmake node```).
