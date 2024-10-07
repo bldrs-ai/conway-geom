@@ -186,13 +186,16 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
 
 std::vector<IfcGeometry> IfcGeometry::getParts() { return part; }
 
-void IfcGeometry::AddPart(IfcGeometry geom) { part.push_back(geom); }
+void IfcGeometry::AddPart( const IfcGeometry& geom ) { part.push_back(geom); }
 
-void IfcGeometry::AddPart(fuzzybools::Geometry geom)
+void IfcGeometry::AddPart( const fuzzybools::Geometry& geom)
 {
-  IfcGeometry newGeom;
-  newGeom.MergeGeometry(geom);
-  part.push_back(newGeom);
+  part.emplace_back(geom);
+}
+
+void IfcGeometry::AddPart( fuzzybools::Geometry&& geom)
+{
+  part.emplace_back(geom);
 }
 
 fuzzybools::AABB IfcGeometry::getAABB() const
@@ -200,9 +203,9 @@ fuzzybools::AABB IfcGeometry::getAABB() const
   return GetAABB();
 }
 
-void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans,
+void IfcGeometry::AddGeometry(const fuzzybools::Geometry& geom, const glm::dmat4& trans,
                               double scx, double scy, double scz,
-                              glm::dvec3 origin) {
+                              const glm::dvec3& origin) {
   for (uint32_t i = 0; i < geom.numFaces; i++) {
     fuzzybools::Face f = geom.GetFace(i);
     glm::dvec3 a = geom.GetPoint(f.i0);
@@ -235,7 +238,7 @@ void IfcGeometry::AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans,
 TODO: change over to copy indices with a base vertex position added and append points including normals
       so normals don't get invalidated 
 */
-void IfcGeometry::MergeGeometry(fuzzybools::Geometry geom)
+void IfcGeometry::MergeGeometry(const fuzzybools::Geometry& geom)
 {
   for (uint32_t i = 0; i < geom.numFaces; i++)
   {

@@ -124,7 +124,6 @@ class ConwayGeometryProcessor {
     IfcComposedMesh ifcPresentationMesh;
   };
 
-  IfcComposedMesh getMappedItem(ParamsGetMappedItem parameters);
   IfcGeometry BoolSubtract(const std::vector<IfcGeometry>& firstGroups,
                            const std::vector<IfcGeometry>& secondGroups);
   IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
@@ -145,7 +144,8 @@ class ConwayGeometryProcessor {
     int operatorType = 2;
     glm::dmat4 parentMatrix;
   };
-  IfcGeometry RelVoidSubtract(ParamsRelVoidSubtract parameters);
+  
+  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract parameters );
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {

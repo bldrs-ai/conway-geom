@@ -18,14 +18,7 @@
 #include "Logger.h"
 
 namespace conway::geometry {
-IfcComposedMesh ConwayGeometryProcessor::getMappedItem(
-    ParamsGetMappedItem parameters) {
-  IfcComposedMesh mesh;
-  mesh.transformation = parameters.transformation;
-  mesh.children.push_back(parameters.ifcPresentationMesh);
 
-  return mesh;
-}
 
 fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
     const IfcGeometry &geom) {
@@ -87,72 +80,6 @@ double normalDiff(glm::dvec3 extents) {
   }
 }
 
-/*IfcGeometry BoolJoinLegacy(const std::vector<IfcGeometry> &Geoms) {
-  IfcGeometry result;
-
-  if (Geoms.size() == 0) {
-    return result;
-  } else if (Geoms.size() == 1) {
-    return Geoms[0];
-  } else {
-    bool first = true;
-    for (auto &geom : Geoms) {
-      if (first) {
-        first = false;
-        result = geom;
-      } else {
-        glm::dvec3 center;
-        glm::dvec3 extents;
-        result.GetCenterExtents(center, extents);
-
-        glm::dvec3 s_center;
-        glm::dvec3 s_extents;
-        geom.GetCenterExtents(s_center, s_extents);
-
-        if (normalDiff(extents) < EPS_BIG) {
-          result = geom;
-        } else if (normalDiff(s_extents) < EPS_BIG) {
-          // result = result;
-        } else if (result.numFaces > 0 && geom.numFaces > 0) {
-          auto first = result.Normalize(center, extents);
-          auto second = geom.Normalize(center, extents);
-
-          IfcGeometry r1;
-          IfcGeometry r2;
-
-          intersectMeshMesh(first, second, r1, r2);
-
-          result = (boolJoin(r1, r2)).DeNormalize(center, extents);
-        }
-      }
-    }
-    return result;
-  }
-}*/
-
-/*IfcGeometry ConwayGeometryProcessor::BoolSubtractLegacy(
-    const std::vector<IfcGeometry> &firstGeoms,
-    std::vector<IfcGeometry> &secondGeoms) {
-  IfcGeometry firstGeom = firstGeoms[0];//BoolJoinLegacy(firstGeoms);
-  IfcGeometry secondGeom = secondGeoms[0];//BoolJoinLegacy(secondGeoms);
-
-  IfcGeometry result;
-
-  if (firstGeom.numFaces == 0 || secondGeoms.size() == 0) {
-    printf("bool aborted due to empty source or target\n");
-    printf("firstGeom.numFaces: %i\n", firstGeom.numFaces);
-    printf("secondGeoms.size(): %i\n", secondGeoms.size());
-
-    // bail out because we will get strange meshes
-    // if this happens, probably there's an issue parsing the mesh that occurred
-    // earlier
-    return firstGeom;
-  }
-
-  result = boolMultiOp_CSGJSCPP(firstGeom, secondGeoms);
-
-  return result;
-}*/
 
 IfcCurve ConwayGeometryProcessor::GetCShapeCurve(
     const ParamsGetCShapeCurve& parameters) {
@@ -369,10 +296,13 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
             scaleZ = glm::abs(dz);
           }
         }
+
         newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
                               scaleZ * 2, secondGeom.halfSpaceOrigin);
+                              
         result = fuzzybools::Subtract(result, newSecond);
       } else {
+        
         result = fuzzybools::Subtract(result, secondGeom);
       }
     }
@@ -386,6 +316,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     ParamsRelVoidSubtract parameters) {
   IfcGeometry resultGeometry;
+
   if (parameters.flatFirstMesh.size() <= 0) {
     Logger::logWarning("first mesh zero\n");
     return resultGeometry;
@@ -405,69 +336,24 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
       break;
     }
   }
-
+  
   // TODO: clean this up, remove origin translation
-  auto normalizeMat = glm::translate(-originFirstMesh);
-  glm::dmat4 newMatrix = normalizeMat;  // * parameters.transformationFirstMesh;
-  bool transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
-  IfcGeometry newGeomFirstMesh;
+  auto normalizeMat    = glm::translate(-originFirstMesh);
+  glm::dmat4 newMatrix = normalizeMat;
 
-  for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-    fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
-    glm::dvec3 a =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i0), 1);
-    glm::dvec3 b =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i1), 1);
-    glm::dvec3 c =
-        newMatrix * glm::dvec4(parameters.flatFirstMesh[0].GetPoint(f.i2), 1);
-
-    if (transformationBreaksWinding) {
-      newGeomFirstMesh.AddFace(b, a, c);
-    } else {
-      newGeomFirstMesh.AddFace(a, b, c);
-    }
-  }
-
-  parameters.flatFirstMesh[0] = newGeomFirstMesh;
-  transformationBreaksWinding = MatrixFlipsTriangles(newMatrix);
+  parameters.flatFirstMesh[0].ApplyTransform( newMatrix );
 
    for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
-    IfcGeometry newGeomSecondMesh;
 
-    for (uint32_t i = 0; i < parameters.flatSecondMesh[j].numFaces; i++) {
-      fuzzybools::Face f = parameters.flatSecondMesh[j].GetFace(i);
-      glm::dvec3 a =
-          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i0), 1);
-      glm::dvec3 b =
-          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i1), 1);
-      glm::dvec3 c =
-          newMatrix * glm::dvec4(parameters.flatSecondMesh[j].GetPoint(f.i2), 1);
-
-      if (transformationBreaksWinding) {
-        newGeomSecondMesh.AddFace(b, a, c);
-      } else {
-        newGeomSecondMesh.AddFace(a, b, c);
-      }
-    }
-    newGeomSecondMesh.halfSpace = parameters.flatSecondMesh[j].halfSpace;
-    parameters.flatSecondMesh[j] = newGeomSecondMesh;
+    parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
   }
 
-  resultGeometry =
-      BoolSubtract(parameters.flatFirstMesh, parameters.flatSecondMesh);
-
-  // BoolSubtractLegacy(parameters.flatFirstMesh, parameters.flatSecondMesh);
+  resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh );
 
   glm::dmat4 combinedMatrix =
       glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
 
-  resultGeometry.ApplyTransform(combinedMatrix);
-
-  /*resultGeometry.ApplyTransform(glm::translate(originFirstMesh));
-
-  glm::dmat4 inverseParentMatrix = glm::inverse(parameters.parentMatrix);
-
-  resultGeometry.ApplyTransform(inverseParentMatrix);*/
+  resultGeometry.ApplyTransform( combinedMatrix );
 
   return resultGeometry;
 }
