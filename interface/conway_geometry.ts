@@ -46,24 +46,25 @@ import { ParamsGetAxis2Placement2D } from './parameters/params_get_axis_2_placem
 import { ParamsAxis2Placement3D } from './parameters/params_axis_2_placement_3D'
 import { ParamsLocalPlacement } from './parameters/params_local_placement'
 
-let ConwayGeomWasm: any;
+
+let ConwayGeomWasm: any
 
 /**
  * Load the WebAssembly module based on the environment
  */
 async function loadWasmModule() {
   if (process.env.PLATFORM === 'web') {
-        // Load browser-specific WebAssembly module
-        const module = await import('../Dist/ConwayGeomWasmWeb.js');
-        ConwayGeomWasm = module.default;
+    // Load browser-specific WebAssembly module
+    const module = await import('../Dist/ConwayGeomWasmWeb.js')
+    ConwayGeomWasm = module.default
   } else {
-      // Load Node.js-specific WebAssembly module
-      const module = await import('../Dist/ConwayGeomWasmNode.js');
-      ConwayGeomWasm = module.default;
+    // Load Node.js-specific WebAssembly module
+    const module = await import('../Dist/ConwayGeomWasmNode.js')
+    ConwayGeomWasm = module.default
   }
 }
 
-export default ConwayGeomWasm;
+export default ConwayGeomWasm
 
 
 export type ConwayGeometryWasm = typeof ConwayGeomWasm

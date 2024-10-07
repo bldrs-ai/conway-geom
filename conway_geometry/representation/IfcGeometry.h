@@ -96,16 +96,30 @@ struct IfcGeometry : fuzzybools::Geometry {
     AddFace(numPoints - 3, numPoints - 2, numPoints - 1);
   }
 
+  IfcGeometry() {}
+
+  IfcGeometry( IfcGeometry&& ) = default;
+  IfcGeometry( const IfcGeometry& ) = default;
+
+  IfcGeometry& operator=( const IfcGeometry& ) = default;
+  IfcGeometry& operator=( IfcGeometry&& ) = default;
+  
+  IfcGeometry( const fuzzybools::Geometry& from ) : fuzzybools::Geometry( from ) {}
+  
+  IfcGeometry( fuzzybools::Geometry&& from ) : fuzzybools::Geometry( from ) {}
+
   void ReverseFace(uint32_t index);
   void ReverseFaces();
-  void AddPart(IfcGeometry geom);
-  void AddPart(fuzzybools::Geometry geom);
+  void AddPart(IfcGeometry&& geom);
+  void AddPart(const IfcGeometry& geom);
+  void AddPart(const fuzzybools::Geometry& geom);
+  void AddPart(fuzzybools::Geometry&& geom);
   glm::dvec3 GetPoint(uint32_t index) const;
   glm::dvec3 GetNormal(uint32_t index) const;
   uint32_t GetVertexData();
   void AppendGeometry(IfcGeometry &geom);
-  void AddGeometry(fuzzybools::Geometry geom, glm::dmat4 trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, glm::dvec3 origin = glm::dvec3(0, 0, 0));
-  void MergeGeometry(fuzzybools::Geometry geom);
+  void AddGeometry( const fuzzybools::Geometry& geom, const glm::dmat4& trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, const glm::dvec3& origin = glm::dvec3(0, 0, 0));
+  void MergeGeometry( const fuzzybools::Geometry& geom);
   void AppendWithTransform(const IfcGeometry &geom, const glm::dmat4x4& transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
