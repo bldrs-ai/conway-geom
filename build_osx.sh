@@ -105,10 +105,20 @@ fi
 
 if [ -n "$3" ] && [ "$3" = "profile" ]; then
     echo "Remapping source map..."
-    SOURCE_MAP="./bin/release/ConwayGeomWasm.wasm.map"
+    
+    if [ "$2" = "wasmNode" ]; then
+        SOURCE_MAP="./bin/release/ConwayGeomWasmNode.wasm.map"
+    elif [ "$2" = "wasmWeb" ]; then
+        SOURCE_MAP="./bin/release/ConwayGeomWasmWeb.wasm.map"
+    else
+        SOURCE_MAP="./bin/release/ConwayGeomWasm.wasm.map"
+    fi
 
     # Use sed to replace the entire path up to and including /emsdk/ with $EMSDK
     sed -i.bak -e 's|[^"]*\/emsdk\/|'"$EMSDK"'\/|g' "$SOURCE_MAP"
+
+    # Use sed to replace the entire path up to and including /system/lib with $EMSDK/upstream/emscripten/system/lib
+    sed -i.bak -e 's|[^"]*/system/lib|'"$EMSDK"'/upstream/emscripten/system/lib|g' "$SOURCE_MAP"
 
     # Prepend current working directory to paths that start with ../../../
     sed -i.bak -e 's|"../../../|"'"$(pwd)"'/|g' "$SOURCE_MAP"
