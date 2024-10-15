@@ -1,9 +1,22 @@
-$SOURCE_MAP = "..\bin\release\ConwayGeomWasm.wasm.map"
+param (
+    [string]$SOURCE_MAP
+)
 
-#replace escaped JSON \ with /
+# Ensure the source map file path is passed as an argument
+if (-not $SOURCE_MAP) {
+    Write-Host "Error: SOURCE_MAP parameter is not provided."
+    exit 1
+}
+
+if (-not (Test-Path $SOURCE_MAP)) {
+    Write-Host "Source map file not found: $SOURCE_MAP"
+    exit 1
+}
+
+# Replace escaped JSON \ with /
 $EMSDK = $env:EMSDK -replace '\\', '/'
 
-#replace escaped JSON \ with /
+# Replace escaped JSON \ with /
 $CWD = (Get-Location).Path -replace '\\', '/'
 
 # Read the content once
@@ -13,9 +26,11 @@ $content = Get-Content $SOURCE_MAP -Raw
 $match = [regex]::Match($content, '\[(.*?)\]')
 $section = $match.Groups[1].Value
 
-# Process the section (find beginning of header to /emsdk/
-# TODO: will /emsdk/ folder always be emsdk? Maybe target /upstream/?
+# Process the section (find beginning of header to /emsdk/)
 $processedSection = $section -replace '[^"]*\/emsdk\/', "$EMSDK/"
+
+# NEW: Process paths leading up to /system/lib and replace them with $EMSDK/upstream/emscripten/system/lib
+$processedSection = $processedSection -replace '[^"]*/system/lib', "$EMSDK/upstream/emscripten/system/lib"
 
 # Process second section (../../../)
 $processedSection = $processedSection -replace '"../../../', "`"$CWD/../"
