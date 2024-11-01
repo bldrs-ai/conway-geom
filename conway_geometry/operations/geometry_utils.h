@@ -14,10 +14,10 @@
 #include <mapbox/earcut.hpp>
 #pragma clang diagnostic pop
 
-#include "../../utility/LoaderError.h"
-#include "../representation/IfcGeometry.h"
-#include "../representation/geometry.h"
-#include "../../logging/Logger.h"
+#include "utility/LoaderError.h"
+#include "representation/IfcGeometry.h"
+#include "representation/geometry.h"
+#include "logging/Logger.h"
 
 namespace conway::geometry {
 
@@ -36,6 +36,7 @@ constexpr double DOUBLE_TO_RADIANS = static_cast< double >( CONST_PI ) / 180.0;
 inline constexpr double degreesToRadians(double angle) {
   return angle * DOUBLE_TO_RADIANS;
 }
+
 
 inline glm::dvec3 projectOntoPlane(const glm::dvec3 &origin,
                                    const glm::dvec3 &normal,
@@ -66,6 +67,7 @@ inline glm::dvec3 computeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
 inline bool GetWindingOfTriangle(const glm::dvec3 &a, const glm::dvec3 &b,
                                  const glm::dvec3 &c) {
   auto norm = computeNormal(a, b, c);
+
   return glm::dot(norm, glm::dvec3(0, 0, 1)) > 0.0;
 }
 
@@ -999,8 +1001,8 @@ inline std::array<double, 16> FlattenTransformation(
   return flatTransformation;
 }
 
-inline bool notPresent(glm::dvec3 pt, std::vector<glm::dvec3> points) {
-  for (auto &pt2 : points) {
+inline bool notPresent( const glm::dvec3& pt, const std::vector<glm::dvec3>& points) {
+  for (const auto &pt2 : points) {
     if (pt.x == pt2.x && pt.y == pt2.y && pt.z == pt2.z) {
       return false;
     }

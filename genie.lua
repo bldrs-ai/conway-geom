@@ -35,6 +35,8 @@ project "conway_geom_native"
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
         "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
         "logging/**.*"
       --  "conway_geometry/legacy/**.*"
     }

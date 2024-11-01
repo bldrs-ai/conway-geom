@@ -372,7 +372,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
   }
 
   resultGeometry =
-      BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
+    BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
 
   return resultGeometry;
 }
@@ -888,8 +888,9 @@ IfcBound3D ConwayGeometryProcessor::GetBound(const ParamsGetBound& parameters) {
   bound.type = (parameters.isFaceOuterBound) ? IfcBoundType::OUTERBOUND
                                              : IfcBoundType::BOUND;
 
-  if (!orient)
+  if (!orient) {
     std::reverse(bound.curve.points.begin(), bound.curve.points.end());
+  }
 
   return bound;
 }

@@ -4,6 +4,8 @@
 #include <vector>
 #include <unordered_map>
 #include "representation/IfcGeometry.h"
+#include <optional>
+#include "structures/aabb_tree.h"
 
 namespace conway::geometry {
 
@@ -35,6 +37,10 @@ namespace conway::geometry {
   struct Triangle {
 
     uint32_t vertices[ 3 ] = {};
+
+  };
+
+  struct ConnectedTriangle : public Triangle {
 
     uint32_t edges[ 3 ] = {};
 
@@ -71,17 +77,19 @@ namespace conway::geometry {
   template < typename VertexType >
   struct WingedEdgeMesh {
 
-    std::vector< Triangle > triangles;
+    std::vector< ConnectedTriangle > triangles;
     
     std::vector< Edge > edges;
 
     std::vector< VertexType > vertices;
 
-    std::unordered_map< uint64_t, uint32_t > edge_map;   
+    std::unordered_map< uint64_t, uint32_t > edge_map;
+
+    std::optional< AABBTree > bvh;
 
     void makeTriangle( uint32_t a, uint32_t b, uint32_t c, uint32_t index ) {
 
-      Triangle& triangle = triangles[ index ];
+      ConnectedTriangle& triangle = triangles[ index ];
 
       triangle.vertices[ 0 ]  = a;
       triangle.vertices[ 1 ]  = b;
@@ -90,6 +98,22 @@ namespace conway::geometry {
       triangle.edges[ 0 ] = makeEdge( a, b, index );
       triangle.edges[ 1 ] = makeEdge( b, c, index );
       triangle.edges[ 2 ] = makeEdge( c, a, index );
+    }
+
+    void clear() {
+      bvh.reset();
+      edge_map.clear();
+      vertices.clear();
+      edges.clear();
+      triangles.clear();
+    }
+
+    /** Construct a BVH for this. */
+    void makeBVH() {
+
+      if ( !bvh.has_value() ) {
+        bvh.emplace( *this );
+      }
     }
 
     std::optional< uint32_t > getEdge( uint32_t v0, uint32_t v1 ) const {
@@ -105,7 +129,7 @@ namespace conway::geometry {
 
     void deleteTriangle( uint32_t index ) {
 
-      const Triangle& toDelete = triangles[ index ];
+      const ConnectedTriangle& toDelete = triangles[ index ];
 
       for ( uint32_t localEdge = 0; localEdge < 3; ++localEdge ) {
 
@@ -123,7 +147,7 @@ namespace conway::geometry {
       uint32_t backIndex = static_cast< uint32_t >( triangles.size() - 1 );
       if ( index != backIndex ) {
 
-        const Triangle& back = triangles.back();
+        const ConnectedTriangle& back = triangles.back();
       
         for ( uint32_t localEdge = 0; localEdge < 3; ++localEdge ) {
 
@@ -158,7 +182,7 @@ namespace conway::geometry {
       uint32_t index =
         static_cast< uint32_t >( triangles.size() );
 
-      triangles.push_back( Triangle {} );
+      triangles.push_back( ConnectedTriangle {} );
 
       makeTriangle( a, b, c, index );
 
