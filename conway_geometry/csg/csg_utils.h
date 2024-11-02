@@ -34,11 +34,51 @@ namespace conway::geometry {
 
   enum class AxisPair : size_t {
 
-    X_Y   = make_axis_pair( X_AXIS_INDEX, Y_AXIS_INDEX ),
-    X_Z   = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX ),
-    Y_Z   = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX )
+    X_Y = make_axis_pair( X_AXIS_INDEX, Y_AXIS_INDEX ),
+    X_Z = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX ),
+    Y_Z = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX )
 
   };
+
+  inline glm::dvec3 plane_line_segment_intersection(
+    const glm::dvec3& t0,
+    const glm::dvec3& t1,
+    const glm::dvec3& t2,
+    const glm::dvec3& l0,
+    const glm::dvec3& l1 ) {
+
+    glm::dvec3 direction = l1 - l0;
+    
+    glm::dvec3 e0     = t1 - t0;
+    glm::dvec3 e1     = t2 - t0;
+    glm::dvec3 origin = l0 - t0;
+    glm::dvec3 normal = glm::cross( e0, e1 );
+
+    double t = dot( direction, normal ) / dot( direction, normal );
+
+    return l0 + direction * t;
+  }
+
+  /** Assuming 2 intersecting line segments, this gets the intersection point */
+  inline glm::dvec3 line_segment_line_segment_intersection(
+    const glm::dvec3& a0,
+    const glm::dvec3& a1,
+    const glm::dvec3& b0,
+    const glm::dvec3& b1 ) {
+
+    glm::dvec3 e0        = a1 - a0;
+    glm::dvec3 direction = b1 - b0;
+
+    // intersecting non-colinear line segments are 
+    // coplanar, and have a well defined normal.
+    glm::dvec3 e1     = glm::cross( e0, direction );
+    glm::dvec3 origin = b0 - a0;
+    glm::dvec3 normal = glm::cross( e0, e1 );
+
+    double t = dot( origin, normal ) / -dot( direction, normal );
+
+    return b0 + direction * t;
+  }
 
   inline glm::dvec2 extract( const glm::dvec3& from, AxisPair axes ) {
 

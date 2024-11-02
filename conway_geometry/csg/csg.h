@@ -2,20 +2,20 @@
 
 #include "structures/union_find.h"
 #include "csg_utils.h"
+#include "triangle_contacts.h"
 #include "structures/winged_edge.h"
 #include "structures/box.h"
 #include "structures/aabb_tree.h"
 #include "structures/bidirectional_prefix_sum_map.h"
-#include "structures/fixed_stack.h"
 #include "structures/prefix_sum_map.h"
 #include <unordered_set>
-
+#include <bit>
 
 namespace conway::geometry {
 
   struct CSG {
 
-    enum Operation { 
+    enum class Operation { 
       UNION        = 0,
       INTERSECTION = 1,
       DIFFERENCE   = 2
@@ -41,63 +41,13 @@ namespace conway::geometry {
 
       std::pair< uint32_t, uint32_t > edge_edge[ 6 ];
 
-
-
       FaceFace face_to_face = FaceFace::NONE;
     };
 
-    struct TriangleContacts {
-
-      FixedStack< std::pair< uint8_t, uint8_t >, 6 > edge_edge;
-      
-      FixedStack< std::pair< uint8_t, uint8_t >, 3 > vertex_vertex;
-
-      FixedStack< std::pair< uint8_t, uint8_t >, 6 > edge_vertex;
-      
-      // Face edge (this face is hit with an edge)
-      FixedStack< uint8_t, 3 > face_edge;
-
-      // Edge face (one of our edges hits the opposing face)
-      FixedStack< uint8_t, 3 > edge_face;
-
-      FixedStack< uint8_t, 3 > face_vertex;
-
-      bool empty() const {
-        return
-          edge_edge.empty() &&
-          vertex_vertex.empty() &&
-          edge_vertex.empty() &&
-          face_edge.empty() &&
-          face_vertex.empty();
-      }
-
-      FaceFace face_to_face = FaceFace::NONE;
-
-      uint32_t this_triangle_index;
-      
-      uint32_t other_triangle_index;
-    };
 
     std::vector< TriangleContacts > contacts[ 2 ];
     
     PrefixSumMap face_contact_map[ 2 ];
-
-    UnionFind< uint32_t >           vertices;
-    UnionFind< uint32_t >           face_planes;
-
-    BidirectionalPrefixSumMap coplanar_faces;
-    BidirectionalPrefixSumMap vertex_vertex;
-    BidirectionalPrefixSumMap face_edges[ 2 ];
-    BidirectionalPrefixSumMap face_vertices[ 2 ];
-    BidirectionalPrefixSumMap edge_vertices[ 2 ];
-
-    // Note, this only covers edge-edge pairs that have unique intersection 
-    // points that also aren't the vertex on of the edges.
-    // If an existing vertex is on an edge, that will be in edge_vertices,
-    // and more than one maybe if the edges are co-linear.
-    // Unless the edge vertices are co-incident, then it will
-    // show as unification in vertices (which unions co-incident vertices).
-    BidirectionalPrefixSumMap edge_edges;
 
     std::vector< bool >                                   boundary_set[ 2 ];
     std::vector< bool >                                   inside[ 2 ];
@@ -243,12 +193,6 @@ namespace conway::geometry {
           if ( candidate.face_to_face == FaceFace::NONE ) {
             return;
           }
-
-          if ( candidate.face_to_face == FaceFace::COLINEAR ) {
-
-            face_planes.merge( left, right + a.triangles.size() );
-            coplanar_faces.insert( left, right );
-          }
         }
 
         candidate.triangles[ 0 ].triangle_index = left;
@@ -268,6 +212,7 @@ namespace conway::geometry {
 
         const ConnectedTriangle* triangles[ 2 ] = { &aTriangle, &bTriangle };
 
+        // These uniquely identify vertices using a partition.
         uint32_t vertIndices[ 2 ][ 3 ];
       
         for ( uint32_t vertInTriangle = 0; vertInTriangle < 3; ++vertInTriangle ) {
@@ -373,14 +318,8 @@ namespace conway::geometry {
                 uint32_t matchingVertexInFace =
                   ( lastZeroEdge + ( edgeSigns[ lastZeroEdge - 1 ] != 0 ) ) % 3;
 
-                // unify these vertices, as this is a colinear vertex also colinear two edges,
-                // and therefore equal opposing edge vertex.
-                vertices.merge( opposingVertexIndex, vertIndices[ triangleInPair ][ matchingVertexInFace ] );
-                    
-                contacts[ triangleInPair ].vertex_vertex.emplace( 
-                  static_cast< uint8_t >( matchingVertexInFace ),
-                  static_cast< uint8_t >( vertexInOpposingTriangle )
-                );
+                contacts[ triangleInPair ].vertexVertex( matchingVertexInFace, vertexInOpposingTriangle );
+                contacts[ opposingTriangleInPair ].vertexVertex( vertexInOpposingTriangle, matchingVertexInFace );
 
               } else if ( zeroCount == 1 && positiveCount == 2 ) {
 
@@ -391,17 +330,15 @@ namespace conway::geometry {
                 // decided this vertex is on an edge, and
                 // if the next or previous is on the same edge, that will
                 // drop out.
-                contacts[ triangleInPair ].edge_vertex.emplace( 
-                  static_cast< uint8_t >( lastZeroEdge ),
-                  static_cast< uint8_t >( vertexInOpposingTriangle )
-                );
+                contacts[ triangleInPair ].edgeEdge( lastZeroEdge, vertexInOpposingTriangle );
+                contacts[ opposingTriangleInPair ].edgeEdge( vertexInOpposingTriangle, lastZeroEdge );
 
               } else if ( positiveCount == 3 ) {
 
                 // This vertex is colinear to the face and within all 3 edges
                 // so it is a face vertex pair
-                contacts[ triangleInPair ].face_vertex.push( 
-                  static_cast< uint8_t >( vertexInOpposingTriangle ) );
+                contacts[ triangleInPair ].faceVertex( vertexInOpposingTriangle );
+                contacts[ opposingTriangleInPair ].vertexFace( vertexInOpposingTriangle );
               }
             }
           }
@@ -455,15 +392,12 @@ namespace conway::geometry {
                   continue;
                 }
 
-                contacts[ 0 ].edge_edge.emplace(
-                  static_cast< uint8_t>( edgeInTriangle0 ),
-                  static_cast< uint8_t>( edgeInTriangle1 ) );
+                contacts[ 0 ].edgeEdge( edgeInTriangle0, edgeInTriangle1 );
+                contacts[ 1 ].edgeEdge( edgeInTriangle1, edgeInTriangle0 );
 
-                contacts[ 1 ].edge_edge.emplace(
-                  static_cast< uint8_t>( edgeInTriangle1 ),
-                  static_cast< uint8_t>( edgeInTriangle0 ) );
-
-                edge_edges.insert( aTriangle.edges[ edgeInTriangle0 ], bTriangle.edges[ edgeInTriangle1 ] );
+                uint32_t edge0 = aTriangle.edges[ edgeInTriangle0 ];
+                uint32_t edge1 = bTriangle.edges[ edgeInTriangle1 ];
+                
 
               } else if ( opposingv0sign * opposingv1sign == -1 ) {
 
@@ -481,15 +415,8 @@ namespace conway::geometry {
                   continue;
                 }
                 
-                contacts[ 0 ].edge_edge.emplace(
-                  static_cast< uint8_t>( edgeInTriangle0 ),
-                  static_cast< uint8_t>( edgeInTriangle1 ) );
-
-                contacts[ 1 ].edge_edge.emplace(
-                  static_cast< uint8_t>( edgeInTriangle1 ),
-                  static_cast< uint8_t>( edgeInTriangle0 ) );
-
-                edge_edges.insert( aTriangle.edges[ edgeInTriangle0 ], bTriangle.edges[ edgeInTriangle1 ] );
+                contacts[ 0 ].edgeEdge( edgeInTriangle0, edgeInTriangle1 );
+                contacts[ 1 ].edgeEdge( edgeInTriangle1, edgeInTriangle0 );
               }
             }
           } else if ( !v0Zero && !v1Zero && v0sign != v1sign ) {
@@ -522,15 +449,8 @@ namespace conway::geometry {
                 break;
               }
 
-              contacts[ 0 ].edge_edge.emplace(
-                static_cast< uint8_t>( edgeInTriangle0 ),
-                static_cast< uint8_t>( edgeInTriangle1 ) );
-
-              contacts[ 1 ].edge_edge.emplace(
-                static_cast< uint8_t>( edgeInTriangle1 ),
-                static_cast< uint8_t>( edgeInTriangle0 ) );
-
-              edge_edges.insert( aTriangle.edges[ edgeInTriangle0 ], bTriangle.edges[ edgeInTriangle1 ] );
+              contacts[ 0 ].edgeEdge( edgeInTriangle0, edgeInTriangle1 );
+              contacts[ 1 ].edgeEdge( edgeInTriangle1, edgeInTriangle0 );
               break;
             }
           }
@@ -599,15 +519,8 @@ namespace conway::geometry {
                 // guarantee this is not an edge vertex case
                 if ( ov0sign * ov1sign == -1 ) {
 
-                  contacts[ 0 ].edge_edge.emplace(
-                    static_cast< uint8_t>( edgeInTriangle0 ),
-                    static_cast< uint8_t>( opposingEdge ) );
-
-                  contacts[ 1 ].edge_edge.emplace(
-                    static_cast< uint8_t>( opposingEdge ),
-                    static_cast< uint8_t>( edgeInTriangle0 ) );
-
-                  edge_edges.insert( aTriangle.edges[ edgeInTriangle0 ], bTriangle.edges[ opposingEdge ] );
+                  contacts[ 0 ].edgeEdge( edgeInTriangle0, opposingEdge );
+                  contacts[ 1 ].edgeEdge( opposingEdge, edgeInTriangle0 );
                 }
                 break;
               }
@@ -619,13 +532,8 @@ namespace conway::geometry {
 
           if ( inEdgeCount == 3 ) {
 
-            contacts[ 0 ].edge_face.emplace(
-              static_cast< uint8_t>( edgeInTriangle0 ) );
-
-            contacts[ 1 ].face_edge.emplace(
-              static_cast< uint8_t>( edgeInTriangle0 ) );
-
-            face_edges[ 1 ].insert( bPredicates.triangle_index, aTriangle.edges[ edgeInTriangle0 ] );
+            contacts[ 0 ].edgeFace( edgeInTriangle0 );
+            contacts[ 1 ].faceEdge( edgeInTriangle0 );
           }
         }
 
@@ -668,23 +576,13 @@ namespace conway::geometry {
 
             // we already handled the edge-edge cases in the previous loop with the other triangle,
             // this is strictly this edge stabbing the first face.
-            contacts[ 0 ].face_edge.emplace(
-              static_cast< uint8_t>( edgeInTriangle1 ) );
-
-            contacts[ 1 ].edge_face.emplace(
-              static_cast< uint8_t>( edgeInTriangle1 ) );
-
-            face_edges[ 1 ].insert( aPredicates.triangle_index, bTriangle.edges[ edgeInTriangle1 ] );
+            contacts[ 0 ].faceEdge( edgeInTriangle1 );
+            contacts[ 1 ].edgeFace( edgeInTriangle1 );
           }
         }
 
         add( contacts );
       }
-
-      // face face pairs are only considered once
-      // coplanar_faces.populate();
-      // vertex_vertex.populate( true );
-      // edge_edges.populate( true );
 
       for ( size_t where = 0; where < 2; ++where ) {
 
@@ -692,11 +590,6 @@ namespace conway::geometry {
           contacts[ where ],
           static_cast< uint32_t >( a.triangles.size() ),
           []( const TriangleContacts& contact ) { return contact.this_triangle_index; } );
-
-        // face_edges[ where ].populate( true );
-        // face_vertices[ where ].populate( true );
-        // edge_vertices[ where ].populate( true );
-
       }
     }
 
@@ -707,15 +600,10 @@ namespace conway::geometry {
 
     void reset() {
 
+      face_contact_map[ 0 ].reset();
+      face_contact_map[ 1 ].reset();
+
       face_planes.reset();
-
-      for ( uint32_t where = 0; where < 1; ++where  ){ 
-
-        face_edges[ where ].clear();
-        face_vertices[ where ].clear();
-
-      }
-
       vertices.reset();
       triangle_stack.clear();
     }
