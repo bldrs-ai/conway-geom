@@ -9,13 +9,20 @@
 
 #pragma once
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wunused-function"
+#elif defined(_MSC_VER)
+#pragma warning ( push )
+#pragma warning ( disable : 26495 26451 4189 4505 4267 )
+#endif
 
 #include <fuzzy/geometry.h>
 
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 #include <glm/glm.hpp>
 #include <optional>
@@ -119,7 +126,7 @@ struct IfcGeometry : fuzzybools::Geometry {
   uint32_t GetVertexData();
   void AppendGeometry(IfcGeometry &geom);
   void AddGeometry( const fuzzybools::Geometry& geom, const glm::dmat4& trans = glm::dmat4(1), double scx = 1, double scy = 1, double scz = 1, const glm::dvec3& origin = glm::dvec3(0, 0, 0));
-  void MergeGeometry( const fuzzybools::Geometry& geom);
+  void MergeGeometry( const fuzzybools::Geometry& geom );
   void AppendWithTransform(const IfcGeometry &geom, const glm::dmat4x4& transform);
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();

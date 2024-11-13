@@ -21,7 +21,7 @@
 #include "ConwayProfile.h"
 #include "../../logging/Logger.h"
 
-#define CONST_PI 3.141592653589793238462643383279502884L
+#define CONST_PI 3.141592653589793238462643383279502884
 
 namespace conway::geometry {
 
@@ -138,7 +138,7 @@ struct IfcAlignment
 				for (auto curve : Horizontal.curves)
 				{
 					uint32_t ip = 0;
-					for (auto pt : curve.points)
+					for ( const auto& pt : curve.points)
 					{
 						Horizontal.curves[ic].points[ip] = coordinationMatrix * glm::dvec4(pt.x, 0, -pt.y, 1);
 						Horizontal.curves[ic].points[ip] = glm::dvec4(Horizontal.curves[ic].points[ip].x,
@@ -154,7 +154,7 @@ struct IfcAlignment
 				for (auto curve : Vertical.curves)
 				{
 					uint32_t ip = 0;
-					for (auto pt : curve.points)
+					for ( const auto& pt : curve.points)
 					{
 						Vertical.curves[ic].points[ip] = glm::dvec3(pt.x, pt.y + coordinationMatrix[3][1], 1);
 						ip++;
@@ -189,7 +189,7 @@ struct IfcPlacedGeometry {
     flatTransformation = FlattenTransformation(transformation);
   }
 
-  std::array<double, 16> FlattenTransformation(
+  static std::array<double, 16> FlattenTransformation(
       const glm::dmat4 &transformation) {
     std::array<double, 16> flatTransformation;
 

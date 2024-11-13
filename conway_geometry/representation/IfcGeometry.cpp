@@ -46,12 +46,12 @@ glm::dvec3 IfcGeometry::Normalize()
 }
 
 glm::dvec3 IfcGeometry::GetAABBCenter() const {
-   glm::dvec3 center(0,0,0);
+   glm::dvec3 _center(0,0,0);
    glm::dvec3 extents;
 
-   GetCenterExtents(center, extents);
+   GetCenterExtents(_center, extents);
 
-   return center;
+   return _center;
 }
 
 glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
@@ -76,7 +76,7 @@ uint32_t IfcGeometry::GetVertexData() {
       // The vector was previously copied in batches of 6, but
       // copying single entry at a time is more resilient if the
       // underlying geometry lib changes the treatment of normals
-      fvertexData[i] = vertexData[i];
+      fvertexData[i] = static_cast< float >( vertexData[i] );
     }
   }
   if (fvertexData.empty()) {

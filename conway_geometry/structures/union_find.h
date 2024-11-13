@@ -37,7 +37,7 @@ namespace conway {
 
       id_t* data   = map_.data();
 
-      for ( id_t current = result, end = result + count; current < end; ++current ) {
+      for ( id_t current = result; current < end; ++current ) {
         data[ current ] = current;
       }
 
@@ -94,8 +94,8 @@ namespace conway {
      */
     id_t merge( id_t a, id_t b ) {
 
-      id_t aRoot = find( item );
-      id_t bRoot = find( item );
+      id_t aRoot = find( a );
+      id_t bRoot = find( b );
 
       if ( aRoot == bRoot ) {
         return aRoot;
@@ -121,7 +121,7 @@ namespace conway {
     
     id_t unique( std::vector< id_t >& output ) const {
 
-      const* id_t data = map_.data();
+      const id_t* data = map_.data();
 
       for ( id_t where = 0, end = size(); where < end; ++where ) {
 
@@ -137,7 +137,7 @@ namespace conway {
      * After this the current identities will have constant time single
      * hop access to their unique lowest common ancestor (root) 
      */
-    id_t optimize() {
+    void optimize() {
 
       for ( id_t where = 0, end = size(); where < end; ++where ) {
 
@@ -149,12 +149,12 @@ namespace conway {
      * Optimization means that each item maps back to its root, i.e.
      * there is a single hop to the unique lowest common ancestor.
      */
-    id_t optimize( std::vector< id_t >& unique ) {
+    void optimize( std::vector< id_t >& unique ) {
 
       for ( id_t where = 0, end = size(); where < end; ++where ) {
 
-        if ( where == data[ where ] ) {
-          output.push_back( where );
+        if ( where == map_[ where ] ) {
+          unique.push_back( where );
         } else {
           map_[ where ] = find( where );
         }

@@ -7,12 +7,18 @@
 
 #pragma once
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #pragma clang diagnostic ignored "-Wunused-function"
+#endif 
+
 #include <mapbox/earcut.hpp>
+
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 
 #include "utility/LoaderError.h"
 #include "representation/IfcGeometry.h"
@@ -695,7 +701,7 @@ inline IfcGeometry SectionedSurface(
       int j2 = 0;
       if (profile1.points.size() > 1) {
         double pr = (double)j / (double)(profile1.points.size() - 1);
-        j2 = pr * (profile2.points.size() - 1);
+        j2 = static_cast< int >( pr * (profile2.points.size() - 1) );
       }
       glm::dvec3 &p2 = profile2.points[j2];
 

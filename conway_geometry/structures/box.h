@@ -1,7 +1,6 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include "structures/winged_edge.h"
 
 namespace conway::geometry {
   
@@ -21,17 +20,27 @@ namespace conway::geometry {
       min = glm::min( with.min, min );
       max = glm::max( with.max, max );
     }
+
+    glm::dvec3 interval() const {
+
+      return max - min;
+    }
   };
 
   inline bool overlaps( const box3& left, const box3& right ) {
 
-    return
-      left.max.x >= right.min.x &&
-      left.min.x <= right.max.x &&
-      left.max.y >= right.min.y &&
-      left.min.y <= right.max.y &&
-      left.max.z >= right.min.z &&
-      left.min.z <= right.max.z;
+    for ( size_t axis = 0; axis < 3; ++axis ) {
+
+      if( left.max[ axis ] < right.min[ axis ] ) {
+        return false;
+      }
+      
+      if( right.max[ axis ] < left.min[ axis ] ) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   
@@ -52,24 +61,5 @@ namespace conway::geometry {
       glm::min( left.min, right.min ),
       glm::max( left.max, right.max )
     };
-  }
-
-  inline box3 make_box( const WingedEdgeMesh< glm::dvec3 >& mesh, size_t triangleIndex, double tolerance = 2.0 * DBL_EPSILON ) {
-
-    const ConnectedTriangle& triangle = mesh.triangles[ triangleIndex ];
-
-    const glm::dvec3& v0 = mesh.vertices[ triangle.vertices[ 0 ] ];
-
-    box3 result = { v0, v0 };
-
-    result.merge( mesh.vertices[ triangle.vertices[ 1 ] ] );
-    result.merge( mesh.vertices[ triangle.vertices[ 2 ] ] );
-
-    box3 tolerance = glm::dvec3( tolerance ); 
-
-    result.min -= tolerance;
-    result.max += tolerance;
-
-    return result;
   }
 }

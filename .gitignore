@@ -8,3 +8,4 @@ dependencies/**/*.a
 /.vs
 build/
 cache/
+vs2022/

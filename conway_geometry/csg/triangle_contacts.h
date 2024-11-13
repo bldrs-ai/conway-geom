@@ -2,63 +2,73 @@
 
 #include "contact_pair.h"
 #include "structures/fixed_stack.h"
+#include "csg_utils.h"
 
 namespace conway::geometry {
 
+  enum class FaceFace : uint8_t {
+
+    NONE                 = 0,
+    COLINEAR             = 1,
+    STRADDLES_OR_TOUCHES = 2 // faces straddle each other's planes.
+  };
   
-    struct TriangleContacts {
+  struct TriangleContacts {
 
-      FixedStack< ContactPair, 6 > pairs;
+    FixedStack< ContactPair, 6 > pairs;
 
-      void insertIfNotDuplicate( ContactRegion with, ContactRegion against ) {
+    void insertIfNotDuplicate( ContactRegion with, ContactRegion against ) {
 
-        ContactPair candidate( with, against );
-        uint8_t     candidateByte = std::bit_cast< uint8_t >( candidate );
+      ContactPair candidate( with, against );
 
-        for ( ContactPair pair : pairs ) {
+      std::byte candidateByte = std::bit_cast< std::byte >( candidate );
 
-          uint8_t currentByte = std::bit_cast< uint8_t >( pair );
+      for ( ContactPair pair : pairs ) {
 
-          if ( currentByte == candidateByte ) {
+        std::byte currentByte = std::bit_cast< std::byte >( pair );
 
-            return;
-          }
+        if ( currentByte == candidateByte ) {
+
+          return;
         }
       }
+
+      pairs.push( candidate );
+    }
      
-      void faceVertex( uint32_t vertexInOtherTriangle ) {
+    void faceVertex( uint32_t vertexInOtherTriangle ) {
 
-        insertIfNotDuplicate( 
-          ContactRegion::FACE,
-          vertex( vertexInOtherTriangle ) );
-      }
+      insertIfNotDuplicate( 
+        ContactRegion::FACE,
+        vertex( vertexInOtherTriangle ) );
+    }
 
-      void vertexFace( uint32_t vertexInThisTriangle ) {
+    void vertexFace( uint32_t vertexInThisTriangle ) {
 
-        insertIfNotDuplicate( 
-          vertex( vertexInThisTriangle ),
-          ContactRegion::FACE );
-      }
+      insertIfNotDuplicate( 
+        vertex( vertexInThisTriangle ),
+        ContactRegion::FACE );
+    }
 
-      void faceEdge( uint32_t edgeInOtherTriangle ) {
+    void faceEdge( uint32_t edgeInOtherTriangle ) {
 
-        insertIfNotDuplicate( 
-          ContactRegion::FACE,
-          edge( edgeInOtherTriangle ) );
-      }
+      insertIfNotDuplicate( 
+        ContactRegion::FACE,
+        edge( edgeInOtherTriangle ) );
+    }
 
-      void edgeFace( uint32_t edgeInThisTriangle ) {
+    void edgeFace( uint32_t edgeInThisTriangle ) {
 
-        insertIfNotDuplicate( 
-          edge( edgeInThisTriangle ),
-          ContactRegion::FACE );
-      }
+      insertIfNotDuplicate( 
+        edge( edgeInThisTriangle ),
+        ContactRegion::FACE );
+    }
 
-      void edgeEdge( uint32_t edgeInThisTriangle, uint32_t edgeInOtherTriangle ) {
+    void edgeEdge( uint32_t edgeInThisTriangle, uint32_t edgeInOtherTriangle ) {
 
-        insertIfNotDuplicate( 
-          edge( edgeInThisTriangle ),
-          edge( edgeInOtherTriangle ) );
+      insertIfNotDuplicate( 
+        edge( edgeInThisTriangle ),
+        edge( edgeInOtherTriangle ) );
       }
       
       void edgeVertex( uint32_t edgeInThisTriangle, uint32_t vertexInOtherTriangle ) {
@@ -89,8 +99,8 @@ namespace conway::geometry {
 
       FaceFace face_to_face = FaceFace::NONE;
 
-      uint32_t this_triangle_index;
+      uint32_t this_triangle_index {};
       
-      uint32_t other_triangle_index;
+      uint32_t other_triangle_index {};
     };
 }

@@ -13,7 +13,7 @@ namespace conway {
 
   inline size_t hash_mix( size_t left, size_t right ) {
 
-    return std::rotl( left, 1 ) ^ std::rotr( left, 15 );
+    return std::rotl( left, 1 ) ^ std::rotr( right, 15 );
   } 
 }
 

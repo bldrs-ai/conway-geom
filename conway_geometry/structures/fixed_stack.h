@@ -15,12 +15,14 @@ namespace conway {
 
     bool full() const { return end_ == Size; }
 
-    static constexpr max_size = Size;
+    static constexpr size_t max_size = Size;
 
     template < typename... Args >
     T& emplace( Args... args ) {
+      
+      assert( !full() );
 
-      return (*new (&values_[ end__++ ])( args... ) );
+      return ( *new (&values_[ end_++ ]) T( args... ) );
     }
 
     T* begin() { return values_; }
@@ -31,21 +33,29 @@ namespace conway {
 
     const T* end() const { return values_ + end_; }
 
+    const T& operator[]( size_t index ) const { return values_[ index ]; }
+
+    T& operator[]( size_t index ) { return values_[ index ]; }
+
     std::span< T > values() { return std::span( values_, end_ ); }
+
+    std::span< const T > values() const { return std::span( values_, end_ ); }
 
     T* data() { return values_; }
 
     const T* data() const { return values_; }
 
     T& top() {
-      return values_[ end__ ];
+      return values_[ end_ ];
     }
 
     const T& top() const {
-      return values_[ end__ ];
+      return values_[ end_ ];
     }
 
     void pop() {
+
+      assert( !empty() );
 
       --end_;
     }
@@ -57,7 +67,9 @@ namespace conway {
 
     void push( const T& value ) {
 
-      values_[ end_++ ] = value;
+      assert( !full() );
+
+      (new (&values_[end_++]) T( value ) );
     }
 
   private:

@@ -1,7 +1,6 @@
 #pragma once 
 
 #include <vector>
-#include <
 
 namespace conway {
 
@@ -18,6 +17,7 @@ namespace conway {
       reset();
 
       counts.resize( idSize + 1, 0 );
+      aggregate.resize( from.size(), 0 );
 
      static_assert(
         std::is_invocable_r_v< uint32_t, IdMappingFunction, T >,
@@ -25,10 +25,10 @@ namespace conway {
 
       for ( const T& item : from ) {
 
-        ++counts[ idFunction(  item ) ];
+        ++counts[ idFunction( item ) ];
       }
 
-      for ( uint32_t where = 1; where < idSize; ++where ) {
+      for ( uint32_t where = 1, end = idSize + 1; where < end; ++where ) {
 
         counts[ where ] += counts[ where - 1 ];
       }
@@ -40,6 +40,14 @@ namespace conway {
 
         aggregate[ --counts[ id ] ] = where;
       }
+    }
+
+    std::span< const uint32_t > get( uint32_t id ) const {
+
+      size_t offset = counts[ id ];
+      size_t size   = counts[ id + 1 ] - offset;
+
+      return std::span( aggregate.data() + offset, size );
     }
 
     std::vector< uint32_t > aggregate;

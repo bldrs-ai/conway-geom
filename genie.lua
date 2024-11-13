@@ -25,6 +25,110 @@ solution "conway_geom"
 
     configuration {}
 
+
+project "conway_csg_native"
+    language "C++"
+    kind "ConsoleApp"
+    files {}
+    
+    flags { "NoPCH", "NoRTTI", "ExtraWarnings" }
+
+    configuration { "vs* or windows" }
+      defines	"_CRT_SECURE_NO_WARNINGS"
+        
+    configuration "Release*"
+      flags { "OptimizeSpeed", "NoIncrementalLink" }
+
+    configuration { "vs*" }
+        buildoptions { "/std:c++latest" }
+        
+    configuration { "Release and vs*" }
+        buildoptions { "/Zi" }
+
+    ConwayCoreFiles = {
+        "conway_geometry/operations/**.*",
+        "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
+        "logging/**.*"
+      --  "conway_geometry/legacy/**.*"
+    }
+    ConwayNativeMain = {"conway_geometry/utilities/csg_command_line.cpp"}
+
+    configuration {"windows or macosx or linux"}
+        files {
+            ConwayCoreFiles,
+            ConwayNativeMain
+        }
+
+    configuration {"gmake"}
+        buildoptions_cpp {
+          "-Wall",
+          "-fexceptions",
+          "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
+          "-std=c++20",
+          "-pthread"
+        }
+
+    configuration {}
+
+      libdirs {}
+      links {}
+      flags {
+          "Symbols",
+          "FullSymbols",
+          "UseObjectResponseFile"
+      }
+
+      includedirs { 
+          "conway_geometry",
+          "./",
+          "external/fuzzy-bools",
+          "external/tinynurbs/include",
+          "external/glm",
+          "external/earcut.hpp/include",
+          "external/TinyCppTest/Sources",
+          "external/CDT/CDT/include",
+          "external/tinyobjloader"
+      }
+
+      excludes {
+          -- Manifold Test files
+          "external/**/**cc",
+      }
+
+    configuration {"Debug"}
+
+    configuration {"Release", "gmake"}
+
+    configuration "Release*"
+        flags {
+            "OptimizeSpeed",
+            "NoIncrementalLink"
+        }
+
+    configuration {"Emscripten", "Debug"}
+
+    configuration {"Emscripten", "Release"}
+
+    configuration {"macosx", "x64", "Debug"}
+        targetdir(path.join("bin", "64", "debug"))
+        flags {"EnableAVX2"}
+
+    configuration {"macosx", "x64", "Release"}
+        targetdir(path.join("bin", "64", "release"))
+        flags {"EnableAVX2"}
+
+    configuration {"windows", "x64", "Debug"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
+        targetdir(path.join("bin", "64", "debug"))
+        flags {"EnableAVX2"}
+
+    configuration {"windows", "x64", "Release"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
+        targetdir(path.join("bin", "64", "release"))
+        flags {"EnableAVX2"}
+
 project "conway_geom_native"
     language "C++"
     kind "ConsoleApp"
@@ -588,6 +692,8 @@ end
         }
 
         includedirs {
+            ".",
+            "utility",
             "conway_geometry",
             "logging",
             "external/tinynurbs/include",
@@ -798,6 +904,8 @@ end
         }
 
         includedirs {
+            ".",
+            "utility",
             "conway_geometry",
             "logging",
             "external/tinynurbs/include",
