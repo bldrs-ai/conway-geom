@@ -17,9 +17,9 @@ namespace conway::geometry {
 
     FixedStack< ContactPair, 6 > pairs;
 
-    void insertIfNotDuplicate( ContactRegion with, ContactRegion against ) {
+    void insertIfNotDuplicate( ContactRegion with, ContactRegion against, ContactType type ) {
 
-      ContactPair candidate( with, against );
+      ContactPair candidate( with, against, type );
 
       std::byte candidateByte = std::bit_cast< std::byte >( candidate );
 
@@ -40,67 +40,82 @@ namespace conway::geometry {
 
       insertIfNotDuplicate( 
         ContactRegion::FACE,
-        vertex( vertexInOtherTriangle ) );
+        vertex( vertexInOtherTriangle ),
+        ContactType::COLINEAR );
     }
 
     void vertexFace( uint32_t vertexInThisTriangle ) {
 
       insertIfNotDuplicate( 
         vertex( vertexInThisTriangle ),
-        ContactRegion::FACE );
+        ContactRegion::FACE,
+        ContactType::COLINEAR );
     }
 
     void faceEdge( uint32_t edgeInOtherTriangle ) {
 
       insertIfNotDuplicate( 
         ContactRegion::FACE,
-        edge( edgeInOtherTriangle ) );
+        edge( edgeInOtherTriangle ),
+        ContactType::STRADDLING );
     }
 
     void edgeFace( uint32_t edgeInThisTriangle ) {
 
       insertIfNotDuplicate( 
         edge( edgeInThisTriangle ),
-        ContactRegion::FACE );
+        ContactRegion::FACE,
+        ContactType::STRADDLING );
     }
 
     void edgeEdge( uint32_t edgeInThisTriangle, uint32_t edgeInOtherTriangle ) {
 
       insertIfNotDuplicate( 
         edge( edgeInThisTriangle ),
-        edge( edgeInOtherTriangle ) );
-      }
+        edge( edgeInOtherTriangle ),
+        ContactType::STRADDLING );
+    }
+
+    void edgeEdge2D( uint32_t edgeInThisTriangle, uint32_t edgeInOtherTriangle ) {
+
+      insertIfNotDuplicate( 
+        edge( edgeInThisTriangle ),
+        edge( edgeInOtherTriangle ),
+        ContactType::COLINEAR );
+    }
+
+    void edgeVertex( uint32_t edgeInThisTriangle, uint32_t vertexInOtherTriangle ) {
+
+      insertIfNotDuplicate( 
+        edge( edgeInThisTriangle ),
+        vertex( vertexInOtherTriangle ),
+        ContactType::COLINEAR );
+    }
+
+    void vertexEdge( uint32_t vertexInThisTriangle, uint32_t edgeInOtherTriangle ) {
+
+      insertIfNotDuplicate( 
+        vertex( vertexInThisTriangle ),
+        edge( edgeInOtherTriangle ),
+        ContactType::COLINEAR );
+    }
+
+    void vertexVertex( uint32_t vertexInThisTriangle, uint32_t vertexInOtherTriangle ) {
+
+      insertIfNotDuplicate( 
+        vertex( vertexInThisTriangle ),
+        vertex( vertexInOtherTriangle ),
+        ContactType::COLINEAR );
+    }
+
+    bool empty() const {
+      return pairs.empty();
+    }
+
+    FaceFace face_to_face = FaceFace::NONE;
+
+    uint32_t this_triangle_index {};
       
-      void edgeVertex( uint32_t edgeInThisTriangle, uint32_t vertexInOtherTriangle ) {
-
-        insertIfNotDuplicate( 
-          edge( edgeInThisTriangle ),
-          vertex( vertexInOtherTriangle ) );
-      }
-
-      void vertexEdge( uint32_t vertexInThisTriangle, uint32_t edgeInOtherTriangle ) {
-
-        insertIfNotDuplicate( 
-          vertex( vertexInThisTriangle ),
-          edge( edgeInOtherTriangle ) );
-      }
-
-      void vertexVertex( uint32_t vertexInThisTriangle, uint32_t vertexInOtherTriangle ) {
-
-        insertIfNotDuplicate( 
-          vertex( vertexInThisTriangle ),
-          vertex( vertexInOtherTriangle ) );
-      }
-
-
-      bool empty() const {
-        return pairs.empty();
-      }
-
-      FaceFace face_to_face = FaceFace::NONE;
-
-      uint32_t this_triangle_index {};
-      
-      uint32_t other_triangle_index {};
-    };
+    uint32_t other_triangle_index {};
+  };
 }

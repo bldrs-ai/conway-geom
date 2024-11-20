@@ -29,13 +29,29 @@ namespace conway::geometry {
 
   inline bool overlaps( const box3& left, const box3& right ) {
 
-    for ( size_t axis = 0; axis < 3; ++axis ) {
+    for ( glm::length_t axis = 0; axis < 3; ++axis ) {
 
       if( left.max[ axis ] < right.min[ axis ] ) {
         return false;
       }
       
       if( right.max[ axis ] < left.min[ axis ] ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  inline bool contains( const box3& left, const box3& right ) {
+
+    for ( glm::length_t axis = 0; axis < 3; ++axis ) {
+
+      if ( left.max[ axis ] < right.max[ axis ] ) {
+        return false;
+      }
+
+      if ( left.min[ axis ] > right.min[ axis ] ) {
         return false;
       }
     }

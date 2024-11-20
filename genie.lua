@@ -596,6 +596,8 @@ project "ConwayGeomWasmNode"
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
         "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
         "logging/**.*"
       --  "conway_geometry/legacy/**.*"
     }
@@ -603,12 +605,13 @@ project "ConwayGeomWasmNode"
 
     configuration {"linux or macosx or ios or gmake"}
         buildoptions_cpp {
-            "-O3",
-            "-DNDEBUG",
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20"
+            -- TODO(Conor): I want threads for performance reasons.
+            -- "-pthread",
+            "-std=c++20",
+            "-fexperimental-library"
             -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
             -- "-msimd128",
             -- "-DGLM_FORCE_INTRINSICS=1"
@@ -632,6 +635,7 @@ project "ConwayGeomWasmNode"
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
     linkoptions {
+       -- "-fsanitize=address",
         "-g -O0",
         "-gdwarf-5",
         "-gpubnames",
@@ -642,10 +646,11 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s ENVIRONMENT=node",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
-        "-s STACK_SIZE=5MB",
+        "-s STACK_SIZE=10MB",
         "-s FORCE_FILESYSTEM=1",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
+        "-s NODERAWFS=1",
         --"-sASSERTIONS",
         "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
@@ -655,9 +660,15 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-sNO_DISABLE_EXCEPTION_CATCHING",
+        "-lworkerfs.js",
+  --      "-pthread"
     }
 else 
     configuration {"gmake"}
+    buildoptions_cpp {
+      "-O3",
+      "-DNDEBUG"
+    }
     linkoptions {
         "-O3",
         "--bind",
@@ -669,6 +680,7 @@ else
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
+        "-s NODERAWFS=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=node",
         "-s SINGLE_FILE=1",
@@ -678,7 +690,8 @@ else
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-lworkerfs.js",
-        "-sNO_DISABLE_EXCEPTION_CATCHING"
+        "-sNO_DISABLE_EXCEPTION_CATCHING",
+    --    "-pthread"
     }
 end
 
@@ -714,8 +727,9 @@ end
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt",
-            "external/csgjs-cpp"
+            "external/csgjs-cpp",
+            "external/CDT/CDT/include"--,
+           -- "external/tinyobjloader"
         }
 
         excludes {
@@ -806,14 +820,16 @@ project "ConwayGeomWasmWeb"
     targetextension ".js"
 
     ConwayCoreFiles = {
-        "conway_geometry/*.h",
-        "conway_geometry/*.cpp",
-        "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "logging/**.*"
-      --  "conway_geometry/legacy/**.*"
-    }
-    ConwaySourceFiles = {"conway-api.cpp"}
+      "conway_geometry/*.h",
+      "conway_geometry/*.cpp",
+      "conway_geometry/operations/**.*",
+      "conway_geometry/representation/**.*",
+      "conway_geometry/structures/**.*",
+      "conway_geometry/csg/**.*",
+      "logging/**.*"
+    --  "conway_geometry/legacy/**.*"
+  }
+  ConwaySourceFiles = {"conway-api.cpp"}
 
     configuration {"linux or macosx or ios or gmake"}
         buildoptions_cpp {
@@ -822,7 +838,8 @@ project "ConwayGeomWasmWeb"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20"
+            "-std=c++20",
+            "-fexperimental-library"
         }
 
     configuration {"windows or macosx or linux"}
@@ -842,6 +859,9 @@ project "ConwayGeomWasmWeb"
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
+    buildoptions_cpp {
+      "-fsanitize=address"
+    }
     linkoptions {
         "-g -O0",
         "-gdwarf-5",
@@ -902,7 +922,6 @@ end
             "FullSymbols",
             "UseObjectResponseFile"
         }
-
         includedirs {
             ".",
             "utility",
@@ -926,9 +945,11 @@ end
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt",
-            "external/csgjs-cpp"
+            "external/csgjs-cpp",
+            "external/CDT/CDT/include"--,
+           -- "external/tinyobjloader"
         }
+
 
         excludes {
             -- Manifold Test files

@@ -14,6 +14,13 @@ namespace conway::geometry {
     V1   = 5,
     V2   = 6
   };
+
+
+  enum class ContactType : uint8_t {
+  
+    STRADDLING = 0,
+    COLINEAR   = 1
+  };
  
   constexpr uint32_t edgeIndex( ContactRegion a ) {
   
@@ -25,60 +32,7 @@ namespace conway::geometry {
     return static_cast< uint32_t >( a ) - static_cast< uint32_t >( ContactRegion::V0 );
   }
 
-  constexpr ContactRegion vertex0( ContactRegion a ) {
-
-    if ( a == ContactRegion::FACE ) {
-
-      return ContactRegion::V0;
-    }
-
-    if ( a > ContactRegion::FACE ) {
-
-      return a;
-    }
-
-    return
-      static_cast< ContactRegion >(
-          static_cast< uint32_t >( a ) +
-          static_cast< uint32_t >( ContactRegion::V0 ) );
-  }
-
-  constexpr ContactRegion vertex1( ContactRegion a ) {
-
-    if ( a == ContactRegion::FACE ) {
-
-      return ContactRegion::V1;
-    }
-
-    if ( a > ContactRegion::FACE ) {
-
-      return a;
-    }
-
-    return
-      static_cast< ContactRegion >(
-          ( ( static_cast< uint32_t >( a ) + 1 ) % 3 ) +
-          static_cast< uint32_t >( ContactRegion::V0 ) );
-  }
-
-  constexpr ContactRegion vertex2( ContactRegion a ) {
-
-    if ( a == ContactRegion::FACE ) {
-
-      return ContactRegion::V1;
-    }
-
-    if ( a > ContactRegion::FACE ) {
-
-      return a;
-    }
-
-    return
-      static_cast< ContactRegion >(
-          ( ( static_cast< uint32_t >( a ) + 2 ) % 3 ) +
-          static_cast< uint32_t >( ContactRegion::V0 ) );
-  }
-
+  
   constexpr bool isEdge( ContactRegion a ) {
 
     return a < ContactRegion::FACE;
@@ -94,28 +48,83 @@ namespace conway::geometry {
     return a == ContactRegion::FACE;
   }
 
+  constexpr ContactRegion vertex0( ContactRegion a ) {
+
+    if ( isFace( a ) ) {
+
+      return ContactRegion::V0;
+    }
+
+    if ( isVertex( a ) ) {
+
+      return a;
+    }
+
+    return
+      static_cast< ContactRegion >(
+          static_cast< uint32_t >( a ) +
+          static_cast< uint32_t >( ContactRegion::V0 ) );
+  }
+
+  constexpr ContactRegion vertex1( ContactRegion a ) {
+
+    if ( isFace( a ) ) {
+
+      return ContactRegion::V1;
+    }
+
+    if ( isVertex( a ) ) {
+
+      return a;
+    }
+
+    return
+      static_cast< ContactRegion >(
+          ( ( static_cast< uint32_t >( a ) + 1 ) % 3 ) +
+          static_cast< uint32_t >( ContactRegion::V0 ) );
+  }
+
+  constexpr ContactRegion vertex2( ContactRegion a ) {
+
+    if ( isFace( a ) ) {
+
+      return ContactRegion::V2;
+    }
+
+    if ( isVertex( a ) ) {
+
+      return a;
+    }
+
+    return
+      static_cast< ContactRegion >(
+          ( ( static_cast< uint32_t >( a ) + 2 ) % 3 ) +
+          static_cast< uint32_t >( ContactRegion::V0 ) );
+  }
+
   constexpr bool isSameEdge( ContactRegion a, ContactRegion b ) {
 
-    if ( a == ContactRegion::FACE || b == ContactRegion::FACE ) {
+    // A face is explicitly not an edge
+    if ( isFace( a ) || isFace( b ) ) {
 
       return false;
     }
 
     // if they are both edges, they must be the equal to be the same edge
-    if ( a < ContactRegion::FACE && b < ContactRegion::FACE ) {
+    if ( isEdge( a ) && isEdge( b ) ) {
       
       return a == b;
     }
 
     // all vertices share an edge in a triangle
-    if ( a > ContactRegion::FACE && b > ContactRegion::FACE ) {
+    if ( isVertex( a ) && isVertex( b ) ) {
     
       return true;
     }
 
     // this is an edge/vertex or vertex/edge comparison
     // make sure the edge is in a and the vertex in b.
-    if ( a < b ) {
+    if ( isEdge( b ) ) {
 
       std::swap( a, b );
     }
@@ -137,6 +146,7 @@ namespace conway::geometry {
 
     ContactRegion with : 3    = ContactRegion::FACE;
     ContactRegion against : 3 = ContactRegion::FACE;
+    ContactType   type: 1     = ContactType::STRADDLING;
 
     ContactPair() = default;
 
@@ -144,7 +154,8 @@ namespace conway::geometry {
 
     ContactPair& operator=( const ContactPair& ) = default;
     
-    ContactPair( ContactRegion _with, ContactRegion _against ) : with( _with ), against( _against ) {}
+    ContactPair( ContactRegion _with, ContactRegion _against, ContactType _type ) : 
+      with(_with), against(_against), type( _type ) {}
   
     bool isEdgeEdge() const {
 

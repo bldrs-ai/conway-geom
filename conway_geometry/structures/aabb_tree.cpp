@@ -2,8 +2,11 @@
 #include "aabb_tree.h"
 #include "winged_edge.h"
 
-constexpr double GWN_PRECISION              = 3.0;
-constexpr double INVERSE_AREA_GWN_PRECISION = 1.0 / GWN_PRECISION;
+#define _USE_MATH_DEFINES 1
+
+#include <math.h>
+
+constexpr double GWN_PRECISION = 10000.0;
 
 namespace conway::geometry {
 
@@ -34,14 +37,16 @@ void conway::geometry::AABBTree::dipoles(
   const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
   const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
 
-  double result = 0;
+  if ( boxes_.empty() || dipoles_.size() == boxes_.size() ) {
+    return;
+  }
 
   dipoles_.clear();
   dipoles_.resize( boxes_.size(), {} );
 
   CursorWithParent stack[ MAX_RECURSION_DEPTH * 2 ];
 
-  stack[ 0 ] = { 0, 0, triangles_.size(), 0 };
+  stack[ 0 ] = { 0, 0, triangles_.size(), 0, false };
 
   size_t end = 1;
 
@@ -73,11 +78,11 @@ void conway::geometry::AABBTree::dipoles(
   
       Dipole& dipole = dipoles_[ cursor.node ];
 
-      const ConnectedTriangle& triangle = mesh.triangles[ cursor.start ];
+      const ConnectedTriangle& triangle = triangles[ cursor.start ];
 
-      const glm::dvec3& v0 = mesh.vertices[ triangle.vertices[ 0 ] ];
-      const glm::dvec3& v1 = mesh.vertices[ triangle.vertices[ 1 ] ];
-      const glm::dvec3& v2 = mesh.vertices[ triangle.vertices[ 2 ] ];
+      const glm::dvec3& v0 = vertices[ triangle.vertices[ 0 ] ];
+      const glm::dvec3& v1 = vertices[ triangle.vertices[ 1 ] ];
+      const glm::dvec3& v2 = vertices[ triangle.vertices[ 2 ] ];
 
       dipole.normal   = 0.5 * glm::cross( v1 - v0, v2 - v0 );
       dipole.area     = glm::length( dipole.normal );
@@ -111,7 +116,7 @@ void conway::geometry::AABBTree::dipoles(
   }
 }
 
-conway::geometry::AABBTree::AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh ) {
+conway::geometry::AABBTree::AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance ) {
 
   size_t leafCount = mesh.triangles.size();
 
@@ -127,13 +132,21 @@ conway::geometry::AABBTree::AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh )
 
   boxes_.resize( nodeCount );
 
-  construct( mesh );
+  construct( mesh, tolerance );
 }
 
 
 double conway::geometry::AABBTree::gwn( 
   const WingedEdgeMesh< glm::dvec3 >& mesh,
-  const glm::dvec3& against ) const {
+  const glm::dvec3& against,
+  std::optional< uint32_t > triangleIndex ) const {
+
+  assert( dipoles_.size() == boxes_.size() );
+
+  if ( triangles_.size() == 0 ) {
+
+    return 0;
+  }
 
   const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
   const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
@@ -148,25 +161,42 @@ double conway::geometry::AABBTree::gwn(
 
   while ( end > 0 ) {
 
+    assert( end > 0 );
+
     const Cursor& cursor = stack[ --end ];
 
     size_t size = cursor.end - cursor.start;
-    
+
+    assert( cursor.node < dipoles_.size() );
+
     const Dipole& dipole = dipoles_[ cursor.node ];
 
     glm::dvec3 againstDipole = dipole.position - against;
     double     aD2           = length2( againstDipole );
-    bool calculateSubArea    = false;
 
     if ( aD2 > dipole.radius2 ) {
 
-      result += glm::dot( againstDipole, dipole.normal ) / ( aD2 * sqrt( aD2 ) );
+      result += glm::dot( againstDipole, dipole.normal ) / ( aD2 * std::sqrt( aD2 ) );
       continue; 
     }
 
     if ( size == 1 ) {
 
+      assert( cursor.start < triangles_.size() );      
+      assert( triangles_[ cursor.start ] < triangles.size() );
+
+      if ( triangleIndex.has_value() && triangles_[ cursor.start ] == *triangleIndex ) {
+
+        // instead of relying on the centroid here, we hang a 180 hemisphere in.
+     //   result += 2.0 * M_PI;
+        continue;
+      }
+
       const ConnectedTriangle& triangle = triangles[ triangles_[ cursor.start ] ];
+
+      assert( triangle.vertices[ 0 ] < vertices.size() );
+      assert( triangle.vertices[ 1 ] < vertices.size() );
+      assert( triangle.vertices[ 2 ] < vertices.size() );
 
       result += 
         triangle_solid_angle(
@@ -190,12 +220,14 @@ double conway::geometry::AABBTree::gwn(
     
     stack[ end++ ] = { leftChild, cursorStart, partitionPoint };
     stack[ end++ ] = { rightChild, partitionPoint, cursorEnd };
+
+    assert( end <= MAX_RECURSION_DEPTH );
   }
 
   return result / ( 4.0 * M_PI );
 }
 
-void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& mesh ) {
+void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance ) {
 
   const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
   const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
@@ -205,23 +237,15 @@ void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& 
   stack[ 0 ] = { 0, 0, triangles_.size() };
 
   size_t end    = 1;
-  size_t visits = 0;
 
   while ( end > 0 ) {
 
     const Cursor& cursor = stack[ --end ];
     size_t        size   = cursor.end - cursor.start;
 
-    ++visits;
+    if ( size == 1 ) {
 
-    assert( visits <= boxes_.size() );
-
-    if (size == 1) {
-
-      box3& nodeBox = boxes_[ cursor.node ] = make_box( mesh, cursor.start );
-
-      nodeBox.min -= glm::dvec3( DBL_EPSILON );
-      nodeBox.max += glm::dvec3( DBL_EPSILON );
+      boxes_[ cursor.node ] = make_box( mesh, triangles_[ cursor.start ], tolerance );
       continue;
     }
 
@@ -255,7 +279,7 @@ void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& 
       where < trianglesEnd;
       ++where) {
 
-      box3 triangleBox = make_box( mesh, *where );
+      box3 triangleBox = make_box( mesh, *where, tolerance );
 
       nodeBox.merge( triangleBox );
 
@@ -279,9 +303,6 @@ void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& 
         axis      = candidateAxis;
       }
     }
-
-    nodeBox.min -= glm::dvec3( DBL_EPSILON );
-    nodeBox.max += glm::dvec3( DBL_EPSILON );
 
     if ( size > 2 ) {
 
@@ -316,6 +337,4 @@ void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& 
     stack[ end++ ] = { rightChild, partitionPoint, cursorEnd };
     stack[ end++ ] = { leftChild, cursorStart, partitionPoint };
   }
-
-  assert( visits == boxes_.size() );
 }

@@ -25,6 +25,12 @@
 #include "representation/geometry.h"
 #include "logging/Logger.h"
 
+#if !defined(_USE_MATH_DEFINES)
+#define _USE_MATH_DEFINES 1
+#endif
+
+#include <math.h>
+
 namespace conway::geometry {
 
 constexpr double EPS_BIG2 = 1e-3;
@@ -37,7 +43,7 @@ inline double areaOfTriangle2(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c) {
   return glm::dot(norm, norm);
 }
 
-constexpr double DOUBLE_TO_RADIANS = static_cast< double >( CONST_PI ) / 180.0;
+constexpr double DOUBLE_TO_RADIANS = M_PI / 180.0;
 
 inline constexpr double degreesToRadians(double angle) {
   return angle * DOUBLE_TO_RADIANS;
@@ -874,17 +880,17 @@ inline double VectorToAngle2D(double x, double y)
     cosv = cos(angle);
     if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
     {
-      angle = angle + (CONST_PI - angle) * 2;
+      angle = angle + (M_PI - angle) * 2;
       sinv = sin(angle);
       cosv = cos(angle);
       if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
       {
-        angle = angle + CONST_PI;
+        angle = angle + M_PI;
       }
     }
   }
 
-  return (angle / (2 * CONST_PI)) * 360;
+  return (angle / (2 * M_PI)) * 360;
 }
 
 inline double VectorToAngle(double x, double y)
@@ -903,17 +909,17 @@ inline double VectorToAngle(double x, double y)
     cosv = cos(angle);
     if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5)
     {
-      angle = angle + (CONST_PI - angle) * 2;
+      angle = angle + (M_PI - angle) * 2;
       sinv = sin(angle);
       cosv = cos(angle);
       if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5)
       {
-        angle = angle + CONST_PI;
+        angle = angle + M_PI;
       }
     }
   }
 
-  return (angle / (2 * CONST_PI)) * 360;
+  return (angle / (2 * M_PI)) * 360;
 }
 
 inline bool MatrixFlipsTriangles(const glm::dmat4 &mat) {

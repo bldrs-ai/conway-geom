@@ -33,6 +33,8 @@ namespace conway {
       id_t result = size();
       id_t end    = result + count; 
 
+      uniqueCount_ += count;
+
       map_.resize( end );
 
       id_t* data   = map_.data();

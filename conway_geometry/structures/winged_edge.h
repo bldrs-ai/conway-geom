@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <vector>
 #include <unordered_map>
-#include "representation/IfcGeometry.h"
 #include <optional>
 #include <string>
 #include <glm/glm.hpp>
@@ -19,6 +18,8 @@ namespace conway::geometry {
     uint32_t triangles[ 2 ] = { EMPTY_INDEX, EMPTY_INDEX };
 
     uint32_t vertices[ 2 ] = {};
+
+    uint32_t non_manifold_linked_edge = EMPTY_INDEX;
 
     uint32_t otherVertex( uint32_t vertexIndex ) const {
 
@@ -40,6 +41,22 @@ namespace conway::geometry {
   struct Triangle {
 
     uint32_t vertices[ 3 ] = { EMPTY_INDEX, EMPTY_INDEX, EMPTY_INDEX };
+
+    bool operator== ( const Triangle& against ) const {
+
+      return
+        against.vertices[ 0 ] == vertices[ 0 ] &&
+        against.vertices[ 1 ] == vertices[ 1 ] && 
+        against.vertices[ 2 ] == vertices[ 1 ];
+    }
+
+    bool operator!= ( const Triangle& against ) const {
+
+      return
+        against.vertices[0] == vertices[0] &&
+        against.vertices[1] == vertices[1] &&
+        against.vertices[2] == vertices[1];
+    }
 
   };
 
@@ -142,18 +159,23 @@ namespace conway::geometry {
    return EMPTY_INDEX;
   }
 
+
   template < typename VertexType >
   inline void WingedEdgeMesh< VertexType >::makeTriangle(uint32_t a, uint32_t b, uint32_t c, uint32_t index) {
 
     ConnectedTriangle& triangle = triangles[index];
+    
+    assert( a < vertices.size() );
+    assert( b < vertices.size() );
+    assert( c < vertices.size() );
 
-    triangle.vertices[0] = a;
-    triangle.vertices[1] = b;
-    triangle.vertices[2] = c;
+    triangle.vertices[ 0 ] = a;
+    triangle.vertices[ 1 ] = b;
+    triangle.vertices[ 2 ] = c;
 
-    triangle.edges[0] = makeEdge(a, b, index);
-    triangle.edges[1] = makeEdge(b, c, index);
-    triangle.edges[2] = makeEdge(c, a, index);
+    triangle.edges[ 0 ] = makeEdge( a, b, index );
+    triangle.edges[ 1 ] = makeEdge( b, c, index );
+    triangle.edges[ 2 ] = makeEdge( c, a, index );
   }
 
   template < typename VertexType >
@@ -237,9 +259,9 @@ namespace conway::geometry {
     uint32_t index =
       static_cast<uint32_t>(triangles.size());
 
-    triangles.push_back(ConnectedTriangle{});
+    triangles.push_back( ConnectedTriangle{} );
 
-    makeTriangle(a, b, c, index);
+    makeTriangle( a, b, c, index );
 
     return index;
   }
@@ -247,20 +269,40 @@ namespace conway::geometry {
   template < typename VertexType >
   inline uint32_t WingedEdgeMesh< VertexType >::makeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex ) {
 
-    uint64_t edgeIdentifier = edgeCompoundID(v1, v2);
+    uint64_t edgeIdentifier = edgeCompoundID( v1, v2 );
 
-    auto [mapIterator, emplaced] = edge_map.try_emplace(edgeIdentifier, static_cast<uint32_t>(edges.size()));
+    while ( true ) {
 
-    if ( emplaced ) {
-      edges.push_back(Edge{ { triangleIndex, EMPTY_INDEX }, { v1, v2 } });
+      auto [ mapIterator, emplaced ] = edge_map.try_emplace( edgeIdentifier, static_cast<uint32_t>( edges.size() ) );
+
+      if ( emplaced ) {
+        
+        edges.push_back( Edge{ { triangleIndex, EMPTY_INDEX }, { v1, v2 } });
+
+      }
+      else {
+
+        Edge& currentEdge = edges[ mapIterator->second ];
+
+        // Note, this allows non manifold edges to exist,
+        // but edges will not point back to triangles
+        if ( currentEdge.triangles[ 0 ] == EMPTY_INDEX || currentEdge.triangles[ 1 ] == EMPTY_INDEX ) {
+
+          currentEdge.triangles[ currentEdge.triangles[ 0 ] == EMPTY_INDEX ? 0 : 1 ] = triangleIndex;
+        }
+        else {
+
+          currentEdge.non_manifold_linked_edge = static_cast< uint32_t >( edges.size() );
+
+          // This is a work around for non-manifold cases.
+          edge_map.erase( mapIterator );
+          continue;
+
+        }
+      }
+
+      return mapIterator->second;
     }
-    else {
-     Edge& currentEdge = edges[mapIterator->second];
-
-     currentEdge.triangles[currentEdge.triangles[0] == EMPTY_INDEX ? 0 : 1] = triangleIndex;
-    }
-
-    return mapIterator->second;
   }
 
   template < typename VertexType >

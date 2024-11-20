@@ -21,8 +21,6 @@
 #include "ConwayProfile.h"
 #include "../../logging/Logger.h"
 
-#define CONST_PI 3.141592653589793238462643383279502884
-
 namespace conway::geometry {
 
 inline constexpr int VERTEX_FORMAT_SIZE_FLOATS = 6;

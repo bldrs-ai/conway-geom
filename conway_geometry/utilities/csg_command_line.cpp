@@ -1,3 +1,5 @@
+#if !defined(__EMSCRIPTEN__)
+
 // Change this to 1 to randomize voxel sampling - CS
 #define RANDOMIZED_VOXELS 0
 
@@ -17,6 +19,8 @@
 #define GLM_EXT_INCLUDED 1
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
+
+#include "structures/vertex_welder.h"
 
 using namespace conway;
 using namespace conway::geometry;
@@ -288,7 +292,7 @@ int csg( int argc, const char* argv[] ) {
   case 'd':
 
     printf( "difference\n" );
-    operation = CSG::Operation::DIFFERENCE;
+    operation = CSG::Operation::SUBTRACTION;
     break;
 
   case 'a':
@@ -346,6 +350,23 @@ int csg( int argc, const char* argv[] ) {
     return -1;
   }
 
+  VertexWelder welder;
+
+  welder.weld( a );
+  welder.weld( b );
+
+  {
+    CSG cleaner;
+
+    cleaner.clean( a );
+  }
+
+  {
+    CSG cleaner;
+
+    cleaner.clean( b );
+  }
+
   if ( performTransform ) {
 
     for ( glm::dvec3& vertex : b.vertices ) {
@@ -359,14 +380,26 @@ int csg( int argc, const char* argv[] ) {
     CSG runner;
 
     runner.run( operation, a, b, output );
+    
+    {
+      std::ofstream novelVerticesFile( ( std::string( argv[ 4 ] ) + ".ply" ), std::ofstream::out | std::ofstream::binary );
 
-    std::ofstream outputFile( ( std::string( argv[ 4 ] ) + ".ply" ), std::ofstream::out | std::ofstream::binary );
+      std::string novelVertices = runner.dumpNovelVertices();
 
-    std::string novelVertices = runner.dumpNovelVertices();
+      novelVerticesFile.write( novelVertices.data(), novelVertices.size() );
 
-    outputFile.write( novelVertices.data(), novelVertices.size() );
+      novelVerticesFile.close();
+    }
 
-    outputFile.close();
+    {
+      std::ofstream constraintsFile( ( std::string( argv[ 4 ] ) + "_constraints.obj" ), std::ofstream::out | std::ofstream::binary );
+
+      std::string constraints = runner.dumpConstraints();
+
+      constraintsFile.write( constraints.data(), constraints.size() );
+
+      constraintsFile.close();
+    }
   }
   else {
 
@@ -395,7 +428,7 @@ int main( int argc, const char* argv[] ) {
 
       return voxelise( argc, argv );
     }
-    else if (mode == "u" || mode == "union" || mode == "i" || mode == "intersection" || mode == "d" || mode == "difference" || mode == "a" || mode == "append") {
+    else if ( mode == "u" || mode == "union" || mode == "i" || mode == "intersection" || mode == "d" || mode == "difference" || mode == "a" || mode == "append" ) {
 
       return csg( argc, argv );
     }
@@ -407,3 +440,5 @@ int main( int argc, const char* argv[] ) {
 
   return -1;
 }
+
+#endif

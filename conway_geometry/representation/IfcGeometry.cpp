@@ -12,7 +12,34 @@
 #include <iostream>
 #include <sstream>
 
+#include "structures/hash_functions.h"
+#include "csg/csg_utils.h"
+#include "csg/csg.h"
+#include "structures/vertex_welder.h"
+
 namespace conway::geometry {
+
+VertexWelder welder;
+  
+IfcGeometry::IfcGeometry( WingedEdgeDV3&& from ) : fuzzybools::Geometry(), wingedEdgeMesh() {
+
+  const WingedEdgeDV3&             mesh     = wingedEdgeMesh.emplace( from );
+  const std::vector< glm::dvec3 >& vertices = mesh.vertices;
+
+  for ( const ConnectedTriangle& triangle : from.triangles ) {
+
+    if (
+      vertices[ triangle.vertices[ 0 ] ] == vertices[ triangle.vertices[ 1 ] ] ||
+      vertices[ triangle.vertices[ 1 ] ] == vertices[ triangle.vertices[ 2 ] ] ||
+      vertices[ triangle.vertices[ 2 ] ] == vertices[ triangle.vertices[ 0 ] ] ) {
+
+      //printf( "degenerate triangle skipped from winged edge\n" );
+      continue;
+    }
+
+    AddFace( vertices[ triangle.vertices[ 0 ] ], vertices[ triangle.vertices[ 1 ] ], vertices[ triangle.vertices[ 2 ] ] );
+  }
+}
 
 void IfcGeometry::ReverseFace(uint32_t index) {
   fuzzybools::Face f = GetFace(index);
@@ -159,14 +186,63 @@ void IfcGeometry::AppendWithTransform(const IfcGeometry &geom,
   uint32_t *indexDataCursor = indexData.data() + indexDataStart;
   uint32_t *indexDataEnd = indexData.data() + indexData.size();
 
-  for (; indexDataCursor < indexDataEnd; indexDataCursor += 3) {
+  for ( ; indexDataCursor < indexDataEnd; indexDataCursor += 3 ) {
     indexDataCursor[0] += maxIndex;
     indexDataCursor[1] += maxIndex;
     indexDataCursor[2] += maxIndex;
   }
 
+  wingedEdgeMesh.reset();
   //TODO: see if this is needed 
   //AddPart(geom);
+}
+
+conway::geometry::WingedEdgeDV3& IfcGeometry::GetWingedEdgeMesh() {
+
+  if ( !wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.emplace();
+ 
+    WingedEdgeDV3& mesh = *wingedEdgeMesh;
+
+    for ( uint32_t where = 0; where < numPoints; ++where ) {
+    
+      mesh.vertices.push_back( GetPoint( where ) );
+    }
+
+    for ( uint32_t where = 0; where < numFaces; ++where ) {
+
+      fuzzybools::Face face = GetFace( where );
+
+      if ( face.i0 == face.i1 || face.i1 == face.i2 || face.i2 == face.i0 ) {
+
+        continue;
+      }
+
+      if ( is_zero_area_triangle( mesh.vertices[ face.i0 ], mesh.vertices[ face.i1 ], mesh.vertices[ face.i2 ] ) ) {
+        continue;
+      }
+
+      mesh.makeTriangle( face.i0, face.i1, face.i2 );
+    }
+
+    welder.weld( *wingedEdgeMesh );
+
+    {
+      CSG cleaner;
+     
+      // if ( wingedEdgeMesh->vertices.size() == 0 ) {
+      //   printf( "no what?\n" );
+      // }
+      cleaner.clean( *wingedEdgeMesh );
+
+      if ( wingedEdgeMesh->vertices.size() == 0 ) {
+        printf( "what?\n" );
+      }
+    }
+  }
+
+  return *wingedEdgeMesh;
 }
 
 void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
@@ -178,6 +254,11 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
     AddFace(maxIndex + geom.indexData[k * 3 + 0],
             maxIndex + geom.indexData[k * 3 + 1],
             maxIndex + geom.indexData[k * 3 + 2]);
+  }
+
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 
   //TODO: see if this is needed 
@@ -206,6 +287,12 @@ fuzzybools::AABB IfcGeometry::getAABB() const
 void IfcGeometry::AddGeometry(const fuzzybools::Geometry& geom, const glm::dmat4& trans,
                               double scx, double scy, double scz,
                               const glm::dvec3& origin) {
+  
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
+  }
+  
   for (uint32_t i = 0; i < geom.numFaces; i++) {
     fuzzybools::Face f = geom.GetFace(i);
     glm::dvec3 a = geom.GetPoint(f.i0);
@@ -247,6 +334,11 @@ void IfcGeometry::MergeGeometry(const fuzzybools::Geometry& geom)
     glm::dvec3 b = geom.GetPoint(f.i1);
     glm::dvec3 c = geom.GetPoint(f.i2);
     AddFace(a, b, c);
+  }
+  
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 }
 
@@ -314,6 +406,11 @@ void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
 
   for ( auto& localPart : part ) {
     localPart.ApplyTransform( transform );
+  }
+
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 }
 

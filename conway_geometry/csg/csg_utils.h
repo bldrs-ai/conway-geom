@@ -36,21 +36,21 @@ namespace conway::geometry {
   }
 
   enum class AxisPair : size_t {
-
+    NONE = 0,
     X_Y = make_axis_pair( X_AXIS_INDEX, Y_AXIS_INDEX ),
     X_Z = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX ),
     Y_Z = make_axis_pair( Y_AXIS_INDEX, Z_AXIS_INDEX )
 
   };
 
-  constexpr inline size_t first_axis( AxisPair from ) {
+  constexpr inline glm::length_t first_axis( AxisPair from ) {
   
-    return static_cast< size_t >( from ) & AXIS_MASK;
+    return static_cast< glm::length_t >( from ) & AXIS_MASK;
   }
 
-  constexpr inline size_t second_axis( AxisPair from ) {
+  constexpr inline glm::length_t second_axis( AxisPair from ) {
   
-    return ( static_cast< size_t >( from ) >> SECOND_AXIS_SHIFT );
+    return ( static_cast< glm::length_t >( from ) >> SECOND_AXIS_SHIFT );
   }
 
   inline glm::dvec3 plane_line_segment_intersection(
@@ -117,7 +117,7 @@ namespace conway::geometry {
 
   inline int32_t orient2D(const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, AxisPair axes, double tolerance ) {
 
-    double orientation = orient2D( v0, v1, v2, axes, tolerance );
+    double orientation = orient2D( v0, v1, v2, axes );
     
     if ( orientation > tolerance ) {
 
@@ -131,6 +131,18 @@ namespace conway::geometry {
 
     return 0;
   }
+
+  /** Is a 3D triangle zero area, computed with exact predicates, which means that for the tolerance == 0 case, it will give an exact answer */
+  inline bool is_zero_area_triangle( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, double tolerance = 0 ) {
+
+    double halfTolerance = tolerance * 0.5;
+
+    return
+      orient2D( v0, v1, v2, AxisPair::X_Y, halfTolerance ) == 0 &&
+      orient2D( v0, v1, v2, AxisPair::X_Z, halfTolerance ) == 0 &&
+      orient2D( v0, v1, v2, AxisPair::Y_Z, halfTolerance ) == 0;
+  } 
+
 
   /** Will get the best 2D projection for a triangle that simply involves truncating an axis
    *  As long as the triangle is non-zero area, given that orient2D is exact, it should
@@ -156,7 +168,12 @@ namespace conway::geometry {
 
       //printf("%f y_z\n", candidateValue );
 
+      bestValue = candidateValue;
       result = AxisPair::Y_Z;
+    }
+
+    if ( bestValue == 0.0 ) {
+      result = AxisPair::NONE;
     }
 
     return result;
@@ -227,6 +244,56 @@ namespace conway::geometry {
       ( v2.x * ( ( v0.y * v1.z ) - ( v0.z * v1.y ) ) );
   }
 
+  namespace {
+
+    // See here for this approximation https://mazzo.li/posts/vectorized-atan2.html#atan2-primer
+    inline constexpr double fast_atan_scalar_approximation( double x ) {
+
+      constexpr double A1  = 0.99997726;
+      constexpr double A3  = -0.33262347;
+      constexpr double A5  = 0.19354346;
+      constexpr double A7  = -0.11643287;
+      constexpr double A9  = 0.05265332;
+      constexpr double A11 = -0.01172120;
+
+      double x2 = x * x;
+
+      return x * ( A1 + x2 * ( A3 + x2 * ( A5 + x2 * ( A7 + x2 * ( A9 + x2 * A11 ) ) ) ) );
+    }
+
+    inline double fast_atan2( double y, double x ) {
+
+      double absY = std::abs( y );
+      double absX = std::abs( x );
+
+      double result;
+
+      if ( absX < absY ) {
+
+        double atanInput = x / y;
+
+        result = ( atanInput >= 0.0 ? M_PI_2 : -M_PI_2 ) -
+          fast_atan_scalar_approximation( atanInput );
+      }
+      else {
+
+        double atanInput = y / x;
+
+        result = fast_atan_scalar_approximation( atanInput );
+      }
+
+      if ( x < 0 && y >= 0 ) {
+        result += M_PI; 
+      }
+      else if ( x < 0 && y < 0 ) {
+        result -= M_PI;
+      }
+
+      return result;
+    }
+
+  }
+
   /** Calculate the signed solid angle of a triangle relative a point */
   inline double triangle_solid_angle( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, const glm::dvec3& from ) {
 
@@ -249,14 +316,14 @@ namespace conway::geometry {
     // Because the dipoles in the BVH are far away, we don't need the precision, but here we do.
     double y = predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &from.x );
 
-    return 2.0 * std::atan2( y, fabs( x ) );
+    return 2.0 * fast_atan2( y, x );
   }
 
   /**
    * Simple determininant based comparison given 4 points that will calculate 3 vectors relative to the first and then
    * work out the sign of the determinant within tolerance (-1 for negative, 0 for within tolerance of 0 and 1 for positive)
    */
-  inline int orient3D( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, const glm::dvec3& v3, double tolerance = 0 ) {
+  inline int32_t orient3D( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, const glm::dvec3& v3, double tolerance = 0 ) {
 
     double result = predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &v3.x );
 
@@ -273,6 +340,11 @@ namespace conway::geometry {
     return 0;
   }
 
+  namespace {
+
+    constexpr double ONE_THIRD = 1.0 / 3.0;
+  }
+
     /** Not exact, but it will compute a centroid deterministically without regards to order or winding */
   inline glm::dvec3 centroid( const std::vector< glm::dvec3 >& vertices, const Triangle& triangle ) {
 
@@ -280,234 +352,9 @@ namespace conway::geometry {
     uint32_t v1 = triangle.vertices[ 1 ];
     uint32_t v2 = triangle.vertices[ 2 ];
 
-    // Optimal sorting network here, 3 swaps.
-    //if ( v0 > v2 ) {
-
-    //  std::swap( v0, v2 );
-    //}
-
-    //if ( v0 > v1 ) {
-
-    //  std::swap( v0, v1 );
-    //}
-
-    //if ( v1 > v2 ) {
-
-    //  std::swap( v1, v2 );
-    //}
-
-    // Deterministic order for centroid calculation.
-    return ( ( vertices[ v0 ] + ( vertices[ v1 ] + vertices[ v2 ] ) ) ) * ( 1.0 / 3.0 ); 
+    return ( ( vertices[ v0 ] + ( vertices[ v1 ] + vertices[ v2 ] ) ) ) * ONE_THIRD; 
   }
 
-  /** Not exact, but it will compute a centroid deterministically without regards to order or winding */
-  inline glm::dvec3 centroid(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    const std::vector< glm::dvec3 >& novelVertices,
-    const Triangle& triangle ) {
-
-    uint32_t v0 = triangle.vertices[ 0 ];
-    uint32_t v1 = triangle.vertices[ 1 ];
-    uint32_t v2 = triangle.vertices[ 2 ];
-
-    // Optimal sorting network here, 3 swaps.
-    //if ( v0 > v2 ) {
-
-    //  std::swap( v0, v2 );
-    //}
-
-    //if ( v0 > v1 ) {
-
-    //  std::swap( v0, v1 );
-    //}
-
-    //if ( v1 > v2 ) {
-
-    //  std::swap( v1, v2 );
-    //}
-
-    const std::vector< glm::dvec3 >& firstVertices  = first.vertices;
-    const std::vector< glm::dvec3 >& secondVertiecs = second.vertices;
-
-    const std::vector< glm::dvec3 >* vertexSet[ 3 ] = {
-
-      &first.vertices,
-      &second.vertices,
-      &novelVertices
-    };
-
-    uint32_t bPartition = static_cast< uint32_t >( firstVertices.size() );
-    uint32_t novelPartition = bPartition + static_cast< uint32_t >( secondVertiecs.size() );
-
-    uint32_t vertexOffset[ 3 ] = {
-      0,
-      bPartition,
-      novelPartition
-    };
-
-    uint32_t v0set = ( v0 >= bPartition ) + ( v0 >= novelPartition ); 
-    uint32_t v1set = ( v1 >= bPartition ) + ( v1 >= novelPartition );
-    uint32_t v2set = ( v2 >= bPartition ) + ( v2 >= novelPartition );
-
-    const glm::dvec3& v0a = (*vertexSet[ v0set ])[ v0 - vertexOffset[ v0set ] ];
-    const glm::dvec3& v1a = (*vertexSet[ v1set ])[ v1 - vertexOffset[ v1set ] ];
-    const glm::dvec3& v2a = (*vertexSet[ v2set ])[ v2 - vertexOffset[ v2set ] ];
-
-    // Deterministic order for centroid calculation.
-    return ( ( v0a + ( v1a + v2a ) ) ) * ( 1.0 / 3.0 ); 
-  }
-
-
-  inline int32_t orient2D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    uint32_t v0,
-    uint32_t v1,
-    uint32_t v2,
-    AxisPair axes,
-    double tolerance = 0 ) {
-    
-    //int32_t sign = 1;
-
-    // Optimal sorting network here, 5 potential parity swaps.
-    //if ( v0 > v2 ) {
-
-    //  std::swap( v0, v2 );
-    //  sign = -1;
-    //}
-
-    //if ( v0 > v1 ) {
-
-    //  std::swap( v0, v1 );
-    //  sign *= -1;
-    //}
-
-    //if ( v1 > v2 ) {
-
-    //  std::swap( v1, v2 );
-    //  sign *= -1;
-    //}
-
-    const std::vector< glm::dvec3 >& firstVertices = first.vertices;
-    const std::vector< glm::dvec3 >& secondVertiecs = second.vertices;
-
-    uint32_t partition = static_cast< uint32_t >( firstVertices.size() );
-
-    const glm::dvec3& v0a = v0 < partition ? firstVertices[ v0 ] : secondVertiecs[ v0 - partition ];
-    const glm::dvec3& v1a = v1 < partition ? firstVertices[ v1 ] : secondVertiecs[ v1 - partition ];
-    const glm::dvec3& v2a = v2 < partition ? firstVertices[ v2 ] : secondVertiecs[ v2 - partition ];
-
-    double resultValue = orient2D( v0a, v1a, v2a, axes );
-
-    if ( resultValue > tolerance ) {
-
-      return 1;
-    }
-
-    if ( resultValue < tolerance ) {
-
-      return -1;
-    }
-
-    return 0;
-  }
-
-
-  inline int32_t orient2D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    const std::vector< glm::dvec3 >& novelVertices,
-    uint32_t v0,
-    uint32_t v1,
-    uint32_t v2,
-    AxisPair axes,
-    double tolerance = 0 ) {
-    //
-    //int32_t sign = 1;
-
-    //// Optimal sorting network here, 5 potential parity swaps.
-    //if ( v0 > v2 ) {
-
-    //  std::swap( v0, v2 );
-    //  sign = -1;
-    //}
-
-    //if ( v0 > v1 ) {
-
-    //  std::swap( v0, v1 );
-    //  sign *= -1;
-    //}
-
-    //if ( v1 > v2 ) {
-
-    //  std::swap( v1, v2 );
-    //  sign *= -1;
-    //}
-
-    const std::vector< glm::dvec3 >& firstVertices = first.vertices;
-    const std::vector< glm::dvec3 >& secondVertiecs = second.vertices;
-
-    const std::vector< glm::dvec3 >* vertexSet[ 3 ] = {
-
-      &first.vertices,
-      &second.vertices,
-      &novelVertices
-    };
-
-    uint32_t bPartition = static_cast< uint32_t >( firstVertices.size() );
-    uint32_t novelPartition = bPartition + static_cast< uint32_t >( secondVertiecs.size() );
-
-    uint32_t vertexOffset[ 3 ] = {
-      0,
-      bPartition,
-      novelPartition
-    };
-
-    uint32_t v0set = ( v0 >= bPartition ) + ( v0 >= novelPartition ); 
-    uint32_t v1set = ( v1 >= bPartition ) + ( v1 >= novelPartition );
-    uint32_t v2set = ( v2 >= bPartition ) + ( v2 >= novelPartition );
-
-    const glm::dvec3& v0a = (*vertexSet[ v0set ])[ v0 - vertexOffset[ v0set ] ];
-    const glm::dvec3& v1a = (*vertexSet[ v1set ])[ v1 - vertexOffset[ v1set ] ];
-    const glm::dvec3& v2a = (*vertexSet[ v2set ])[ v2 - vertexOffset[ v2set ] ];
-
-    double resultValue = orient2D( v0a, v1a, v2a, axes );
-
-    int result = 0;
-
-    if ( resultValue > tolerance ) {
-
-      return 1;
-    }
-
-    if ( resultValue < tolerance ) {
-
-      return -1;
-    }
-
-    return 0;
-  }
-
-  
-  inline int32_t orient2D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    const uint32_t (&triangleIndices)[ 3 ],
-    uint32_t edge,
-    uint32_t opposingVertex,
-    AxisPair axes,
-    double tolerance = 0 ) {
-
-    return orient2D( 
-      first,
-      second,
-      triangleIndices[ edge ],
-      triangleIndices[ ( edge + 1 ) % 3 ],
-      opposingVertex,
-      axes,
-      tolerance );
-  }
 
   inline void reorder_to_lowest_vertex(
     uint32_t (&triangleIndicesInputOutput)[ 3 ] 
@@ -585,26 +432,14 @@ namespace conway::geometry {
     return false;
   }
 
-  inline int32_t orient2D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    const uint32_t (&triangleIndices)[ 3 ],
-    AxisPair axes,
-    double tolerance = 0 ) {
-    return orient2D( first, second, triangleIndices[ 0 ], triangleIndices[ 1 ], triangleIndices[ 2 ], axes, tolerance );
-  }
-
-  
-  inline int32_t orient2D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    const std::vector< glm::dvec3 >& novelVertices,
-    const uint32_t (&triangleIndices)[ 3 ],
-    AxisPair axes,
-    double tolerance = 0 ) {
-
-    return orient2D( first, second, novelVertices, triangleIndices[ 0 ], triangleIndices[ 1 ], triangleIndices[ 2 ], axes, tolerance );
-  }
+  // inline int32_t orient2D(
+  //   const WingedEdgeMesh< glm::dvec3 >& first,
+  //   const WingedEdgeMesh< glm::dvec3 >& second,
+  //   const uint32_t (&triangleIndices)[ 3 ],
+  //   AxisPair axes,
+  //   double tolerance = 0 ) {
+  //   return orient2D( first, second, triangleIndices[ 0 ], triangleIndices[ 1 ], triangleIndices[ 2 ], axes, tolerance );
+  // }
 
   inline int32_t orient2D( const glm::dvec3(&vertices)[ 3 ], AxisPair axes, double tolerance = 0 ) {
 
@@ -623,64 +458,4 @@ namespace conway::geometry {
     return 0;
   }
 
-  /** Given 2 meshes and 4 vertices, where the vertices use an indexing convention of 0 
-   * being the first vertice of the first mesh and first.vertices.size() being the first vertex
-   * of the second mesh.
-   *
-   * This will consistently order the vertices, correcting for the parity flips in the determinant.
-   */
-  inline int32_t orient3D(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
-    uint32_t v0,
-    uint32_t v1,
-    uint32_t v2,
-    uint32_t v3,
-    double tolerance = 0 ) {
-
-    //int32_t sign = 1;
-
-    //// Optimal sorting network here, 5 potential parity swaps.
-    //if ( v0 > v2 ) {
-
-    //  std::swap( v0, v2 );
-    //  sign = -1;
-    //}
-
-    //if ( v1 > v3 ) {
-
-    //  std::swap( v1, v3 );
-    //  sign *= -1;
-    //}
-
-    //if ( v0 > v1 ) {
-
-    //  std::swap( v0, v1 );
-    //  sign *= -1;
-    //}
-
-    //if ( v2 > v3 ) {
-
-    //  std::swap( v2, v3 );
-    //  sign *= -1;
-    //}
-
-    //if ( v1 > v2 ) {
-
-    //  std::swap( v1, v2 );
-    //  sign *= -1;
-    //}
-
-    const std::vector< glm::dvec3 >& firstVertiecs = first.vertices;
-    const std::vector< glm::dvec3 >& secondVertiecs = second.vertices;
-
-    uint32_t partition = static_cast< uint32_t >( firstVertiecs.size() );
-
-    const glm::dvec3& v0a = v0 < partition ? firstVertiecs[ v0 ] : secondVertiecs[ v0 - partition ];
-    const glm::dvec3& v1a = v1 < partition ? firstVertiecs[ v1 ] : secondVertiecs[ v1 - partition ];
-    const glm::dvec3& v2a = v2 < partition ? firstVertiecs[ v2 ] : secondVertiecs[ v2 - partition ];
-    const glm::dvec3& v3a = v3 < partition ? firstVertiecs[ v3 ] : secondVertiecs[ v3 - partition ];
-
-    return orient3D( v0a, v1a, v2a, v3a, tolerance );// * sign;
-  }
 }

@@ -2,42 +2,75 @@
 #include "structures/winged_edge.h"
 #include "multi_mesh_vertex_index.h"
 
+#include <execution>
+#include <algorithm>
+#include <format>
+#include <sstream>
+
+constexpr bool OUTPUT_A                 = true;
+constexpr bool OUTPUT_B                 = true;
+constexpr bool OUTPUT_BOUNDARY          = true;
+constexpr bool OUTPUT_ORIGINAL          = true;
+constexpr bool OUTPUT_SHARED_FACES      = true;
+
+constexpr double GWN_TOLERANCE          = 0.5 + DBL_EPSILON;
+
+constexpr bool OUTPUT_A_BOUNDARY = OUTPUT_A && OUTPUT_BOUNDARY;
+constexpr bool OUTPUT_B_BOUNDARY = OUTPUT_B && OUTPUT_BOUNDARY;
+constexpr bool OUTPUT_A_ORIGINAL = OUTPUT_A && OUTPUT_ORIGINAL;
+constexpr bool OUTPUT_B_ORIGINAL = OUTPUT_B && OUTPUT_ORIGINAL;
+constexpr bool OUTPUT_A_SHARED   = OUTPUT_A && OUTPUT_SHARED_FACES;
+
+namespace conway::geometry {
+
+  namespace {
+  
+    inline bool lexicographical_less( const glm::dvec3& a, const glm::dvec3& b ) {
+
+      return a.x < b.x || ( a.x == b.x && a.y < b. y);
+    }
+  }
+}
+
+
 void conway::geometry::CSGMesher::process(
   WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
-  WingedEdgeDV3& b,
-  const std::vector< TriangleContacts >& aContacts,
+  const std::vector< TriangleTriangleContactPair >& contacts,
   const PrefixSumMap& aContactMap,
-  const std::vector< TriangleContacts >& bContacts,
-  const PrefixSumMap& bContactMap,
-  const std::vector< bool > (&boundarySet)[ 2 ],
-  bool aOutside,
-  bool bOutside,
-  bool flipBWinding,
-  WingedEdgeMesh< glm::dvec3 >& output ) {
-  
+  const std::vector< bool >& boundarySet,
+  WingedEdgeDV3& output ) {
+
+
   reset();
 
-  unifiedVertices_.allocate( a.vertices.size() + b.vertices.size() );
-
-  const std::vector< glm::dvec3 >* abNovel[ 3 ] = { &a.vertices, &b.vertices, &novelVertices_ };
+  unifiedPlanes_.allocate( static_cast< uint32_t >( a.triangles.size() ) ); 
 
   // We don't need to know the number of novel vertices yet, because it's the last in the partition.
-  MultiMeshVertexIndex< 3 > vertices = multi_mesh_vertex_index( a, b, novelVertices_ );
+  MultiMeshVertexIndex< 2 > vertices = multi_mesh_vertex_index( a, novelVertices_ );
 
-  uint32_t bOffset = static_cast< uint32_t >( b.vertices.size() );
+  unifiedVertices_.allocate( static_cast< uint32_t >( a.vertices.size() ) );
 
   // unify vertex pairs.
-  for( const TriangleContacts& trianglePair : aContacts ) {
+  for( const TriangleTriangleContactPair& trianglePair : contacts ) {
 
-    for ( ContactPair contact : trianglePair.pairs ) {
+    const TriangleContacts& triangleContacts = trianglePair.triangles[ 0 ];
+
+    if ( triangleContacts.face_to_face == FaceFace::COLINEAR ) {
+    
+      unifiedPlanes_.merge(
+        triangleContacts.this_triangle_index,
+        triangleContacts.other_triangle_index );
+    }
+
+    for ( ContactPair contact : triangleContacts.pairs ) {
       
       if ( contact.isVertexVertex() ) {
 
-        const ConnectedTriangle& aTriangle = a.triangles[ trianglePair.this_triangle_index ];
-        const ConnectedTriangle& bTriangle = b.triangles[ trianglePair.other_triangle_index ];
+        const ConnectedTriangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
+        const ConnectedTriangle& bTriangle = a.triangles[ triangleContacts.other_triangle_index ];
 
         uint32_t vertexA = aTriangle.vertices[ vertexIndex( contact.with ) ];
-        uint32_t vertexB = vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] );
+        uint32_t vertexB = bTriangle.vertices[ vertexIndex( contact.against ) ];
 
         unifiedVertices_.merge( vertexA, vertexB );
       }
@@ -47,20 +80,19 @@ void conway::geometry::CSGMesher::process(
   // Optimise here, because this will make the mappings above
   // single hop, but the novel vertices don't need to be, because they self reference
   unifiedVertices_.optimize();
+  unifiedPlanes_.optimize();
 
   const std::vector< glm::dvec3 >& aVertices = a.vertices;
-  const std::vector< glm::dvec3 >& bVertices = b.vertices;
-
-  uint32_t novelOffset = bOffset + bVertices.size();
 
   for (
-    uint32_t aTriangleIndex = 0, aTriangleEnd = static_cast< uint32_t >( a.triangles.size() );
+    uint32_t aTriangleIndex = 0,
+             aTriangleEnd   = static_cast< uint32_t >( a.triangles.size() );
     aTriangleIndex < aTriangleEnd;
     ++aTriangleIndex ) {
 
     std::span< const uint32_t > trianglePairs = aContactMap.get( aTriangleIndex );
 
-    if ( trianglePairs.empty() ) {
+    if ( !boundarySet[ aTriangleIndex ] || trianglePairs.empty() ) {
       continue;
     }
 
@@ -70,16 +102,22 @@ void conway::geometry::CSGMesher::process(
       insertLocalVertex( aTriangle.vertices[ vertexInTriangle ] );
     }
 
+    uint32_t aPlaneIndex = unifiedPlanes_.find( aTriangleIndex );
+
     for ( uint32_t pairIndex : trianglePairs ) {
 
-      const TriangleContacts&  trianglePair = aContacts[ pairIndex ];
-      const ConnectedTriangle& bTriangle    = b.triangles[ trianglePair.other_triangle_index ];
+      uint32_t triangleInPair = contacts[ pairIndex ].triangles[ 0 ].this_triangle_index == aTriangleIndex ? 0 : 1;
+
+      const TriangleContacts&  trianglePair = contacts[ pairIndex ].triangles[ triangleInPair ];
+      const ConnectedTriangle& bTriangle    = a.triangles[ trianglePair.other_triangle_index ];
 
       assert( aTriangleIndex == trianglePair.this_triangle_index );
 
       std::span< const ContactPair > contactPairs = trianglePair.pairs.values();
 
       FixedStack< uint32_t, 6 > additionalVertices;
+
+      uint32_t bPlaneIndex = unifiedPlanes_.find( trianglePair.other_triangle_index );
 
       for ( ContactPair contact : contactPairs ) {
 
@@ -89,38 +127,59 @@ void conway::geometry::CSGMesher::process(
           uint32_t edge0           = aTriangle.edges[ edgeInTriangleA ];
           uint32_t edge1           = bTriangle.edges[ edgeIndex( contact.against ) ];
 
+          uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
+
+          if ( edge0 > edge1 ) {
+          
+            std::swap( edge0, edge1 );
+          }
+
           const auto [ to, success ] =
             edgeEdgeVertices_.try_emplace(
               std::make_pair( edge0, edge1 ),
-              static_cast< uint32_t >( novelVertices_.size() ) );
+              canidateIndex );
 
           if ( success ) {
 
-            const glm::dvec3& e0v0 = aVertices[ a.edges[ edge0 ].vertices[ 0 ] ];
-            const glm::dvec3& e0v1 = aVertices[ a.edges[ edge0 ].vertices[ 1 ] ];
-            const glm::dvec3& e1v0 = bVertices[ b.edges[ edge1 ].vertices[ 0 ] ];
-            const glm::dvec3& e1v1 = bVertices[ b.edges[ edge1 ].vertices[ 1 ] ];
+            glm::dvec3 e0v0 = aVertices[ a.edges[ edge0 ].vertices[ 0 ] ];
+            glm::dvec3 e0v1 = aVertices[ a.edges[ edge0 ].vertices[ 1 ] ];
+            glm::dvec3 e1v0 = aVertices[ a.edges[ edge1 ].vertices[ 0 ] ];
+            glm::dvec3 e1v1 = aVertices[ a.edges[ edge1 ].vertices[ 1 ] ];
+
+            // while we can't guarantee exact results for this operation,
+            // knowing there are some duplicate-vertices-abutting-faces cases
+            // means that we can at least make it deterministic by ordering 
+            if ( lexicographical_less( e0v1, e0v0 ) ) {
+
+              std::swap( e0v1, e0v0 );
+            }
+            
+            if ( lexicographical_less( e1v1, e1v0 ) ) {
+
+              std::swap( e1v1, e1v0 );
+            }
 
             glm::dvec3 novelVertex =
               line_segment_line_segment_intersection( e0v0, e0v1, e1v0, e1v1 );
 
-            novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
-            unifiedVertices_.allocate();
+              novelVertices_.push_back( novelVertex );
+              unifiedVertices_.allocate();
           }
 
           additionalVertices.push(
             insertLocalVertexOnEdge(
-              vertices( 2, to->second ),
+              to->second,
               edgeInTriangleA ) );
 
         } else if ( contact.isFaceEdge() ) {              
 
-          uint32_t edge = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge          = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
 
           const auto [ to, success ] =
             faceEdgeVertices_[ 0 ].try_emplace(
-              std::make_pair( trianglePair.this_triangle_index, edge ),
-              static_cast< uint32_t >( novelVertices_.size() ) );
+              std::make_pair( aPlaneIndex, edge ),
+              canidateIndex );
 
           if ( success ) {            
 
@@ -128,33 +187,35 @@ void conway::geometry::CSGMesher::process(
             const glm::dvec3& t1 = aVertices[ aTriangle.vertices[ 1 ] ];
             const glm::dvec3& t2 = aVertices[ aTriangle.vertices[ 2 ] ];
 
-            const glm::dvec3& ev0 = bVertices[ b.edges[ edge ].vertices[ 0 ] ];
-            const glm::dvec3& ev1 = bVertices[ b.edges[ edge ].vertices[ 1 ] ];
+            const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
+            const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
 
-            novelVertices_.push_back( novelVertex );
+            novelVertices_.push_back( novelVertex ); 
             unifiedVertices_.allocate();
           }
 
-          additionalVertices.push( insertLocalVertex( vertices( 2, to->second ) ) );
+          additionalVertices.push( insertLocalVertex( to->second ) );
 
         } else if ( contact.isEdgeFace() ) {
 
           uint32_t edgeInTriangle = edgeIndex( contact.with );
           uint32_t edge           = aTriangle.edges[ edgeInTriangle ];
 
+          uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
+
           const auto [ to, success ] =
-            faceEdgeVertices_[ 1 ].try_emplace(
-              std::make_pair( trianglePair.other_triangle_index, edge ),
-              static_cast< uint32_t >( novelVertices_.size() ) );
+            faceEdgeVertices_[ 0 ].try_emplace(
+              std::make_pair( bPlaneIndex, edge ),
+              canidateIndex );
 
           if ( success ) {
 
-            const glm::dvec3& t0 = bVertices[ bTriangle.vertices[ 0 ] ];
-            const glm::dvec3& t1 = bVertices[ bTriangle.vertices[ 1 ] ];
-            const glm::dvec3& t2 = bVertices[ bTriangle.vertices[ 2 ] ];
+            const glm::dvec3& t0 = aVertices[ bTriangle.vertices[ 0 ] ];
+            const glm::dvec3& t1 = aVertices[ bTriangle.vertices[ 1 ] ];
+            const glm::dvec3& t2 = aVertices[ bTriangle.vertices[ 2 ] ];
 
             const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
             const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
@@ -168,19 +229,19 @@ void conway::geometry::CSGMesher::process(
 
           additionalVertices.push(
             insertLocalVertexOnEdge( 
-              vertices( 2, to->second ),
+              to->second,
               edgeInTriangle ) );
 
         } else if ( contact.isFaceVertex() ) {
 
-          additionalVertices.push( insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] ) ) );
+          additionalVertices.push( insertLocalVertex( bTriangle.vertices[ vertexIndex( contact.against ) ] ) );
 
         }
         else if ( contact.isEdgeVertex() ) {
 
           additionalVertices.push(
             insertLocalVertexOnEdge(
-              vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] ),
+              bTriangle.vertices[ vertexIndex( contact.against ) ],
               edgeIndex( contact.with ) ) );
 
         } else {
@@ -194,224 +255,122 @@ void conway::geometry::CSGMesher::process(
       addEdges( contactPairs, additionalVertices );
     }
 
-    triangulate( a, a, b, aTriangle, false, 0 );
-  }
-
-  for (
-    uint32_t bTriangleIndex = 0, bTriangleEnd = static_cast< uint32_t >( b.triangles.size() );
-    bTriangleIndex < bTriangleEnd;
-    ++bTriangleIndex ) {
-
-    std::span< const uint32_t > trianglePairs = bContactMap.get( bTriangleIndex );
-
-    if ( trianglePairs.empty() ) {
-      continue;
-    }
-
-    const ConnectedTriangle& bTriangle = b.triangles[ bTriangleIndex ];
-
-    for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
-      insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexInTriangle ] ) );
-    }
-
-    for ( uint32_t pairIndex : trianglePairs ) {
-
-      const TriangleContacts&  trianglePair = bContacts[ pairIndex ];
-      const ConnectedTriangle& aTriangle    = a.triangles[ trianglePair.other_triangle_index ];
-
-      assert( bTriangleIndex == trianglePair.this_triangle_index );
-
-      std::span< const ContactPair > contactPairs = trianglePair.pairs.values();
-
-      FixedStack< uint32_t, 6 > additionalVertices;
-
-      for ( ContactPair contact : contactPairs ) {
-
-        if ( contact.isEdgeEdge() ) {
-
-          uint32_t edgeInTriangleB = edgeIndex( contact.with );
-          uint32_t edge0           = bTriangle.edges[ edgeInTriangleB ];
-          uint32_t edge1           = aTriangle.edges[ edgeIndex( contact.against ) ];
-
-          auto to = edgeEdgeVertices_.find( std::make_pair( edge1, edge0 ) );
-
-          assert( to != edgeEdgeVertices_.end() );
-
-          additionalVertices.push(
-            insertLocalVertexOnEdge( vertices( 2, to->second ), edgeInTriangleB ) );
-
-        }
-        else if ( contact.isFaceEdge() ) {
-
-          uint32_t edge = aTriangle.edges[ edgeIndex( contact.against ) ];
-
-          const auto to =
-            faceEdgeVertices_[1].find(
-              std::make_pair( trianglePair.this_triangle_index, edge ) );
-
-          assert( to != faceEdgeVertices_[ 1 ].end() );
-
-          additionalVertices.push(
-            insertLocalVertex( vertices( 2, to->second ) ) );
-
-        }
-        else if ( contact.isEdgeFace() ) {
-
-          uint32_t edgeInTriangle = edgeIndex( contact.with );
-          uint32_t edge           = bTriangle.edges[ edgeInTriangle ];
-
-          const auto to =
-            faceEdgeVertices_[0].find(
-              std::make_pair( trianglePair.other_triangle_index, edge ) );
-
-          assert( to != faceEdgeVertices_[ 0 ].end() );
-
-          additionalVertices.push(
-            insertLocalVertexOnEdge(
-              vertices( 2, to->second ),
-              edgeInTriangle ) );
-
-        } else if ( contact.isFaceVertex() ) {
-
-          additionalVertices.push( insertLocalVertex( aTriangle.vertices[ vertexIndex( contact.against ) ] ) );
-
-        }
-        else if ( contact.isEdgeVertex() ) {
-
-          additionalVertices.push(
-            insertLocalVertexOnEdge(
-              aTriangle.vertices[ vertexIndex( contact.against ) ],
-              edgeIndex( contact.with ) ) );
-
-        } else {
-
-          // vertex face or vertex edge
-          additionalVertices.push( insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexIndex( contact.with ) ] ) ) );
-        }
-      }
-
-      addEdges( contactPairs, additionalVertices );
-    }
-    
-    triangulate( b, a, b, bTriangle, flipBWinding, 1 );
+    triangulate( a, vertices, aTriangleIndex, false, 0 );
   }
 
   // now we do a winding-insensitive sort of the triangles.
-  for ( uint32_t triangleSet = 0; triangleSet < 2; ++triangleSet ) {
 
-    std::sort(
-      initialChartTriangles_[ triangleSet ].begin(),
-      initialChartTriangles_[ triangleSet ].end(),
-      [] ( const Triangle& left, const Triangle& right ) {
+  std::sort(
+    initialChartTriangles_[ 0 ].begin(),
+    initialChartTriangles_[ 0 ].end(),
+    [] ( const std::pair< Triangle, uint32_t >& left, const std::pair< Triangle, uint32_t >& right ) {
 
-        return less_lowest_vertex_parity( left.vertices, right.vertices );
-      });
-  }
+      return less_lowest_vertex_parity( left.first.vertices, right.first.vertices );
+    });
+
+  //outside_[ 0 ].clear();
+  //outside_[ 0 ].resize( initialChartTriangles_[ 0 ].size(), 0 );
 
   auto aWhere = initialChartTriangles_[ 0 ].begin();
   auto aEnd   = initialChartTriangles_[ 0 ].end();
-  auto bWhere = initialChartTriangles_[ 1 ].begin();
-  auto bEnd   = initialChartTriangles_[ 1 ].end();
 
-  AABBTree& aBVH = *a.bvh; 
-  AABBTree& bBVH = *b.bvh; 
+  //AABBTree& aBVH = *a.bvh;
 
-  aBVH.dipoles( a );
-  bBVH.dipoles( b );
+// #if defined(__EMSCRIPTEN__)
+//   std::transform( aWhere, aEnd, outside_[ 0 ].begin(), [&]( const Triangle& aTriangle ) {
+// #else
+//  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+//// #endif
+//    glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
+//
+//    double gwn = aBVH.gwn( a, aCentre, aTriangle.second );
+//
+//    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+//  });
 
-  while ( aWhere < aEnd && bWhere < bEnd ) {
+  //auto aGWN = outside_[ 0 ].begin();
 
-    const Triangle& aTriangle = *aWhere;
-    const Triangle& bTriangle = *bWhere;
+  if ( initialChartTriangles_[ 0 ].size() > 1 ) {
 
-    if ( less_lowest_vertex_parity( aTriangle.vertices, bTriangle.vertices ) ) {
+    while ( ( aWhere + 1 ) < aEnd ) {
 
-      glm::dvec3 aCentre = centroid( a, b, novelVertices_, aTriangle );
+      const Triangle& aTriangle = aWhere->first;
+      const Triangle& bTriangle = (aWhere + 1)->first;
 
-      double gwn = bBVH.gwn( b, aCentre );
+      if ( less_lowest_vertex_parity( aTriangle.vertices, bTriangle.vertices ) ) {
 
-      bool outside = fabs( gwn ) < 0.5;
+  //      bool outside = ( *aGWN ) == 1;
 
-      if ( outside == aOutside ) {
+        if ( /*outside &&*/ OUTPUT_A_BOUNDARY ) {
+
+          outputTriangleStream_.push_back( aTriangle );
+        }
+
+  //      ++aGWN;
+        ++aWhere;
+        continue;
+      }
+
+      bool windingParity = aTriangle == bTriangle;
+
+      // if these triangles are wound the same, keep A (cos we flip the winding on B
+      // for subtraction, we can always keep A and throw away B if the winding is the same
+      // and throw away both if the winding is different)
+      if ( windingParity && OUTPUT_A_SHARED ) {
 
         outputTriangleStream_.push_back( aTriangle );
       }
 
       ++aWhere;
-      continue;
-    }
+      ++aWhere;
 
-    if ( less_lowest_vertex_parity( bTriangle.vertices, aTriangle.vertices ) ) {
+      if ( aWhere == aEnd ) {
 
-      glm::dvec3 bCentre = centroid( a, b, novelVertices_, bTriangle );
-
-      double gwn = aBVH.gwn( a, bCentre );
-
-      bool outside = fabs( gwn ) < 0.5;
-
-      if ( outside == bOutside ) {
-
-        outputTriangleStream_.push_back( bTriangle );
+        break;
       }
 
-      ++bWhere;
-      continue;
+   //   ++aGWN;
+  //    ++aGWN;
     }
-
-    bool windingParity =
-      lowest_vertex_ordered_parity( aTriangle.vertices ) ==
-      lowest_vertex_ordered_parity( bTriangle.vertices );
-
-    // if these triangles are wound the same, keep A (cos we flip the winding on B
-    // for subtraction, we can always keep A and throw away B if the winding is the same
-    // and throw away both if the winding is different)
-    if ( windingParity ) {
-
-      outputTriangleStream_.push_back( aTriangle );
-    }
-
-    ++aWhere;
-    ++bWhere;
   }
-    
+
   while ( aWhere < aEnd ) {
 
-    const Triangle& aTriangle = *aWhere;
-    glm::dvec3      aCentre   = centroid( a, b, novelVertices_, aTriangle );
+  //  bool outside = (*aGWN) == 1;
 
-    double gwn = bBVH.gwn( b, aCentre );
+    //if ( outside ) {
 
-    bool outside = fabs( gwn ) < 0.5;
-
-    if ( outside == aOutside ) {
+      const Triangle& aTriangle = aWhere->first;
 
       outputTriangleStream_.push_back( aTriangle );
-    }
+//    }
 
+  //  ++aGWN;
     ++aWhere;
   }
 
-  while ( bWhere < bEnd ) {
+  if constexpr ( OUTPUT_A_ORIGINAL ) {
 
-    const Triangle& bTriangle = *bWhere;
-    glm::dvec3      bCentre   = centroid( a, b, novelVertices_, bTriangle );
+    for (
+      uint32_t aTriangleIndex = 0,
+               end = static_cast< uint32_t >( a.triangles.size() );
+      aTriangleIndex < end;
+      ++aTriangleIndex ) {
+    
+      if ( !boundarySet[ aTriangleIndex ] ) {
+      
+        const ConnectedTriangle& triangle = a.triangles[ aTriangleIndex ];
 
-    double gwn = aBVH.gwn( a, bCentre );
+        Triangle outputTriangle = {
+            triangle.vertices[0],
+            triangle.vertices[1],
+            triangle.vertices[2]
+        };
 
-    bool outside = fabs( gwn ) < 0.5;
-
-    if ( outside == bOutside ) {
-
-      outputTriangleStream_.push_back( bTriangle );
+        outputTriangleStream_.push_back( outputTriangle );
+      }
     }
-
-    ++bWhere;
   }
-
-  walkAndInsertNonBoundary( aOutside, bBVH, boundarySet[ 0 ], a, b, false, 0 );
-  walkAndInsertNonBoundary( bOutside, aBVH, boundarySet[ 1 ], b, a, flipBWinding, bOffset );
-  
-  uint32_t novelPartition = bOffset + b.vertices.size();
 
   vertexUsed_.clear();
   vertexUsed_.resize( unifiedVertices_.size(), false );
@@ -444,7 +403,546 @@ void conway::geometry::CSGMesher::process(
       triangle.vertices[ vertexInTriangle ] = mappedVertex;
     }
     
-    output.makeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[2 ] );
+    output.makeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
+  }
+}
+
+void conway::geometry::CSGMesher::process(
+  WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
+  WingedEdgeDV3& b,
+  const std::vector< TriangleTriangleContactPair >& contacts,
+  const PrefixSumMap& aContactMap,
+  const PrefixSumMap& bContactMap,
+  const std::vector< bool > (&boundarySet)[ 2 ],
+  bool aOutside,
+  bool bOutside,
+  bool flipBWinding,
+  WingedEdgeMesh< glm::dvec3 >& output ) {
+  
+  reset();
+
+  unifiedPlanes_.allocate( static_cast< uint32_t >( a.triangles.size() + b.triangles.size() ) ); 
+
+  // We don't need to know the number of novel vertices yet, because it's the last in the partition.
+  MultiMeshVertexIndex< 3 > vertices = multi_mesh_vertex_index(a, b, novelVertices_);
+
+  unifiedVertices_.allocate( vertices( 2, 0 ) );
+
+  uint32_t bTriangleOffset = static_cast< uint32_t >( a.triangles.size() );
+
+  // unify vertex pairs.
+  for( const TriangleTriangleContactPair& trianglePair : contacts ) {
+
+    const TriangleContacts& triangleContacts = trianglePair.triangles[ 0 ];
+
+    if ( triangleContacts.face_to_face == FaceFace::COLINEAR ) {
+    
+      unifiedPlanes_.merge(
+        triangleContacts.this_triangle_index,
+        bTriangleOffset + triangleContacts.other_triangle_index );
+    }
+
+    for ( ContactPair contact : triangleContacts.pairs ) {
+      
+      if ( contact.isVertexVertex() ) {
+
+        const ConnectedTriangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
+        const ConnectedTriangle& bTriangle = b.triangles[ triangleContacts.other_triangle_index ];
+
+        uint32_t vertexA = aTriangle.vertices[ vertexIndex( contact.with ) ];
+        uint32_t vertexB = vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] );
+
+        unifiedVertices_.merge( vertexA, vertexB );
+      }
+    }
+  }
+
+  // Optimise here, because this will make the mappings above
+  // single hop, but the novel vertices don't need to be, because they self reference
+  unifiedVertices_.optimize();
+  unifiedPlanes_.optimize();
+
+  const std::vector< glm::dvec3 >& aVertices = a.vertices;
+  const std::vector< glm::dvec3 >& bVertices = b.vertices;
+
+  for (
+    uint32_t aTriangleIndex = 0,
+             aTriangleEnd   = static_cast< uint32_t >( a.triangles.size() );
+    aTriangleIndex < aTriangleEnd;
+    ++aTriangleIndex ) {
+
+    std::span< const uint32_t > trianglePairs = aContactMap.get( aTriangleIndex );
+
+    if ( !boundarySet[ 0 ][ aTriangleIndex ] ||trianglePairs.empty() ) {
+      continue;
+    }
+
+    const ConnectedTriangle& aTriangle = a.triangles[ aTriangleIndex ];
+
+    for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
+      insertLocalVertex( aTriangle.vertices[ vertexInTriangle ] );
+    }
+
+    uint32_t aPlaneIndex = unifiedPlanes_.find( aTriangleIndex );
+
+    for ( uint32_t pairIndex : trianglePairs ) {
+
+      const TriangleContacts&  trianglePair = contacts[ pairIndex].triangles[ 0 ];
+      const ConnectedTriangle& bTriangle    = b.triangles[ trianglePair.other_triangle_index ];
+
+      assert( aTriangleIndex == trianglePair.this_triangle_index );
+
+      std::span< const ContactPair > contactPairs = trianglePair.pairs.values();
+
+      FixedStack< uint32_t, 6 > additionalVertices;
+
+      uint32_t bPlaneIndex = unifiedPlanes_.find( trianglePair.other_triangle_index + bTriangleOffset );
+
+      for ( ContactPair contact : contactPairs ) {
+
+        if ( contact.isEdgeEdge() ) {
+
+          uint32_t edgeInTriangleA = edgeIndex( contact.with );
+          uint32_t edge0           = aTriangle.edges[ edgeInTriangleA ];
+          uint32_t edge1           = bTriangle.edges[ edgeIndex( contact.against ) ];
+
+          uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
+
+          const auto [ to, success ] =
+            edgeEdgeVertices_.try_emplace(
+              std::make_pair( edge0, edge1 ),
+              canidateIndex );
+
+          if ( success ) {
+
+            glm::dvec3 e0v0 = aVertices[ a.edges[ edge0 ].vertices[ 0 ] ];
+            glm::dvec3 e0v1 = aVertices[ a.edges[ edge0 ].vertices[ 1 ] ];
+            glm::dvec3 e1v0 = bVertices[ b.edges[ edge1 ].vertices[ 0 ] ];
+            glm::dvec3 e1v1 = bVertices[ b.edges[ edge1 ].vertices[ 1 ] ];
+
+            // while we can't guarantee exact results for this operation,
+            // knowing there are some duplicate-vertices-abutting-faces cases
+            // means that we can at least make it deterministic by ordering 
+            if ( lexicographical_less( e0v1, e0v0 ) ) {
+
+              std::swap( e0v1, e0v0 );
+            }
+            
+            if ( lexicographical_less( e1v1, e1v0 ) ) {
+
+              std::swap( e1v1, e1v0 );
+            }
+
+            glm::dvec3 novelVertex =
+              line_segment_line_segment_intersection( e0v0, e0v1, e1v0, e1v1 );
+
+            //const auto [ existing, novelSuccess ] = 
+            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
+
+            //if ( novelSuccess ) {
+
+              novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
+              unifiedVertices_.allocate();
+         /*   }
+            else {
+
+              to->second = existing->second;
+            }*/
+          }
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge(
+              to->second,
+              edgeInTriangleA ) );
+
+        } else if ( contact.isFaceEdge() ) {              
+
+          uint32_t edge          = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
+
+          const auto [ to, success ] =
+            faceEdgeVertices_[ 0 ].try_emplace(
+              std::make_pair( aPlaneIndex, edge ),
+              canidateIndex );
+
+          if ( success ) {            
+
+            const glm::dvec3& t0 = aVertices[ aTriangle.vertices[ 0 ] ];
+            const glm::dvec3& t1 = aVertices[ aTriangle.vertices[ 1 ] ];
+            const glm::dvec3& t2 = aVertices[ aTriangle.vertices[ 2 ] ];
+
+            const glm::dvec3& ev0 = bVertices[ b.edges[ edge ].vertices[ 0 ] ];
+            const glm::dvec3& ev1 = bVertices[ b.edges[ edge ].vertices[ 1 ] ];
+
+            glm::dvec3 novelVertex =
+              plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
+
+            //const auto [ existing, novelSuccess ] =
+            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
+
+            //if ( novelSuccess ) {
+
+              novelVertices_.push_back( novelVertex ); 
+              unifiedVertices_.allocate();
+         /*   }
+            else {
+
+              to->second = existing->second;
+            }*/
+          }
+
+          additionalVertices.push( insertLocalVertex( to->second ) );
+
+        } else if ( contact.isEdgeFace() ) {
+
+          uint32_t edgeInTriangle = edgeIndex( contact.with );
+          uint32_t edge           = aTriangle.edges[ edgeInTriangle ];
+
+          uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
+
+          const auto [ to, success ] =
+            faceEdgeVertices_[ 1 ].try_emplace(
+              std::make_pair( bPlaneIndex, edge ),
+              canidateIndex );
+
+          if ( success ) {
+
+            const glm::dvec3& t0 = bVertices[ bTriangle.vertices[ 0 ] ];
+            const glm::dvec3& t1 = bVertices[ bTriangle.vertices[ 1 ] ];
+            const glm::dvec3& t2 = bVertices[ bTriangle.vertices[ 2 ] ];
+
+            const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
+            const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+
+            glm::dvec3 novelVertex =
+              plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
+
+            //const auto [ existing, novelSuccess ] =
+            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
+
+            //if ( novelSuccess ) {
+
+              novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
+              unifiedVertices_.allocate();
+         /*   }
+            else {
+
+              to->second = existing->second;
+            }*/
+          }
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge( 
+              to->second,
+              edgeInTriangle ) );
+
+        } else if ( contact.isFaceVertex() ) {
+
+          additionalVertices.push( insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] ) ) );
+
+        }
+        else if ( contact.isEdgeVertex() ) {
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge(
+              vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] ),
+              edgeIndex( contact.with ) ) );
+
+        } else {
+
+          // vertex face or vertex edge
+          additionalVertices.push( insertLocalVertex( aTriangle.vertices[ vertexIndex( contact.with ) ] ) );
+
+        }
+      }
+
+      addEdges( contactPairs, additionalVertices );
+    }
+
+    triangulate( a, vertices, aTriangleIndex, false, 0 );
+  }
+
+  for (
+    uint32_t bTriangleIndex = 0, bTriangleEnd = static_cast< uint32_t >( b.triangles.size() );
+    bTriangleIndex < bTriangleEnd;
+    ++bTriangleIndex ) {
+
+    std::span< const uint32_t > trianglePairs = bContactMap.get( bTriangleIndex );
+
+    if ( !boundarySet[ 1 ][ bTriangleIndex ] || trianglePairs.empty() ) {
+      continue;
+    }
+
+    const ConnectedTriangle& bTriangle = b.triangles[ bTriangleIndex ];
+
+    for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
+
+      insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexInTriangle ] ) );
+    }
+
+    uint32_t bPlaneIndex = unifiedPlanes_.find( bTriangleIndex + bTriangleOffset );
+
+    for ( uint32_t pairIndex : trianglePairs ) {
+
+      const TriangleContacts&  trianglePair = contacts[ pairIndex ].triangles[ 1 ];
+      const ConnectedTriangle& aTriangle    = a.triangles[ trianglePair.other_triangle_index ];
+
+      assert( bTriangleIndex == trianglePair.this_triangle_index );
+
+      std::span< const ContactPair > contactPairs = trianglePair.pairs.values();
+
+      FixedStack< uint32_t, 6 > additionalVertices;
+
+      uint32_t aPlaneIndex = unifiedPlanes_.find( trianglePair.other_triangle_index );
+
+      for ( ContactPair contact : contactPairs ) {
+
+        if ( contact.isEdgeEdge() ) {
+
+          uint32_t edgeInTriangleB = edgeIndex( contact.with );
+          uint32_t edge0           = bTriangle.edges[ edgeInTriangleB ];
+          uint32_t edge1           = aTriangle.edges[ edgeIndex( contact.against ) ];
+
+          auto to = edgeEdgeVertices_.find( std::make_pair( edge1, edge0 ) );
+
+          assert( to != edgeEdgeVertices_.end() );
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge( to->second, edgeInTriangleB ) );
+
+        }
+        else if ( contact.isFaceEdge() ) {
+
+          uint32_t edge = aTriangle.edges[ edgeIndex( contact.against ) ];
+
+          const auto to =
+            faceEdgeVertices_[1].find(
+              std::make_pair( bPlaneIndex, edge ) );
+
+          assert( to != faceEdgeVertices_[ 1 ].end() );
+
+          additionalVertices.push(
+            insertLocalVertex( to->second ) );
+
+        }
+        else if ( contact.isEdgeFace() ) {
+
+          uint32_t edgeInTriangle = edgeIndex( contact.with );
+          uint32_t edge           = bTriangle.edges[ edgeInTriangle ];
+
+          const auto to =
+            faceEdgeVertices_[ 0 ].find(
+              std::make_pair( aPlaneIndex, edge ) );
+
+          assert( to != faceEdgeVertices_[ 0 ].end() );
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge(
+              to->second,
+              edgeInTriangle ) );
+
+        } else if ( contact.isFaceVertex() ) {
+
+          additionalVertices.push( insertLocalVertex( aTriangle.vertices[ vertexIndex( contact.against ) ] ) );
+
+        }
+        else if ( contact.isEdgeVertex() ) {
+
+          additionalVertices.push(
+            insertLocalVertexOnEdge(
+              aTriangle.vertices[ vertexIndex( contact.against ) ],
+              edgeIndex( contact.with ) ) );
+
+        } else {
+
+          // vertex face or vertex edge
+          additionalVertices.push( insertLocalVertex( vertices( 1, bTriangle.vertices[ vertexIndex( contact.with ) ] ) ) );
+        }
+      }
+
+      addEdges( contactPairs, additionalVertices );
+    }
+    
+    triangulate( b, vertices, bTriangleIndex, flipBWinding, 1 );
+  }
+
+  // now we do a winding-insensitive sort of the triangles.
+  for ( uint32_t triangleSet = 0; triangleSet < 2; ++triangleSet ) {
+
+    std::sort(
+      initialChartTriangles_[ triangleSet ].begin(),
+      initialChartTriangles_[ triangleSet ].end(),
+      [] ( const std::pair< Triangle, uint32_t >& left, const std::pair< Triangle, uint32_t >& right ) {
+
+        return less_lowest_vertex_parity( left.first.vertices, right.first.vertices );
+      });
+  }
+
+  outside_[ 0 ].clear();
+  outside_[ 1 ].clear();
+
+  outside_[ 0 ].resize( initialChartTriangles_[ 0 ].size(), 0 );
+  outside_[ 1 ].resize( initialChartTriangles_[ 1 ].size(), 0 );
+
+  auto aWhere = initialChartTriangles_[ 0 ].begin();
+  auto aEnd   = initialChartTriangles_[ 0 ].end();
+  auto bWhere = initialChartTriangles_[ 1 ].begin();
+  auto bEnd   = initialChartTriangles_[ 1 ].end();
+
+  AABBTree& aBVH = *a.bvh;
+  AABBTree& bBVH = *b.bvh;
+
+// #if defined(__EMSCRIPTEN__)
+//   std::transform( aWhere, aEnd, outside_[0].begin(), [&]( const Triangle& aTriangle ) {
+// #else
+  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+//#endif
+    glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
+
+    double gwn = bBVH.gwn( b, aCentre );
+
+    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+  });
+
+// #if defined(__EMSCRIPTEN__)
+//   std::transform( bWhere, bEnd, outside_[1].begin(), [&]( const Triangle& bTriangle ) {
+// #else
+  std::transform( std::execution::par_unseq, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
+//#endif
+    glm::dvec3 bCentre = vertices.centroid( bTriangle.first );
+
+    double gwn = aBVH.gwn( a, bCentre );
+
+    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+  });
+
+  auto aGWN = outside_[ 0 ].begin();
+  auto bGWN = outside_[ 1 ].begin();
+
+  while ( aWhere < aEnd && bWhere < bEnd ) {
+
+    const Triangle& aTriangle = aWhere->first;
+    const Triangle& bTriangle = bWhere->first;
+
+    if ( less_lowest_vertex_parity( aTriangle.vertices, bTriangle.vertices ) ) {
+
+      bool outside = ( *aGWN ) == 1;
+
+      if ( outside == aOutside && OUTPUT_A_BOUNDARY ) {
+
+        outputTriangleStream_.push_back( aTriangle );
+      }
+
+      ++aGWN;
+      ++aWhere;
+      continue;
+    }
+
+    if ( less_lowest_vertex_parity( bTriangle.vertices, aTriangle.vertices ) ) {
+
+      bool outside = ( *bGWN ) == 1;
+
+      if ( outside == bOutside && OUTPUT_B_BOUNDARY ) {
+
+        outputTriangleStream_.push_back( bTriangle );
+      }
+
+      ++bWhere;
+      ++bGWN;
+      continue;
+    }
+
+    bool windingParity =
+      lowest_vertex_ordered_parity( aTriangle.vertices ) ==
+      lowest_vertex_ordered_parity( bTriangle.vertices );
+
+    // if these triangles are wound the same, keep A (cos we flip the winding on B
+    // for subtraction, we can always keep A and throw away B if the winding is the same
+    // and throw away both if the winding is different)
+    if ( windingParity && OUTPUT_A_SHARED ) {
+
+      outputTriangleStream_.push_back( aTriangle );
+    }
+
+    ++aWhere;
+    ++bWhere;
+
+    ++aGWN;
+    ++bGWN;
+  }
+    
+  while ( aWhere < aEnd && OUTPUT_A_BOUNDARY ) {
+
+    bool outside = (*aGWN) == 1;
+
+    if ( outside == aOutside ) {
+
+      const Triangle& aTriangle = aWhere->first;
+
+      outputTriangleStream_.push_back( aTriangle );
+    }
+
+    ++aGWN;
+    ++aWhere;
+  }
+
+  while ( bWhere < bEnd && OUTPUT_B_BOUNDARY ) {
+
+    bool outside = (*bGWN) == 1;
+
+    if ( outside == bOutside ) {
+
+      const Triangle& bTriangle = bWhere->first;
+
+      outputTriangleStream_.push_back( bTriangle );
+    }
+
+    ++bGWN;
+    ++bWhere;
+  }
+
+  if constexpr ( OUTPUT_A_ORIGINAL ) {
+    walkAndInsertNonBoundary( aOutside, boundarySet[ 0 ], a, b, false, 0 );
+  }
+
+  if constexpr ( OUTPUT_B_ORIGINAL ) {
+    walkAndInsertNonBoundary( bOutside, boundarySet[ 1 ], b, a, flipBWinding, vertices( 1, 0 ) );
+  }
+
+  vertexUsed_.clear();
+  vertexUsed_.resize( unifiedVertices_.size(), false );
+
+  globalVertexMap_.clear();
+  globalVertexMap_.resize( unifiedVertices_.size(), EMPTY_INDEX );
+
+  assert( unifiedVertices_.size() == ( novelVertices_.size() + a.vertices.size() + b.vertices.size() ) );
+
+  // Remap and compact all the vertices as we go, outputting the triangle stream.
+  for ( Triangle& triangle : outputTriangleStream_ ) {
+
+    for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle) {
+      
+      uint32_t originalVertexIndex = triangle.vertices[ vertexInTriangle ];
+      uint32_t unifiedVertexIndex  = unifiedVertices_.find( originalVertexIndex );
+
+      uint32_t mappedVertex;
+
+      if( !vertexUsed_[ unifiedVertexIndex ] ) {
+
+        mappedVertex = output.makeVertex( vertices[ unifiedVertexIndex ] );
+
+        globalVertexMap_[ unifiedVertexIndex ] = mappedVertex;
+        vertexUsed_[ unifiedVertexIndex ]      = true;
+
+      } else {
+
+        mappedVertex = globalVertexMap_[ unifiedVertexIndex ];
+      }
+
+      triangle.vertices[ vertexInTriangle ] = mappedVertex;
+    }
+    
+    output.makeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
   }
 }
 
@@ -461,7 +959,6 @@ void conway::geometry::CSGMesher::reset() {
 
 void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
   bool outside,
-  AABBTree& bvh,
   const std::vector< bool >& boundarySet,
   const WingedEdgeMesh< glm::dvec3 >& mesh,
   const WingedEdgeMesh< glm::dvec3 >& otherMesh,
@@ -469,109 +966,155 @@ void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
   uint32_t vertexOffset ) {
 
   walked_.clear();
+
+  const AABBTree& bvh = *otherMesh.bvh;
   
+  assert( boundarySet.size() == mesh.triangles.size() );
+
   walked_.reserve( boundarySet.size() );
   walked_.insert( walked_.begin(), boundarySet.begin(), boundarySet.end() );
 
   uint32_t walkedCursor = 0;
   uint32_t walkedEnd    = static_cast< uint32_t >( boundarySet.size() );
 
-  while ( walkedCursor < walkedEnd ) {
+  for ( ; walkedCursor < walkedEnd; ++walkedCursor ) {
 
-    if ( !walked_[ walkedCursor ] ) {
+    if ( walked_[ walkedCursor ] ) {
+      continue;
+    }
 
-      const ConnectedTriangle& initialTriangle = mesh.triangles[ walkedCursor ];
-      glm::dvec3               centre          = centroid( mesh.vertices, initialTriangle );
-      bool                     triangleOutside = fabs( bvh.gwn( otherMesh, centre ) ) < 0.5;
+    const ConnectedTriangle& initialTriangle = mesh.triangles[ walkedCursor ];
+    glm::dvec3               centre          = centroid( mesh.vertices, initialTriangle );
+    bool                     triangleOutside = fabs( bvh.gwn( otherMesh, centre ) ) < GWN_TOLERANCE;
 
-      triangleStack_.push_back(  walkedCursor );
+    triangleStack_.push_back(  walkedCursor );
 
-      if ( triangleOutside == outside ) {
+    if ( triangleOutside == outside ) {
 
-        while ( !triangleStack_.empty() ) {
+      while ( !triangleStack_.empty() ) {
 
-          uint32_t nextTriangleIndex = triangleStack_.back();
+        uint32_t nextTriangleIndex = triangleStack_.back();
 
-          triangleStack_.pop_back();
+        triangleStack_.pop_back();
 
-          if ( walked_[ nextTriangleIndex ] ) {
+        if ( walked_[ nextTriangleIndex ] ) {
+
+          continue;
+        }
+
+        walked_[ nextTriangleIndex ] = true;
+
+        const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
+
+        // Copy explicitly instead of slicing to avoid warnings - CS
+        Triangle outputTriangle = { 
+            triangle.vertices[ 0 ],
+            triangle.vertices[ 1 ],
+            triangle.vertices[ 2 ] 
+        };
+
+        if ( flippedWinding ) {
+
+          std::swap( outputTriangle.vertices[ 1 ], outputTriangle.vertices[ 2 ] );
+        } 
+
+        outputTriangle.vertices[ 0 ] += vertexOffset;
+        outputTriangle.vertices[ 1 ] += vertexOffset;
+        outputTriangle.vertices[ 2 ] += vertexOffset;
+
+        outputTriangleStream_.push_back( outputTriangle );
+
+        for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
+          
+          uint32_t edgeIndex = triangle.edges[ triangleInEdge ];
+
+          if ( edgeIndex == EMPTY_INDEX ) {
 
             continue;
-          }
-
-          walked_[ nextTriangleIndex ] = true;
-
-          const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
-
-          // Copy explicitly instead of slicing to avoid warnings - CS
-          Triangle outputTriangle = { 
-              triangle.vertices[ 0 ],
-              triangle.vertices[ 1 ],
-              triangle.vertices[ 2 ] 
-          };
-
-          if ( flippedWinding ) {
-
-            std::swap( outputTriangle.vertices[ 1 ], outputTriangle.vertices[ 2 ] );
           } 
 
-          outputTriangle.vertices[ 0 ] += vertexOffset;
-          outputTriangle.vertices[ 1 ] += vertexOffset;
-          outputTriangle.vertices[ 2 ] += vertexOffset;
+          uint32_t opposingTriangle =
+            mesh.edges[ edgeIndex ].otherTriangle( nextTriangleIndex );
 
-          outputTriangleStream_.push_back( outputTriangle );
+          if ( opposingTriangle != EMPTY_INDEX && !walked_[ opposingTriangle ] ) {
 
-          for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
-            
-            uint32_t opposingTriangle =
-              mesh.edges[ triangle.edges[ triangleInEdge ] ].otherTriangle( nextTriangleIndex );
-
-            if ( opposingTriangle != EMPTY_INDEX && !walked_[ opposingTriangle ] ) {
-
-              triangleStack_.push_back( opposingTriangle );
-            }
-          }
-        }
-      } else {
-
-        while ( !triangleStack_.empty() ) {
-
-          uint32_t nextTriangleIndex = triangleStack_.back();
-
-          triangleStack_.pop_back();
-
-          if (walked_[nextTriangleIndex]) {
-
-            continue;
-          }
-
-          walked_[nextTriangleIndex] = true;
-
-          const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
-
-          for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
-          
-            uint32_t opposingTriangle = mesh.edges[ triangle.edges[ triangleInEdge ] ].otherTriangle( nextTriangleIndex );
-
-            if ( opposingTriangle != EMPTY_INDEX && !walked_[ opposingTriangle ] ) {
-
-              triangleStack_.push_back( opposingTriangle );
-            }
+            triangleStack_.push_back( opposingTriangle );
           }
         }
       }
-   }
+    } else {
 
-    ++walkedCursor;
+      while ( !triangleStack_.empty() ) {
+
+        uint32_t nextTriangleIndex = triangleStack_.back();
+
+        triangleStack_.pop_back();
+
+        if ( walked_[ nextTriangleIndex ] ) {
+
+          continue;
+        }
+
+        walked_[ nextTriangleIndex ] = true;
+
+        const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
+
+        for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
+
+          uint32_t edgeIndex = triangle.edges[ triangleInEdge ];
+
+          if ( edgeIndex == EMPTY_INDEX ) {
+
+            continue;
+          } 
+
+          uint32_t opposingTriangle = mesh.edges[ edgeIndex ].otherTriangle( nextTriangleIndex );
+
+          if ( opposingTriangle != EMPTY_INDEX && !walked_[ opposingTriangle ] ) {
+
+            triangleStack_.push_back( opposingTriangle );
+          }
+        }
+      }
+    }
   }
 }
 
 void conway::geometry::CSGMesher::addEdges(
   std::span< const ContactPair > contactPairs,
-  FixedStack< uint32_t, 6 >& additionalVertices ) {
+  const FixedStack< uint32_t, 6 >& additionalVertices ) {
+
+  assert( contactPairs.size() == additionalVertices.size() );
+
+  // Intersection is a point.
+  if ( contactPairs.size() <= 1 ) {
+
+    return;
+  }
+
+  // Intersection is a segment.
+  if ( contactPairs.size() == 2 ) {
+
+    ContactPair contact0 = contactPairs[ 0 ];
+    ContactPair contact1 = contactPairs[ 1 ];
+
+    uint32_t additionalVertice0 = additionalVertices[ 0 ];
+    uint32_t additionalVertice1 = additionalVertices[ 1 ];
+
+    if (
+      isSameEdge( contact0.with, contact1.with ) || 
+      unifiedVertices_.find( additionalVertice0 ) == unifiedVertices_.find( additionalVertice1 ) ) {
+
+      return;
+    }
+
+    edges_.emplace_back( additionalVertice0, additionalVertice1 );
+    return;
+  }
 
   size_t innerEnd = contactPairs.size();
 
+  // Intersection is a polygon
   for ( size_t outer = 0, end = contactPairs.size() - 1; outer < end; ++outer ) {
 
     ContactPair outerContact = contactPairs[ outer ];
@@ -594,20 +1137,33 @@ void conway::geometry::CSGMesher::addEdges(
   }
 }
 
+template < size_t N >
 void conway::geometry::CSGMesher::triangulate(
   const WingedEdgeMesh< glm::dvec3 >& mesh,
-  const WingedEdgeMesh< glm::dvec3 >& a,
-  const WingedEdgeMesh< glm::dvec3 >& b,
-  const ConnectedTriangle& triangle,
+  const MultiMeshVertexIndex< N >& vertices,
+  uint32_t triangleInMeshIndex,
   bool flippedWinding,
   uint32_t outputStreamIndex ) {
+  
+  const ConnectedTriangle& triangle = mesh.triangles[ triangleInMeshIndex ];
+
+  for ( CDT::Edge& edge : edges_ ) {
+
+    glm::dvec3 v1 = vertices[ edge.v1() ];
+    glm::dvec3 v2 = vertices[ edge.v2() ];
+
+    contraintEdge_.emplace_back( v1, v2 );
+  }
+
+  localVertexMap_.clear();
 
   // Find any duplicates (including merged vertices) and make them unique.
   for ( uint32_t localVertex : localVertices_ ) {
 
-    uint32_t foundVertice = unifiedVertices_.find( localVertex );
+  //  uint32_t foundVertice = /*unifiedVertices_.find*/(localVertex);
 
-    localVertexMap_.try_emplace( foundVertice, static_cast< uint32_t >( localVertexMap_.size() ) );
+  //  localVertexMap_.try_emplace( foundVertice, static_cast< uint32_t >( localVertexMap_.size() ) );
+    localVertexMap_.try_emplace( localVertex, static_cast< uint32_t >( localVertexMap_.size() ) );
   }
 
   // Cut off the size of what's been removed.
@@ -622,10 +1178,13 @@ void conway::geometry::CSGMesher::triangulate(
   // Remap edges with the new unique vertices.
   for ( CDT::Edge& edge: edges_ ) {
 
+    uint32_t edgeV1 = edge.v1();
+    uint32_t edgeV2 = edge.v2();
+
     edge =
       CDT::Edge(
-        localVertexMap_[ unifiedVertices_.find( edge.v1() ) ],
-        localVertexMap_[ unifiedVertices_.find( edge.v2() ) ] );
+        localVertexMap_[ /*unifiedVertices_.find*/(edgeV1)],
+        localVertexMap_[ /*unifiedVertices_.find*/(edgeV2)]);
   }
 
   // Now use the best 2D projection to extract the vertices.
@@ -633,184 +1192,125 @@ void conway::geometry::CSGMesher::triangulate(
 
   extract_vertices( mesh, triangle, triangleVertices );
 
-  AxisPair axesToExtract = best_truncated_projection(triangleVertices);
+  AxisPair axesToExtract = best_truncated_projection( triangleVertices );
 
   int32_t winding = orient2D( triangleVertices, axesToExtract );
 
-  MultiMeshVertexIndex< 3 > vertices = multi_mesh_vertex_index( a, b, novelVertices_ );
-
+  local2DVertices_.clear();
   local2DVertices_.reserve( localVertices_.size() );
   localVertexEdgeFlags_.clear();
   localVertexEdgeFlags_.resize( localVertices_.size(), 0 );
 
-  size_t firstAxis  = first_axis(axesToExtract);
-  size_t secondAxis = second_axis(axesToExtract);
+  glm::length_t firstAxis  = first_axis( axesToExtract );
+  glm::length_t secondAxis = second_axis( axesToExtract );
 
-  for ( uint32_t partitionedIndice : localVertices_)  {
+  for ( uint32_t partitionedIndice : localVertices_ )  {
 
     const glm::dvec3& inputVertex = vertices[ partitionedIndice ];
 
     local2DVertices_.push_back( CDT::V2d< double >::make( inputVertex[ firstAxis ], inputVertex[ secondAxis ] ) );
   }
 
-  double edgeErrorFactor = 0;
-
-  for ( size_t edgeInTriangle = 0; edgeInTriangle < 3; ++edgeInTriangle ) {
+  for ( uint32_t edgeInTriangle = 0; edgeInTriangle < 3; ++edgeInTriangle ) {
 
     std::vector< uint32_t >& edgeVertices = onEdgeVertices_[ edgeInTriangle ];
 
     uint32_t v0Index = edgeInTriangle;
-    uint32_t v1Index = (edgeInTriangle + 1) % 3;
+    uint32_t v1Index = ( edgeInTriangle + 1 ) % 3;
 
     uint8_t edgeFlag = 1 << static_cast< uint8_t >( edgeInTriangle );
 
     localVertexEdgeFlags_[ v0Index ] |= edgeFlag;
     localVertexEdgeFlags_[ v1Index ] |= edgeFlag;
 
-    if ( edgeVertices.empty() ) {
-
-      edges_.emplace_back( v0Index, v1Index );
-      continue;
-    }
-
-    double maxOrient2DError = 0;
-
-    glm::dvec2 v0 = extract( triangleVertices[ v0Index ], axesToExtract );
-    glm::dvec2 v1 = extract( triangleVertices[ v1Index ], axesToExtract );
-
-    for ( uint32_t& onEdgeVertex : edgeVertices ) {
+    for ( uint32_t onEdgeVertex : edgeVertices ) {
 
       onEdgeVertex = localVertexMap_[ unifiedVertices_.find( onEdgeVertex ) ];
 
-      const CDT::V2d< double >& v2 = local2DVertices_[ onEdgeVertex ];
-
       localVertexEdgeFlags_[ onEdgeVertex ] |= edgeFlag;
-
-      maxOrient2DError = std::max( fabs( predicates::adaptive::orient2d( &v0.x, &v1.x, &v2.x ) ), maxOrient2DError );
     }
-
-    if ( edgeVertices.size() > 1 ) {
-
-      glm::dvec2 interval    = v1 - v0;
-      glm::dvec2 absInterval = glm::abs( interval );
-
-      size_t sortAxis   = first_axis( axesToExtract );
-      size_t sortAxis2D = 0;
-
-      if ( absInterval.y > absInterval.x ) {
-
-        sortAxis    = second_axis ( axesToExtract );
-        sortAxis2D = 1;
-      }
-
-      bool ascendsTowardsV1 = interval[ sortAxis2D ] > 0;
-
-      if ( ascendsTowardsV1 ) {
-
-        std::sort(
-          edgeVertices.begin(),
-          edgeVertices.end(),
-          [ sortAxis, &vertices ]( uint32_t left, uint32_t right ) {
-
-            return vertices[ left ][ sortAxis ] < vertices[ right ][ sortAxis ];
-          }
-        );
-      }
-      else {
-
-        std::sort(
-          edgeVertices.begin(),
-          edgeVertices.end(),
-          [ sortAxis, &vertices ]( uint32_t left, uint32_t right ) {
-
-            return vertices[ left ][ sortAxis ] > vertices[ right ][ sortAxis ];
-          }
-        );
-      }
-
-      {
-        const CDT::V2d< double >& e0 = local2DVertices_[ v0Index ];
-        const CDT::V2d< double >& e1 = local2DVertices_[ edgeVertices[ 1 ] ];
-        const CDT::V2d< double >& v2 = local2DVertices_[ edgeVertices[ 0 ] ];
-
-        double orient2DError = fabs(predicates::adaptive::orient2d(&e0.x, &e1.x, &v2.x));
-
-        orient2DError *= 1 + DBL_EPSILON;
-
-        edgeErrorFactor = std::max(edgeErrorFactor, orient2DError / (CDT::distance(e0, e1) * (1 - DBL_EPSILON)));
-      }
-
-      {
-        const CDT::V2d< double >& e0 = local2DVertices_[ edgeVertices[ edgeVertices.size() - 2 ] ];
-        const CDT::V2d< double >& e1 = local2DVertices_[ v1Index ];
-        const CDT::V2d< double >& v2 = local2DVertices_[ edgeVertices.back() ];
-
-        double orient2DError = fabs(predicates::adaptive::orient2d(&e0.x, &e1.x, &v2.x));
-
-        orient2DError *= 1 + DBL_EPSILON;
-
-        edgeErrorFactor = std::max(edgeErrorFactor, orient2DError / (CDT::distance(e0, e1) * (1 - DBL_EPSILON)));
-      }
-    }
-
-    // Add the leading/trailing constraints
-    edges_.emplace_back( v0Index, edgeVertices.front() );
-    edges_.emplace_back( edgeVertices.back(), v1Index );
-
-    for (
-      size_t vertInEdgeIndex = 0, end = edgeVertices.size() - 1;
-      vertInEdgeIndex < end;
-      ++vertInEdgeIndex ) {
-      
-      edges_.emplace_back( edgeVertices[ vertInEdgeIndex ], edgeVertices[ vertInEdgeIndex + 1 ] );
-    }
-
-    for (
-      size_t vertInEdgeIndex = 1, end = edgeVertices.size() - 1;
-      vertInEdgeIndex < end;
-      ++vertInEdgeIndex) {
-      
-      const CDT::V2d< double >& e0 = local2DVertices_[ edgeVertices[ vertInEdgeIndex - 1 ] ];
-      const CDT::V2d< double >& e1 = local2DVertices_[ edgeVertices[ vertInEdgeIndex + 1 ] ];
-      const CDT::V2d< double >& v2 = local2DVertices_[ edgeVertices[ vertInEdgeIndex ] ];
-
-      double orient2DError = fabs( predicates::adaptive::orient2d( &e0.x, &e1.x, &v2.x ) );
-
-      orient2DError *= 1 + DBL_EPSILON;
-      
-      edgeErrorFactor = std::max( edgeErrorFactor, orient2DError / ( CDT::distance( e0, e1 ) * ( 1 - DBL_EPSILON ) ) );
-
-      edges_.emplace_back( edgeVertices[ vertInEdgeIndex ], edgeVertices[ vertInEdgeIndex + 1 ] );
-    }
-
-    // This should effectively give a rounding hedged version of the error
-    // in determinining these are on a constraint edge.
-    maxOrient2DError *= 1 + DBL_EPSILON;
-    edgeErrorFactor   = std::max( edgeErrorFactor, maxOrient2DError / ( glm::distance( v0, v1 ) * ( 1 - DBL_EPSILON ) ) );
   }
 
-  CDT::Triangulation< double > triangulation( CDT::VertexInsertionOrder::Auto, CDT::IntersectingConstraintEdges::DontCheck, 2.0 * edgeErrorFactor );
+  edges_.erase(
+    std::remove_if(
+      edges_.begin(),
+      edges_.end(),
+      [](const CDT::Edge& edge) { return edge.v1() == edge.v2(); } ),
+    edges_.end() );
 
-  triangulation.insertVertices( local2DVertices_ );
-  triangulation.insertEdges( edges_ );
-  triangulation.eraseOuterTriangles();
+  // Despite de-duplicating vertices in 3D, there is a numerical case
+  // where the *dropped* axis can be *very* slightly different in (effectively being the same value),
+  // but the other two values are the same.
+  // This is a degenerate case in general, and these should be merged, and the triangulation requires it,
+  // so we'll allow it to detect those cases in 2D and remap.
+  CDT::DuplicatesInfo duplicates = CDT::RemoveDuplicatesAndRemapEdges( local2DVertices_, edges_ );
 
-  assert( triangulation.triangles.size() > 0 );
+  std::vector< uint32_t > localVertRemapping; 
 
-  int32_t foundWinding         = 0;
-  size_t  windingTriangleIndex = 0;
+  localVertRemapping.resize( local2DVertices_.size(), 0 );
+
+  for ( size_t duplicate : duplicates.duplicates ) {
+
+    unifiedVertices_.merge( localVertices_[ duplicate ], localVertices_[ duplicates.mapping[ duplicate ] ] );
+
+    localVertexEdgeFlags_[ duplicates.mapping[ duplicate ] ] |= localVertexEdgeFlags_[ duplicate ];
+  }
+
+  for ( size_t where = 0, end = duplicates.mapping.size(); where < end; ++where ) {
+
+    if ( localVertRemapping[ duplicates.mapping[ where ] ] == 0 ) {
+      localVertRemapping[ duplicates.mapping[ where ] ] = static_cast< uint32_t >( where );
+    }
+  }
+
+  CDT::Triangulation< double > triangulation( CDT::VertexInsertionOrder::Auto, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+  
+  try {
+
+    triangulation.insertVertices( local2DVertices_ );
+    triangulation.insertEdges( edges_ );
+    triangulation.eraseSuperTriangle();
+
+   // triangulation.eraseOuterTriangles();
+
+    assert( triangulation.triangles.size() > 0 );
+
+  } catch ( const CDT::DuplicateVertexError& duplicateVertex ) {
+
+    const glm::dvec3& v1 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v1() ] ] ];
+    const glm::dvec3& v2 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v2() ] ] ];
+
+    triangulation.triangles.clear();
+
+    printf( "Duplicate vertex v1: %.20f %.20f %.20f v2: %.20f %.20f %.20f (indices) %u %u %u %u (truthy) %s %s %s %s %s\n", v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, duplicateVertex.v1(), duplicateVertex.v2(), localVertices_[ duplicateVertex.v1() ], localVertices_[ duplicateVertex.v2() ], ( v1 == v2 ? "true" : "false" ), (v1.x == v2.x && v1.y == v2.y && v1.z == v2.z ) ? "true" : "false", ( v1.x == v2.x ) ? "true" : "false", (v1.y == v2.y) ? "true" : "false", (v1.z == v2.z) ? "true" : "false");
+  
+  } catch ( const CDT::IntersectingConstraintsError& constraintError ) {
+  
+    printf( "Intersecting constraint error:\n\t%s\n", constraintError.what() );
+  }
+ 
+  int32_t foundWinding = 0;
 
   for ( const CDT::Triangle& cdtTriangle : triangulation.triangles ) {
 
+    // This is here because after an intersecting constraint error, there may be a "virtual" vertex
+    // created.
+    if ( cdtTriangle.vertices[ 0 ] >= localVertRemapping.size() ||
+         cdtTriangle.vertices[ 1 ] >= localVertRemapping.size() ||
+         cdtTriangle.vertices[ 2 ] >= localVertRemapping.size() ) {
+
+      continue;
+    }
+
     uint32_t localTriangle[ 3 ] = {
 
-      localVertices_[ cdtTriangle.vertices[ 0 ] ],
-      localVertices_[ cdtTriangle.vertices[ 1 ] ],
-      localVertices_[ cdtTriangle.vertices[ 2 ] ]
+      localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 0 ] ] ],
+      localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 1 ] ] ],
+      localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 2 ] ] ]
 
     };
 
-    foundWinding = orient2D( a, b, novelVertices_, localTriangle, axesToExtract );
+    foundWinding = vertices.orient2D( localTriangle, axesToExtract );
 
     if ( foundWinding != 0 ) {
 
@@ -818,7 +1318,9 @@ void conway::geometry::CSGMesher::triangulate(
     }
   }
 
-  std::vector< Triangle >& outputStream = initialChartTriangles_[ outputStreamIndex ];
+  assert( foundWinding != 0 );
+
+  std::vector< std::pair< Triangle, uint32_t > >& outputStream = initialChartTriangles_[ outputStreamIndex ];
 
   bool flipWinding = ( ( flippedWinding ? -1 : 1 ) * foundWinding * winding ) < 0;
 
@@ -826,10 +1328,17 @@ void conway::geometry::CSGMesher::triangulate(
 
     for ( const CDT::Triangle& cdtTriangle : triangulation.triangles ) {
 
+      if ( cdtTriangle.vertices[ 0 ] >= localVertRemapping.size() ||
+           cdtTriangle.vertices[ 1 ] >= localVertRemapping.size() ||
+           cdtTriangle.vertices[ 2 ] >= localVertRemapping.size() ) {
+
+        continue;
+      }
+
       uint8_t edgeMask =
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 0 ] ] &
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 1 ] ] &
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 2 ] ];
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 0 ] ] ] &
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 1 ] ] ] &
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 2 ] ] ];
 
       // Hey CDT, are you disrespecting me with triangles on the same edge,
       // despite that case being full constrained? 
@@ -845,40 +1354,62 @@ void conway::geometry::CSGMesher::triangulate(
       }
 
       Triangle localTriangle { { 
-        localVertices_[ cdtTriangle.vertices[ 0 ] ],
-        localVertices_[ cdtTriangle.vertices[ 1 ] ],
-        localVertices_[ cdtTriangle.vertices[ 2 ] ]
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 0 ] ] ] ),
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 1 ] ] ] ),
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 2 ] ] ] )
       }};
+      
+      if ( localTriangle.vertices[ 0 ] == localTriangle.vertices[ 1 ] ||
+            localTriangle.vertices[ 1 ] == localTriangle.vertices[ 2 ] ||
+            localTriangle.vertices[ 2 ] == localTriangle.vertices[ 0 ] ||
+            vertices.orient2D( localTriangle.vertices, axesToExtract ) == 0 ) {
+        continue;
+      }
 
       reorder_to_lowest_vertex( localTriangle.vertices );
 
       std::swap( localTriangle.vertices[ 1 ], localTriangle.vertices[ 2 ] );
 
-      outputStream.push_back( localTriangle );
+      outputStream.emplace_back( localTriangle, triangleInMeshIndex );
     }
 
   } else {
 
     for ( const CDT::Triangle& cdtTriangle : triangulation.triangles ) {
-      
+
+      if ( cdtTriangle.vertices[ 0 ] >= localVertRemapping.size() ||
+           cdtTriangle.vertices[ 1 ] >= localVertRemapping.size() ||
+           cdtTriangle.vertices[ 2 ] >= localVertRemapping.size() ) {
+
+        continue;
+      }
+
       uint8_t edgeMask =
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 0 ] ] &
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 1 ] ] &
-        localVertexEdgeFlags_[ cdtTriangle.vertices[ 2 ] ];
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 0 ] ] ] &
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 1 ] ] ] &
+        localVertexEdgeFlags_[ localVertRemapping[ cdtTriangle.vertices[ 2 ] ] ];
 
       if ( edgeMask != 0 ) {
         continue;
       }
 
       Triangle localTriangle { { 
-        localVertices_[ cdtTriangle.vertices[ 0 ] ],
-        localVertices_[ cdtTriangle.vertices[ 1 ] ],
-        localVertices_[ cdtTriangle.vertices[ 2 ] ]
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 0 ] ] ] ),
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 1 ] ] ] ),
+        unifiedVertices_.find( localVertices_[ localVertRemapping[ cdtTriangle.vertices[ 2 ] ] ] )
       }};
+
+      if ( localTriangle.vertices[ 0 ] == localTriangle.vertices[ 1 ] ||
+            localTriangle.vertices[ 1 ] == localTriangle.vertices[ 2 ] ||
+            localTriangle.vertices[ 2 ] == localTriangle.vertices[ 0 ] ||
+            vertices.orient2D( localTriangle.vertices, axesToExtract ) == 0 ) {
+        continue;
+      }
 
       reorder_to_lowest_vertex( localTriangle.vertices );
 
-      outputStream.push_back( localTriangle );
+      outputStream.emplace_back( localTriangle, triangleInMeshIndex );
+
     }
   }
 
@@ -895,20 +1426,46 @@ void conway::geometry::CSGMesher::triangulate(
   }
 }
 
+std::string conway::geometry::CSGMesher::dumpConstraints( const std::string& preamble ) const {
+
+  std::stringstream obj;
+
+  obj << preamble;
+
+  size_t indice = 0;
+
+  for ( const auto& [ a, b ] : contraintEdge_ ) {
+
+    obj << "v " << a.x << " " << a.y << " " << a.z << "\n";
+    obj << "v " << b.x << " " << b.y << " " << b.z << "\n";
+
+    size_t indice1 = ++indice;
+    size_t indice2 = ++indice;
+
+    obj << "l " << indice1 << " " << indice2 << "\n";
+  }
+
+  return obj.str();
+}
+
 uint32_t conway::geometry::CSGMesher::insertLocalVertex( uint32_t inputVertex ) {
 
-  localVertices_.push_back( inputVertex );
+  uint32_t result = /*unifiedVertices_.find*/( inputVertex );
 
-  return inputVertex;
+  localVertices_.push_back( result );
+
+  return result;
 }
 
 uint32_t conway::geometry::CSGMesher::insertLocalVertexOnEdge( uint32_t inputVertex, uint32_t edgeInTriangle ) {
+  
+  uint32_t result = /*unifiedVertices_.find*/( inputVertex );
 
-  localVertices_.push_back( inputVertex );
+  localVertices_.push_back( result );
 
-  onEdgeVertices_[ edgeInTriangle ].push_back( inputVertex );
+  onEdgeVertices_[ edgeInTriangle ].push_back( result );
 
-  return inputVertex;
+  return result;
 }
 
 std::string conway::geometry::CSGMesher::dumpNovelVertices( const std::string& preamble ) const {

@@ -411,7 +411,7 @@ inline bool MatrixFlipsTriangles(const glm::dmat3 &mat) {
 inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
                                 glm::dmat3 placement = glm::dmat3(1),
                                 double startRad = 0,
-                                double endRad = (double)CONST_PI * 2,
+                                double endRad = M_PI * 2,
                                 bool swap = true,
                                 bool normalToCenterEnding = false) {
   IfcCurve c;
@@ -459,7 +459,7 @@ inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
     c.points[c.points.size() - 1] = (c.points[c.points.size() - 1] + c.points[c.points.size() - 2]) * 0.5;
 
     // check for a closed curve
-    if (endRad == CONST_PI * 2 && startRad == 0)
+    if (endRad == M_PI * 2 && startRad == 0)
     {
       c.points.push_back(c.points[0]);
 
@@ -494,7 +494,7 @@ inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
     }
 
     // check for a closed curve
-    if (endRad == CONST_PI * 2 && startRad == 0)
+    if (endRad == M_PI * 2 && startRad == 0)
     {
       c.points.push_back(c.points[0]);
 

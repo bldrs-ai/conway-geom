@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+#include "structures/winged_edge.h"
+
 //#include "geometry.h"
 #include "material.h"
 
@@ -114,6 +116,8 @@ struct IfcGeometry : fuzzybools::Geometry {
   IfcGeometry( const fuzzybools::Geometry& from ) : fuzzybools::Geometry( from ) {}
   
   IfcGeometry( fuzzybools::Geometry&& from ) : fuzzybools::Geometry( from ) {}
+  
+  IfcGeometry( WingedEdgeDV3&& from );
 
   void ReverseFace(uint32_t index);
   void ReverseFaces();
@@ -135,6 +139,10 @@ struct IfcGeometry : fuzzybools::Geometry {
   void ApplyTransform(const glm::dmat4x4& transform);
   IfcGeometry Clone();
   std::string GeometryToObj( const std::string& preamble = "" ) const;
+
+  WingedEdgeDV3& GetWingedEdgeMesh();
+
+  std::optional< WingedEdgeDV3 > wingedEdgeMesh;
 
  private:
   bool computeSafeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
