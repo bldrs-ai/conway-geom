@@ -102,8 +102,20 @@ if "%1"=="test" (
 REM Check if the third argument is "profile"
 IF "%~3" NEQ "" IF "%~3" == "profile" (
     echo Remapping source map paths...
-    powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1"
+
+    REM Pass the correct source map directly to PowerShell based on the second argument
+    IF "%~2" == "wasmWeb" (
+        powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1" -SOURCE_MAP "..\bin\release\ConwayGeomWasmWeb.wasm.map"
+    ) ELSE IF "%~2" == "wasmNode" (
+        powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1" -SOURCE_MAP "..\bin\release\ConwayGeomWasmNode.wasm.map"
+    ) ELSE (
+        powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1" -SOURCE_MAP "..\bin\release\ConwayGeomWasm.wasm.map"
+    )
 )
+
+
+
+
 
 cd ..
 
