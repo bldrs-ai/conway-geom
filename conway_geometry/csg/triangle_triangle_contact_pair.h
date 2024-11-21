@@ -458,7 +458,6 @@ namespace conway::geometry {
         int32_t t1v1indice = vertIndices[1][(edgeInTriangle1 + 1) % 3];
 
         o[0] = vertices.orient3D(t1v0indice, t1v1indice, t0v0indice, t0v1indice, 0 );
-
         o[1] = vertices.orient3D(t1v0indice, t1v1indice, t0v1indice, t0v2indice, 0 );
 
         if ( o[0] * o[1] <= 0 ) {

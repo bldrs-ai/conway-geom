@@ -611,7 +611,7 @@ project "ConwayGeomWasmNode"
             -- TODO(Conor): I want threads for performance reasons.
             -- "-pthread",
             "-std=c++20",
-            "-fexperimental-library"
+            "-fexperimental-library",
             -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
             -- "-msimd128",
             -- "-DGLM_FORCE_INTRINSICS=1"
@@ -635,13 +635,14 @@ project "ConwayGeomWasmNode"
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
     linkoptions {
-       -- "-fsanitize=address",
+        "-fsanitize=address",
         "-g -O0",
         "-gdwarf-5",
         "-gpubnames",
         "--bind",
         "--dts",
         "-flto",
+        "-s PRECISE_F32=1",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ENVIRONMENT=node",
         "-s ALLOW_MEMORY_GROWTH=1",
@@ -652,8 +653,9 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--source-map-base " .. _ARGS[2],
         "-s NODERAWFS=1",
         --"-sASSERTIONS",
-        "-s SAFE_HEAP=1",
+   --     "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s ABORTING_MALLOC=0",
         --"-s USE_ES6_IMPORT_META=0",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
@@ -680,6 +682,7 @@ else
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
+        "-s PRECISE_F32=1",
         "-s NODERAWFS=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=node",
@@ -687,6 +690,7 @@ else
         --"-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
+        "-s ABORTING_MALLOC=0",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-lworkerfs.js",
@@ -727,7 +731,7 @@ end
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
             "external/fuzzy-bools",
-            "external/csgjs-cpp",
+      --      "external/csgjs-cpp",
             "external/CDT/CDT/include"--,
            -- "external/tinyobjloader"
         }

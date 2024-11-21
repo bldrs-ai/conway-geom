@@ -69,7 +69,6 @@ namespace conway::geometry {
       const glm::dvec3& v1a = (*this)[ v1 ];
       const glm::dvec3& v2a = (*this)[ v2 ];
 
-      // Deterministic order for centroid calculation.
       return ( ( v0a + ( v1a + v2a ) ) ) * (1.0 / 3.0);
     }
 

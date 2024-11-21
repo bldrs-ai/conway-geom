@@ -352,8 +352,8 @@ int csg( int argc, const char* argv[] ) {
 
   VertexWelder welder;
 
-  welder.weld( a );
-  welder.weld( b );
+  welder.weld( a, 0 );
+  welder.weld( b, 0 );
 
   {
     CSG cleaner;

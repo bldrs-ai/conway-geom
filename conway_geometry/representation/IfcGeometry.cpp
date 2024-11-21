@@ -207,38 +207,32 @@ conway::geometry::WingedEdgeDV3& IfcGeometry::GetWingedEdgeMesh() {
 
     for ( uint32_t where = 0; where < numPoints; ++where ) {
     
-      mesh.vertices.push_back( GetPoint( where ) );
+      glm::dvec3 from = GetPoint( where );
+
+      from *= 1e7;
+
+      from = glm::round( from );
+
+      from /= 1e7;
+
+      mesh.vertices.push_back( from );
     }
 
-    for ( uint32_t where = 0; where < numFaces; ++where ) {
+    for ( uint32_t where = 0, end = numFaces * 3; where < end; where += 3 ) {
 
-      fuzzybools::Face face = GetFace( where );
+      size_t f1 = indexData[ where + 0 ];
+      size_t f2 = indexData[ where + 1 ];
+      size_t f3 = indexData[ where + 2 ];
 
-      if ( face.i0 == face.i1 || face.i1 == face.i2 || face.i2 == face.i0 ) {
-
-        continue;
-      }
-
-      if ( is_zero_area_triangle( mesh.vertices[ face.i0 ], mesh.vertices[ face.i1 ], mesh.vertices[ face.i2 ] ) ) {
-        continue;
-      }
-
-      mesh.makeTriangle( face.i0, face.i1, face.i2 );
+      mesh.makeTriangle( f1, f2, f3 );
     }
 
-    welder.weld( *wingedEdgeMesh );
+    welder.weld( *wingedEdgeMesh, 0 );
 
     {
       CSG cleaner;
-     
-      // if ( wingedEdgeMesh->vertices.size() == 0 ) {
-      //   printf( "no what?\n" );
-      // }
+ 
       cleaner.clean( *wingedEdgeMesh );
-
-      if ( wingedEdgeMesh->vertices.size() == 0 ) {
-        printf( "what?\n" );
-      }
     }
   }
 

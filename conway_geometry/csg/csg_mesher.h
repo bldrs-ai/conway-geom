@@ -57,7 +57,9 @@ namespace conway::geometry {
 
     std::string dumpNovelVertices( const std::string& preamble = "" ) const;
 
+#if !defined( __EMSCRIPTEN__ )
     std::string dumpConstraints( const std::string& preamble = "" ) const;
+#endif
 
   private:
 
@@ -108,6 +110,8 @@ namespace conway::geometry {
     std::vector< bool > vertexUsed_;
     std::vector< uint32_t > globalVertexMap_;
 
+#if !defined( __EMSCRIPTEN__ )
     std::vector< std::pair< glm::vec3, glm::dvec3 > > contraintEdge_;
+#endif
   };
 }

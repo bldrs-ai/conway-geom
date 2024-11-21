@@ -315,6 +315,8 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), newSecond.GetWingedEdgeMesh(), resultMesh, 0 );
 
         result = IfcGeometry( std::move( resultMesh ) );
+        
+        secondGeom.wingedEdgeMesh.reset();
 
       } else {
 
@@ -325,6 +327,8 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), secondGeom.GetWingedEdgeMesh(), resultMesh, 0 );
 
         result = IfcGeometry( std::move( resultMesh ) );
+
+        secondGeom.wingedEdgeMesh.reset();
       }
     }
 

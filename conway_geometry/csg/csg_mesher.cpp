@@ -40,7 +40,6 @@ void conway::geometry::CSGMesher::process(
   const std::vector< bool >& boundarySet,
   WingedEdgeDV3& output ) {
 
-
   reset();
 
   unifiedPlanes_.allocate( static_cast< uint32_t >( a.triangles.size() ) ); 
@@ -162,8 +161,14 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               line_segment_line_segment_intersection( e0v0, e0v1, e1v0, e1v1 );
 
-              novelVertices_.push_back( novelVertex );
-              unifiedVertices_.allocate();
+            if ( isnan( novelVertex.x ) ) {
+               printf( "edge edge nan\n");
+            
+              novelVertex = e0v0;
+            }
+
+            novelVertices_.push_back( novelVertex );
+            unifiedVertices_.allocate();
           }
 
           additionalVertices.push(
@@ -193,7 +198,14 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
 
+            if ( isnan( novelVertex.x ) ) {
+              printf( "face edge nan\n");
+              novelVertex = t0;
+            }
+
             novelVertices_.push_back( novelVertex ); 
+            
+
             unifiedVertices_.allocate();
           }
 
@@ -222,6 +234,12 @@ void conway::geometry::CSGMesher::process(
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
+
+            if ( isnan( novelVertex.x ) ) {
+              printf( "edge face nan\n");
+
+              novelVertex = t0;
+            }
 
             novelVertices_.push_back( novelVertex );
             unifiedVertices_.allocate();
@@ -268,27 +286,28 @@ void conway::geometry::CSGMesher::process(
       return less_lowest_vertex_parity( left.first.vertices, right.first.vertices );
     });
 
-  //outside_[ 0 ].clear();
-  //outside_[ 0 ].resize( initialChartTriangles_[ 0 ].size(), 0 );
+
+  outside_[ 0 ].clear();
+  outside_[ 0 ].resize( initialChartTriangles_[ 0 ].size(), 0 );
 
   auto aWhere = initialChartTriangles_[ 0 ].begin();
   auto aEnd   = initialChartTriangles_[ 0 ].end();
 
-  //AABBTree& aBVH = *a.bvh;
+  AABBTree& aBVH = *a.bvh;
 
 // #if defined(__EMSCRIPTEN__)
 //   std::transform( aWhere, aEnd, outside_[ 0 ].begin(), [&]( const Triangle& aTriangle ) {
 // #else
-//  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+ std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
 //// #endif
-//    glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
-//
-//    double gwn = aBVH.gwn( a, aCentre, aTriangle.second );
-//
-//    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
-//  });
+   glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
 
-  //auto aGWN = outside_[ 0 ].begin();
+   double gwn = aBVH.gwn( a, aCentre, aTriangle.second );
+
+   return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+ });
+
+  auto aGWN = outside_[ 0 ].begin();
 
   if ( initialChartTriangles_[ 0 ].size() > 1 ) {
 
@@ -299,76 +318,75 @@ void conway::geometry::CSGMesher::process(
 
       if ( less_lowest_vertex_parity( aTriangle.vertices, bTriangle.vertices ) ) {
 
-  //      bool outside = ( *aGWN ) == 1;
+        bool outside = ( *aGWN ) == 1;
 
-        if ( /*outside &&*/ OUTPUT_A_BOUNDARY ) {
+        if ( outside ) {
 
           outputTriangleStream_.push_back( aTriangle );
         }
 
-  //      ++aGWN;
+        ++aGWN;
         ++aWhere;
         continue;
       }
 
-      bool windingParity = aTriangle == bTriangle;
+      bool windingParity =
+        lowest_vertex_ordered_parity( aTriangle.vertices ) ==
+        lowest_vertex_ordered_parity( bTriangle.vertices );
 
       // if these triangles are wound the same, keep A (cos we flip the winding on B
       // for subtraction, we can always keep A and throw away B if the winding is the same
       // and throw away both if the winding is different)
-      if ( windingParity && OUTPUT_A_SHARED ) {
+      if ( ( *aGWN ) == 1 && windingParity ) {
 
         outputTriangleStream_.push_back( aTriangle );
+
       }
 
       ++aWhere;
       ++aWhere;
+      ++aGWN;
+      ++aGWN;
 
       if ( aWhere == aEnd ) {
 
         break;
       }
-
-   //   ++aGWN;
-  //    ++aGWN;
     }
   }
 
   while ( aWhere < aEnd ) {
 
-  //  bool outside = (*aGWN) == 1;
+   bool outside = (*aGWN) == 1;
 
-    //if ( outside ) {
+    if ( outside ) {
 
       const Triangle& aTriangle = aWhere->first;
 
       outputTriangleStream_.push_back( aTriangle );
-//    }
+   }
 
-  //  ++aGWN;
+    ++aGWN;
     ++aWhere;
   }
 
-  if constexpr ( OUTPUT_A_ORIGINAL ) {
-
-    for (
-      uint32_t aTriangleIndex = 0,
-               end = static_cast< uint32_t >( a.triangles.size() );
-      aTriangleIndex < end;
-      ++aTriangleIndex ) {
+  for (
+    uint32_t aTriangleIndex = 0,
+              end = static_cast< uint32_t >( a.triangles.size() );
+    aTriangleIndex < end;
+    ++aTriangleIndex ) {
+  
+    if ( !boundarySet[ aTriangleIndex ] ) {
     
-      if ( !boundarySet[ aTriangleIndex ] ) {
-      
-        const ConnectedTriangle& triangle = a.triangles[ aTriangleIndex ];
+      const ConnectedTriangle& triangle = a.triangles[ aTriangleIndex ];
 
-        Triangle outputTriangle = {
-            triangle.vertices[0],
-            triangle.vertices[1],
-            triangle.vertices[2]
-        };
+      Triangle outputTriangle = {
+          triangle.vertices[0],
+          triangle.vertices[1],
+          triangle.vertices[2]
+      };
 
-        outputTriangleStream_.push_back( outputTriangle );
-      }
+      outputTriangleStream_.push_back( outputTriangle );
     }
   }
 
@@ -385,7 +403,6 @@ void conway::geometry::CSGMesher::process(
       
       uint32_t originalVertexIndex = triangle.vertices[ vertexInTriangle ];
       uint32_t unifiedVertexIndex  = unifiedVertices_.find( originalVertexIndex );
-
       uint32_t mappedVertex;
 
       if( !vertexUsed_[ unifiedVertexIndex ] ) {
@@ -1147,6 +1164,7 @@ void conway::geometry::CSGMesher::triangulate(
   
   const ConnectedTriangle& triangle = mesh.triangles[ triangleInMeshIndex ];
 
+#if !defined( __EMSCRIPTEN__ )
   for ( CDT::Edge& edge : edges_ ) {
 
     glm::dvec3 v1 = vertices[ edge.v1() ];
@@ -1154,6 +1172,7 @@ void conway::geometry::CSGMesher::triangulate(
 
     contraintEdge_.emplace_back( v1, v2 );
   }
+#endif
 
   localVertexMap_.clear();
 
@@ -1263,15 +1282,13 @@ void conway::geometry::CSGMesher::triangulate(
     }
   }
 
-  CDT::Triangulation< double > triangulation( CDT::VertexInsertionOrder::Auto, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+  CDT::Triangulation< double > triangulation( CDT::VertexInsertionOrder::AsProvided, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
   
   try {
 
     triangulation.insertVertices( local2DVertices_ );
     triangulation.insertEdges( edges_ );
     triangulation.eraseSuperTriangle();
-
-   // triangulation.eraseOuterTriangles();
 
     assert( triangulation.triangles.size() > 0 );
 
@@ -1289,6 +1306,7 @@ void conway::geometry::CSGMesher::triangulate(
     printf( "Intersecting constraint error:\n\t%s\n", constraintError.what() );
   }
  
+
   int32_t foundWinding = 0;
 
   for ( const CDT::Triangle& cdtTriangle : triangulation.triangles ) {
@@ -1426,6 +1444,7 @@ void conway::geometry::CSGMesher::triangulate(
   }
 }
 
+#if !defined( __EMSCRIPTEN__ )
 std::string conway::geometry::CSGMesher::dumpConstraints( const std::string& preamble ) const {
 
   std::stringstream obj;
@@ -1447,6 +1466,7 @@ std::string conway::geometry::CSGMesher::dumpConstraints( const std::string& pre
 
   return obj.str();
 }
+#endif
 
 uint32_t conway::geometry::CSGMesher::insertLocalVertex( uint32_t inputVertex ) {
 

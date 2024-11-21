@@ -50,11 +50,12 @@ namespace conway::geometry {
       return charter_.dumpNovelVertices( preamble );
     }
 
+#if !defined( __EMSCRIPTEN__ )
     std::string dumpConstraints( const std::string& preamble = "" ) const {
 
       return charter_.dumpConstraints( preamble );
     }
-
+#endif
 
 private:
 

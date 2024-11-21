@@ -5,6 +5,7 @@
 #include <math.h>
 #include <vector>
 #include "structures/winged_edge.h"
+#include "operations/math_utils.h"
 
 #if defined (_MSC_VER)
 
@@ -24,35 +25,6 @@
 
 namespace conway::geometry {
 
-  constexpr size_t SECOND_AXIS_SHIFT = 2;
-  constexpr size_t AXIS_MASK         = ( 1 << SECOND_AXIS_SHIFT ) - 1;
-  constexpr size_t X_AXIS_INDEX      = 0;
-  constexpr size_t Y_AXIS_INDEX      = 1;
-  constexpr size_t Z_AXIS_INDEX      = 2;
-
-  constexpr inline size_t make_axis_pair( size_t first, size_t second ) {
-
-    return ( first ) | ( second << SECOND_AXIS_SHIFT );
-  }
-
-  enum class AxisPair : size_t {
-    NONE = 0,
-    X_Y = make_axis_pair( X_AXIS_INDEX, Y_AXIS_INDEX ),
-    X_Z = make_axis_pair( X_AXIS_INDEX, Z_AXIS_INDEX ),
-    Y_Z = make_axis_pair( Y_AXIS_INDEX, Z_AXIS_INDEX )
-
-  };
-
-  constexpr inline glm::length_t first_axis( AxisPair from ) {
-  
-    return static_cast< glm::length_t >( from ) & AXIS_MASK;
-  }
-
-  constexpr inline glm::length_t second_axis( AxisPair from ) {
-  
-    return ( static_cast< glm::length_t >( from ) >> SECOND_AXIS_SHIFT );
-  }
-
   inline glm::dvec3 plane_line_segment_intersection(
     const glm::dvec3& t0,
     const glm::dvec3& t1,
@@ -70,37 +42,6 @@ namespace conway::geometry {
     double t = dot( origin, normal ) / -dot( direction, normal );
 
     return l0 + direction * t;
-  }
-
-  /** Assuming 2 intersecting line segments, this gets the intersection point */
-  inline glm::dvec3 line_segment_line_segment_intersection(
-    const glm::dvec3& a0,
-    const glm::dvec3& a1,
-    const glm::dvec3& b0,
-    const glm::dvec3& b1 ) {
-
-    glm::dvec3 e0        = a1 - a0;
-    glm::dvec3 direction = b1 - b0;
-
-    // intersecting non-colinear line segments are 
-    // coplanar, and have a well defined normal.
-    glm::dvec3 e1     = glm::cross( e0, direction );
-    glm::dvec3 origin = b0 - a0;
-    glm::dvec3 normal = glm::cross( e0, e1 );
-
-    double t = dot( origin, normal ) / -dot( direction, normal );
-
-    return b0 + direction * t;
-  }
-
-  inline glm::dvec2 extract( const glm::dvec3& from, AxisPair axes ) {
-
-    return glm::dvec2( from[ first_axis( axes ) ], from[ second_axis( axes ) ] );
-  }
-
-  inline std::pair< double, double > extract_pair( const glm::dvec3& from, AxisPair axes ) {
-
-    return std::make_pair( from[ first_axis( axes ) ], from[ second_axis( axes ) ] );
   }
 
   inline double orient2D( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, AxisPair axes ) {
@@ -135,14 +76,36 @@ namespace conway::geometry {
   /** Is a 3D triangle zero area, computed with exact predicates, which means that for the tolerance == 0 case, it will give an exact answer */
   inline bool is_zero_area_triangle( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, double tolerance = 0 ) {
 
-    double halfTolerance = tolerance * 0.5;
+    double doubleTolerance = 2.0 * tolerance;
 
     return
-      orient2D( v0, v1, v2, AxisPair::X_Y, halfTolerance ) == 0 &&
-      orient2D( v0, v1, v2, AxisPair::X_Z, halfTolerance ) == 0 &&
-      orient2D( v0, v1, v2, AxisPair::Y_Z, halfTolerance ) == 0;
+      orient2D( v0, v1, v2, AxisPair::X_Y, doubleTolerance ) == 0 &&
+      orient2D( v0, v1, v2, AxisPair::X_Z, doubleTolerance ) == 0 &&
+      orient2D( v0, v1, v2, AxisPair::Y_Z, doubleTolerance ) == 0;
   } 
 
+  /** Assuming 2 intersecting line segments, this gets the intersection point */
+  inline glm::dvec3 line_segment_line_segment_intersection(
+    const glm::dvec3& a0,
+    const glm::dvec3& a1,
+    const glm::dvec3& b0,
+    const glm::dvec3& b1 ) {
+
+    glm::dvec3 e0        = a1 - a0;
+    glm::dvec3 direction = b1 - b0;
+
+    // intersecting non-colinear line segments are 
+    // coplanar, and have a well defined normal.
+    glm::dvec3 e1     = glm::cross( e0, direction );
+    glm::dvec3 origin = b0 - a0;
+    glm::dvec3 normal = glm::cross( e0, e1 );
+
+    double t = dot( origin, normal ) / -dot( direction, normal );
+
+    // printf( "%f %f %f %f %d %d %d %d\n", t, predicates::adaptive::orient3d( &a0.x, &a1.x, &b0.x, &b1.x ), glm::length( normal ), glm::length( direction ), is_zero_area_triangle( a0, a1, b0 ) ? 1 : 0, is_zero_area_triangle( a0, a1, b1 ) ? 1 : 0, is_zero_area_triangle( a0, b0, b1 ) ? 1 : 0, is_zero_area_triangle( a1, b0, b1 ) ? 1 : 0 );
+
+    return b0 + direction * t;
+  }
 
   /** Will get the best 2D projection for a triangle that simply involves truncating an axis
    *  As long as the triangle is non-zero area, given that orient2D is exact, it should
@@ -152,21 +115,15 @@ namespace conway::geometry {
 
     double bestValue = fabs( orient2D( v0, v1, v2, AxisPair::X_Y ) );
 
-    //printf( "%f x_y\n", bestValue );
-
     AxisPair result  = AxisPair::X_Y;
 
     if ( double candidateValue = fabs( orient2D( v0, v1, v2, AxisPair::X_Z ) ); candidateValue > bestValue ) {
-
-      //printf("%f x_z\n", candidateValue );
 
       result    = AxisPair::X_Z;
       bestValue = candidateValue;
     }
 
     if ( double candidateValue = fabs( orient2D( v0, v1, v2, AxisPair::Y_Z ) ); candidateValue > bestValue ) {
-
-      //printf("%f y_z\n", candidateValue );
 
       bestValue = candidateValue;
       result = AxisPair::Y_Z;
@@ -218,80 +175,6 @@ namespace conway::geometry {
       
       to[ vertInTriangle ] = vertices[ triangle.vertices[ vertInTriangle ] ];
     }
-  }
-
-
-  inline double length2( const glm::dvec3& v ) {
-
-    return glm::dot( v, v );
-  }
-
-  inline bool same_point( const glm::dvec3& v0, const glm::dvec3& v1, double tolerance = 0 ) {
-
-    glm::dvec3 comparison = glm::abs( v0 - v1 );
-
-    return tolerance >= comparison.x && tolerance >= comparison.y && tolerance >= comparison.z;
-  }
- 
-  /**
-   * Determinant for 3 vectors (matrix essentially)
-   */
-  inline double determinant3x3( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2 ) {
-    
-    return 
-      ( v0.x * ( ( v1.y * v2.z ) - ( v1.z * v2.y ) ) ) -
-      ( v1.x * ( ( v0.y * v2.z ) - ( v0.z * v2.y ) ) ) +
-      ( v2.x * ( ( v0.y * v1.z ) - ( v0.z * v1.y ) ) );
-  }
-
-  namespace {
-
-    // See here for this approximation https://mazzo.li/posts/vectorized-atan2.html#atan2-primer
-    inline constexpr double fast_atan_scalar_approximation( double x ) {
-
-      constexpr double A1  = 0.99997726;
-      constexpr double A3  = -0.33262347;
-      constexpr double A5  = 0.19354346;
-      constexpr double A7  = -0.11643287;
-      constexpr double A9  = 0.05265332;
-      constexpr double A11 = -0.01172120;
-
-      double x2 = x * x;
-
-      return x * ( A1 + x2 * ( A3 + x2 * ( A5 + x2 * ( A7 + x2 * ( A9 + x2 * A11 ) ) ) ) );
-    }
-
-    inline double fast_atan2( double y, double x ) {
-
-      double absY = std::abs( y );
-      double absX = std::abs( x );
-
-      double result;
-
-      if ( absX < absY ) {
-
-        double atanInput = x / y;
-
-        result = ( atanInput >= 0.0 ? M_PI_2 : -M_PI_2 ) -
-          fast_atan_scalar_approximation( atanInput );
-      }
-      else {
-
-        double atanInput = y / x;
-
-        result = fast_atan_scalar_approximation( atanInput );
-      }
-
-      if ( x < 0 && y >= 0 ) {
-        result += M_PI; 
-      }
-      else if ( x < 0 && y < 0 ) {
-        result -= M_PI;
-      }
-
-      return result;
-    }
-
   }
 
   /** Calculate the signed solid angle of a triangle relative a point */

@@ -17,11 +17,6 @@ void conway::geometry::CSG::clean( WingedEdgeMesh< glm::dvec3 >& a ) {
     output
   );
 
-  if ( output.vertices.size() == 0 ) {
-
-    printf( "huh?\n" );
-  }
-
   a = std::move( output );
 }
 
@@ -170,7 +165,6 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double toler
         std::make_pair(
           contact.triangles[ 0 ].this_triangle_index,
           contact.triangles[ 1 ].this_triangle_index); });
-
 
 }
 
