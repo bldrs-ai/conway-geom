@@ -316,7 +316,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 
         result = IfcGeometry( std::move( resultMesh ) );
         
-        secondGeom.wingedEdgeMesh.reset();
+      //  secondGeom.wingedEdgeMesh.reset();
 
       } else {
 
@@ -328,7 +328,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 
         result = IfcGeometry( std::move( resultMesh ) );
 
-        secondGeom.wingedEdgeMesh.reset();
+    //   secondGeom.wingedEdgeMesh.reset();
       }
     }
 
@@ -354,31 +354,31 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     return resultGeometry;
   }
 
-  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
-  // get origin
-  if (parameters.flatFirstMesh[0].numFaces) {
-    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
-      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
-      break;
-    }
-  }
+  // glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
+  // // get origin
+  // if (parameters.flatFirstMesh[0].numFaces) {
+  //   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+  //     fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
+  //     originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
+  //     break;
+  //   }
+  // }
   
   // TODO: clean this up, remove origin translation
-  auto normalizeMat    = glm::translate(-originFirstMesh);
-  glm::dmat4 newMatrix = normalizeMat;
+  // auto normalizeMat    = glm::translate(-originFirstMesh);
+  // glm::dmat4 newMatrix = normalizeMat;
 
-  parameters.flatFirstMesh[0].ApplyTransform( newMatrix );
+  // parameters.flatFirstMesh[0].ApplyTransform( newMatrix );
 
-   for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
+  //  for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
 
-    parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
-  }
+  //   parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
+  // }
 
   resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh );
 
   glm::dmat4 combinedMatrix =
-      glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
+       glm::inverse(parameters.parentMatrix);// * glm::translate(originFirstMesh);
 
   resultGeometry.ApplyTransform( combinedMatrix );
 

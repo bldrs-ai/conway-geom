@@ -74,7 +74,7 @@ namespace conway::geometry {
 
             int32_t probeY = static_cast<int32_t>( coord.y ) + y;
 
-            if ( probeY < 0 || probeY > static_cast<int32_t>(MAX_MORTON_COMPONENT)) {
+            if ( probeY < 0 || probeY > static_cast<int32_t>( MAX_MORTON_COMPONENT ) ) {
 
               continue;
             }
@@ -83,7 +83,7 @@ namespace conway::geometry {
 
               int32_t probeX = static_cast<int32_t>( coord.x ) + x;
 
-              if ( probeX < 0 || probeX > static_cast<int32_t>(MAX_MORTON_COMPONENT)) {
+              if ( probeX < 0 || probeX > static_cast<int32_t>( MAX_MORTON_COMPONENT ) ) {
 
                 continue;
               }
@@ -110,6 +110,8 @@ namespace conway::geometry {
 
                   if ( foundCandidate != foundThis ) {
 
+                    uint32_t mergeIndex = unified.merge( foundCandidate, foundThis );
+
                     // we converge towards minimum, because it's monotonic and 
                     // where error is evenly distributed, it should floor it...
                     // this is good if you have 2 sets of points each of which is on the same plane,
@@ -117,7 +119,7 @@ namespace conway::geometry {
                     // a lot of our planes are axial, this converges particularly nicely.
                     glm::dvec3 mergedCoord = glm::min( converged[ foundCandidate ], converged[ foundThis ] );
 
-                    converged[ unified.merge( foundCandidate, foundThis ) ] = mergedCoord;
+                    converged[ mergeIndex ] = vertices[ mergeIndex ];
                   }
                 }
               }

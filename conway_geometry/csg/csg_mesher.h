@@ -63,6 +63,8 @@ namespace conway::geometry {
 
   private:
 
+    std::string dumpEdgeAndVertsToSVG() const;
+
     void walkAndInsertNonBoundary(
       bool outside,
       const std::vector< bool >& boundarySet,

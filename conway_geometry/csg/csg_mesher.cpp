@@ -7,11 +7,14 @@
 #include <format>
 #include <sstream>
 
-constexpr bool OUTPUT_A                 = true;
-constexpr bool OUTPUT_B                 = true;
-constexpr bool OUTPUT_BOUNDARY          = true;
-constexpr bool OUTPUT_ORIGINAL          = true;
-constexpr bool OUTPUT_SHARED_FACES      = true;
+#include "representation/SVGContext.h"
+
+constexpr bool OUTPUT_A                    = true;
+constexpr bool OUTPUT_B                    = true;
+constexpr bool OUTPUT_BOUNDARY             = true;
+constexpr bool OUTPUT_ORIGINAL             = true;
+constexpr bool OUTPUT_SHARED_FACES         = true;
+constexpr bool DUMP_SVGS_ON_TRIANGLE_ERROR = false;
 
 constexpr double GWN_TOLERANCE          = 0.5 + DBL_EPSILON;
 
@@ -192,8 +195,16 @@ void conway::geometry::CSGMesher::process(
             const glm::dvec3& t1 = aVertices[ aTriangle.vertices[ 1 ] ];
             const glm::dvec3& t2 = aVertices[ aTriangle.vertices[ 2 ] ];
 
-            const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
-            const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+            glm::dvec3 ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
+            glm::dvec3 ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+
+            // Because these vertices might be on a different edge without 
+            // the same identity in some cases, we sort to make this deterministic...
+            // although, the triangle itself should be deterministic
+            if ( lexicographical_less( ev1, ev0 ) ) {
+
+              std::swap( ev0, ev1 );
+            }
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
@@ -229,8 +240,16 @@ void conway::geometry::CSGMesher::process(
             const glm::dvec3& t1 = aVertices[ bTriangle.vertices[ 1 ] ];
             const glm::dvec3& t2 = aVertices[ bTriangle.vertices[ 2 ] ];
 
-            const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
-            const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+            glm::dvec3 ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
+            glm::dvec3 ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+
+            // Because these vertices might be on a different edge without 
+            // the same identity in some cases, we sort to make this deterministic...
+            // although, the triangle itself should be deterministic
+            if ( lexicographical_less( ev1, ev0 ) ) {
+
+              std::swap( ev0, ev1 );
+            }
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
@@ -588,8 +607,16 @@ void conway::geometry::CSGMesher::process(
             const glm::dvec3& t1 = aVertices[ aTriangle.vertices[ 1 ] ];
             const glm::dvec3& t2 = aVertices[ aTriangle.vertices[ 2 ] ];
 
-            const glm::dvec3& ev0 = bVertices[ b.edges[ edge ].vertices[ 0 ] ];
-            const glm::dvec3& ev1 = bVertices[ b.edges[ edge ].vertices[ 1 ] ];
+            glm::dvec3 ev0 = bVertices[ b.edges[ edge ].vertices[ 0 ] ];
+            glm::dvec3 ev1 = bVertices[ b.edges[ edge ].vertices[ 1 ] ];
+
+            // Because these vertices might be on a different edge without 
+            // the same identity in some cases, we sort to make this deterministic...
+            // although, the triangle itself should be deterministic
+            if ( lexicographical_less( ev1, ev0 ) ) {
+
+              std::swap( ev0, ev1 );
+            }
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
@@ -628,8 +655,17 @@ void conway::geometry::CSGMesher::process(
             const glm::dvec3& t1 = bVertices[ bTriangle.vertices[ 1 ] ];
             const glm::dvec3& t2 = bVertices[ bTriangle.vertices[ 2 ] ];
 
-            const glm::dvec3& ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
-            const glm::dvec3& ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+            glm::dvec3 ev0 = aVertices[ a.edges[ edge ].vertices[ 0 ] ];
+            glm::dvec3 ev1 = aVertices[ a.edges[ edge ].vertices[ 1 ] ];
+
+            // Because these vertices might be on a different edge without 
+            // the same identity in some cases, we sort to make this deterministic...
+            // although, the triangle itself should be deterministic
+            if ( lexicographical_less( ev1, ev0 ) ) {
+
+              std::swap( ev0, ev1 );
+            }
+            
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
@@ -1181,8 +1217,14 @@ void conway::geometry::CSGMesher::triangulate(
 
   //  uint32_t foundVertice = /*unifiedVertices_.find*/(localVertex);
 
+    const glm::dvec3& vertex = vertices[ localVertex ];
+
+    if ( isnan( vertex.x ) || isnan( vertex.y ) || isnan( vertex.z ) ) {
+      continue;
+    }
+
   //  localVertexMap_.try_emplace( foundVertice, static_cast< uint32_t >( localVertexMap_.size() ) );
-    localVertexMap_.try_emplace( localVertex, static_cast< uint32_t >( localVertexMap_.size() ) );
+    localVertexMap_.try_emplace( unifiedVertices_.find( localVertex ), static_cast< uint32_t >( localVertexMap_.size() ) );
   }
 
   // Cut off the size of what's been removed.
@@ -1194,6 +1236,22 @@ void conway::geometry::CSGMesher::triangulate(
     localVertices_[ index ] = localVertex;
   }
 
+  edges_.erase( 
+    std::remove_if(
+      edges_.begin(),
+      edges_.end(),
+      [&]( const CDT::Edge& edge ){
+
+        uint32_t ev1 = unifiedVertices_.find( edge.v1() );
+        uint32_t ev2 = unifiedVertices_.find( edge.v2() );
+
+        return
+          ev1 == ev2 ||
+          !localVertexMap_.contains( ev1 ) ||
+          !localVertexMap_.contains( ev2 );
+      } ),
+      edges_.end() );
+
   // Remap edges with the new unique vertices.
   for ( CDT::Edge& edge: edges_ ) {
 
@@ -1202,8 +1260,8 @@ void conway::geometry::CSGMesher::triangulate(
 
     edge =
       CDT::Edge(
-        localVertexMap_[ /*unifiedVertices_.find*/(edgeV1)],
-        localVertexMap_[ /*unifiedVertices_.find*/(edgeV2)]);
+        localVertexMap_[ unifiedVertices_.find(edgeV1)],
+        localVertexMap_[ unifiedVertices_.find(edgeV2)]);
   }
 
   // Now use the best 2D projection to extract the vertices.
@@ -1214,6 +1272,50 @@ void conway::geometry::CSGMesher::triangulate(
   AxisPair axesToExtract = best_truncated_projection( triangleVertices );
 
   int32_t winding = orient2D( triangleVertices, axesToExtract );
+
+  // 3 vertices are already fully constrained and triangulated.
+  if ( localVertices_.size() == 3 ) {
+
+      Triangle localTriangle { { 
+        unifiedVertices_.find( localVertices_[ 0 ] ),
+        unifiedVertices_.find( localVertices_[ 1 ] ),
+        unifiedVertices_.find( localVertices_[ 2 ] )
+    }};
+
+    edges_.clear();
+
+    localVertexMap_.clear();
+    localVertices_.clear();
+    local2DVertices_.clear();
+    localVertexEdgeFlags_.clear();
+
+    for ( auto& where : std::span( onEdgeVertices_ ) ) {
+
+      where.clear();
+    }
+
+    int32_t localWinding = vertices.orient2D( localTriangle.vertices, axesToExtract );
+
+    if ( localTriangle.vertices[ 0 ] == localTriangle.vertices[ 1 ] ||
+          localTriangle.vertices[ 1 ] == localTriangle.vertices[ 2 ] ||
+          localTriangle.vertices[ 2 ] == localTriangle.vertices[ 0 ] ||
+          localWinding == 0 ) {
+      return;
+    }
+
+    bool flipWinding = ( ( flippedWinding ? -1 : 1 ) * localWinding * winding ) < 0;
+
+    reorder_to_lowest_vertex( localTriangle.vertices );
+
+    if ( flipWinding ) {
+      
+      std::swap( localTriangle.vertices[ 1 ], localTriangle.vertices[ 2 ] );
+
+    }
+
+    initialChartTriangles_[ outputStreamIndex ].emplace_back( localTriangle, triangleInMeshIndex );
+    return;
+  }
 
   local2DVertices_.clear();
   local2DVertices_.reserve( localVertices_.size() );
@@ -1299,13 +1401,33 @@ void conway::geometry::CSGMesher::triangulate(
 
     triangulation.triangles.clear();
 
-    printf( "Duplicate vertex v1: %.20f %.20f %.20f v2: %.20f %.20f %.20f (indices) %u %u %u %u (truthy) %s %s %s %s %s\n", v1.x, v1.y, v1.z, v2.x, v2.y, v2.z, duplicateVertex.v1(), duplicateVertex.v2(), localVertices_[ duplicateVertex.v1() ], localVertices_[ duplicateVertex.v2() ], ( v1 == v2 ? "true" : "false" ), (v1.x == v2.x && v1.y == v2.y && v1.z == v2.z ) ? "true" : "false", ( v1.x == v2.x ) ? "true" : "false", (v1.y == v2.y) ? "true" : "false", (v1.z == v2.z) ? "true" : "false");
-  
+    printf(
+      "Duplicate vertex v1: %.20f %.20f %.20f v2: %.20f %.20f %.20f (indices - local + global) %u %u %u %u\n",
+      v1.x,
+      v1.y,
+      v1.z,
+      v2.x,
+      v2.y,
+      v2.z,
+      duplicateVertex.v1(),
+      duplicateVertex.v2(),
+      localVertices_[ duplicateVertex.v1() ],
+      localVertices_[ duplicateVertex.v2() ] );
+
+    if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
+
+      printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
+    }
+
   } catch ( const CDT::IntersectingConstraintsError& constraintError ) {
-  
+
     printf( "Intersecting constraint error:\n\t%s\n", constraintError.what() );
-  }
- 
+
+    if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
+    
+      printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
+    }
+  } 
 
   int32_t foundWinding = 0;
 
@@ -1517,4 +1639,53 @@ std::string conway::geometry::CSGMesher::dumpNovelVertices( const std::string& p
   }
  
   return result;
+}
+
+constexpr double SVG_RIGHT_PAD_RATIO = 0.1;
+
+std::string conway::geometry::CSGMesher::dumpEdgeAndVertsToSVG() const {
+
+  glm::dvec2 min( DBL_MAX );
+  glm::dvec2 max( -DBL_MAX );
+
+  for (  const CDT::V2d< double >& vert: local2DVertices_ ) {
+
+    glm::dvec2 point( vert.x, vert.y );
+
+    min = glm::min( min, point );
+    max = glm::max( max, point );
+  }
+
+  SVGContext svg(
+    glm::dvec2( 1536, 1536 ),
+    glm::dvec2( 50, 50 ),
+    min,
+    max + ( SVG_RIGHT_PAD_RATIO * ( max - min ) ) );
+
+  svg.header();
+
+  for ( const CDT::Edge& edge: edges_ ) {
+
+    const CDT::V2d< double >& v0 = local2DVertices_[ edge.v1() ];
+    const CDT::V2d< double >& v1 = local2DVertices_[ edge.v2() ];
+
+    svg.line( glm::dvec2( v0.x, v0.y ), glm::dvec2( v1.x, v1.y ) );
+  }
+  
+  size_t index = 0; 
+
+  for ( const CDT::V2d< double >& vert: local2DVertices_ ) {
+
+    std::stringstream labelText;
+
+    labelText << index;
+
+    svg.point( labelText.str().c_str(), glm::dvec2( vert.x, vert.y ) );
+  
+    ++index;
+  }
+
+  svg.trailer();
+
+  return svg.str();
 }

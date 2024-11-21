@@ -33,7 +33,6 @@ IfcGeometry::IfcGeometry( WingedEdgeDV3&& from ) : fuzzybools::Geometry(), winge
       vertices[ triangle.vertices[ 1 ] ] == vertices[ triangle.vertices[ 2 ] ] ||
       vertices[ triangle.vertices[ 2 ] ] == vertices[ triangle.vertices[ 0 ] ] ) {
 
-      //printf( "degenerate triangle skipped from winged edge\n" );
       continue;
     }
 
@@ -209,11 +208,11 @@ conway::geometry::WingedEdgeDV3& IfcGeometry::GetWingedEdgeMesh() {
     
       glm::dvec3 from = GetPoint( where );
 
-      from *= 1e7;
+      from *= exp2( 24 );
 
       from = glm::round( from );
 
-      from /= 1e7;
+      from *= exp2( -24 );
 
       mesh.vertices.push_back( from );
     }
@@ -227,7 +226,7 @@ conway::geometry::WingedEdgeDV3& IfcGeometry::GetWingedEdgeMesh() {
       mesh.makeTriangle( f1, f2, f3 );
     }
 
-    welder.weld( *wingedEdgeMesh, 0 );
+    welder.weld( *wingedEdgeMesh, exp2( -23 ) );
 
     {
       CSG cleaner;
