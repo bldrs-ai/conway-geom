@@ -147,7 +147,7 @@ class ConwayGeometryProcessor {
     glm::dmat4 parentMatrix;
   };
   
-  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract parameters );
+  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract& parameters );
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {

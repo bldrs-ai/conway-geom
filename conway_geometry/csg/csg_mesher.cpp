@@ -9,12 +9,15 @@
 
 #include "representation/SVGContext.h"
 
-constexpr bool OUTPUT_A                    = true;
-constexpr bool OUTPUT_B                    = true;
-constexpr bool OUTPUT_BOUNDARY             = true;
-constexpr bool OUTPUT_ORIGINAL             = true;
-constexpr bool OUTPUT_SHARED_FACES         = true;
-constexpr bool DUMP_SVGS_ON_TRIANGLE_ERROR = false;
+constexpr bool OUTPUT_A                        = true;
+constexpr bool OUTPUT_B                        = true;
+constexpr bool OUTPUT_BOUNDARY                 = true;
+constexpr bool OUTPUT_ORIGINAL                 = true;
+constexpr bool OUTPUT_SHARED_FACES             = true;
+constexpr bool DUMP_SVGS_ON_TRIANGLE_ERROR     = false;
+constexpr size_t MAXIMUM_TRIANGULATION_RETRIES = 16;
+
+constexpr double WELD_EDGE_TOLERANCE = ( 1.0 / ( double ( 1 << 24 ) ) ) * ( 1.0 / ( double ( 1 << 24 ) ) ) * 0.5;
 
 constexpr double GWN_TOLERANCE          = 0.5 + DBL_EPSILON;
 
@@ -164,12 +167,6 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               line_segment_line_segment_intersection( e0v0, e0v1, e1v0, e1v1 );
 
-            if ( isnan( novelVertex.x ) ) {
-               printf( "edge edge nan\n");
-            
-              novelVertex = e0v0;
-            }
-
             novelVertices_.push_back( novelVertex );
             unifiedVertices_.allocate();
           }
@@ -209,13 +206,7 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
 
-            if ( isnan( novelVertex.x ) ) {
-              printf( "face edge nan\n");
-              novelVertex = t0;
-            }
-
             novelVertices_.push_back( novelVertex ); 
-            
 
             unifiedVertices_.allocate();
           }
@@ -253,12 +244,6 @@ void conway::geometry::CSGMesher::process(
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
-
-            if ( isnan( novelVertex.x ) ) {
-              printf( "edge face nan\n");
-
-              novelVertex = t0;
-            }
 
             novelVertices_.push_back( novelVertex );
             unifiedVertices_.allocate();
@@ -314,11 +299,8 @@ void conway::geometry::CSGMesher::process(
 
   AABBTree& aBVH = *a.bvh;
 
-// #if defined(__EMSCRIPTEN__)
-//   std::transform( aWhere, aEnd, outside_[ 0 ].begin(), [&]( const Triangle& aTriangle ) {
-// #else
- std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
-//// #endif
+  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+
    glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
 
    double gwn = aBVH.gwn( a, aCentre, aTriangle.second );
@@ -1386,48 +1368,110 @@ void conway::geometry::CSGMesher::triangulate(
 
   CDT::Triangulation< double > triangulation( CDT::VertexInsertionOrder::AsProvided, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
   
-  try {
+  size_t retryOperations = 0;
 
-    triangulation.insertVertices( local2DVertices_ );
-    triangulation.insertEdges( edges_ );
-    triangulation.eraseSuperTriangle();
+  while ( true ) {
 
-    assert( triangulation.triangles.size() > 0 );
+    try {
 
-  } catch ( const CDT::DuplicateVertexError& duplicateVertex ) {
+      triangulation.insertVertices( local2DVertices_ );
+      triangulation.insertEdges( edges_ );
+      triangulation.eraseSuperTriangle();
 
-    const glm::dvec3& v1 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v1() ] ] ];
-    const glm::dvec3& v2 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v2() ] ] ];
+      assert( triangulation.triangles.size() > 0 );
 
-    triangulation.triangles.clear();
+      break;
 
-    printf(
-      "Duplicate vertex v1: %.20f %.20f %.20f v2: %.20f %.20f %.20f (indices - local + global) %u %u %u %u\n",
-      v1.x,
-      v1.y,
-      v1.z,
-      v2.x,
-      v2.y,
-      v2.z,
-      duplicateVertex.v1(),
-      duplicateVertex.v2(),
-      localVertices_[ duplicateVertex.v1() ],
-      localVertices_[ duplicateVertex.v2() ] );
+    } catch ( const CDT::DuplicateVertexError& duplicateVertex ) {
 
-    if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
+      const glm::dvec3& v1 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v1() ] ] ];
+      const glm::dvec3& v2 = vertices[ localVertices_[ localVertRemapping[ duplicateVertex.v2() ] ] ];
 
-      printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
+      triangulation.triangles.clear();
+
+      printf(
+        "Duplicate vertex v1: %.20f %.20f %.20f v2: %.20f %.20f %.20f (indices - local + global) %u %u %u %u\n",
+        v1.x,
+        v1.y,
+        v1.z,
+        v2.x,
+        v2.y,
+        v2.z,
+        duplicateVertex.v1(),
+        duplicateVertex.v2(),
+        localVertices_[ duplicateVertex.v1() ],
+        localVertices_[ duplicateVertex.v2() ] );
+
+      if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
+
+        printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
+      }
+
+      break;
+
+    } catch ( const CDT::IntersectingConstraintsError& constraintError ) {
+
+      if ( ++retryOperations > MAXIMUM_TRIANGULATION_RETRIES ) {
+        printf( "Intersecting constraint error couldn't be resolved:\n\t%s\n", constraintError.what() );
+        break;
+      }
+
+      const CDT::V2d< double >& e00 = local2DVertices_[ constraintError.e1().v1() ];
+      const CDT::V2d< double >& e01 = local2DVertices_[ constraintError.e1().v2() ];
+      const CDT::V2d< double >& e10 = local2DVertices_[ constraintError.e2().v1() ];
+      const CDT::V2d< double >& e11 = local2DVertices_[ constraintError.e2().v2() ];
+
+      double e0v0 = predicates::adaptive::orient2d( &e00.x, &e01.x, &e10.x );
+      double e0v1 = predicates::adaptive::orient2d( &e00.x, &e01.x, &e11.x );
+      double e1v0 = predicates::adaptive::orient2d( &e10.x, &e01.x, &e00.x );
+      double e1v1 = predicates::adaptive::orient2d( &e10.x, &e01.x, &e01.x );
+
+      // Try and resolve the constraint by  
+      if ( fabs( e0v0 ) < WELD_EDGE_TOLERANCE ) {
+
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
+
+        edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v1() );
+        edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v2() );
+
+      } else if ( fabs( e0v1 ) < WELD_EDGE_TOLERANCE ) {
+
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
+
+        edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v2() );
+        edges_.emplace_back( constraintError.e2().v2(), constraintError.e1().v2() );
+
+      } else if ( fabs( e1v0 ) < WELD_EDGE_TOLERANCE ) {
+
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
+
+        edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v1() );
+        edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v2() );
+
+      } else if ( fabs( e1v1 ) < WELD_EDGE_TOLERANCE ) {
+
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
+
+        edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v2() );
+        edges_.emplace_back( constraintError.e1().v2(), constraintError.e2().v2() );
+
+      } else if ( e0v0 + e0v1 < e1v0 + e1v1 ) {
+        
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
+
+      } else {
+
+        edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
+      }
+
+      triangulation = CDT::Triangulation< double >( CDT::VertexInsertionOrder::AsProvided, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+
+      if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
+      
+        printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
+      }
     }
-
-  } catch ( const CDT::IntersectingConstraintsError& constraintError ) {
-
-    printf( "Intersecting constraint error:\n\t%s\n", constraintError.what() );
-
-    if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
-    
-      printf( "\n\n\n%s\n\n\n", dumpEdgeAndVertsToSVG().c_str() );
-    }
-  } 
+  }
 
   int32_t foundWinding = 0;
 

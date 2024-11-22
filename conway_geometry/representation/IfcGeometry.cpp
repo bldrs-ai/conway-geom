@@ -311,7 +311,7 @@ void IfcGeometry::AddGeometry(const fuzzybools::Geometry& geom, const glm::dmat4
     AddFace(a, b, c);
   }
 
-  AddPart(geom);
+  //AddPart(geom);
 }
 
 /*

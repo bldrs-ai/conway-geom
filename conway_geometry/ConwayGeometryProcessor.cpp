@@ -247,6 +247,18 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
 IfcGeometry ConwayGeometryProcessor::BoolSubtract(
     std::vector<IfcGeometry> &firstGeoms,
     std::vector<IfcGeometry> &secondGeoms) {
+
+  if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
+    
+    WingedEdgeDV3 resultMesh;
+
+    CSG csg;
+
+    csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ].GetWingedEdgeMesh(), secondGeoms[ 0 ].GetWingedEdgeMesh(), resultMesh, 0 );
+
+    return IfcGeometry( std::move( resultMesh ) );
+  }
+
   IfcGeometry finalResult;
 
   for (auto &firstGeom : firstGeoms) {
@@ -318,6 +330,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         
       //  secondGeom.wingedEdgeMesh.reset();
 
+
       } else {
 
         WingedEdgeDV3 resultMesh;
@@ -327,12 +340,16 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), secondGeom.GetWingedEdgeMesh(), resultMesh, 0 );
 
         result = IfcGeometry( std::move( resultMesh ) );
-
     //   secondGeom.wingedEdgeMesh.reset();
       }
     }
 
-    result.wingedEdgeMesh.reset();
+    if ( firstGeoms.size() == 1 ) {
+
+      return result;
+    }
+
+    result.wingedEdgeMesh.reset();    
 
     finalResult.AddGeometry( result );
   }
@@ -341,7 +358,7 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 }
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
-    ParamsRelVoidSubtract parameters) {
+      ParamsRelVoidSubtract& parameters) {
   IfcGeometry resultGeometry;
 
   if (parameters.flatFirstMesh.size() <= 0) {
