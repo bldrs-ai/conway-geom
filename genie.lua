@@ -669,7 +669,8 @@ else
     configuration {"gmake"}
     buildoptions_cpp {
       "-O3",
-      "-DNDEBUG"
+      "-DNDEBUG",
+      "-pthread"
     }
     linkoptions {
         "-O3",
@@ -677,6 +678,10 @@ else
         "--dts",
         "-03",
         "-flto",
+        "-pthread",
+        "-sSHARED_MEMORY",
+        "-s USE_PTHREADS=1",
+        "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
@@ -900,6 +905,8 @@ else
         "--dts",
         "-03",
         "-flto",
+        "-pthread",
+        "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
