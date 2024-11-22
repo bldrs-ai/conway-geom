@@ -33,3 +33,6 @@
 [submodule "external/fast_float"]
 	path = external/fast_float
 	url = https://github.com/fastfloat/fast_float
+[submodule "external/CDT"]
+	path = external/CDT
+	url = https://github.com/artem-ogre/CDT.git

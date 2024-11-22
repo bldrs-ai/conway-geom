@@ -25,6 +25,110 @@ solution "conway_geom"
 
     configuration {}
 
+
+project "conway_csg_native"
+    language "C++"
+    kind "ConsoleApp"
+    files {}
+    
+    flags { "NoPCH", "NoRTTI", "ExtraWarnings" }
+
+    configuration { "vs* or windows" }
+      defines	"_CRT_SECURE_NO_WARNINGS"
+        
+    configuration "Release*"
+      flags { "OptimizeSpeed", "NoIncrementalLink" }
+
+    configuration { "vs*" }
+        buildoptions { "/std:c++latest" }
+        
+    configuration { "Release and vs*" }
+        buildoptions { "/Zi" }
+
+    ConwayCoreFiles = {
+        "conway_geometry/operations/**.*",
+        "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
+        "logging/**.*"
+      --  "conway_geometry/legacy/**.*"
+    }
+    ConwayNativeMain = {"conway_geometry/utilities/csg_command_line.cpp"}
+
+    configuration {"windows or macosx or linux"}
+        files {
+            ConwayCoreFiles,
+            ConwayNativeMain
+        }
+
+    configuration {"gmake"}
+        buildoptions_cpp {
+          "-Wall",
+          "-fexceptions",
+          "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
+          "-std=c++20",
+          "-pthread"
+        }
+
+    configuration {}
+
+      libdirs {}
+      links {}
+      flags {
+          "Symbols",
+          "FullSymbols",
+          "UseObjectResponseFile"
+      }
+
+      includedirs { 
+          "conway_geometry",
+          "./",
+          "external/fuzzy-bools",
+          "external/tinynurbs/include",
+          "external/glm",
+          "external/earcut.hpp/include",
+          "external/TinyCppTest/Sources",
+          "external/CDT/CDT/include",
+          "external/tinyobjloader"
+      }
+
+      excludes {
+          -- Manifold Test files
+          "external/**/**cc",
+      }
+
+    configuration {"Debug"}
+
+    configuration {"Release", "gmake"}
+
+    configuration "Release*"
+        flags {
+            "OptimizeSpeed",
+            "NoIncrementalLink"
+        }
+
+    configuration {"Emscripten", "Debug"}
+
+    configuration {"Emscripten", "Release"}
+
+    configuration {"macosx", "x64", "Debug"}
+        targetdir(path.join("bin", "64", "debug"))
+        flags {"EnableAVX2"}
+
+    configuration {"macosx", "x64", "Release"}
+        targetdir(path.join("bin", "64", "release"))
+        flags {"EnableAVX2"}
+
+    configuration {"windows", "x64", "Debug"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
+        targetdir(path.join("bin", "64", "debug"))
+        flags {"EnableAVX2"}
+
+    configuration {"windows", "x64", "Release"}
+        defines "_USE_MATH_DEFINES" --required by legacy boolean library csgjs
+        targetdir(path.join("bin", "64", "release"))
+        flags {"EnableAVX2"}
+
 project "conway_geom_native"
     language "C++"
     kind "ConsoleApp"
@@ -35,6 +139,8 @@ project "conway_geom_native"
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
         "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
         "logging/**.*"
       --  "conway_geometry/legacy/**.*"
     }
@@ -490,6 +596,8 @@ project "ConwayGeomWasmNode"
         "conway_geometry/*.cpp",
         "conway_geometry/operations/**.*",
         "conway_geometry/representation/**.*",
+        "conway_geometry/structures/**.*",
+        "conway_geometry/csg/**.*",
         "logging/**.*"
       --  "conway_geometry/legacy/**.*"
     }
@@ -497,12 +605,13 @@ project "ConwayGeomWasmNode"
 
     configuration {"linux or macosx or ios or gmake"}
         buildoptions_cpp {
-            "-O3",
-            "-DNDEBUG",
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20"
+            -- TODO(Conor): I want threads for performance reasons.
+            -- "-pthread",
+            "-std=c++20",
+            "-fexperimental-library",
             -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
             -- "-msimd128",
             -- "-DGLM_FORCE_INTRINSICS=1"
@@ -526,32 +635,42 @@ project "ConwayGeomWasmNode"
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
     linkoptions {
+        "-fsanitize=address",
         "-g -O0",
         "-gdwarf-5",
         "-gpubnames",
         "--bind",
         "--dts",
         "-flto",
+        "-s PRECISE_F32=1",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ENVIRONMENT=node",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
-        "-s STACK_SIZE=5MB",
+        "-s STACK_SIZE=10MB",
         "-s FORCE_FILESYSTEM=1",
         "-gsource-map",
         "--source-map-base " .. _ARGS[2],
+        "-s NODERAWFS=1",
         --"-sASSERTIONS",
-        "-s SAFE_HEAP=1",
+   --     "-s SAFE_HEAP=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
+        "-s ABORTING_MALLOC=0",
         --"-s USE_ES6_IMPORT_META=0",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
         "-sNO_DISABLE_EXCEPTION_CATCHING",
+        "-lworkerfs.js",
+  --      "-pthread"
     }
 else 
     configuration {"gmake"}
+    buildoptions_cpp {
+      "-O3",
+      "-DNDEBUG"
+    }
     linkoptions {
         "-O3",
         "--bind",
@@ -563,16 +682,20 @@ else
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
         "-s FORCE_FILESYSTEM=1",
+        "-s PRECISE_F32=1",
+        "-s NODERAWFS=1",
         "-s EXPORT_NAME=ConwayGeomWasm",
         "-s ENVIRONMENT=node",
         "-s SINGLE_FILE=1",
         --"-s USE_ES6_IMPORT_META=0",
         "-s EXPORT_ES6=1",
         "-s MODULARIZE=1",
+        "-s ABORTING_MALLOC=0",
         "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
         "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
         "-lworkerfs.js",
-        "-sNO_DISABLE_EXCEPTION_CATCHING"
+        "-sNO_DISABLE_EXCEPTION_CATCHING",
+    --    "-pthread"
     }
 end
 
@@ -586,6 +709,8 @@ end
         }
 
         includedirs {
+            ".",
+            "utility",
             "conway_geometry",
             "logging",
             "external/tinynurbs/include",
@@ -606,8 +731,9 @@ end
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt",
-            "external/csgjs-cpp"
+      --      "external/csgjs-cpp",
+            "external/CDT/CDT/include"--,
+           -- "external/tinyobjloader"
         }
 
         excludes {
@@ -698,14 +824,16 @@ project "ConwayGeomWasmWeb"
     targetextension ".js"
 
     ConwayCoreFiles = {
-        "conway_geometry/*.h",
-        "conway_geometry/*.cpp",
-        "conway_geometry/operations/**.*",
-        "conway_geometry/representation/**.*",
-        "logging/**.*"
-      --  "conway_geometry/legacy/**.*"
-    }
-    ConwaySourceFiles = {"conway-api.cpp"}
+      "conway_geometry/*.h",
+      "conway_geometry/*.cpp",
+      "conway_geometry/operations/**.*",
+      "conway_geometry/representation/**.*",
+      "conway_geometry/structures/**.*",
+      "conway_geometry/csg/**.*",
+      "logging/**.*"
+    --  "conway_geometry/legacy/**.*"
+  }
+  ConwaySourceFiles = {"conway-api.cpp"}
 
     configuration {"linux or macosx or ios or gmake"}
         buildoptions_cpp {
@@ -714,7 +842,8 @@ project "ConwayGeomWasmWeb"
             "-Wall",
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20"
+            "-std=c++20",
+            "-fexperimental-library"
         }
 
     configuration {"windows or macosx or linux"}
@@ -734,6 +863,9 @@ project "ConwayGeomWasmWeb"
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     configuration {"gmake"}
+    buildoptions_cpp {
+      "-fsanitize=address"
+    }
     linkoptions {
         "-g -O0",
         "-gdwarf-5",
@@ -794,8 +926,9 @@ end
             "FullSymbols",
             "UseObjectResponseFile"
         }
-
         includedirs {
+            ".",
+            "utility",
             "conway_geometry",
             "logging",
             "external/tinynurbs/include",
@@ -816,9 +949,11 @@ end
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
             "external/fuzzy-bools",
-            "external/fuzzy-bools/deps/cdt",
-            "external/csgjs-cpp"
+            "external/csgjs-cpp",
+            "external/CDT/CDT/include"--,
+           -- "external/tinyobjloader"
         }
+
 
         excludes {
             -- Manifold Test files

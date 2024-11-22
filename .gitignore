@@ -9,3 +9,4 @@ dependencies/**/*.a
 build/
 cache/
 Dist/ConwayGeomWasm.wasm.map
+vs2022/

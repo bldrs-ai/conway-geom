@@ -58,8 +58,8 @@ std::string IfcCurve::DumpToOBJ( const std::string& preamble ) const {
 
 std::string IfcCurve::DumpToSVG( const glm::dvec2& size, const glm::dvec2& offset ) const {
   
-  glm::dvec2 min( FLT_MAX );
-  glm::dvec2 max( -FLT_MAX );
+  glm::dvec2 min( DBL_MAX );
+  glm::dvec2 max( -DBL_MAX );
 
   for ( const glm::dvec3& point : this->points ) {
 
