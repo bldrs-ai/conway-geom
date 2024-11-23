@@ -70,19 +70,21 @@ namespace {
 // specific.
 class StreamWriter : public Microsoft::glTF::IStreamWriter {
  public:
-  StreamWriter(std::filesystem::path pathBase)
-      : m_pathBase(std::move(pathBase)) {
-    assert(m_pathBase.has_root_path());
+  StreamWriter(const std::filesystem::path& pathBase)
+      : m_pathBase( pathBase ) {
+
+    //printf( "%s\n", m_pathBase.c_str() );
+    //assert(m_pathBase.has_root_path());
   }
 
-  const std::vector<std::string> getUris() const { return uris; }
+  const std::vector<std::string>& getUris() const { return uris; }
 
   // Resolves the relative URIs of any external resources declared in the glTF
   // manifest
   std::shared_ptr<std::ostream> GetOutputStream(
       const std::string& filename) const override {
     auto stream = std::make_shared<std::ostringstream>();
-    uris.push_back(filename);
+    uris.push_back( filename );
     return stream;
   }
 
@@ -124,8 +126,8 @@ class ConwayGeometryProcessor {
     IfcComposedMesh ifcPresentationMesh;
   };
 
-  IfcGeometry BoolSubtract(const std::vector<IfcGeometry>& firstGroups,
-                           const std::vector<IfcGeometry>& secondGroups);
+  IfcGeometry BoolSubtract( std::vector<IfcGeometry>& firstGroups,
+                            std::vector<IfcGeometry>& secondGroups );
   IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
                                  std::vector<IfcGeometry>& secondGeoms);
 
@@ -145,7 +147,7 @@ class ConwayGeometryProcessor {
     glm::dmat4 parentMatrix;
   };
   
-  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract parameters );
+  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract& parameters );
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <glm/glm.hpp>
 
-#include "winged_edge.h"
+#include "structures/winged_edge.h"
 #include <queue>
 #include "representation/IfcGeometry.h"
 
@@ -104,7 +104,7 @@ namespace conway::geometry {
 
     std::vector< glm::dvec3 > normals( mesh.vertices.size(), glm::dvec3( 0 ) );
 
-    for ( Triangle& triangle : mesh.triangles ) {
+    for ( ConnectedTriangle& triangle : mesh.triangles ) {
 
       if ( !isCCW(  
         mesh.vertices[ triangle.vertices[ 0 ] ],
@@ -136,9 +136,9 @@ namespace conway::geometry {
 
     for ( size_t vertexIndex = 0, end = mesh.vertices.size(); vertexIndex < end; ++vertexIndex ) {
 
-      glm::dvec3 vertex = mesh.vertices[ vertexIndex ].point;
+      glm::dvec3 vertex           = mesh.vertices[ vertexIndex ].point;
       const glm::dvec3& prenormal = normals[ vertexIndex ];
-      glm::dvec3 normal = glm::normalize( prenormal );
+      glm::dvec3        normal    = glm::normalize( prenormal );
 
 
       // Note, we have to have local versions of vertex and normal
@@ -146,7 +146,7 @@ namespace conway::geometry {
       geometry.AddPoint( vertex, normal );
     }
 
-    for ( const Triangle& triangle : mesh.triangles ) {   
+    for ( const ConnectedTriangle& triangle : mesh.triangles ) {   
 
       geometry.AddFace(
         baseVertex + triangle.vertices[ 0 ],
@@ -217,8 +217,8 @@ namespace conway::geometry {
       // as may the references as the vector re-allocates.
       Edge                 edge         = mesh.edges[ candidate.edge ];
 
-      const Triangle&      t0           = mesh.triangles[ edge.triangles[ 0 ] ];
-      const Triangle&      t1           = mesh.triangles[ edge.triangles[ 1 ] ];
+      const ConnectedTriangle&      t0           = mesh.triangles[ edge.triangles[ 0 ] ];
+      const ConnectedTriangle&      t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t             otherVertex0 = t0.otherVertex( edge );
       uint32_t             otherVertex1 = t1.otherVertex( edge );
       uint32_t             newVertex    = mesh.makeVertex( candidate.vertex );

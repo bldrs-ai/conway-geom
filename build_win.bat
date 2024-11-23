@@ -27,13 +27,13 @@ if not defined EMSDK (
 call "%EMSDK%\emsdk_env.bat"
 set EMSCRIPTEN=%EMSDK%\upstream\emscripten
 
-if not exist ".git\modules" (
-    git submodule update --init
-    if errorlevel 1 (
-        echo ! Could not initialize Git submodules
-        exit /b 1
-    )
-)
+REM if not exist ".git\modules" (
+REM     git submodule update --init
+REM     if errorlevel 1 (
+REM         echo ! Could not initialize Git submodules
+REM         exit /b 1
+REM     )
+REM )
 
 REM Check if the third argument is empty
 if "%~3"=="" (

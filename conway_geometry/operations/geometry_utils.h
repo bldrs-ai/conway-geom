@@ -7,17 +7,29 @@
 
 #pragma once
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"
 #pragma clang diagnostic ignored "-Wunused-but-set-variable"
 #pragma clang diagnostic ignored "-Wunused-function"
-#include <mapbox/earcut.hpp>
-#pragma clang diagnostic pop
+#endif 
 
-#include "../../utility/LoaderError.h"
-#include "../representation/IfcGeometry.h"
-#include "../representation/geometry.h"
-#include "../../logging/Logger.h"
+#include <mapbox/earcut.hpp>
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
+#include "utility/LoaderError.h"
+#include "representation/IfcGeometry.h"
+#include "representation/geometry.h"
+#include "logging/Logger.h"
+
+#if !defined(_USE_MATH_DEFINES)
+#define _USE_MATH_DEFINES 1
+#endif
+
+#include <math.h>
 
 namespace conway::geometry {
 
@@ -31,11 +43,12 @@ inline double areaOfTriangle2(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c) {
   return glm::dot(norm, norm);
 }
 
-constexpr double DOUBLE_TO_RADIANS = static_cast< double >( CONST_PI ) / 180.0;
+constexpr double DOUBLE_TO_RADIANS = M_PI / 180.0;
 
 inline constexpr double degreesToRadians(double angle) {
   return angle * DOUBLE_TO_RADIANS;
 }
+
 
 inline glm::dvec3 projectOntoPlane(const glm::dvec3 &origin,
                                    const glm::dvec3 &normal,
@@ -66,6 +79,7 @@ inline glm::dvec3 computeNormal(const glm::dvec3 v1, const glm::dvec3 v2,
 inline bool GetWindingOfTriangle(const glm::dvec3 &a, const glm::dvec3 &b,
                                  const glm::dvec3 &c) {
   auto norm = computeNormal(a, b, c);
+
   return glm::dot(norm, glm::dvec3(0, 0, 1)) > 0.0;
 }
 
@@ -693,7 +707,7 @@ inline IfcGeometry SectionedSurface(
       int j2 = 0;
       if (profile1.points.size() > 1) {
         double pr = (double)j / (double)(profile1.points.size() - 1);
-        j2 = pr * (profile2.points.size() - 1);
+        j2 = static_cast< int >( pr * (profile2.points.size() - 1) );
       }
       glm::dvec3 &p2 = profile2.points[j2];
 
@@ -866,17 +880,17 @@ inline double VectorToAngle2D(double x, double y)
     cosv = cos(angle);
     if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
     {
-      angle = angle + (CONST_PI - angle) * 2;
+      angle = angle + (M_PI - angle) * 2;
       sinv = sin(angle);
       cosv = cos(angle);
       if (glm::abs(xx - cosv) > 1e-5 || glm::abs(yy - sinv) > 1e-5)
       {
-        angle = angle + CONST_PI;
+        angle = angle + M_PI;
       }
     }
   }
 
-  return (angle / (2 * CONST_PI)) * 360;
+  return (angle / (2 * M_PI)) * 360;
 }
 
 inline double VectorToAngle(double x, double y)
@@ -895,17 +909,17 @@ inline double VectorToAngle(double x, double y)
     cosv = cos(angle);
     if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5)
     {
-      angle = angle + (CONST_PI - angle) * 2;
+      angle = angle + (M_PI - angle) * 2;
       sinv = sin(angle);
       cosv = cos(angle);
       if (glm::abs(yy - cosv) > 1e-5 || glm::abs(xx - sinv) > 1e-5)
       {
-        angle = angle + CONST_PI;
+        angle = angle + M_PI;
       }
     }
   }
 
-  return (angle / (2 * CONST_PI)) * 360;
+  return (angle / (2 * M_PI)) * 360;
 }
 
 inline bool MatrixFlipsTriangles(const glm::dmat4 &mat) {
@@ -999,8 +1013,8 @@ inline std::array<double, 16> FlattenTransformation(
   return flatTransformation;
 }
 
-inline bool notPresent(glm::dvec3 pt, std::vector<glm::dvec3> points) {
-  for (auto &pt2 : points) {
+inline bool notPresent( const glm::dvec3& pt, const std::vector<glm::dvec3>& points) {
+  for (const auto &pt2 : points) {
     if (pt.x == pt2.x && pt.y == pt2.y && pt.z == pt2.z) {
       return false;
     }

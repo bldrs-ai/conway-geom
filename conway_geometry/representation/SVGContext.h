@@ -63,6 +63,18 @@ namespace conway::geometry {
       return *this;
     }
 
+    SVGContext& point( const char* label, const glm::dvec2& p, const char* color = "blue", uint32_t width = 2 ) {
+      
+      glm::dvec2 a = toSvg( p );
+
+      stream << "<circle cx = \"" << a.x << "\" cy = \""
+            << a.y << "\" r = \"3\" style = \"stroke:"
+            << color << ";stroke-width:" << width << "\" />"
+            << "<text x=\"" << a.x + 2 * width << "\" y=\"" << a.y + width << "\">" << label << "</text>";
+
+      return *this;
+    }
+
     SVGContext& point( const glm::dvec2& p, const char* color = "blue", uint32_t width = 2 ) {
       
       glm::dvec2 a = toSvg( p );
