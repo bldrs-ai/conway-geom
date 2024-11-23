@@ -5,7 +5,7 @@ All files in:
 - schema/*
 - utility/LoaderError.cpp, utility/LoaderError.h, utility/LoaderSettings.h, utility/Logging.cpp, and utility/Logging.h
 
-are licensed under MPL, which is available at ./MPL.md.
+are licensed under GNU AFFERO GENERAL PUBLIC LICENSE Version 3, which is available at ./agpl-3.0.txt
 
 # Libraries
 As of May 13 2024, this project uses these libraries, with the following licenses:
