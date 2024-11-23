@@ -8,7 +8,6 @@ Features:
 - *Advanced Model Introspection*: More than pretty pictures, Conway gives type-safe access and powerful querying including geometric relations.
 - *Enhanced Memory Handling*: Enables smooth, lag-free interaction with large, highly detailed 3D models across devices, even with complex assets or high-poly designs.
 - *Web Geom*: Common libraries shared with including Earcut, Manifold, csgjs-cpp, fast_float, GLM, and tinynurbs for robust, high-speed processing.
-- *STEP AP2xx*: Initial support for [STEP AP2xx](https://en.wikipedia.org/wiki/ISO_10303-21) expands Conway’s capabilities to include Automotive and 3D-printing applications.
 
 ## IFC Schema Coverage
 
