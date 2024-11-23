@@ -681,7 +681,7 @@ else
         "-pthread",
         "-sSHARED_MEMORY",
         "-s USE_PTHREADS=1",
-        "-sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency",
+        "-sPTHREAD_POOL_SIZE=10", --TODO: need a navigator.hardwareconcurrency equivalent for node 
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
