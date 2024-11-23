@@ -1,13 +1,13 @@
 # conway-geom
 
-`conway-geom` is Bldrs’ rewrite of [web-ifc](https://github.com/ThatOpen/engine_web-ifc), engineered for high-performance and to support the full suite of open CAD standards within the IFC and STEP families.  `conway-geom` is written in C++ & javascript and deployed as a WASM module, e.g. in [Bldrs Share][https://github.com/bldrs-ai/Share].
+`conway-geom` is Bldrs’ rewrite of [web-ifc](https://github.com/ThatOpen/engine_web-ifc), engineered for high-performance and to support the full suite of open CAD standards within the IFC and STEP families.  `conway-geom` is written in C++ & javascript and deployed as a WASM module, e.g. in [Bldrs Share](https://github.com/bldrs-ai/Share).
 
 Features:
-- *Fast near-exact CSG*: Our cutting-edge implementation of Constructive Solid Geometry (CSG) partly based on “Exact predicates, exact constructions and combinatorics for mesh CSG” Lévy et al. 2024 [https://arxiv.org/pdf/2405.12949], with robust handling of real-world model data, tailored for the web environment.
-- *Seamless NURBS and Advanced BREP*: Conway ensures smooth handling of Non-Uniform Rational B-Splines (NURBS) and Advanced Boundary Representation (BREP), with adaptive tesselation preserving accuracy and quality across complex geometries to streamline workflows for intricate designs.
-- *Advanced Model Introspection*: More than pretty pictures, Conway gives type-safe access and powerful querying including geometric relations.
-- *Enhanced Memory Handling*: Enables smooth, lag-free interaction with large, highly detailed 3D models across devices, even with complex assets or high-poly designs.
-- *Web Geom*: Common libraries shared with including Earcut, Manifold, csgjs-cpp, fast_float, GLM, and tinynurbs for robust, high-speed processing.
+- **Fast near-exact CSG**: Our cutting-edge implementation of Constructive Solid Geometry (CSG) partly based on “Exact predicates, exact constructions and combinatorics for mesh CSG” Lévy et al. 2024 [https://arxiv.org/pdf/2405.12949], with robust handling of real-world model data, tailored for the web environment.
+- **Seamless NURBS and Advanced BREP**: Conway ensures smooth handling of Non-Uniform Rational B-Splines (NURBS) and Advanced Boundary Representation (BREP), with adaptive tesselation preserving accuracy and quality across complex geometries to streamline workflows for intricate designs.
+- **Advanced Model Introspection**: More than pretty pictures, Conway gives type-safe access and powerful querying including geometric relations.
+- **Enhanced Memory Handling**: Enables smooth, lag-free interaction with large, highly detailed 3D models across devices, even with complex assets or high-poly designs.
+- **Web Geom**: Common libraries shared with including Earcut, Manifold, csgjs-cpp, fast_float, GLM, and tinynurbs for robust, high-speed processing.
 
 ## IFC Schema Coverage
 
