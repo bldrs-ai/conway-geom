@@ -1,6 +1,20 @@
 # conway-geom
 
-## Init 
+`conway-geom` is Bldrs’ rewrite of [web-ifc](https://github.com/ThatOpen/engine_web-ifc), engineered for high-performance and to support the full suite of open CAD standards within the IFC and STEP families.
+
+Features:
+- *Fast near-exact CSG*: Our cutting-edge implementation of Constructive Solid Geometry (CSG) partly based on “Exact predicates, exact constructions and combinatorics for mesh CSG” Lévy et al. 2024 [https://arxiv.org/pdf/2405.12949], with robust handling of real-world model data, tailored for the web environment.
+- *Seamless NURBS and Advanced BREP*: Conway ensures smooth handling of Non-Uniform Rational B-Splines (NURBS) and Advanced Boundary Representation (BREP), with adaptive tesselation preserving accuracy and quality across complex geometries to streamline workflows for intricate designs.
+- *Advanced Model Introspection*: More than pretty pictures, Conway gives type-safe access and powerful querying including geometric relations.
+- *Enhanced Memory Handling*: Enables smooth, lag-free interaction with large, highly detailed 3D models across devices, even with complex assets or high-poly designs.
+- *Web Geom*: Common libraries shared with including Earcut, Manifold, csgjs-cpp, fast_float, GLM, and tinynurbs for robust, high-speed processing.
+- *STEP AP2xx*: Initial support for [STEP AP2xx](https://en.wikipedia.org/wiki/ISO_10303-21) expands Conway’s capabilities to include Automotive and 3D-printing applications.
+
+## IFC Schema Coverage
+
+[Conway](https://github.com/bldrs-ai/conway) generates code bindings for the entire IFC 4.x specs, of 1000+ types. Around 10% of those types have geometric representations.  `conway-geom` covers most of these (80% Nov 2024) and is progressing towards full coverage.  See [IFC_Coverage](https://github.com/bldrs-ai/conway/wiki/IFC-Coverage) for a detailed coverage report.
+
+## Getting Started
 
 1. [Install EMSDK](https://github.com/emscripten-core/emsdk) and follow the instructions for your platform. 
 2. Install the `gmake` and `node` dependencies via Homebrew (```brew install gmake node```).
@@ -54,7 +68,3 @@ These will genie and use gmake to build wasm modules (single and multithreaded) 
 6. -t - Traces and prints IFC type information gathered from parsing a given ifc file
 7. -c - Prints generated code for conway geometry processor (Internal only - used for debugging / development - WIP)
 8. -h - Displays help.
-
-## IFC Schema Coverage
-
-See the wiki page for coverage https://github.com/bldrs-ai/conway/wiki/IFC-Coverage
