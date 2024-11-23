@@ -1,6 +1,6 @@
 # conway-geom
 
-`conway-geom` is Bldrs’ rewrite of [web-ifc](https://github.com/ThatOpen/engine_web-ifc), engineered for high-performance and to support the full suite of open CAD standards within the IFC and STEP families.
+`conway-geom` is Bldrs’ rewrite of [web-ifc](https://github.com/ThatOpen/engine_web-ifc), engineered for high-performance and to support the full suite of open CAD standards within the IFC and STEP families.  `conway-geom` is written in C++ & javascript and deployed as a WASM module, e.g. in [Bldrs Share][https://github.com/bldrs-ai/Share].
 
 Features:
 - *Fast near-exact CSG*: Our cutting-edge implementation of Constructive Solid Geometry (CSG) partly based on “Exact predicates, exact constructions and combinatorics for mesh CSG” Lévy et al. 2024 [https://arxiv.org/pdf/2405.12949], with robust handling of real-world model data, tailored for the web environment.
