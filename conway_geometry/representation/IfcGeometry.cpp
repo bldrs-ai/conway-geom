@@ -12,7 +12,33 @@
 #include <iostream>
 #include <sstream>
 
+#include "structures/hash_functions.h"
+#include "csg/csg_utils.h"
+#include "csg/csg.h"
+#include "structures/vertex_welder.h"
+
 namespace conway::geometry {
+
+VertexWelder welder;
+  
+IfcGeometry::IfcGeometry( WingedEdgeDV3&& from ) : fuzzybools::Geometry(), wingedEdgeMesh() {
+
+  const WingedEdgeDV3&             mesh     = wingedEdgeMesh.emplace( from );
+  const std::vector< glm::dvec3 >& vertices = mesh.vertices;
+
+  for ( const ConnectedTriangle& triangle : from.triangles ) {
+
+    if (
+      vertices[ triangle.vertices[ 0 ] ] == vertices[ triangle.vertices[ 1 ] ] ||
+      vertices[ triangle.vertices[ 1 ] ] == vertices[ triangle.vertices[ 2 ] ] ||
+      vertices[ triangle.vertices[ 2 ] ] == vertices[ triangle.vertices[ 0 ] ] ) {
+
+      continue;
+    }
+
+    AddFace( vertices[ triangle.vertices[ 0 ] ], vertices[ triangle.vertices[ 1 ] ], vertices[ triangle.vertices[ 2 ] ] );
+  }
+}
 
 void IfcGeometry::ReverseFace(uint32_t index) {
   fuzzybools::Face f = GetFace(index);
@@ -46,12 +72,12 @@ glm::dvec3 IfcGeometry::Normalize()
 }
 
 glm::dvec3 IfcGeometry::GetAABBCenter() const {
-   glm::dvec3 center(0,0,0);
+   glm::dvec3 _center(0,0,0);
    glm::dvec3 extents;
 
-   GetCenterExtents(center, extents);
+   GetCenterExtents(_center, extents);
 
-   return center;
+   return _center;
 }
 
 glm::dvec3 IfcGeometry::GetPoint(uint32_t index) const {
@@ -76,7 +102,7 @@ uint32_t IfcGeometry::GetVertexData() {
       // The vector was previously copied in batches of 6, but
       // copying single entry at a time is more resilient if the
       // underlying geometry lib changes the treatment of normals
-      fvertexData[i] = vertexData[i];
+      fvertexData[i] = static_cast< float >( vertexData[i] );
     }
   }
   if (fvertexData.empty()) {
@@ -159,14 +185,57 @@ void IfcGeometry::AppendWithTransform(const IfcGeometry &geom,
   uint32_t *indexDataCursor = indexData.data() + indexDataStart;
   uint32_t *indexDataEnd = indexData.data() + indexData.size();
 
-  for (; indexDataCursor < indexDataEnd; indexDataCursor += 3) {
+  for ( ; indexDataCursor < indexDataEnd; indexDataCursor += 3 ) {
     indexDataCursor[0] += maxIndex;
     indexDataCursor[1] += maxIndex;
     indexDataCursor[2] += maxIndex;
   }
 
+  wingedEdgeMesh.reset();
   //TODO: see if this is needed 
   //AddPart(geom);
+}
+
+conway::geometry::WingedEdgeDV3& IfcGeometry::GetWingedEdgeMesh() {
+
+  if ( !wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.emplace();
+ 
+    WingedEdgeDV3& mesh = *wingedEdgeMesh;
+
+    for ( uint32_t where = 0; where < numPoints; ++where ) {
+    
+      glm::dvec3 from = GetPoint( where );
+
+      from *= exp2( 24 );
+
+      from = glm::round( from );
+
+      from *= exp2( -24 );
+
+      mesh.vertices.push_back( from );
+    }
+
+    for ( uint32_t where = 0, end = numFaces * 3; where < end; where += 3 ) {
+
+      size_t f1 = indexData[ where + 0 ];
+      size_t f2 = indexData[ where + 1 ];
+      size_t f3 = indexData[ where + 2 ];
+
+      mesh.makeTriangle( f1, f2, f3 );
+    }
+
+    welder.weld( *wingedEdgeMesh, exp2( -23 ) );
+
+    {
+      CSG cleaner;
+ 
+      cleaner.clean( *wingedEdgeMesh );
+    }
+  }
+
+  return *wingedEdgeMesh;
 }
 
 void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
@@ -178,6 +247,11 @@ void IfcGeometry::AppendGeometry(IfcGeometry &geom) {
     AddFace(maxIndex + geom.indexData[k * 3 + 0],
             maxIndex + geom.indexData[k * 3 + 1],
             maxIndex + geom.indexData[k * 3 + 2]);
+  }
+
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 
   //TODO: see if this is needed 
@@ -206,6 +280,12 @@ fuzzybools::AABB IfcGeometry::getAABB() const
 void IfcGeometry::AddGeometry(const fuzzybools::Geometry& geom, const glm::dmat4& trans,
                               double scx, double scy, double scz,
                               const glm::dvec3& origin) {
+  
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
+  }
+  
   for (uint32_t i = 0; i < geom.numFaces; i++) {
     fuzzybools::Face f = geom.GetFace(i);
     glm::dvec3 a = geom.GetPoint(f.i0);
@@ -231,7 +311,7 @@ void IfcGeometry::AddGeometry(const fuzzybools::Geometry& geom, const glm::dmat4
     AddFace(a, b, c);
   }
 
-  AddPart(geom);
+  //AddPart(geom);
 }
 
 /*
@@ -247,6 +327,11 @@ void IfcGeometry::MergeGeometry(const fuzzybools::Geometry& geom)
     glm::dvec3 b = geom.GetPoint(f.i1);
     glm::dvec3 c = geom.GetPoint(f.i2);
     AddFace(a, b, c);
+  }
+  
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 }
 
@@ -314,6 +399,11 @@ void IfcGeometry::ApplyTransform(const glm::dmat4& transform) {
 
   for ( auto& localPart : part ) {
     localPart.ApplyTransform( transform );
+  }
+
+  if ( wingedEdgeMesh.has_value() ) {
+
+    wingedEdgeMesh.reset();
   }
 }
 
