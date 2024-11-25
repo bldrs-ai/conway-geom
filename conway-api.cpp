@@ -268,7 +268,7 @@ conway::geometry::IfcGeometry GetBooleanResult(
 }
 
 conway::geometry::IfcGeometry RelVoidSubtract(
-    const conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract&
+    conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract&
         parameters) {
   if (processor) {
     return processor->RelVoidSubtract(parameters);

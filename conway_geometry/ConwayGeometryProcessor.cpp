@@ -8,7 +8,8 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 #pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma clang diagnostic ignored "-Wreturn-type"
-#include "fuzzy/fuzzy-bools.h"
+//#include "fuzzy/fuzzy-bools.h"
+
 #pragma clang diagnostic pop
 
 #include "operations/curve_utils.h"
@@ -17,8 +18,11 @@
 #include "representation/geometry.h"
 #include "Logger.h"
 
-namespace conway::geometry {
+#include "csg/csg.h"
 
+#include "structures/vertex_welder.h"
+
+namespace conway::geometry {
 
 fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
     const IfcGeometry &geom) {
@@ -241,12 +245,26 @@ glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
 }
 
 IfcGeometry ConwayGeometryProcessor::BoolSubtract(
-    const std::vector<IfcGeometry> &firstGeoms,
-    const std::vector<IfcGeometry> &secondGeoms) {
+    std::vector<IfcGeometry> &firstGeoms,
+    std::vector<IfcGeometry> &secondGeoms) {
+
+  if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
+    
+    WingedEdgeDV3 resultMesh;
+
+    CSG csg;
+
+    csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ].GetWingedEdgeMesh(), secondGeoms[ 0 ].GetWingedEdgeMesh(), resultMesh, 0 );
+
+    return IfcGeometry( std::move( resultMesh ) );
+  }
+
   IfcGeometry finalResult;
 
   for (auto &firstGeom : firstGeoms) {
-    fuzzybools::Geometry result = firstGeom;
+    
+    IfcGeometry result = firstGeom;
+
     for (auto &secondGeom : secondGeoms) {
       if (secondGeom.numFaces == 0) {
         Logger::logWarning("bool aborted due to empty source or target");
@@ -280,8 +298,10 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         double scaleY = 1;
         double scaleZ = 1;
 
-        for (uint32_t i = 0; i < result.numPoints; i++) {
-          glm::dvec3 p = result.GetPoint(i);
+        const WingedEdgeDV3& previousMesh = result.GetWingedEdgeMesh();
+
+        for (uint32_t i = 0; i < previousMesh.vertices.size(); i++) {
+          const glm::dvec3& p = previousMesh.vertices[ i ];
           glm::dvec3 vec = (p - origin);
           double dx = glm::dot(vec, x);
           double dy = glm::dot(vec, y);
@@ -299,22 +319,46 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
 
         newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
                               scaleZ * 2, secondGeom.halfSpaceOrigin);
-                              
-        result = fuzzybools::Subtract(result, newSecond);
-      } else {
+
+        WingedEdgeDV3 resultMesh;
+
+        CSG csg;
+
+        csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), newSecond.GetWingedEdgeMesh(), resultMesh, 0 );
+
+        result = IfcGeometry( std::move( resultMesh ) );
         
-        result = fuzzybools::Subtract(result, secondGeom);
+      //  secondGeom.wingedEdgeMesh.reset();
+
+
+      } else {
+
+        WingedEdgeDV3 resultMesh;
+
+        CSG csg;
+
+        csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), secondGeom.GetWingedEdgeMesh(), resultMesh, 0 );
+
+        result = IfcGeometry( std::move( resultMesh ) );
+    //   secondGeom.wingedEdgeMesh.reset();
       }
     }
 
-    finalResult.AddGeometry(result);
+    if ( firstGeoms.size() == 1 ) {
+
+      return result;
+    }
+
+    result.wingedEdgeMesh.reset();    
+
+    finalResult.AddGeometry( result );
   }
 
   return finalResult;
 }
 
 IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
-    ParamsRelVoidSubtract parameters) {
+      ParamsRelVoidSubtract& parameters) {
   IfcGeometry resultGeometry;
 
   if (parameters.flatFirstMesh.size() <= 0) {
@@ -327,31 +371,31 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
     return resultGeometry;
   }
 
-  glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
-  // get origin
-  if (parameters.flatFirstMesh[0].numFaces) {
-    for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
-      fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
-      originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
-      break;
-    }
-  }
+  // glm::dvec3 originFirstMesh = GetOrigin(parameters.flatFirstMesh[0]);
+  // // get origin
+  // if (parameters.flatFirstMesh[0].numFaces) {
+  //   for (uint32_t i = 0; i < parameters.flatFirstMesh[0].numFaces; i++) {
+  //     fuzzybools::Face f = parameters.flatFirstMesh[0].GetFace(i);
+  //     originFirstMesh = parameters.flatFirstMesh[0].GetPoint(f.i0);
+  //     break;
+  //   }
+  // }
   
   // TODO: clean this up, remove origin translation
-  auto normalizeMat    = glm::translate(-originFirstMesh);
-  glm::dmat4 newMatrix = normalizeMat;
+  // auto normalizeMat    = glm::translate(-originFirstMesh);
+  // glm::dmat4 newMatrix = normalizeMat;
 
-  parameters.flatFirstMesh[0].ApplyTransform( newMatrix );
+  // parameters.flatFirstMesh[0].ApplyTransform( newMatrix );
 
-   for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
+  //  for (uint32_t j = 0; j < parameters.flatSecondMesh.size(); j++) {
 
-    parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
-  }
+  //   parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
+  // }
 
   resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh );
 
   glm::dmat4 combinedMatrix =
-      glm::inverse(parameters.parentMatrix) * glm::translate(originFirstMesh);
+       glm::inverse(parameters.parentMatrix);// * glm::translate(originFirstMesh);
 
   resultGeometry.ApplyTransform( combinedMatrix );
 
@@ -372,7 +416,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
   }
 
   resultGeometry =
-      BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
+    BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
 
   return resultGeometry;
 }
@@ -888,8 +932,9 @@ IfcBound3D ConwayGeometryProcessor::GetBound(const ParamsGetBound& parameters) {
   bound.type = (parameters.isFaceOuterBound) ? IfcBoundType::OUTERBOUND
                                              : IfcBoundType::BOUND;
 
-  if (!orient)
+  if (!orient) {
     std::reverse(bound.curve.points.begin(), bound.curve.points.end());
+  }
 
   return bound;
 }
@@ -1015,7 +1060,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     // Pass the absolute path, without the filename, to the stream writer
     std::unique_ptr<StreamWriter> streamWriter = std::make_unique<StreamWriter>(
-        std::filesystem::path(filePath).parent_path().c_str());
+        std::filesystem::path(filePath).parent_path());
     std::unique_ptr<Microsoft::glTF::ResourceWriter> resourceWriter;
 
     if (!isGlb) {
@@ -1049,7 +1094,7 @@ ConwayGeometryProcessor::GeometryToGltf(
       std::string bufferIdCopy = std::string(bufferId);
       bufferIdCopy += ".";
       bufferIdCopy += Microsoft::glTF::BUFFER_EXTENSION;
-      results.bufferUris.push_back(bufferIdCopy);
+      results.bufferUris.push_back( filePath + "." + Microsoft::glTF::BUFFER_EXTENSION );
     }
 
     // Create a Buffer - it will be the 'current' Buffer that all the
@@ -1525,7 +1570,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       std::vector<uint8_t> glbBuffer(str.length());
       memcpy(glbBuffer.data(), str.c_str(), str.length());
-      results.buffers.push_back(glbBuffer);
+      results.buffers.push_back( glbBuffer );
 
       // write file
       if (outputFile) {
