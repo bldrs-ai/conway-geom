@@ -8,7 +8,7 @@
 #pragma once
 
 #include "representation/ConwayCurve.h"
-#include "logging/Logger.h"
+#include "../logging/Logger.h"
 
 namespace conway::geometry {
 
