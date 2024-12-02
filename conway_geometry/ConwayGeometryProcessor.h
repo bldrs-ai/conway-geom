@@ -512,6 +512,20 @@ class ConwayGeometryProcessor {
     std::vector<uint32_t> indices;
   };
 
+  // case ifc::IFCSWEPTDISKSOLID
+  struct ParamsGetSweptDiskSolid {
+    IfcCurve directrix;
+    double radius;
+    double innerRadius;
+    double startParam;
+    double endParam;
+    bool closed;
+    uint32_t circleSegments;
+    double scalingFactor;
+  };
+
+  conway::geometry::IfcGeometry getSweptDiskSolid(const ParamsGetSweptDiskSolid& parameters);
+
   // case ifc::IFCINDEXEDPOLYCURVE
   struct ParamsGetIfcIndexedPolyCurve {
     uint32_t dimensions = 2;

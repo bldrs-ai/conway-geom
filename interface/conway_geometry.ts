@@ -45,6 +45,7 @@ import { ParamsAxis1Placement3D } from './parameters/params_axis_1_placement_3D'
 import { ParamsGetAxis2Placement2D } from './parameters/params_get_axis_2_placement_2D'
 import { ParamsAxis2Placement3D } from './parameters/params_axis_2_placement_3D'
 import { ParamsLocalPlacement } from './parameters/params_local_placement'
+import { ParamsGetSweptDiskSolid } from './parameters/params_get_swept_disk_solid'
 
 
 let ConwayGeomWasm: any
@@ -436,6 +437,16 @@ export class ConwayGeometry {
   getHalfSpaceSolid(parameters: ParamsGetHalfspaceSolid): GeometryObject {
     const result = this.wasmModule.getHalfSpaceSolid(parameters)
     return result
+  }
+
+  /**
+   * 
+   * @param parameters 
+   * @returns {GeometryObject}
+   */
+  getSweptDiskSolid(parameters: ParamsGetSweptDiskSolid): GeometryObject {
+    const result = this.wasmModule.getSweptDiskSolid(parameters);
+    return result;
   }
 
   /**

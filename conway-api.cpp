@@ -51,6 +51,16 @@ glm::dmat4 multiplyNativeMatrices(glm::dmat4 mat1, glm::dmat4 mat2) {
   return mat1 * mat2;
 }
 
+conway::geometry::IfcGeometry GetSweptDiskSolid(
+  conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid& parameters) {
+    if (processor) {
+      return processor->getSweptDiskSolid(parameters);
+    }
+
+    conway::geometry::IfcGeometry geom;
+    return geom;
+  }
+
 conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
     conway::geometry::ConwayGeometryProcessor::
         ParamsGetPolygonalFaceSetGeometry& parameters) {
@@ -1275,6 +1285,18 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("buffers",
              &conway::geometry::ConwayGeometryProcessor::ResultsGltf::buffers);
 
+  emscripten::value_object<conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid>(
+    "ParamsGetSweptDiskSolid")
+    .field("directrix", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::directrix)
+    .field("radius", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::radius)
+    .field("innerRadius", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::innerRadius)
+    .field("startParam", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::startParam)
+    .field("endParam", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::endParam)
+    .field("closed", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::closed)
+    .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::circleSegments)
+    .field("scalingFactor", &conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid::scalingFactor);
+
+
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBSplineCurve>(
       "ParamsGetBSplineCurve")
@@ -1438,4 +1460,6 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::function("resizeVectorVectorDouble", 
   &resizeVectorVectorDouble, emscripten::allow_raw_pointers());
+  emscripten::function("getSweptDiskSolid", 
+  &GetSweptDiskSolid, emscripten::allow_raw_pointers());
 }
