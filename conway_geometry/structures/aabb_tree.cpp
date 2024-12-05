@@ -6,7 +6,7 @@
 
 #include <math.h>
 
-constexpr double GWN_PRECISION = 10000.0;
+constexpr double GWN_PRECISION = 2.0;
 
 namespace conway::geometry {
 
