@@ -15,7 +15,7 @@
 #include "operations/curve_utils.h"
 #include "operations/geometry_utils.h"
 #include "operations/mesh_utils.h"
-#include "representation/geometry.h"
+#include "representation/Geometry.h"
 #include "Logger.h"
 
 #include "csg/csg.h"
@@ -24,41 +24,7 @@
 
 namespace conway::geometry {
 
-fuzzybools::Geometry ConwayGeometryProcessor::GeomToFBGeom(
-    const IfcGeometry &geom) {
-  fuzzybools::Geometry fbGeom;
-
-  for (size_t i = 0; i < geom.numFaces; i++) {
-    const fuzzybools::Face &f = geom.GetFace(i);
-
-    auto a = geom.GetPoint(f.i0);
-    auto b = geom.GetPoint(f.i1);
-    auto c = geom.GetPoint(f.i2);
-
-    fbGeom.AddFace(a, b, c);
-  }
-
-  return fbGeom;
-}
-
-IfcGeometry ConwayGeometryProcessor::FBGeomToGeom(
-    const fuzzybools::Geometry &fbGeom) {
-  IfcGeometry geom;
-
-  for (size_t i = 0; i < fbGeom.numFaces; i++) {
-    const fuzzybools::Face &f = fbGeom.GetFace(i);
-
-    auto a = fbGeom.GetPoint(f.i0);
-    auto b = fbGeom.GetPoint(f.i1);
-    auto c = fbGeom.GetPoint(f.i2);
-
-    geom.AddFace(a, b, c);
-  }
-
-  return geom;
-}
-
-double normalDiff(glm::dvec3 extents) {
+double normalDiff( const glm::dvec3& extents ) {
   double a = extents.x;
 
   if (a < extents.y) {
@@ -215,68 +181,51 @@ IfcCurve ConwayGeometryProcessor::GetRectangleHollowProfileHole(
   return curve;
 }
 
-glm::dvec3 GetOrigin(const IfcGeometry &geometry) {
+glm::dvec3 GetOrigin(const Geometry &geometry) {
   
-  fuzzybools::AABB box = geometry.GetAABB();
+  box3 box = geometry.GetAABB();
 
-  return box.min + ( ( box.max - box.min ) * 0.5 );
+  return box.centre();
 }
 
-glm::dvec3 CalculateCentroid(const IfcGeometry &geometry) {
-  glm::dvec3 centroid(0.0);
-  uint32_t numVertices = 0;
+glm::dvec3 CalculateCentroid( const Geometry &geometry ) {
 
-  // I'm assuming the IfcGeometry class provides a method to iterate over all
-  // vertices. If it doesn't, you might need to iterate over faces and access
-  // vertices via face indices.
-  for (uint32_t i = 0; i < geometry.numFaces; i++) {
-    fuzzybools::Face f = geometry.GetFace(i);
-    centroid += geometry.GetPoint(f.i0);
-    centroid += geometry.GetPoint(f.i1);
-    centroid += geometry.GetPoint(f.i2);
-    numVertices += 3;
-  }
-
-  if (numVertices > 0) {
-    centroid /= static_cast<double>(numVertices);
-  }
-
-  return centroid;
+  return centroid( geometry.vertices, geometry.triangles );
 }
 
-IfcGeometry ConwayGeometryProcessor::BoolSubtract(
-    std::vector<IfcGeometry> &firstGeoms,
-    std::vector<IfcGeometry> &secondGeoms) {
+Geometry ConwayGeometryProcessor::BoolSubtract(
+    std::vector<Geometry> &firstGeoms,
+    std::vector<Geometry> &secondGeoms) {
 
   if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
     
-    WingedEdgeDV3 resultMesh;
+    Geometry resultMesh;
 
     CSG csg;
 
-    csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ].GetWingedEdgeMesh(), secondGeoms[ 0 ].GetWingedEdgeMesh(), resultMesh, 0 );
+    firstGeoms[ 0 ].Cleanup();
+    secondGeoms[ 0 ].Cleanup();
 
-    return IfcGeometry( std::move( resultMesh ) );
+    csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ], secondGeoms[ 0 ], resultMesh, 0 );
+
+    return resultMesh;
   }
 
-  IfcGeometry finalResult;
+  Geometry finalResult;
 
-  for (auto &firstGeom : firstGeoms) {
-    
-    IfcGeometry result = firstGeom;
+  for ( auto &firstGeom : firstGeoms ) {
 
-    for (auto &secondGeom : secondGeoms) {
-      if (secondGeom.numFaces == 0) {
-        Logger::logWarning("bool aborted due to empty source or target");
+    firstGeom.Cleanup();
 
-        // bail out because we will get strange meshes
-        // if this happens, probably there's an issue parsing the mesh that
-        // occurred earlier
-        continue;
-      }
+    Geometry result = firstGeom;
 
-      if (result.numFaces == 0) {
-        Logger::logWarning("bool aborted due to empty source or target");
+    for ( auto &secondGeom : secondGeoms ) {
+
+      result.Cleanup();
+
+      if ( result.IsEmpty() ) {
+
+        Logger::logWarning("bool aborted due to empty first operand");
 
         // bail out because we will get strange meshes
         // if this happens, probably there's an issue parsing the mesh that
@@ -284,7 +233,19 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         break;
       }
 
-      if (secondGeom.halfSpace) {
+      secondGeom.Cleanup();
+
+      if ( secondGeom.IsEmpty() ) {
+        
+        Logger::logWarning("bool aborted due to empty second operand");
+
+        // bail out because we will get strange meshes
+        // if this happens, probably there's an issue parsing the mesh that
+        // occurred earlier
+        continue;
+      }
+
+      if ( secondGeom.halfSpace ) {
         glm::dvec3 origin = secondGeom.halfSpaceOrigin;
         glm::dvec3 x = secondGeom.halfSpaceX - origin;
         glm::dvec3 y = secondGeom.halfSpaceY - origin;
@@ -292,55 +253,62 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
         glm::dmat4 trans =
             glm::dmat4(glm::dvec4(x, 0), glm::dvec4(y, 0), glm::dvec4(z, 0),
                         glm::dvec4(0, 0, 0, 1));
-        IfcGeometry newSecond;
+        Geometry newSecond;
 
         double scaleX = 1;
         double scaleY = 1;
         double scaleZ = 1;
 
-        const WingedEdgeDV3& previousMesh = result.GetWingedEdgeMesh();
+        for (uint32_t i = 0; i < result.vertices.size(); i++) {
 
-        for (uint32_t i = 0; i < previousMesh.vertices.size(); i++) {
-          const glm::dvec3& p = previousMesh.vertices[ i ];
-          glm::dvec3 vec = (p - origin);
-          double dx = glm::dot(vec, x);
-          double dy = glm::dot(vec, y);
-          double dz = glm::dot(vec, z);
-          if (glm::abs(dx) > scaleX) {
-            scaleX = glm::abs(dx);
+          const glm::dvec3& p = result.vertices[ i ];
+
+          glm::dvec3 vec = ( p - origin );
+
+          double dx = glm::dot( vec, x );
+          double dy = glm::dot( vec, y );
+          double dz = glm::dot( vec, z );
+
+          if ( glm::abs( dx ) > scaleX ) {
+            scaleX = glm::abs( dx );
           }
-          if (glm::abs(dy) > scaleY) {
-            scaleY = glm::abs(dy);
+
+          if ( glm::abs( dy ) > scaleY ) {
+            scaleY = glm::abs( dy );
           }
-          if (glm::abs(dz) > scaleZ) {
-            scaleZ = glm::abs(dz);
+
+          if ( glm::abs( dz ) > scaleZ ) {
+            scaleZ = glm::abs( dz );
           }
         }
 
-        newSecond.AddGeometry(secondGeom, trans, scaleX * 2, scaleY * 2,
-                              scaleZ * 2, secondGeom.halfSpaceOrigin);
+        newSecond.AppendWithScalingTransform(
+          secondGeom,
+          trans,
+          scaleX * 2,
+          scaleY * 2,
+          scaleZ * 2,
+          secondGeom.halfSpaceOrigin );
 
-        WingedEdgeDV3 resultMesh;
+        newSecond.Cleanup();
+
+        Geometry newResult;
 
         CSG csg;
 
-        csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), newSecond.GetWingedEdgeMesh(), resultMesh, 0 );
+        csg.run( CSG::Operation::SUBTRACTION, result, newSecond, newResult, 0 );
 
-        result = IfcGeometry( std::move( resultMesh ) );
-        
-      //  secondGeom.wingedEdgeMesh.reset();
-
+        result = std::move( newResult );
 
       } else {
 
-        WingedEdgeDV3 resultMesh;
+        Geometry newResult;
 
         CSG csg;
+        
+        csg.run( CSG::Operation::SUBTRACTION, result, secondGeom, newResult, 0 );
 
-        csg.run( CSG::Operation::SUBTRACTION, result.GetWingedEdgeMesh(), secondGeom.GetWingedEdgeMesh(), resultMesh, 0 );
-
-        result = IfcGeometry( std::move( resultMesh ) );
-    //   secondGeom.wingedEdgeMesh.reset();
+        result = std::move( newResult );
       }
     }
 
@@ -349,17 +317,15 @@ IfcGeometry ConwayGeometryProcessor::BoolSubtract(
       return result;
     }
 
-    result.wingedEdgeMesh.reset();    
-
-    finalResult.AddGeometry( result );
+    finalResult.AppendGeometry( result );
   }
 
   return finalResult;
 }
 
-IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
+Geometry ConwayGeometryProcessor::RelVoidSubtract(
       ParamsRelVoidSubtract& parameters) {
-  IfcGeometry resultGeometry;
+  Geometry resultGeometry;
 
   if (parameters.flatFirstMesh.size() <= 0) {
     Logger::logWarning("first mesh zero\n");
@@ -391,7 +357,6 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
 
   //   parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
   // }
-
   resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh );
 
   glm::dmat4 combinedMatrix =
@@ -402,9 +367,9 @@ IfcGeometry ConwayGeometryProcessor::RelVoidSubtract(
   return resultGeometry;
 }
 
-IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
+Geometry ConwayGeometryProcessor::GetBooleanResult(
     ParamsGetBooleanResult *parameters) {
-  IfcGeometry resultGeometry;
+  Geometry resultGeometry;
   if (parameters->flatFirstMesh.size() <= 0) {
     Logger::logWarning("first mesh zero\n");
     return resultGeometry;
@@ -421,7 +386,7 @@ IfcGeometry ConwayGeometryProcessor::GetBooleanResult(
   return resultGeometry;
 }
 
-IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
+Geometry ConwayGeometryProcessor::GetHalfSpaceSolid(
     const ParamsGetHalfspaceSolid& parameters) {
   glm::dvec3 extrusionNormal = glm::dvec3(0, 0, 1);
 
@@ -439,19 +404,15 @@ IfcGeometry ConwayGeometryProcessor::GetHalfSpaceSolid(
   geom.halfSpace = true;
 
   // @Refactor: duplicate of extrudedareasolid
-  if (parameters.flipWinding) {
-    for (uint32_t i = 0; i < geom.numFaces; i++) {
-      uint32_t temp = geom.indexData[i * 3 + 0];
-      temp = geom.indexData[i * 3 + 0];
-      geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
-      geom.indexData[i * 3 + 1] = temp;
-    }
+  if ( parameters.flipWinding ) {
+    
+    geom.ReverseFaces();
   }
 
   return geom;
 }
 
-IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
+Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
     const ParamsGetPolygonalBoundedHalfspace& parameters) {
   
   
@@ -489,7 +450,7 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   profile.isConvex = false;
   profile.curve = parameters.curve;
 
-  conway::geometry::IfcGeometry geom =
+  conway::geometry::Geometry geom =
       Extrude(profile, extrusionNormal, extrudeDistance, localPlaneNormal,
               localPlanePos);
   // auto geom = Extrude(profile, surface.transformation, extrusionNormal,
@@ -497,12 +458,8 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 
   // @Refactor: duplicate of extrudedareasolid
   if (flipWinding) {
-    for (uint32_t i = 0; i < geom.numFaces; i++) {
-      uint32_t temp = geom.indexData[i * 3 + 0];
-      temp = geom.indexData[i * 3 + 0];
-      geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
-      geom.indexData[i * 3 + 1] = temp;
-    }
+    
+    geom.ReverseFaces();
   }
 
 #ifdef DUMP_CSG_MESHES
@@ -535,7 +492,7 @@ IfcGeometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 }*/
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
-    ParamsAddFaceToGeometry& parameters, IfcGeometry &geometry) {
+    ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
   if (!parameters.advancedBrep) {
     if (parameters.boundsArray.size() > 0) {
       TriangulateBounds(geometry, parameters.boundsArray);
@@ -993,7 +950,7 @@ std::vector<IfcBound3D> ConwayGeometryProcessor::ReadIndexedPolygonalFace(
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf
 ConwayGeometryProcessor::GeometryToGltf(
-    std::span<conway::geometry::IfcGeometryCollection> geoms,
+    std::span<conway::geometry::GeometryCollection> geoms,
     std::span<conway::geometry::Material> materials, bool isGlb,
     bool outputDraco, std::string filePath, bool outputFile,
     glm::dmat4 transform) {
@@ -1109,7 +1066,7 @@ ConwayGeometryProcessor::GeometryToGltf(
     std::vector<Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression>
         dracoPrimitives;
 
-    for (conway::geometry::IfcGeometryCollection &geom : geoms) {
+    for (conway::geometry::GeometryCollection &geom : geoms) {
       // create a mesh object
       std::unique_ptr<draco::Mesh> dracoMesh;
 
@@ -1139,23 +1096,24 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         // set the number of positions and faces
         uint32_t numPositions = 0;
-        uint32_t numIndices = 0;
+        uint32_t numFaces = 0;
 
-        for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
-          conway::geometry::IfcGeometry &component = *componentPtr;
+        for ( conway::geometry::Geometry *componentPtr : geom.components ) {
 
-          numPositions += component.numPoints;
-          numIndices += component.GetIndexDataSize();
+          conway::geometry::Geometry &component = *componentPtr;
+
+          numPositions += component.vertices.size();
+          numFaces     += component.triangles.size();
         }
 
-        uint32_t numFaces = numIndices / 3;
+        uint32_t numIndices = numFaces * 3;
 
         if (numFaces > 0) {
           // set number of faces
           dracoMesh->SetNumFaces(numFaces);
 
           // set number of indices
-          dracoMesh->set_num_points(3 * numFaces);
+          dracoMesh->set_num_points(numIndices);
         }
 
         // Add attributes if they are present in the input data.
@@ -1179,38 +1137,40 @@ ConwayGeometryProcessor::GeometryToGltf(
         for (uint32_t geometryComponentIndex = 0;
              geometryComponentIndex < geom.components.size();
              ++geometryComponentIndex) {
-          IfcGeometry &component = *geom.components[geometryComponentIndex];
+          Geometry &component = *geom.components[geometryComponentIndex];
           glm::mat4 geomTransform =
               transform * geom.transforms[geometryComponentIndex];
 
-          for (const double *where = component.vertexData.data(),
-                            *end = where + component.vertexData.size();
-               where < end; where += VERTEX_FORMAT_SIZE_FLOATS) {
+          for ( const glm::dvec3 *where = component.vertices.data(),
+                            *end = where + component.vertices.size();
+               where < end; ++where ) {
             glm::dvec4 t =
-                geomTransform * glm::dvec4(where[0], where[1], where[2], 1);
+                geomTransform * glm::dvec4( *where, 1);
 
             float vertexVal[3] = {static_cast<float>(t.x),
                                   static_cast<float>(t.y),
                                   static_cast<float>(t.z)};
 
-            dracoMesh->attribute(pos_att_id)
-                ->SetAttributeValue(draco::AttributeValueIndex(vertexCount++),
-                                    vertexVal);
+            dracoMesh->attribute( pos_att_id )
+                ->SetAttributeValue( draco::AttributeValueIndex( vertexCount++ ),
+                                    vertexVal );
           }
 
-          const uint32_t *triangles = component.indexData.data();
+          const Triangle *triangles = component.triangles.data();
 
           // no textures, just map vertices to face indices
-          for (size_t triangleIndex = 0, end = (component.indexData.size() / 3);
-               triangleIndex < end; ++triangleIndex) {
-            uint32_t indiceIndex = triangleIndex * 3;
-            const uint32_t *triangle = triangles + indiceIndex;
+          for (
+            size_t triangleIndex = 0, end = component.triangles.size();
+            triangleIndex < end; 
+            ++triangleIndex ) {
 
-            uint32_t triangle0 = triangle[0] + totalPoints;
-            uint32_t triangle1 = triangle[1] + totalPoints;
-            uint32_t triangle2 = triangle[2] + totalPoints;
+            const Triangle& triangle = triangles[ triangleIndex ];
 
-            uint32_t compositeIndiceIndex = totalIndices + indiceIndex;
+            uint32_t triangle0 = triangle.vertices[ 0 ] + totalPoints;
+            uint32_t triangle1 = triangle.vertices[ 1 ] + totalPoints;
+            uint32_t triangle2 = triangle.vertices[ 2 ] + totalPoints;
+
+            uint32_t compositeIndiceIndex = totalIndices + triangleIndex * 3;
 
             const draco::PointIndex vert_id_0(compositeIndiceIndex);
             const draco::PointIndex vert_id_1(compositeIndiceIndex + 1);
@@ -1228,8 +1188,8 @@ ConwayGeometryProcessor::GeometryToGltf(
                                    draco::AttributeValueIndex(triangle2));
           }
 
-          totalIndices += component.indexData.size();
-          totalPoints += component.numPoints;
+          totalIndices += static_cast< uint32_t >( component.triangles.size() * 3 );
+          totalPoints  += static_cast< uint32_t >( component.vertices.size() );
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1314,11 +1274,11 @@ ConwayGeometryProcessor::GeometryToGltf(
       uint32_t numPoints = 0;
       uint32_t numIndices = 0;
 
-      for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
-        conway::geometry::IfcGeometry &component = *componentPtr;
+      for (conway::geometry::Geometry *componentPtr : geom.components) {
+        conway::geometry::Geometry &component = *componentPtr;
 
-        numPoints += component.numPoints;
-        numIndices += component.GetIndexDataSize();
+        numPoints  += static_cast< uint32_t >( component.vertices.size() );
+        numIndices += component.triangles.size() * 3;
       }
 
       // printf("numPoints: %i\n", numPoints);
@@ -1336,11 +1296,11 @@ ConwayGeometryProcessor::GeometryToGltf(
       std::vector<float> positions;
       std::vector<uint32_t> indexData;
 
-      positions.resize(numPoints * 3);
-      indexData.reserve(numIndices);
+      positions.resize( numPoints * 3 );
+      indexData.reserve( numIndices );
 
-      std::vector<float> minValues(3U, std::numeric_limits<float>::max());
-      std::vector<float> maxValues(3U, std::numeric_limits<float>::lowest());
+      std::vector<float> minValues( 3U, std::numeric_limits< float >::max() );
+      std::vector<float> maxValues( 3U, std::numeric_limits< float >::lowest() );
 
       const size_t positionCount = positions.size();
       float *positionOutputCursor = positions.data();
@@ -1348,16 +1308,18 @@ ConwayGeometryProcessor::GeometryToGltf(
       uint32_t pointOffset = 0;
       size_t transformCursor = 0;
 
-      for (conway::geometry::IfcGeometry *componentPtr : geom.components) {
-        conway::geometry::IfcGeometry &component = *componentPtr;
+      for (conway::geometry::Geometry *componentPtr : geom.components) {
+        conway::geometry::Geometry &component = *componentPtr;
         glm::dmat4 geomTransform =
             transform * geom.transforms[transformCursor++];
 
-        for (const double *where = component.vertexData.data(),
-                          *end = where + component.vertexData.size();
-             where < end; where += VERTEX_FORMAT_SIZE_FLOATS) {
+        for (const glm::dvec3 *where = component.vertices.data(),
+                              *end   = where + component.vertices.size();
+             where < end;
+             ++where ) {
+
           glm::dvec4 t =
-              geomTransform * glm::dvec4(where[0], where[1], where[2], 1);
+              geomTransform * glm::dvec4( *where, 1 );
 
           *(positionOutputCursor++) = (float)t.x;
           *(positionOutputCursor++) = (float)t.y;
@@ -1366,8 +1328,10 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         size_t indexDataOffset = indexData.size();
 
-        indexData.insert(indexData.end(), component.indexData.begin(),
-                         component.indexData.end());
+        indexData.insert(
+          indexData.end(),
+          &component.triangles[ 0 ].vertices[ 0 ],
+          &component.triangles[ component.triangles.size() ].vertices[ 0 ] );
 
         for (uint32_t *where = indexData.data() + indexDataOffset,
                       *end = indexData.data() + indexData.size();
@@ -1377,7 +1341,7 @@ ConwayGeometryProcessor::GeometryToGltf(
           where[2] += pointOffset;
         }
 
-        pointOffset += component.numPoints;
+        pointOffset += component.vertices.size();
       }
 
       // Accessor min/max properties must be set for vertex position data so
@@ -1685,50 +1649,59 @@ ConwayGeometryProcessor::GeometryToGltf(
 }
 
 std::string ConwayGeometryProcessor::GeometryToObj(
-    const conway::geometry::IfcGeometry &geom, size_t &offset,
-    glm::dmat4 transform) {
+    const conway::geometry::Geometry &geom, size_t &offset,
+    glm::dmat4 transform ) {
   std::string obj;
-  obj.reserve(geom.numPoints * 32 + geom.numFaces * 32);  // preallocate memory
+  obj.reserve( geom.vertices.size() * 32 + geom.triangles.size() * 32);  // preallocate memory
 
   const char *vFormat = "v %.6f %.6f %.6f\n";
   const char *fFormat = "f %zu// %zu// %zu//\n";
 
-  for (uint32_t i = 0; i < geom.numPoints; ++i) {
+  for (uint32_t i = 0; i < geom.vertices.size(); ++i) {
     glm::dvec4 t = transform * glm::dvec4(geom.GetPoint(i), 1);
     char vBuffer[64];
     snprintf(vBuffer, sizeof(vBuffer), vFormat, t.x, t.y, t.z);
     obj.append(vBuffer);
   }
 
-  for (uint32_t i = 0; i < geom.numFaces; ++i) {
-    size_t f1 = geom.indexData[i * 3 + 0] + 1 + offset;
-    size_t f2 = geom.indexData[i * 3 + 1] + 1 + offset;
-    size_t f3 = geom.indexData[i * 3 + 2] + 1 + offset;
+  for ( const Triangle& triangle : geom.triangles ) {
+
+
+    size_t f1 = triangle.vertices[ 0 ] + 1 + offset;
+    size_t f2 = triangle.vertices[ 1 ] + 1 + offset;
+    size_t f3 = triangle.vertices[ 2 ] + 1 + offset;
     char fBuffer[64];
     snprintf(fBuffer, sizeof(fBuffer), fFormat, f1, f2, f3);
     obj.append(fBuffer);
   }
 
-  offset += geom.numPoints;
+  offset += geom.vertices.size();
 
   return obj;
 }
 
-IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
+Geometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
     const ParamsGetTriangulatedFaceSetGeometry &parameters) {
   const uint32_t *indices =
       reinterpret_cast<uint32_t *>(parameters.indicesArray_);
-  const float *points = reinterpret_cast<float *>(parameters.pointsArray_);
 
-  IfcGeometry geom;
+  Geometry geom;
+
+  for ( const double* points = reinterpret_cast<double *>( parameters.pointsArray_ ),
+                    * end    = reinterpret_cast<double *>( parameters.pointsArray_ ) + parameters.pointsArrayLength;
+        points < end;
+        points += 3 ) {
+
+    geom.MakeVertex( points[ 0 ], points[ 1 ], points[ 2 ] );
+  }
 
   for (size_t i = 0; i < parameters.indicesArrayLength; i += 3) {
 
-    int i1 = ( indices[i + 0] - 1 ) * 3;
-    int i2 = ( indices[i + 1] - 1 ) * 3;
-    int i3 = ( indices[i + 2] - 1 ) * 3;
+    uint32_t i1 = ( indices[ i + 0 ] - 1 ) * 3;
+    uint32_t i2 = ( indices[ i + 1 ] - 1 ) * 3;
+    uint32_t i3 = ( indices[ i + 2 ] - 1 ) * 3;
 
-    geom.AddFaceFloat( points + i1, points + i2, points + i3 );
+    geom.MakeTriangle( indices[ i ] - 1, indices[ i + 1 ] - 1, indices[ i + 2 ] - 1 );
     // printf("adding face %i: x: %.3f, y: %.3f, z: %.3f\n", i, points[i1],
     // points[i2], points[i3]);
   }
@@ -1736,9 +1709,9 @@ IfcGeometry ConwayGeometryProcessor::getTriangulatedFaceSetGeometry(
   return geom;
 }
 
-IfcGeometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
+Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
     const ParamsGetPolygonalFaceSetGeometry &parameters) {
-  IfcGeometry geom;
+  Geometry geom;
   std::vector<IfcBound3D> bounds;
 
   for (size_t faceIndex = 0; faceIndex < parameters.faces.size(); faceIndex++) {
@@ -2201,9 +2174,9 @@ if (!parameters.paramsGetIfcTrimmedCurve.trimExists)
   return curve;
 }
 
-conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
+conway::geometry::Geometry ConwayGeometryProcessor::getExtrudedAreaSolid(
     const ParamsGetExtrudedAreaSolid &parameters) {
-  conway::geometry::IfcGeometry geom;
+  conway::geometry::Geometry geom;
   double depth = parameters.depth;
 
   conway::geometry::IfcProfile profile = parameters.profile;
@@ -2236,26 +2209,19 @@ conway::geometry::IfcGeometry ConwayGeometryProcessor::getExtrudedAreaSolid(
 
   if (!profile.isComposite) {
     geom = Extrude(profile, dir, depth);
-    if (flipWinding) {
-      for (uint32_t i = 0; i < geom.numFaces; i++) {
-        uint32_t temp = geom.indexData[i * 3 + 0];
-        temp = geom.indexData[i * 3 + 0];
-        geom.indexData[i * 3 + 0] = geom.indexData[i * 3 + 1];
-        geom.indexData[i * 3 + 1] = temp;
-      }
+    
+    if ( flipWinding ) {
+
+      geom.ReverseFaces();
     }
   } else {
     for (uint32_t i = 0; i < profile.profiles.size(); i++) {
-      IfcGeometry geom_t = Extrude(profile.profiles[i], dir, depth);
+      Geometry geom_t = Extrude(profile.profiles[i], dir, depth);
       if (flipWinding) {
-        for (uint32_t k = 0; k < geom_t.numFaces; k++) {
-          uint32_t temp = geom_t.indexData[k * 3 + 0];
-          temp = geom_t.indexData[k * 3 + 0];
-          geom_t.indexData[k * 3 + 0] = geom_t.indexData[k * 3 + 1];
-          geom_t.indexData[k * 3 + 1] = temp;
-        }
+        
+        geom.ReverseFaces();
       }
-      geom.AddPart(geom_t);
+
       geom.AppendGeometry(geom_t);
     }
   }

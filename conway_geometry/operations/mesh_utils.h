@@ -26,7 +26,7 @@ constexpr double MAX_DEFLECTION            = 0.001;
 constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
 
 // TODO: review and simplify
-inline void TriangulateRevolution(IfcGeometry &geometry,
+inline void TriangulateRevolution(Geometry &geometry,
                                   std::vector<IfcBound3D> &bounds,
                                   IfcSurface &surface) {
   // First we get the revolution data
@@ -172,15 +172,20 @@ inline void TriangulateRevolution(IfcGeometry &geometry,
   for (int r = 0; r < numRots - 1; r++) {
     int r1 = r + 1;
     for (size_t s = 0; s < newPoints[r].size() - 1; s++) {
-      geometry.AddFace(newPoints[r][s], newPoints[r][s + 1], newPoints[r1][s]);
-      geometry.AddFace(newPoints[r1][s], newPoints[r][s + 1],
-                       newPoints[r1][s + 1]);
+
+      uint32_t a = geometry.MakeVertex( newPoints[ r ][ s ] );
+      uint32_t b = geometry.MakeVertex( newPoints[ r ][ s + 1 ] );
+      uint32_t c = geometry.MakeVertex( newPoints[ r1 ][ s ] );
+      uint32_t d = geometry.MakeVertex( newPoints[ r1 ][ s + 1 ] );
+
+      geometry.MakeTriangle( a, b, c );
+      geometry.MakeTriangle( c, b, d );
     }
   }
 }
 
 // TODO: review and simplify
-inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
+inline void TriangulateCylindricalSurface(Geometry &geometry,
                                           const std::vector<IfcBound3D> &bounds,
                                           IfcSurface &surface) {
   // First we get the cylinder data
@@ -275,7 +280,6 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
       indices[ i  + 2 ] );
   }
 
-
   tesselate(
     mesh,
     [&]( const glm::dvec3& point, [[maybe_unused]]const glm::dvec2& from ) { 
@@ -298,7 +302,7 @@ inline void TriangulateCylindricalSurface(IfcGeometry &geometry,
 }
 
 // TODO: review and simplify
-inline void TriangulateExtrusion(IfcGeometry &geometry,
+inline void TriangulateExtrusion(Geometry &geometry,
                                  std::vector<IfcBound3D> &bounds,
                                  IfcSurface &surface) {
   // NO EXAMPLE FILES ABOUT THIS CASE
@@ -323,16 +327,31 @@ inline void TriangulateExtrusion(IfcGeometry &geometry,
       npy = surface.ExtrusionSurface.Profile.curve.points[j2].y + dir.y * len;
       npz = dir.z * len;
       glm::dvec3 nptj2 = glm::dvec3(npx, npy, npz);
-      geometry.AddFace(
-          glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j].x,
-                     surface.ExtrusionSurface.Profile.curve.points[j].y, 0),
-          glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j2].x,
-                     surface.ExtrusionSurface.Profile.curve.points[j2].y, 0),
-          nptj1);
-      geometry.AddFace(
-          glm::dvec3(surface.ExtrusionSurface.Profile.curve.points[j2].x,
-                     surface.ExtrusionSurface.Profile.curve.points[j2].y, 0),
-          nptj2, nptj1);
+
+      uint32_t nptj1i = geometry.MakeVertex( nptj1 );
+      uint32_t nptj2i = geometry.MakeVertex( nptj2 );
+
+      uint32_t a = geometry.MakeVertex(
+        glm::dvec3(
+          surface.ExtrusionSurface.Profile.curve.points[j].x,
+          surface.ExtrusionSurface.Profile.curve.points[j].y,
+          0 ) ); 
+
+      uint32_t b = geometry.MakeVertex(
+        glm::dvec3(
+          surface.ExtrusionSurface.Profile.curve.points[j2].x,
+          surface.ExtrusionSurface.Profile.curve.points[j2].y,
+          0 ) ); 
+
+      geometry.MakeTriangle(
+        a,
+        b,
+        nptj1i );
+
+      geometry.MakeTriangle(
+        b,
+        nptj2i,
+        nptj1i );
     }
   } else {
     for (size_t i = 0; i < surface.ExtrusionSurface.Profile.profiles.size();
@@ -357,22 +376,30 @@ inline void TriangulateExtrusion(IfcGeometry &geometry,
               dir.y * len;
         npz = dir.z * len;
         glm::dvec3 nptj2 = glm::dvec3(npx, npy, npz);
-        geometry.AddFace(
-            glm::dvec3(
+
+        uint32_t nptj1i = geometry.MakeVertex( nptj1 );
+        uint32_t nptj2i = geometry.MakeVertex( nptj2 );
+
+      uint32_t a = geometry.MakeVertex(
+        glm::dvec3(
                 surface.ExtrusionSurface.Profile.profiles[i].curve.points[j].x,
                 surface.ExtrusionSurface.Profile.profiles[i].curve.points[j].y,
-                0),
-            glm::dvec3(
+                0) ); 
+      
+      uint32_t b = geometry.MakeVertex(
+        glm::dvec3(
                 surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].x,
                 surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].y,
-                0),
-            nptj1);
-        geometry.AddFace(
-            glm::dvec3(
-                surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].x,
-                surface.ExtrusionSurface.Profile.profiles[i].curve.points[j2].y,
-                0),
-            nptj2, nptj1);
+                0) ); 
+
+        geometry.MakeTriangle(
+          a,
+          b,
+          nptj1i);
+        geometry.MakeTriangle(
+          b,
+          nptj2i,
+          nptj1i);
       }
     }
   }
@@ -462,7 +489,7 @@ inline glm::dvec2 BSplineInverseEvaluation(glm::dvec3 pt,
 }
 
 // TODO: review and simplify
-inline void TriangulateBspline(IfcGeometry &geometry,
+inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
                                IfcSurface &surface, double scaling) {
 

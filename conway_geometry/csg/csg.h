@@ -29,19 +29,19 @@ namespace conway::geometry {
     std::vector< bool >                        boundary_set[ 2 ];
 
     /** Clean a mesh by getting its solid skin */
-    void clean( WingedEdgeMesh< glm::dvec3 >& a );
+    void clean( Geometry& a );
 
     /** Index a mesh for self intersections */
-    void index( WingedEdgeMesh< glm::dvec3 >& a, double tolerance = 0 );
+    void index( Geometry& a, double tolerance = 0 );
 
     /**
      * Creates an index of the two meshes interactions so queries can be run.
      * 
      * This is called by run internally, and does not need to be called before calling run.
      */
-    void index( WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMesh< glm::dvec3 >& b, double tolerance = 0 );
+    void index( Geometry& a, Geometry& b, double tolerance = 0 );
 
-    void run( Operation operation, WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMesh< glm::dvec3 >& b, WingedEdgeMesh< glm::dvec3 >& output, double tolerance = 0 );
+    void run( Operation operation, Geometry& a, Geometry& b, Geometry& output, double tolerance = 0 );
 
     void reset();
 

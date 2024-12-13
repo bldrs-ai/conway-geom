@@ -9,19 +9,18 @@
 
 namespace conway::geometry {
 
-  template < typename VertexType >
-  struct WingedEdgeMesh;
+  struct Geometry;
 
   class AABBTree {
   public:
 
-    AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance = 0 );
-
+    AABBTree( const Geometry& mesh, double tolerance = 0 );
 
     /** This GWN specifically works out  */
     double gwn(
-      const WingedEdgeMesh< glm::dvec3 >& mesh,
+      const Geometry& mesh,
       const glm::dvec3& against,
+      double scale = 1,
       std::optional< uint32_t > triangleInMeshIndex = std::nullopt ) const;
 
     /** Does this have dipoles */
@@ -32,7 +31,13 @@ namespace conway::geometry {
 
     /** Generate the dipoles for gwn calculation, if not called before GWN,
         GWN will always return 0. */
-    void dipoles( const WingedEdgeMesh< glm::dvec3 >& mesh );
+    void dipoles( const Geometry& mesh );
+
+    /** Clear any generated dipoles for this, some transforms will 
+     *  leave the BVH valid, but invalidate the dipoles (like flipping
+     * triangle windings)
+     */
+    void clearDipoles() { dipoles_.clear(); }
 
     struct Dipole {
 
@@ -158,7 +163,7 @@ namespace conway::geometry {
     /**
      * Construct a subtree given a span leaves.
      */
-    void construct( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance = 0 );
+    void construct( const Geometry& mesh, double tolerance = 0 );
         
     std::vector< uint32_t > triangles_;
     std::vector< box3 >     boxes_;

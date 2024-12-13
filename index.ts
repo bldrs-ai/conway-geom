@@ -4,7 +4,7 @@
    and for easy maintenance of the large number of interfaces it
    is expected that this should be maintained - CS */
 
-export * from './interface/AABB'
+//xport * from './interface/AABB'
 export * from './interface/bound_3D_object'
 export * from './interface/conway_geometry'
 export * from './interface/curve_object'

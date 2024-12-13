@@ -24,7 +24,7 @@ namespace conway
 
 		return offset.x < EPS_SMALL && offset.y < EPS_SMALL && offset.z < EPS_SMALL;
 	}
-    static void clipMesh(geometry::IfcGeometry& source, geometry::IfcGeometry& target, geometry::IfcGeometry& result, bool invert, bool flip, bool keepBoundary)
+    static void clipMesh(geometry::Geometry& source, geometry::Geometry& target, geometry::Geometry& result, bool invert, bool flip, bool keepBoundary)
     {
         glm::dvec3 targetCenter;
         glm::dvec3 targetExtents;
@@ -67,9 +67,9 @@ namespace conway
         }
     }
 
-    static geometry::IfcGeometry boolIntersect(geometry::IfcGeometry& mesh1, geometry::IfcGeometry& mesh2)
+    static geometry::Geometry boolIntersect(geometry::Geometry& mesh1, geometry::Geometry& mesh2)
     {
-        geometry::IfcGeometry resultingMesh;
+        geometry::Geometry resultingMesh;
 
         clipMesh(mesh1, mesh2, resultingMesh, false, false, true);
         clipMesh(mesh2, mesh1, resultingMesh, false, false, false);
@@ -77,9 +77,9 @@ namespace conway
         return resultingMesh;
     }
 
-    static geometry::IfcGeometry boolJoin(geometry::IfcGeometry& mesh1, geometry::IfcGeometry& mesh2)
+    static geometry::Geometry boolJoin(geometry::Geometry& mesh1, geometry::Geometry& mesh2)
     {
-        geometry::IfcGeometry resultingMesh;
+        geometry::Geometry resultingMesh;
 
         clipMesh(mesh1, mesh2, resultingMesh, true, false, true);
         clipMesh(mesh2, mesh1, resultingMesh, true, false, false);
@@ -87,10 +87,10 @@ namespace conway
         return resultingMesh;
     }
 
-    geometry::IfcGeometry boolSubtract(geometry::IfcGeometry& mesh1, geometry::IfcGeometry& mesh2)
+    geometry::Geometry boolSubtract(geometry::Geometry& mesh1, geometry::Geometry& mesh2)
     {
 
-        geometry::IfcGeometry resultingMesh;
+        geometry::Geometry resultingMesh;
 
         clipMesh(mesh1, mesh2, resultingMesh, true, false, false);
         clipMesh(mesh2, mesh1, resultingMesh, false, true, false);
@@ -99,9 +99,9 @@ namespace conway
     }
 
     // TODO: I don't think XOR works right now...
-    static geometry::IfcGeometry boolXOR(geometry::IfcGeometry& mesh1, geometry::IfcGeometry& mesh2)
+    static geometry::Geometry boolXOR(geometry::Geometry& mesh1, geometry::Geometry& mesh2)
     {
-        geometry::IfcGeometry resultingMesh;
+        geometry::Geometry resultingMesh;
 
         clipMesh(mesh1, mesh2, resultingMesh, true, false, false);
         clipMesh(mesh2, mesh1, resultingMesh, true, false, false);
@@ -109,7 +109,7 @@ namespace conway
         return resultingMesh;
     }
 
-    csgjscpp::Model IfcGeometryToCSGModel(const geometry::IfcGeometry& mesh1)
+    csgjscpp::Model IfcGeometryToCSGModel(const geometry::Geometry& mesh1)
     {
         std::vector<csgjscpp::Polygon> polygons1;
 
@@ -135,7 +135,7 @@ namespace conway
         return csgjscpp::modelfrompolygons(polygons1);
     }
 
-    geometry::IfcGeometry boolMultiOp_CSGJSCPP(const geometry::IfcGeometry& firstGeom, const std::vector<geometry::IfcGeometry>& secondGeoms)
+    geometry::Geometry boolMultiOp_CSGJSCPP(const geometry::Geometry& firstGeom, const std::vector<geometry::Geometry>& secondGeoms)
     {
         csgjscpp::Model model;
 
@@ -148,7 +148,7 @@ namespace conway
         auto firstModel = IfcGeometryToCSGModel(firstGeom);
         auto ModelResult = csgjscpp::csgsubtract(firstModel, model);;
 
-        geometry::IfcGeometry result;
+        geometry::Geometry result;
 
         for (uint32_t i = 0; i < ModelResult.indices.size(); i += 3)
         {

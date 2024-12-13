@@ -9,7 +9,7 @@ void testAddFaceToGeometry() {
 
   conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
       paramsAddFaceToGeometry;
-  conway::geometry::IfcGeometry geometry;
+  conway::geometry::Geometry geometry;
   conwayGeometryProcessor.AddFaceToGeometry(paramsAddFaceToGeometry, geometry);
 }
 
@@ -17,8 +17,8 @@ void testBoolSubtract() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
 
-  std::vector<conway::geometry::IfcGeometry> geometryArr1;
-  std::vector<conway::geometry::IfcGeometry> geometryArr2;
+  std::vector<conway::geometry::Geometry> geometryArr1;
+  std::vector<conway::geometry::Geometry> geometryArr2;
 
   conwayGeometryProcessor.BoolSubtractLegacy(geometryArr1, geometryArr2);
 }
@@ -26,7 +26,7 @@ void testBoolSubtract() {
 void testGeometryToGltf() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Geometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
   std::vector<conway::geometry::Material> materials;
@@ -47,7 +47,7 @@ void testGeometryToGltf() {
 void testGeometryToGlb() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Geometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
   std::vector<conway::geometry::Material> materials;
@@ -68,7 +68,7 @@ void testGeometryToGlb() {
 void testGeometryToGltfDraco() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Geometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
   std::vector<conway::geometry::Material> materials;
@@ -88,7 +88,7 @@ void testGeometryToGltfDraco() {
 void testGeometryToGlbDraco() {
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
-  conway::geometry::IfcGeometry ifcGeometry;
+  conway::geometry::Geometry ifcGeometry;
   conway::geometry::Material ifcMaterial;
 
   std::vector<conway::geometry::Material> materials;

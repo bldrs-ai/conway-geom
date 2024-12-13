@@ -118,9 +118,9 @@ namespace conway
         return loops;
     }
 
-    static geometry::IfcGeometry retriangulateMesh(const geometry::IfcGeometry& mesh, MeshIntersections& intersections)
+    static geometry::Geometry retriangulateMesh(const geometry::Geometry& mesh, MeshIntersections& intersections)
     {
-        geometry::IfcGeometry outputMesh;
+        geometry::Geometry outputMesh;
 
         for (uint32_t i = 0; i < mesh.numFaces; i++)
         {
@@ -243,7 +243,7 @@ namespace conway
     {
         std::vector<fuzzybools::AABB> boxes;
         std::vector<BVHNode> nodes;
-        geometry::IfcGeometry const* ptr;
+        geometry::Geometry const* ptr;
 
         template <typename T>
         void Intersect(const BVH& other, T callback)
@@ -399,7 +399,7 @@ namespace conway
         return nodeID;
     }
 
-    static BVH MakeBVH(const geometry::IfcGeometry& mesh)
+    static BVH MakeBVH(const geometry::Geometry& mesh)
     {
         BVH bvh;
         bvh.ptr = &mesh;
@@ -875,9 +875,9 @@ namespace conway
         std::vector<std::pair<size_t, size_t>> edges;
         std::vector<std::vector<size_t>> contours;
 
-        conway::geometry::IfcGeometry ToGeom() const
+        conway::geometry::Geometry ToGeom() const
         {
-            conway::geometry::IfcGeometry geom;
+            conway::geometry::Geometry geom;
 
             for (auto& face : faces)
             { 
@@ -1249,7 +1249,7 @@ namespace conway
             return ptInsideB;
         }
 
-        void Retriangulate(geometry::IfcGeometry& outputGeom, bool eraseHoles)
+        void Retriangulate(geometry::Geometry& outputGeom, bool eraseHoles)
         {
             auto loops = ComputeEdgeLoops();
             if (loops.empty())
@@ -1339,7 +1339,7 @@ namespace conway
             TriangulateCDT(parentLoops, outputGeom, eraseHoles);
         }
 
-        void TriangulateCDT(const std::vector<std::vector<std::vector<size_t>>>& parentLoops, geometry::IfcGeometry& outputGeom, bool eraseHoles = false)
+        void TriangulateCDT(const std::vector<std::vector<std::vector<size_t>>>& parentLoops, geometry::Geometry& outputGeom, bool eraseHoles = false)
         {
             for (auto& parentLoop : parentLoops)
             {
@@ -1408,7 +1408,7 @@ namespace conway
             }
         }
 
-        void TriangulateEarcut(const std::vector<std::vector<std::vector<size_t>>>& parentLoops, geometry::IfcGeometry& outputGeom)
+        void TriangulateEarcut(const std::vector<std::vector<std::vector<size_t>>>& parentLoops, geometry::Geometry& outputGeom)
         {
             using Point = std::array<double, 2>;
 
@@ -1768,7 +1768,7 @@ namespace conway
         }
     }
 
-    static BrepMesh MeshToBReps(const geometry::IfcGeometry& mesh, size_t meshIndex)
+    static BrepMesh MeshToBReps(const geometry::Geometry& mesh, size_t meshIndex)
     {
         BrepMesh brep;
 
@@ -2276,7 +2276,7 @@ namespace conway
         return newMesh;
     }
 
-    static void IntersectBRepMeshes(const BrepMesh& mesh1, const BrepMesh& mesh2, geometry::IfcGeometry& outputMesh1, geometry::IfcGeometry& outputMesh2)
+    static void IntersectBRepMeshes(const BrepMesh& mesh1, const BrepMesh& mesh2, geometry::Geometry& outputMesh1, geometry::Geometry& outputMesh2)
     {
         std::vector<std::vector<ClipSegment2D>> segments1(mesh1.polygons.size());
         std::vector<std::vector<ClipSegment2D>> segments2(mesh2.polygons.size());
@@ -2343,7 +2343,7 @@ namespace conway
         }
     }
 
-    void intersectMeshMesh(const geometry::IfcGeometry& mesh1, const geometry::IfcGeometry& mesh2, geometry::IfcGeometry& result1, geometry::IfcGeometry& result2)
+    void intersectMeshMesh(const geometry::Geometry& mesh1, const geometry::Geometry& mesh2, geometry::Geometry& result1, geometry::Geometry& result2)
     {
         MeshIntersections meshIntersections1;
         MeshIntersections meshIntersections2;

@@ -55,8 +55,8 @@
 #include <GLTFSDK/Serialize.h>
 
 #include "operations/geometry_utils.h"
-#include "representation/IfcGeometry.h"
-#include "representation/geometry.h"
+//#include "representation/IfcGeometry.h"
+#include "representation/Geometry.h"
 
 namespace fuzzybools {
 struct Geometry;
@@ -126,28 +126,28 @@ class ConwayGeometryProcessor {
     IfcComposedMesh ifcPresentationMesh;
   };
 
-  IfcGeometry BoolSubtract( std::vector<IfcGeometry>& firstGroups,
-                            std::vector<IfcGeometry>& secondGroups );
-  IfcGeometry BoolSubtractLegacy(const std::vector<IfcGeometry>& firstGeoms,
-                                 std::vector<IfcGeometry>& secondGeoms);
+  Geometry BoolSubtract( std::vector<Geometry>& firstGroups,
+                            std::vector<Geometry>& secondGroups );
+  Geometry BoolSubtractLegacy(const std::vector<Geometry>& firstGeoms,
+                                 std::vector<Geometry>& secondGeoms);
 
   // case ifc::IFCBOOLEANCLIPPINGRESULT:
   // case ifc::IFCBOOLEANRESULT:
   struct ParamsGetBooleanResult {
-    std::vector<IfcGeometry> flatFirstMesh;
-    std::vector<IfcGeometry> flatSecondMesh;
+    std::vector<Geometry> flatFirstMesh;
+    std::vector<Geometry> flatSecondMesh;
     int operatorType = 2;
   };
-  IfcGeometry GetBooleanResult(ParamsGetBooleanResult *parameters);
+  Geometry GetBooleanResult(ParamsGetBooleanResult *parameters);
 
   struct ParamsRelVoidSubtract {
-    std::vector<IfcGeometry> flatFirstMesh;
-    std::vector<IfcGeometry> flatSecondMesh;
+    std::vector<Geometry> flatFirstMesh;
+    std::vector<Geometry> flatSecondMesh;
     int operatorType = 2;
     glm::dmat4 parentMatrix;
   };
   
-  IfcGeometry RelVoidSubtract( ParamsRelVoidSubtract& parameters );
+  Geometry RelVoidSubtract( ParamsRelVoidSubtract& parameters );
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {
@@ -155,7 +155,7 @@ class ConwayGeometryProcessor {
     double optionalLinearScalingFactor = 1.0;
   };
 
-  IfcGeometry GetHalfSpaceSolid(const ParamsGetHalfspaceSolid& parameters);
+  Geometry GetHalfSpaceSolid(const ParamsGetHalfspaceSolid& parameters);
 
   // case ifc::IFCPOLYGONALBOUNDEDHALFSPACE
   struct ParamsGetPolygonalBoundedHalfspace {
@@ -174,7 +174,7 @@ class ConwayGeometryProcessor {
   matrix: any // glm::dmat4
   */
 
-  IfcGeometry GetPolygonalBoundedHalfspace(
+  Geometry GetPolygonalBoundedHalfspace(
       const ParamsGetPolygonalBoundedHalfspace& parameters);
 
   // case ifc::IFCREPRESENTATIONMAP
@@ -206,7 +206,7 @@ class ConwayGeometryProcessor {
   // case ifc::IFCFACE:
   // case ifc::IFCADVANCEDFACE:
   void AddFaceToGeometry(ParamsAddFaceToGeometry& parameters,
-                         IfcGeometry& geometry);
+                         Geometry& geometry);
 
   // case ifc::IFCRECTANGLEPROFILEDEF:
   // case ifc::IFCROUNDEDRECTANGLEPROFILEDEF:
@@ -462,12 +462,12 @@ class ConwayGeometryProcessor {
     std::vector<std::vector<uint8_t>> buffers;
   };
   ResultsGltf GeometryToGltf(
-      std::span<conway::geometry::IfcGeometryCollection> geom,
+      std::span<conway::geometry::GeometryCollection> geom,
       std::span<conway::geometry::Material> materials, bool isGlb,
       bool outputDraco, std::string filePath, bool outputFile,
       glm::dmat4 transform = glm::dmat4(1));
 
-  std::string GeometryToObj(const conway::geometry::IfcGeometry& geom,
+  std::string GeometryToObj(const conway::geometry::Geometry& geom,
                             size_t& offset,
                             glm::dmat4 transform = glm::dmat4(1));
 
@@ -496,7 +496,7 @@ class ConwayGeometryProcessor {
     uint32_t pointsArrayLength = 0;
   };
 
-  IfcGeometry getTriangulatedFaceSetGeometry(const ParamsGetTriangulatedFaceSetGeometry &parameters);
+  Geometry getTriangulatedFaceSetGeometry(const ParamsGetTriangulatedFaceSetGeometry &parameters);
 
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
@@ -504,7 +504,7 @@ class ConwayGeometryProcessor {
     std::vector<glm::vec3> points;
     std::vector<IndexedPolygonalFace> faces;
   };
-  IfcGeometry getPolygonalFaceSetGeometry(
+  Geometry getPolygonalFaceSetGeometry(
       const ParamsGetPolygonalFaceSetGeometry& parameters);
 
   struct Segment {
@@ -610,12 +610,12 @@ class ConwayGeometryProcessor {
     IfcProfile profile;
   };
 
-  conway::geometry::IfcGeometry getExtrudedAreaSolid(
+  conway::geometry::Geometry getExtrudedAreaSolid(
       const ParamsGetExtrudedAreaSolid& parameters);
 
  private:
-  fuzzybools::Geometry GeomToFBGeom(const IfcGeometry& geom);
-  IfcGeometry FBGeomToGeom(const fuzzybools::Geometry& fbGeom);
+  fuzzybools::Geometry GeomToFBGeom(const Geometry& geom);
+  Geometry FBGeomToGeom(const fuzzybools::Geometry& fbGeom);
 
   bool COORDINATE_TO_ORIGIN = false;
   bool USE_FAST_BOOLS = true;
