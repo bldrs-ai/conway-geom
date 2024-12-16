@@ -23,7 +23,7 @@ namespace conway
         BOUNDARY
     };
 
-    MeshLocation isInsideMesh(const glm::dvec3& pt, glm::dvec3 normal, geometry::IfcGeometry& g)
+    MeshLocation isInsideMesh(const glm::dvec3& pt, glm::dvec3 normal, geometry::Geometry& g)
     {
         glm::dvec3 dir(1, 1.1, 1.4);
         glm::dvec3 dir2(1.4, 1.1, 1);

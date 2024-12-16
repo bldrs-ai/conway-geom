@@ -21,13 +21,15 @@ glm::dmat4 NormalizeMat(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
                         glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
 
 conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
-    std::vector<conway::geometry::IfcGeometryCollection>& geoms,
+    std::vector<conway::geometry::GeometryCollection>& geoms,
     std::vector<conway::geometry::Material>& materials, bool isGlb,
     bool outputDraco, std::string filePath, size_t offset, size_t count) {
   conway::geometry::ConwayGeometryProcessor::ResultsGltf results;
-  if (processor) {
-    offset = std::min(offset, geoms.size());
-    count = std::min(count, geoms.size() - offset);
+
+  if ( processor ) {
+
+    offset = std::min( offset, geoms.size() );
+    count  = std::min( count, geoms.size() - offset );
 
     results = processor->GeometryToGltf(
         std::span{geoms.data() + offset, count},
@@ -38,7 +40,7 @@ conway::geometry::ConwayGeometryProcessor::ResultsGltf GeometryToGltf(
   return results;
 }
 
-std::string GeometryToObj(conway::geometry::IfcGeometry geom, size_t offset) {
+std::string GeometryToObj(conway::geometry::Geometry geom, size_t offset) {
   if (processor) {
     return processor->GeometryToObj(geom, offset, NormalizeMat);
   }
@@ -51,24 +53,24 @@ glm::dmat4 multiplyNativeMatrices(glm::dmat4 mat1, glm::dmat4 mat2) {
   return mat1 * mat2;
 }
 
-conway::geometry::IfcGeometry GetSweptDiskSolid(
+conway::geometry::Geometry GetSweptDiskSolid(
   conway::geometry::ConwayGeometryProcessor::ParamsGetSweptDiskSolid& parameters) {
     if (processor) {
       return processor->getSweptDiskSolid(parameters);
     }
 
-    conway::geometry::IfcGeometry geom;
+    conway::geometry::Geometry geom;
     return geom;
   }
 
-conway::geometry::IfcGeometry GetPolygonalFaceSetGeometry(
+conway::geometry::Geometry GetPolygonalFaceSetGeometry(
     conway::geometry::ConwayGeometryProcessor::
         ParamsGetPolygonalFaceSetGeometry& parameters) {
   if (processor) {
     return processor->getPolygonalFaceSetGeometry(parameters);
   }
 
-  conway::geometry::IfcGeometry geom;
+  conway::geometry::Geometry geom;
   return geom;
 }
 
@@ -139,24 +141,24 @@ conway::geometry::IfcCurve GetBSplineCurve(
   return curve;
 }
 
-conway::geometry::IfcGeometry GetPolygonalBoundedHalfspace(
+conway::geometry::Geometry GetPolygonalBoundedHalfspace(
   conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalBoundedHalfspace
   parameters) {
     if (processor) {
       return processor->GetPolygonalBoundedHalfspace(parameters);
     }
 
-    return conway::geometry::IfcGeometry();
+    return conway::geometry::Geometry();
   }
 
-conway::geometry::IfcGeometry GetExtrudedAreaSolid(
+conway::geometry::Geometry GetExtrudedAreaSolid(
     conway::geometry::ConwayGeometryProcessor::ParamsGetExtrudedAreaSolid
         parameters) {
   if (processor) {
     return processor->getExtrudedAreaSolid(parameters);
   }
 
-  conway::geometry::IfcGeometry geom;
+  conway::geometry::Geometry geom;
   return geom;
 }
 
@@ -173,7 +175,7 @@ conway::geometry::IfcCurve GetLoop(
 void AddFaceToGeometry(
     conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry&
         parameters,
-    conway::geometry::IfcGeometry& geometry) {
+    conway::geometry::Geometry& geometry) {
   if (processor) {
     return processor->AddFaceToGeometry(parameters, geometry);
   }
@@ -211,14 +213,14 @@ conway::geometry::IfcBound3D createBound3D(const ParamsCreateBound3D& parameters
   return bounds3D;
 }
 
-conway::geometry::IfcGeometry GetHalfSpaceSolid(
+conway::geometry::Geometry GetHalfSpaceSolid(
     const conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid&
         parameters) {
   if (processor) {
     return processor->GetHalfSpaceSolid(parameters);
   }
 
-  conway::geometry::IfcGeometry geom;
+  conway::geometry::Geometry geom;
   return geom;
 }
 
@@ -267,23 +269,23 @@ glm::dmat4 GetAxis2Placement3D(
   return resultMat;
 }
 
-conway::geometry::IfcGeometry GetBooleanResult(
+conway::geometry::Geometry GetBooleanResult(
     conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult*
         parameters) {
   if (processor) {
     return processor->GetBooleanResult(parameters);
   }
-  conway::geometry::IfcGeometry geometry;
+  conway::geometry::Geometry geometry;
   return geometry;
 }
 
-conway::geometry::IfcGeometry RelVoidSubtract(
+conway::geometry::Geometry RelVoidSubtract(
     conway::geometry::ConwayGeometryProcessor::ParamsRelVoidSubtract&
         parameters) {
   if (processor) {
     return processor->RelVoidSubtract(parameters);
   }
-  conway::geometry::IfcGeometry geometry;
+  conway::geometry::Geometry geometry;
   return geometry;
 }
 
@@ -513,7 +515,7 @@ glm::dmat4 GetIdentity3DMatrix() { return placementIdentity3D; }
 
 std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_,
                                           size_t length) {
-  const float* verticesArray = reinterpret_cast<float*>(verticesArray_);
+  const double* verticesArray = reinterpret_cast<double*>(verticesArray_);
   // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
   // accessible here
   std::vector<glm::vec3> vec;
@@ -528,14 +530,14 @@ std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_,
   return vec;
 }
 
-conway::geometry::IfcGeometry GetTriangulatedFaceSetGeometry(
+conway::geometry::Geometry GetTriangulatedFaceSetGeometry(
     const conway::geometry::ConwayGeometryProcessor::
         ParamsGetTriangulatedFaceSetGeometry& parameters) {
   if (processor) {
     return processor->getTriangulatedFaceSetGeometry(parameters);
   }
 
-  conway::geometry::IfcGeometry geom;
+  conway::geometry::Geometry geom;
   return geom;
 }
 
@@ -642,52 +644,42 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
       .constructor<>();
 
-  emscripten::class_<fuzzybools::AABB>("AABB")
-  .constructor<>()
-  .property("index", &fuzzybools::AABB::index)
-  .property("min", &fuzzybools::AABB::min)
-  .property("max", &fuzzybools::AABB::max)
-  .property("center", &fuzzybools::AABB::center);
-
-  emscripten::class_<conway::geometry::IfcGeometry>("IfcGeometry")
+  emscripten::class_<conway::geometry::Geometry>("IfcGeometry")
       .constructor<>()
-      .function("GetVertexData", &conway::geometry::IfcGeometry::GetVertexData)
+      .function("GetVertexData", &conway::geometry::Geometry::GetVertexData)
       .function("GetVertexDataSize",
-                &conway::geometry::IfcGeometry::GetVertexDataSize)
-      .function("getPoint", &conway::geometry::IfcGeometry::GetPoint)
-      .function("normalize",
-                &conway::geometry::IfcGeometry::Normalize)
-      .function("GetIndexData", &conway::geometry::IfcGeometry::GetIndexData)
+                &conway::geometry::Geometry::GetVertexDataSize)
+      .function("getPoint", &conway::geometry::Geometry::GetPoint)
+      .function("GetIndexData", &conway::geometry::Geometry::GetIndexData)
       .function("GetIndexDataSize",
-                &conway::geometry::IfcGeometry::GetIndexDataSize)
+                &conway::geometry::Geometry::GetIndexDataSize)
+      .function("normalize",
+                &conway::geometry::Geometry::Normalize)
       .function("appendGeometry",
-                &conway::geometry::IfcGeometry::AppendGeometry)
+                &conway::geometry::Geometry::AppendGeometry)
       .function("applyTransform",
-                &conway::geometry::IfcGeometry::ApplyTransform)
+                &conway::geometry::Geometry::ApplyTransform)
       .function("appendWithTransform",
-                &conway::geometry::IfcGeometry::AppendWithTransform)
+                &conway::geometry::Geometry::AppendWithTransform)
       .function("getAllocationSize",
-                &conway::geometry::IfcGeometry::GetAllocationSize)
-      .function("getAABB", &conway::geometry::IfcGeometry::getAABB)
-      .function("getAABBCenter", &conway::geometry::IfcGeometry::GetAABBCenter)
-      .function("getParts", &conway::geometry::IfcGeometry::getParts)
-      .property("normalized", &conway::geometry::IfcGeometry::normalized)
-      .function("clone", &conway::geometry::IfcGeometry::Clone)
-      .function("dumpToOBJ", &conway::geometry::IfcGeometry::GeometryToObj );
+                &conway::geometry::Geometry::GetAllocationSize)
+      // .function("getAABBCenter", &conway::geometry::Geometry::GetAABBCenter)
+      .function("clone", &conway::geometry::Geometry::Clone)
+      .function("dumpToOBJ", &conway::geometry::Geometry::GeometryToObj );
 
-  emscripten::class_<conway::geometry::IfcGeometryCollection>(
+  emscripten::class_<conway::geometry::GeometryCollection>(
       "IfcGeometryCollection")
       .constructor<>()
       .function(
           "addComponentWithTransform",
-          &conway::geometry::IfcGeometryCollection::AddComponentWithTransform,
+          &conway::geometry::GeometryCollection::AddComponentWithTransform,
           emscripten::allow_raw_pointers())
       .property("materialIndex",
-                &conway::geometry::IfcGeometryCollection::materialIndex)
+                &conway::geometry::GeometryCollection::materialIndex)
       .property("hasDefaultMaterial",
-                &conway::geometry::IfcGeometryCollection::hasDefaultMaterial)
+                &conway::geometry::GeometryCollection::hasDefaultMaterial)
       .property("currentSize",
-                &conway::geometry::IfcGeometryCollection::currentSize);
+                &conway::geometry::GeometryCollection::currentSize);
 
   emscripten::class_<conway::geometry::IfcCurve>("IfcCurve")
       .constructor<>()
@@ -764,9 +756,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("y", &glm::vec2::y);
 
   emscripten::register_vector<conway::geometry::Material>("materialArray");
-  emscripten::register_vector<conway::geometry::IfcGeometry*>(
+  emscripten::register_vector<conway::geometry::Geometry*>(
       "geometryPointerArray");
-  emscripten::register_vector<conway::geometry::IfcGeometryCollection>(
+  emscripten::register_vector<conway::geometry::GeometryCollection>(
       "geometryCollectionArray");
 
   emscripten::value_object<
@@ -1380,7 +1372,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::register_vector<size_t>("ULongVector");
   emscripten::register_vector<conway::geometry::IfcCurve>("curveArray");
   emscripten::register_vector<conway::geometry::IfcProfile>("profileArray");
-  emscripten::register_vector<conway::geometry::IfcGeometry>("geometryArray");
+  emscripten::register_vector<conway::geometry::Geometry>("geometryArray");
   emscripten::register_vector<conway::geometry::IfcBound3D>("Bound3DArray");
   emscripten::register_vector<
       conway::geometry::ConwayGeometryProcessor::IndexedPolygonalFace>(

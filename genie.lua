@@ -83,7 +83,7 @@ project "conway_csg_native"
       includedirs { 
           "conway_geometry",
           "./",
-          "external/fuzzy-bools",
+      --    "external/fuzzy-bools",
           "external/tinynurbs/include",
           "external/glm",
           "external/earcut.hpp/include",
@@ -730,7 +730,7 @@ end
             "external/gltf-sdk/GLTFSDK/Inc",
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
-            "external/fuzzy-bools",
+       --     "external/fuzzy-bools",
       --      "external/csgjs-cpp",
             "external/CDT/CDT/include"--,
            -- "external/tinyobjloader"
@@ -948,7 +948,7 @@ end
             "external/gltf-sdk/GLTFSDK/Inc",
             "external/gltf-sdk/External/RapidJSON/232389d4f1012dddec4ef84861face2d2ba85709/include",
             "external/draco/src",
-            "external/fuzzy-bools",
+       --     "external/fuzzy-bools",
             "external/csgjs-cpp",
             "external/CDT/CDT/include"--,
            -- "external/tinyobjloader"

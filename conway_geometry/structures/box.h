@@ -25,6 +25,11 @@ namespace conway::geometry {
 
       return max - min;
     }
+
+    glm::dvec3 centre() const {
+
+      return min + ( interval() * 0.5 );
+    }
   };
 
   inline bool overlaps( const box3& left, const box3& right ) {

@@ -25,7 +25,7 @@ constexpr bool CSG_DEBUG_OUTPUT = false;
 
 namespace conway
 {
-	static fuzzybools::AABB GetAABB(const geometry::IfcGeometry &mesh)
+	static fuzzybools::AABB GetAABB(const geometry::Geometry &mesh)
 	{
 		fuzzybools::AABB aabb;
 
@@ -204,7 +204,7 @@ namespace conway
 		return svg.str();
 	}
 
-	static std::string ToObj(const geometry::IfcGeometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1), double inputScale = 1.0)
+	static std::string ToObj(const geometry::Geometry &geom, size_t &offset, glm::dmat4 transform = glm::dmat4(1), double inputScale = 1.0)
 	{
 		std::stringstream obj;
 
@@ -227,7 +227,7 @@ namespace conway
 		return obj.str();
 	}
 
-	static void DumpIfcGeometryToPath(const geometry::IfcGeometry &geom, std::wstring path, double inputScale)
+	static void DumpIfcGeometryToPath(const geometry::Geometry &geom, std::wstring path, double inputScale)
 	{
 #ifdef _MSC_VER
 		size_t offset = 0;

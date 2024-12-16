@@ -2,288 +2,389 @@
  * Decoupling:
  * https://github.com/nickcastel50/conway-geom/blob/59e9d56f6a19b5953186b78362de649437b46281/Decoupling.md
  * Ref:
- * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/geometry.h
+ * https://github.com/IFCjs/web-ifc/blob/28681f5c4840b7ecf301e7888f98202f00adf306/src/wasm/geometry/representation/IfcGeometry.h
  * */
 
-// Generic Representations of geometry used in web-ifc
+// Represents a single piece of IFC Geometry
 
 #pragma once
 
-#include <algorithm>
-#include <array>
-#include <cstdio>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
+#include <vector>
 #include <unordered_map>
 
-#include "ConwayCurve.h"
-#include "ConwayProfile.h"
-#include "../../logging/Logger.h"
+#include "structures/aabb_tree.h"
+#include "material.h"
+#include "Topology.h"
 
 namespace conway::geometry {
 
-inline constexpr int VERTEX_FORMAT_SIZE_FLOATS = 6;
+template <typename T>
+constexpr size_t byteSize(const std::vector<T> &data) {
+  return data.size() * sizeof(T);
+}
 
-inline constexpr double EPS_SMALL = 1e-6;
-inline static constexpr double EPS_TINY = 1e-9;
+struct Geometry {
 
-inline static int triangulateBoundsCount = 0;
+  std::vector< glm::dvec3 >                vertices;
+  std::vector< Triangle >                  triangles;
+  std::vector< TriangleEdges >             triangle_edges;
+  std::vector< Edge >                      edges;
+  std::unordered_map< uint64_t, uint32_t > edge_map;
 
-const static std::unordered_map<std::string, int> Horizontal_alignment_type{
-    {"LINE", 1},
-    {"CIRCULARARC", 2},
-    {"CLOTHOID", 3},
-    {"CUBICSPIRAL", 4},          // ToDo
-    {"BIQUADRATICPARABOLA", 5},  // ToDo
-    {"BLOSSCURVE", 6},           // ToDo
-    {"COSINECURVE", 7},          // ToDo
-    {"SINECURVE", 8},            // ToDo
-    {"VIENNESEBEND", 9}};        // ToDo
+  std::optional< AABBTree > bvh;
+  //new additions 0.0.44
+  bool halfSpace = false;
 
-const static std::unordered_map<std::string, int> Vertical_alignment_type{
-    {"CONSTANTGRADIENT", 1},
-    {"CIRCULARARC", 2},
-    {"PARABOLICARC", 3},
-    {"CLOTHOID", 4}};  // ToDo
+  glm::dvec3 center          = glm::dvec3(0,0,0);
+  glm::dvec3 halfSpaceX      = glm::dvec3(1, 0, 0);
+  glm::dvec3 halfSpaceY      = glm::dvec3(0, 1, 0);
+  glm::dvec3 halfSpaceZ      = glm::dvec3(0, 0, 1);
+  glm::dvec3 halfSpaceOrigin = glm::dvec3(0, 0, 0);
+  //end new additions 0.0.44
 
-const double EXTRUSION_DISTANCE_HALFSPACE_M = 100;
+  //std::vector<Geometry> getParts();
+ // fuzzybools::AABB getAABB() const;
+ // glm::dvec3 GetAABBCenter() const;
+  //bool normalized = false;
 
-struct Loop {
-  bool hasOne;
-  glm::dvec2 v1;
-  glm::dvec2 v2;
-};
+  uint32_t GetAllocationSize() const;
 
-struct IfcSegmentIndexSelect {
-  std::string type;
-  std::vector<uint32_t> indexs;
-};
+  bool IsEmpty() const { return triangles.empty() || vertices.empty(); } 
 
-struct IfcProfile3D {
-  std::string type;
-  IfcCurve curve;
-  bool isConvex;
-};
+  Geometry() {}
 
-struct IfcAlignmentSegment {
-  std::vector<IfcCurve> curves;
-};
+  Geometry( Geometry&& ) = default;
+  Geometry( const Geometry& ) = default;
 
-struct Cylinder {
-  bool Active = false;
-  double Radius;
-};
+  Geometry& operator=( const Geometry& ) = default;
+  Geometry& operator=( Geometry&& ) = default;
 
-struct BSpline {
-  bool Active = false;
-  double UDegree;
-  double VDegree;
-  bool ClosedU;
-  bool ClosedV;
-  std::string CurveType;
-  std::vector<std::vector<double>> Weights;
-  std::vector<std::vector<glm::dvec3>> ControlPoints;
-  std::vector<glm::f64> UMultiplicity;
-  std::vector<glm::f64> VMultiplicity;
-  std::vector<glm::f64> UKnots;
-  std::vector<glm::f64> VKnots;
-  std::vector<std::vector<glm::f64>> WeightPoints;
-};
+  box3 GetAABB() const;
 
-struct Revolution {
-  bool Active = false;
-  glm::dmat4 Direction;
-  IfcProfile Profile;
-};
+  const glm::dvec3& GetPoint( uint32_t index ) const { return vertices[ index ]; }
 
-struct Extrusion {
-  bool Active = false;
-  glm::dvec3 Direction;
-  IfcProfile Profile;
-  double Length;
-};
+  void ReverseFace( uint32_t index );
+  void ReverseFaces();
+  uint32_t GetVertexData();
 
-struct IfcCrossSections {
-  std::vector<IfcCurve> curves;
-  std::vector<uint32_t> expressID;
-};
+  void AppendGeometry( const Geometry &geom );
+ 
+  void AppendWithScalingTransform(
+    const Geometry& geom,
+    const glm::dmat4& trans = glm::dmat4(1),
+    double scx = 1,
+    double scy = 1,
+    double scz = 1,
+    const glm::dvec3& origin = glm::dvec3(0, 0, 0) );
 
-struct IfcAlignment
-		{
-			IfcAlignmentSegment Horizontal;
-			IfcAlignmentSegment Vertical;
+  void AppendWithTransform( const Geometry &geom, const glm::dmat4x4& transform );
+  uint32_t GetVertexDataSize();
+  uint32_t GetIndexData();
+  uint32_t GetIndexDataSize();
+  glm::dvec3 Normalize();
+  void ApplyTransform( const glm::dmat4x4& transform );
 
-			void transform(glm::dmat4 coordinationMatrix)
-			{
-				uint32_t ic = 0;
-				for (auto curve : Horizontal.curves)
-				{
-					if (ic > 0)
-					{
-						uint32_t lastId1 = Horizontal.curves[ic - 1].points.size() - 1;
-						uint32_t lastId2 = Horizontal.curves[ic].points.size() - 1;
-						double d1 = glm::distance(Horizontal.curves[ic].points[0], Horizontal.curves[ic - 1].points[lastId1]);
-						double d2 = glm::distance(Horizontal.curves[ic].points[lastId2], Horizontal.curves[ic - 1].points[lastId1]);
-						if(d1 > d2){
-							std::reverse(Horizontal.curves[ic].points.begin(), Horizontal.curves[ic].points.end());
-						}
-					}
-					ic++;
-				}
+  Geometry Clone();
 
-				ic = 0;
-				for (auto curve : Horizontal.curves)
-				{
-					uint32_t ip = 0;
-					for ( const auto& pt : curve.points)
-					{
-						Horizontal.curves[ic].points[ip] = coordinationMatrix * glm::dvec4(pt.x, 0, -pt.y, 1);
-						Horizontal.curves[ic].points[ip] = glm::dvec4(Horizontal.curves[ic].points[ip].x,
-																		-Horizontal.curves[ic].points[ip].z,
-																		Horizontal.curves[ic].points[ip].y,
-																		1);
-						ip++;
-					}
-					ic++;
-				}
+  std::string GeometryToObj( const std::string& preamble = "" );
 
-				ic = 0;
-				for (auto curve : Vertical.curves)
-				{
-					uint32_t ip = 0;
-					for ( const auto& pt : curve.points)
-					{
-						Vertical.curves[ic].points[ip] = glm::dvec3(pt.x, pt.y + coordinationMatrix[3][1], 1);
-						ip++;
-					}
-					ic++;
-				}
-			}
-	};
+  bool HasConnectivity() const {
 
-struct IfcTrimmingSelect {
-  bool hasParam = false;
-  bool hasPos = false;
-  bool hasLength = false;
-  double param;
-  glm::dvec2 pos;
-  glm::dvec3 pos3D;
-};
-
-struct IfcTrimmingArguments {
-  bool exist = false;
-  IfcTrimmingSelect start;
-  IfcTrimmingSelect end;
-};
-
-struct IfcPlacedGeometry {
-  glm::dvec4 color;
-  glm::dmat4 transformation;
-  std::array<double, 16> flatTransformation;
-  uint32_t geometryExpressID;
-
-  void SetFlatTransformation() {
-    flatTransformation = FlattenTransformation(transformation);
+    return hasConnectivity_;
   }
 
-  static std::array<double, 16> FlattenTransformation(
-      const glm::dmat4 &transformation) {
-    std::array<double, 16> flatTransformation;
+  void ClearConnectivity( bool releaseMemory = false ) {
 
-    for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 4; j++) {
-        flatTransformation[i * 4 + j] = transformation[i][j];
-      }
+    if ( hasConnectivity_ ) {
+
+      edge_map.clear();
+      edges.clear();
+      triangle_edges.clear();
+
+      hasConnectivity_ = false;
+      cleanedUp_       = false;
     }
 
-    return flatTransformation;
-  }
+    if ( releaseMemory ) {
 
-  bool testReverse() {
-    glm::dvec3 cx = glm::dvec3(transformation[0].x, transformation[0].y,
-                               transformation[0].z);
-    glm::dvec3 cy = glm::dvec3(transformation[1].x, transformation[1].y,
-                               transformation[1].z);
-    glm::dvec3 cz = glm::dvec3(transformation[2].x, transformation[2].y,
-                               transformation[2].z);
+      if ( edge_map.bucket_count() > 0 ) {
 
-    glm::dvec3 dx = glm::cross(cy, cz);
-    glm::dvec3 dy = glm::cross(cx, cz);
-    glm::dvec3 dz = glm::cross(cx, cy);
+        std::unordered_map< uint64_t, uint32_t > empty;
 
-    double fac1 = glm::dot(cx, dx);
-    double fac2 = -glm::dot(cy, dy);
-    double fac3 = glm::dot(cz, dz);
-
-    return fac1 * fac2 * fac3 < 0;
-  }
-};
-
-struct IfcFlatMesh {
-  std::vector<IfcPlacedGeometry> geometries;
-  uint32_t expressID;
-};
-
-struct IfcComposedMesh {
-  glm::dvec4 color;
-  glm::dmat4 transformation;
-  uint32_t expressID;
-  bool hasGeometry = false;
-  bool hasColor = false;
-  std::vector<IfcComposedMesh> children;
-
-  std::optional<glm::dvec4> GetColor() {
-    if (hasColor) {
-      return color;
-    } else {
-      for (auto &c : children) {
-        auto col = c.GetColor();
-        if (col.has_value()) {
-          return col;
-        }
+        std::swap( edge_map, empty );
       }
+
+      edges.shrink_to_fit();
+      triangle_edges.shrink_to_fit();
+    }
+  }
+
+  void EnableConnectivity();
+
+  void MakeTriangle( uint32_t a, uint32_t b, uint32_t c, uint32_t index );
+
+  /** Cleanup this mesh for CSG */
+  void Cleanup();
+
+  void MarkedCleanedup() { cleanedUp_ = true; }
+
+  void Clear();
+
+  /** Construct a BVH for this. */
+  AABBTree& MakeBVH() {
+
+    if ( !bvh.has_value() ) {
+      bvh.emplace( *this );
     }
 
+    return *bvh;
+  }
+
+  std::optional< uint32_t > GetEdge( uint32_t v0, uint32_t v1 ) const;
+
+  void DeleteTriangle( uint32_t index );
+
+  uint32_t MakeVertex( const glm::dvec3& value ) ;
+
+  uint32_t MakeVertex( double x, double y, double z );
+
+  uint32_t MakeTriangle( uint32_t a, uint32_t b, uint32_t c );
+
+  uint32_t MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex );
+
+  void Reify();
+
+  void ClearReification() {
+
+    floatVertexData_.clear();
+    floatVertexData_.shrink_to_fit();
+    indexData_.clear();
+    indexData_.shrink_to_fit();
+
+    isReified_ = false;
+  }
+
+ private:
+
+  bool hasConnectivity_ = false;
+  bool isReified_       = false;
+  bool cleanedUp_       = false;
+  bool normalized_      = false;
+
+  std::vector< float >    floatVertexData_;
+  std::vector< uint32_t > indexData_;
+};
+
+
+inline void Geometry::MakeTriangle( uint32_t a, uint32_t b, uint32_t c, uint32_t index ) {
+
+  Triangle& triangle = triangles[ index ];
+  
+  assert( a < vertices.size() );
+  assert( b < vertices.size() );
+  assert( c < vertices.size() );
+
+  triangle.vertices[ 0 ] = a;
+  triangle.vertices[ 1 ] = b;
+  triangle.vertices[ 2 ] = c;
+
+  if ( hasConnectivity_ ) {
+
+    TriangleEdges& triangleEdges = triangle_edges[ index ];
+
+    triangleEdges.edges[ 0 ] = MakeEdge( a, b, index );
+    triangleEdges.edges[ 1 ] = MakeEdge( b, c, index );
+    triangleEdges.edges[ 2 ] = MakeEdge( c, a, index );
+  }
+}
+
+inline void Geometry::Clear() {
+
+  bvh.reset();
+
+  ClearConnectivity();
+
+  vertices.clear();
+  triangles.clear();
+
+  halfSpace       = false;
+  center          = glm::dvec3( 0, 0, 0 );
+  halfSpaceX      = glm::dvec3( 1, 0, 0 );
+  halfSpaceY      = glm::dvec3( 0, 1, 0 );
+  halfSpaceZ      = glm::dvec3( 0, 0, 1 );
+  halfSpaceOrigin = glm::dvec3( 0, 0, 0 );
+}
+
+inline std::optional< uint32_t > Geometry::GetEdge( uint32_t v0, uint32_t v1 ) const {
+
+  auto mapIterator =
+    edge_map.find( edgeCompoundID( v0, v1 ) );
+
+  if ( mapIterator == edge_map.end() ) {
     return std::nullopt;
   }
-};
 
-inline glm::dmat4 NormalizeIFC(glm::dvec4(1, 0, 0, 0), glm::dvec4(0, 0, -1, 0),
-                               glm::dvec4(0, 1, 0, 0), glm::dvec4(0, 0, 0, 1));
+  return std::optional< uint32_t >( mapIterator->second );
+}
 
-enum class IfcBoundType { OUTERBOUND, BOUND };
+inline void Geometry::DeleteTriangle( uint32_t index ) {
 
-// TODO: IfcBound3D can probably be merged with IfcProfile
-struct IfcBound3D {
-  IfcBoundType type;
-  bool orientation;
-  IfcCurve curve;
-};
+  if ( hasConnectivity_ ) {
 
-struct IfcSurface {
-  glm::dmat4 transformation;
-  BSpline BSplineSurface;
-  Cylinder CylinderSurface;
-  Revolution RevolutionSurface;
-  Extrusion ExtrusionSurface;
+    const TriangleEdges& toDeleteEdges = triangle_edges[ index ];
 
-  glm::dvec3 normal() {
-    if (!CylinderSurface.Active && !BSplineSurface.Active &&
-        !RevolutionSurface.Active) {
-      return transformation[2];
-    } else {
-      if (BSplineSurface.Active) {
-        Logger::logWarning("Normal to bspline still not implemented\n");
+    for ( uint32_t localEdge = 0; localEdge < 3; ++localEdge ) {
+
+      Edge& edge = edges[ toDeleteEdges.edges[ localEdge ] ];
+
+      if ( edge.triangles[ 0 ] == index ) {
+
+        edge.triangles[ 0 ] = edge.triangles[ 1 ];
+
       }
-      if (CylinderSurface.Active) {
-        Logger::logWarning("Normal to cylinder still not implemented\n");
+
+      edge.triangles[ 1 ] = EMPTY_INDEX;
+    }
+
+    uint32_t backIndex = static_cast< uint32_t >( triangles.size() - 1 );
+
+    if ( index != backIndex ) {
+
+      const TriangleEdges& back = triangle_edges.back();
+
+      for ( uint32_t localEdge = 0; localEdge < 3; ++localEdge ) {
+
+        Edge& edge = edges[ back.edges[ localEdge ] ];
+
+        for ( uint32_t onEdge = 0; onEdge < 2; ++onEdge ) {
+
+          if ( edge.triangles[ onEdge ] == backIndex ) {
+            edge.triangles[ onEdge ] = index;
+            break;
+          }
+        }
       }
-      if (RevolutionSurface.Active) {
-        Logger::logWarning("Normal to revolution still not implemented\n");
+
+      triangles[ index ]      = triangles.back();
+      triangle_edges[ index ] = triangle_edges.back();
+    }
+    
+    triangle_edges.pop_back();
+
+  } else if (
+    uint32_t backIndex = static_cast< uint32_t >( triangles.size() - 1 );
+    index != backIndex ) {
+
+    triangles[ index ] = triangles.back();
+  }
+
+  triangles.pop_back();
+}
+
+inline uint32_t Geometry::MakeVertex( const glm::dvec3& value ) {
+
+  uint32_t index = static_cast<uint32_t>( vertices.size() );
+
+  vertices.push_back( value );
+
+  return index;
+}
+
+inline uint32_t Geometry::MakeVertex( double x, double y, double z ) {
+
+  uint32_t index = static_cast<uint32_t>( vertices.size() );
+
+  vertices.emplace_back( x, y, z );
+
+  return index;
+}
+
+inline uint32_t Geometry::MakeTriangle( uint32_t a, uint32_t b, uint32_t c ) {
+
+  assert( a < vertices.size() );
+  assert( b < vertices.size() );
+  assert( c < vertices.size() );
+
+  uint32_t index = static_cast< uint32_t >( triangles.size() );
+
+  Triangle& triangle = triangles.emplace_back();
+
+  triangle.vertices[ 0 ] = a;
+  triangle.vertices[ 1 ] = b;
+  triangle.vertices[ 2 ] = c;
+
+  if ( hasConnectivity_ ) {
+
+    TriangleEdges& triangleEdges = triangle_edges.emplace_back();
+
+    triangleEdges.edges[ 0 ] = MakeEdge( a, b, index );
+    triangleEdges.edges[ 1 ] = MakeEdge( b, c, index );
+    triangleEdges.edges[ 2 ] = MakeEdge( c, a, index );
+  }
+
+  return index;
+}
+
+inline uint32_t Geometry::MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex ) {
+
+  uint64_t edgeIdentifier = edgeCompoundID( v1, v2 );
+
+  while ( true ) {
+
+    auto [ mapIterator, emplaced ] = edge_map.try_emplace( edgeIdentifier, static_cast<uint32_t>( edges.size() ) );
+
+    if ( emplaced ) {
+      
+      edges.push_back( Edge{ { triangleIndex, EMPTY_INDEX }, { v1, v2 } });
+
+    }
+    else {
+
+      Edge& currentEdge = edges[ mapIterator->second ];
+
+      // Note, this allows non manifold edges to exist,
+      // but edges will not point back to triangles
+      if ( currentEdge.triangles[ 0 ] == EMPTY_INDEX || currentEdge.triangles[ 1 ] == EMPTY_INDEX ) {
+
+        currentEdge.triangles[ currentEdge.triangles[ 0 ] == EMPTY_INDEX ? 0 : 1 ] = triangleIndex;
       }
-      return glm::dvec3(0);
+      else {
+
+        currentEdge.non_manifold_linked_edge = static_cast< uint32_t >( edges.size() );
+
+        // This is a work around for non-manifold cases.
+        edge_map.erase( mapIterator );
+        continue;
+
+      }
+    }
+
+    return mapIterator->second;
+  }
+}
+
+
+struct GeometryCollection {
+  std::vector<Geometry *> components;
+  std::vector<glm::dmat4x4> transforms;
+
+  uint32_t materialIndex = 0;
+  bool hasDefaultMaterial = true;
+
+  void AddComponentWithTransform(Geometry *geom,
+                                 const glm::dmat4x4 &transform) {
+    if (geom != nullptr) {
+      components.push_back(geom);
+      transforms.push_back(transform);
+
+      currentSize += geom->GetAllocationSize();
     }
   }
+
+  size_t currentSize = 0;
 };
+
 }  // namespace conway::geometry

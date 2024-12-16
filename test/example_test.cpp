@@ -3,8 +3,8 @@
 
 #include "../conway_geometry/ConwayGeometryProcessor.h"
 
-std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
-  std::vector<conway::geometry::IfcGeometry> geometryVec;
+std::vector<conway::geometry::Geometry> genIndexIfcTest() {
+  std::vector<conway::geometry::Geometry> geometryVec;
 
   conway::geometry::ConwayGeometryProcessor conwayGeometryProcessor =
       conway::geometry::ConwayGeometryProcessor();
@@ -84,7 +84,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry =
+  conway::geometry::Geometry geometry =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -167,7 +167,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry2 =
+  conway::geometry::Geometry geometry2 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -250,7 +250,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry3 =
+  conway::geometry::Geometry geometry3 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -333,7 +333,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry4 =
+  conway::geometry::Geometry geometry4 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -416,7 +416,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry5 =
+  conway::geometry::Geometry geometry5 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -499,7 +499,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry6 =
+  conway::geometry::Geometry geometry6 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -582,7 +582,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
   parametersGetPolygonalFaceSetGeometry.faces[4].face_starts.push_back(0);
   parametersGetPolygonalFaceSetGeometry.faces[5].face_starts.push_back(0);
 
-  conway::geometry::IfcGeometry geometry7 =
+  conway::geometry::Geometry geometry7 =
       conwayGeometryProcessor.getPolygonalFaceSetGeometry(
           parametersGetPolygonalFaceSetGeometry);
 
@@ -596,7 +596,7 @@ std::vector<conway::geometry::IfcGeometry> genIndexIfcTest() {
 }
 
 TEST(GeometryVectorSizeTest) {
-  std::vector<conway::geometry::IfcGeometry> geometryVec = genIndexIfcTest();
+  std::vector<conway::geometry::Geometry> geometryVec = genIndexIfcTest();
 
   ASSERT_EQ(geometryVec.size(), 7);
 }

@@ -69,7 +69,7 @@ namespace conway::geometry {
   inline TriangleTriangleContactPair find_intersections(
     const MultiMeshVertexIndex< 2 >& vertices,
     const uint32_t( &triangleInMeshIndices )[ 2 ],
-    const ConnectedTriangle* ( &triangles )[ 2 ],
+    const Triangle* ( &triangles )[ 2 ],
     bool selfIntersectionOnly = false,
     bool shareEdge = false,
     double tolerance = 0 ) {
@@ -82,8 +82,9 @@ namespace conway::geometry {
     result.triangles[ 0 ].other_triangle_index =
     result.triangles[ 1 ].this_triangle_index  = triangleInMeshIndices[ 1 ];
 
-    const ConnectedTriangle& aTriangle = *triangles[ 0 ];
-    const ConnectedTriangle& bTriangle = *triangles[ 1 ];
+    const Triangle&      aTriangle      = *triangles[ 0 ];
+    const Triangle&      bTriangle      = *triangles[ 1 ];
+
 
     glm::dvec3 localVertices[ 2 ][ 3 ] = {};
 

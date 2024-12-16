@@ -1,18 +1,14 @@
 #include "csg/csg_utils.h"
 #include "aabb_tree.h"
-#include "winged_edge.h"
+#include "representation/Geometry.h"
 
-#define _USE_MATH_DEFINES 1
-
-#include <math.h>
-
-constexpr double GWN_PRECISION = 2.0;
+constexpr double GWN_PRECISION = 3.0;
 
 namespace conway::geometry {
 
-  box3 make_box( const WingedEdgeMesh< glm::dvec3 >& mesh, size_t triangleIndex, double tolerance = 0 ) {
+  box3 make_box( const Geometry& mesh, size_t triangleIndex, double tolerance = 0 ) {
 
-    const ConnectedTriangle& triangle = mesh.triangles[ triangleIndex ];
+    const Triangle& triangle = mesh.triangles[ triangleIndex ];
 
     const glm::dvec3& v0 = mesh.vertices[ triangle.vertices[ 0 ] ];
 
@@ -32,10 +28,10 @@ namespace conway::geometry {
 
     /** Generate the dipoles for this */
 void conway::geometry::AABBTree::dipoles(
-  const WingedEdgeMesh< glm::dvec3 >& mesh ) {
+  const Geometry& mesh ) {
 
-  const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
-  const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
+  const std::vector< Triangle >&   triangles = mesh.triangles;
+  const std::vector< glm::dvec3 >& vertices  = mesh.vertices;
 
   if ( boxes_.empty() || dipoles_.size() == boxes_.size() ) {
     return;
@@ -78,7 +74,7 @@ void conway::geometry::AABBTree::dipoles(
   
       Dipole& dipole = dipoles_[ cursor.node ];
 
-      const ConnectedTriangle& triangle = triangles[ cursor.start ];
+      const Triangle& triangle = triangles[ cursor.start ];
 
       const glm::dvec3& v0 = vertices[ triangle.vertices[ 0 ] ];
       const glm::dvec3& v1 = vertices[ triangle.vertices[ 1 ] ];
@@ -116,7 +112,7 @@ void conway::geometry::AABBTree::dipoles(
   }
 }
 
-conway::geometry::AABBTree::AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance ) {
+conway::geometry::AABBTree::AABBTree( const Geometry& mesh, double tolerance ) {
 
   size_t leafCount = mesh.triangles.size();
 
@@ -137,8 +133,9 @@ conway::geometry::AABBTree::AABBTree( const WingedEdgeMesh< glm::dvec3 >& mesh, 
 
 
 double conway::geometry::AABBTree::gwn( 
-  const WingedEdgeMesh< glm::dvec3 >& mesh,
+  const Geometry& mesh,
   const glm::dvec3& against,
+  double scale ,
   std::optional< uint32_t > triangleIndex ) const {
 
   assert( dipoles_.size() == boxes_.size() );
@@ -148,8 +145,8 @@ double conway::geometry::AABBTree::gwn(
     return 0;
   }
 
-  const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
-  const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
+  const std::vector< Triangle >&   triangles = mesh.triangles;
+  const std::vector< glm::dvec3 >& vertices  = mesh.vertices;
 
   double result = 0;
 
@@ -171,12 +168,12 @@ double conway::geometry::AABBTree::gwn(
 
     const Dipole& dipole = dipoles_[ cursor.node ];
 
-    glm::dvec3 againstDipole = dipole.position - against;
+    glm::dvec3 againstDipole = ( scale * dipole.position ) - against;
     double     aD2           = length2( againstDipole );
 
-    if ( aD2 > dipole.radius2 ) {
+    if ( aD2 > ( dipole.radius2 * scale ) ) {
 
-      result += glm::dot( againstDipole, dipole.normal ) / ( aD2 * std::sqrt( aD2 ) );
+      result += glm::dot( againstDipole, dipole.normal * scale ) / ( aD2 * std::sqrt( aD2 ) );
       continue; 
     }
 
@@ -185,14 +182,13 @@ double conway::geometry::AABBTree::gwn(
       assert( cursor.start < triangles_.size() );      
       assert( triangles_[ cursor.start ] < triangles.size() );
 
+      // This is a special treatment for a triangle agaisnt itself to avoid cross-talk.
       if ( triangleIndex.has_value() && triangles_[ cursor.start ] == *triangleIndex ) {
 
-        // instead of relying on the centroid here, we hang a 180 hemisphere in.
-     //   result += 2.0 * M_PI;
         continue;
       }
 
-      const ConnectedTriangle& triangle = triangles[ triangles_[ cursor.start ] ];
+      const Triangle& triangle = triangles[ triangles_[ cursor.start ] ];
 
       assert( triangle.vertices[ 0 ] < vertices.size() );
       assert( triangle.vertices[ 1 ] < vertices.size() );
@@ -200,9 +196,9 @@ double conway::geometry::AABBTree::gwn(
 
       result += 
         triangle_solid_angle(
-          vertices[ triangle.vertices[ 0 ] ],
-          vertices[ triangle.vertices[ 1 ] ],
-          vertices[ triangle.vertices[ 2 ] ],
+          vertices[ triangle.vertices[ 0 ] ] * scale,
+          vertices[ triangle.vertices[ 1 ] ] * scale,
+          vertices[ triangle.vertices[ 2 ] ] * scale,
           against );
 
       continue;
@@ -227,10 +223,10 @@ double conway::geometry::AABBTree::gwn(
   return result / ( 4.0 * M_PI );
 }
 
-void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& mesh, double tolerance ) {
+void conway::geometry::AABBTree::construct( const Geometry& mesh, double tolerance ) {
 
-  const std::vector< ConnectedTriangle >& triangles = mesh.triangles;
-  const std::vector< glm::dvec3 >&        vertices  = mesh.vertices;
+  const std::vector< Triangle >&   triangles = mesh.triangles;
+  const std::vector< glm::dvec3 >& vertices  = mesh.vertices;
 
   Cursor stack[ MAX_RECURSION_DEPTH ];
 
@@ -314,8 +310,8 @@ void conway::geometry::AABBTree::construct( const WingedEdgeMesh< glm::dvec3 >& 
         triangles_.begin() + cursor.end,
         [ &, axis ]( uint32_t left, uint32_t right ) {
 
-          const ConnectedTriangle& leftTriangle  = triangles[ left ];
-          const ConnectedTriangle& rightTriangle = triangles[ right ];
+          const Triangle& leftTriangle  = triangles[ left ];
+          const Triangle& rightTriangle = triangles[ right ];
 
           double leftA = 
             vertices[ leftTriangle.vertices[ 0 ] ][ axis ] +

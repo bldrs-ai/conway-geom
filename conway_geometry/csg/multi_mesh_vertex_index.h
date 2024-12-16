@@ -8,7 +8,7 @@ namespace conway::geometry {
   class MultiMeshVertexIndex {
   public:
 
-    MultiMeshVertexIndex(const WingedEdgeDV3* (&input)[N]) {
+    MultiMeshVertexIndex( const Geometry* (&input)[N] ) {
 
       for ( size_t where = 0; where < N; ++where ) {
      
@@ -24,6 +24,7 @@ namespace conway::geometry {
         }
       }
     }
+
 
     uint32_t size() const {
 
@@ -57,6 +58,19 @@ namespace conway::geometry {
       }
     }
 
+    /** Centroid multiplied by 3, which potentially avoids some numerical issues. */
+    glm::dvec3 centroid3( const Triangle& triangle ) {
+
+      uint32_t v0 = triangle.vertices[0];
+      uint32_t v1 = triangle.vertices[1];
+      uint32_t v2 = triangle.vertices[2];
+
+      const glm::dvec3& v0a = (*this)[v0];
+      const glm::dvec3& v1a = (*this)[v1];
+      const glm::dvec3& v2a = (*this)[v2];
+
+      return ( ( v0a + ( v1a + v2a ) ) );
+    }
 
     /** Not exact, but it will compute a centroid deterministically without regards to order or winding */
     glm::dvec3 centroid( const Triangle& triangle ) {
@@ -134,7 +148,7 @@ namespace conway::geometry {
       const glm::dvec3& v1a = (*this)[ v1 ];
       const glm::dvec3& v2a = (*this)[ v2 ];
 
-      return conway::geometry::orient2D( v0a, v1a, v2a, axes, tolerance );
+      return conway::orient2D( v0a, v1a, v2a, axes, tolerance );
     }
 
     inline int32_t orient2D(
@@ -149,7 +163,7 @@ namespace conway::geometry {
         triangleIndices[ ( edge + 1 ) % 3 ],
         opposingVertex,
         axes,
-        tolerance);
+        tolerance );
     }
 
     inline int32_t orient3D(
@@ -164,7 +178,7 @@ namespace conway::geometry {
       const glm::dvec3& v2a = (*this)[ v2 ];
       const glm::dvec3& v3a = (*this)[ v3 ];
 
-      return conway::geometry::orient3D( v0a, v1a, v2a, v3a, tolerance );
+      return conway::orient3D( v0a, v1a, v2a, v3a, tolerance );
     }
 
   private:
@@ -174,21 +188,21 @@ namespace conway::geometry {
     uint32_t partitions_[ N ] {};
   };
 
-  inline MultiMeshVertexIndex< 2 > multi_mesh_vertex_index( const WingedEdgeDV3& a, const WingedEdgeDV3& b ) {
+  inline MultiMeshVertexIndex< 2 > multi_mesh_vertex_index( const Geometry& a, const Geometry& b ) {
   
-    const WingedEdgeDV3* values[ 2 ] = { &a, &b };
+    const Geometry* values[ 2 ] = { &a, &b };
 
     return MultiMeshVertexIndex< 2 >( values );
   }
 
-  inline MultiMeshVertexIndex< 2 > multi_mesh_vertex_index( const WingedEdgeDV3& a, const std::vector< glm::dvec3 >& novel ) {
+  inline MultiMeshVertexIndex< 2 > multi_mesh_vertex_index( const Geometry& a, const std::vector< glm::dvec3 >& novel ) {
 
     const std::vector< glm::dvec3 >* values[2] = { &a.vertices, &novel };
 
     return MultiMeshVertexIndex< 2 >( values );
   }
 
-  inline MultiMeshVertexIndex< 3 > multi_mesh_vertex_index( const WingedEdgeDV3& a, const WingedEdgeDV3& b, const std::vector< glm::dvec3 >& novel ) {
+  inline MultiMeshVertexIndex< 3 > multi_mesh_vertex_index( const Geometry& a, const Geometry& b, const std::vector< glm::dvec3 >& novel ) {
 
     const std::vector< glm::dvec3 >* values[ 3 ] = { &a.vertices, &b.vertices, &novel };
 

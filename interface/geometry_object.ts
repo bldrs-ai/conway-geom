@@ -1,7 +1,5 @@
-import { AABB } from './AABB'
 import { Deletable } from './deletable'
 import { NativeTransform } from './native_transform'
-import { StdVector } from './std_vector'
 import { Vector3 } from './vector3'
 
 
@@ -9,6 +7,7 @@ import { Vector3 } from './vector3'
 export interface GeometryObject extends Deletable {
   GetVertexData: () => any
   getPoint(parameter: number): Vector3
+  
   normalize(): Vector3
   GetVertexDataSize: () => number
   GetIndexData: () => any
@@ -20,9 +19,5 @@ export interface GeometryObject extends Deletable {
   addComponent(parameter: GeometryObject): void
   clone(): GeometryObject
   applyTransform(parameter: any): void
-  getAABB(): AABB
-  getAABBCenter(): Vector3
-  getParts(): StdVector<GeometryObject>
   dumpToOBJ( preamble: string ): string
-  normalized: boolean
 }

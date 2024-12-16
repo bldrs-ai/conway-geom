@@ -25,7 +25,7 @@
 using namespace conway;
 using namespace conway::geometry;
 
-bool loadOBJ( const char* name, WingedEdgeMesh< glm::dvec3 >& output ) {
+bool loadOBJ( const char* name, Geometry& output ) {
 
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
@@ -69,6 +69,8 @@ bool loadOBJ( const char* name, WingedEdgeMesh< glm::dvec3 >& output ) {
     outVertices.emplace_back( inVertData[ 0 ], inVertData[ 1 ], inVertData[ 2 ] );
   }
 
+  output.EnableConnectivity();
+
   for ( const tinyobj::shape_t& shape : shapes ) {
 
     const std::vector< tinyobj::index_t >& indices = shape.mesh.indices;
@@ -79,7 +81,7 @@ bool loadOBJ( const char* name, WingedEdgeMesh< glm::dvec3 >& output ) {
 
     for ( size_t where = 0; where < triangleCount; ++where, inIndexData += 3 ) {
 
-      output.makeTriangle( inIndexData[ 0 ].vertex_index, inIndexData[ 1 ].vertex_index, inIndexData[ 2 ].vertex_index );
+      output.MakeTriangle( inIndexData[ 0 ].vertex_index, inIndexData[ 1 ].vertex_index, inIndexData[ 2 ].vertex_index );
     }
   }
 
@@ -146,7 +148,7 @@ int voxelise(int argc, const char* argv[]) {
     return -1;
   }
 
-  WingedEdgeMesh< glm::dvec3 > mesh;
+  Geometry mesh;
 
   size_t resolution = atoll(argv[2]);
 
@@ -160,10 +162,9 @@ int voxelise(int argc, const char* argv[]) {
 
       return -1;
   }
+  
 
-  mesh.makeBVH();
-
-  AABBTree& bvh = *mesh.bvh;
+  AABBTree& bvh = mesh.MakeBVH();
 
   bvh.dipoles( mesh );
 
@@ -338,9 +339,9 @@ int csg( int argc, const char* argv[] ) {
     transform = glm::scale( transform, glm::dvec3( scale ) );
   }
 
-  WingedEdgeMesh< glm::dvec3 > a;
-  WingedEdgeMesh< glm::dvec3 > b;
-  WingedEdgeMesh< glm::dvec3 > output;
+  Geometry a;
+  Geometry b;
+  Geometry output;
 
   if ( !loadOBJ( argv[ 2 ], a ) ) {
     return -1;
@@ -350,22 +351,10 @@ int csg( int argc, const char* argv[] ) {
     return -1;
   }
 
-  VertexWelder welder;
+ /* a.Cleanup();
+  b.Cleanup();*/
 
-  welder.weld( a, 0 );
-  welder.weld( b, 0 );
-
-  {
-    CSG cleaner;
-
-    cleaner.clean( a );
-  }
-
-  {
-    CSG cleaner;
-
-    cleaner.clean( b );
-  }
+  output.EnableConnectivity();
 
   if ( performTransform ) {
 
@@ -405,10 +394,10 @@ int csg( int argc, const char* argv[] ) {
 
     output = std::move( a );
 
-    output.append( b );
+    output.AppendGeometry( b );
   }
 
-  std::string result = output.dumpToOBJ();
+  std::string result = output.GeometryToObj();
 
   std::ofstream outputFile( ( std::string( argv[ 4 ] ) + ".obj" ), std::ofstream::out | std::ofstream::binary);
 
