@@ -1728,14 +1728,14 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
   return geom;
 }
 
-conway::geometry::IfcGeometry ConwayGeometryProcessor::getSweptDiskSolid(
+conway::geometry::Geometry ConwayGeometryProcessor::getSweptDiskSolid(
   const ParamsGetSweptDiskSolid &parameters) {
     IfcCurve directrix = parameters.directrix;
 
     IfcProfile profile;
     profile.curve = GetCircleCurve(parameters.radius, parameters.circleSegments);
 
-    IfcGeometry geom = SweepCircular(parameters.scalingFactor, parameters.closed, profile, parameters.radius, directrix);
+    Geometry geom = SweepCircular(parameters.scalingFactor, parameters.closed, profile, parameters.radius, directrix);
 
     return geom;
 }
