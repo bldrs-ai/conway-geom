@@ -524,7 +524,7 @@ class ConwayGeometryProcessor {
     double scalingFactor;
   };
 
-  conway::geometry::IfcGeometry getSweptDiskSolid(const ParamsGetSweptDiskSolid& parameters);
+  conway::geometry::Geometry getSweptDiskSolid(const ParamsGetSweptDiskSolid& parameters);
 
   // case ifc::IFCINDEXEDPOLYCURVE
   struct ParamsGetIfcIndexedPolyCurve {

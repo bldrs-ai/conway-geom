@@ -505,13 +505,8 @@ inline Geometry SweepCircular(const double scaling, const bool closed, const Ifc
       glm::dvec3 p2 = dpts[i];
       glm::dvec3 dir = p1 - p2;
       glm::dvec4 ddir = glm::dvec4(dir, 0);
-      const double di = glm::distance(p1, p2);
 
       //Only segments smaller than 10 cm will be represented, those that are bigger will be standardized
-
-      const auto &c1 = curves[i - 1].points;
-      const auto &c2 = curves[i].points;
-
       const auto &c1 = curves[ i - 1 ].points;
       const auto &c2 = curves[ i ].points;
 
