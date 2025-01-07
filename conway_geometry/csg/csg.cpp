@@ -18,6 +18,7 @@ void conway::geometry::CSG::clean( Geometry& a ) {
   );
 
   a = std::move( output );
+
 }
 
 /** Index a mesh for self intersections */

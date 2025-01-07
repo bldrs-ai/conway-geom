@@ -105,7 +105,7 @@ IfcCurve IfcCurve::Clone() const {
   return *this;
 }
 
-inline bool equals(glm::dvec3 A, glm::dvec3 B, double eps = 0) {
+inline bool equals(const glm::dvec3& A, const glm::dvec3& B, double eps = 0) {
   return std::fabs(A.x - B.x) <= eps && std::fabs(A.y - B.y) <= eps &&
          std::fabs(A.z - B.z) <= eps;
 }
@@ -127,7 +127,7 @@ size_t IfcCurve::GetPointsSize() const {
 
 glm::dvec3 IfcCurve::Get3d(size_t i) const { return points.at(i); }
 
-bool IfcCurve::Add3d(glm::dvec3 pt) {
+bool IfcCurve::Add3d( const glm::dvec3& pt) {
   if ( points.empty() || pt != points.back() ) {
     points.push_back(pt);
     return true;
@@ -136,7 +136,7 @@ bool IfcCurve::Add3d(glm::dvec3 pt) {
   return false;
 }
 
-bool IfcCurve::Add2d(glm::dvec2 pt) {
+bool IfcCurve::Add2d( const glm::dvec2& pt ) {
   glm::dvec3 point;
   point.x = pt.x;
   point.y = pt.y;

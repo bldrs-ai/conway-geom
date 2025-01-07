@@ -361,11 +361,14 @@ void Geometry::Cleanup() {
 
   if ( !cleanedUp_ ) {
 
-    for ( glm::dvec3& from : vertices ) {
+    if ( !halfSpace ) {
 
-      from *= exp2( 24 );
-      from = glm::round( from );
-      from *= exp2( -24 );
+      for ( glm::dvec3& from : vertices ) {
+
+        from *= exp2( 24 );
+        from = glm::round( from );
+        from *= exp2( -24 );
+      }
     }
 
     welder.weld( *this, exp2( -23 ) );
@@ -374,14 +377,13 @@ void Geometry::Cleanup() {
 
     assert( triangles.size() == triangle_edges.size() );
 
-    {
+    if ( !halfSpace ) {
       CSG cleaner;
- 
+
       cleaner.clean( *this );
-      
       EnableConnectivity();
     }
-
+    
     cleanedUp_ = true;
 
   } else {

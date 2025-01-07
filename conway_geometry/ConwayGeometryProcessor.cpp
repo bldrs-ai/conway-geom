@@ -208,6 +208,9 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
 
     csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ], secondGeoms[ 0 ], resultMesh, 0 );
 
+  //  resultMesh = firstGeoms[ 0 ];
+  //  resultMesh.AppendGeometry( secondGeoms[ 0 ] );
+
     return resultMesh;
   }
 
@@ -246,6 +249,7 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
       }
 
       if ( secondGeom.halfSpace ) {
+
         glm::dvec3 origin = secondGeom.halfSpaceOrigin;
         glm::dvec3 x = secondGeom.halfSpaceX - origin;
         glm::dvec3 y = secondGeom.halfSpaceY - origin;
@@ -450,11 +454,18 @@ Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   profile.isConvex = false;
   profile.curve = parameters.curve;
 
-  conway::geometry::Geometry geom =
-      Extrude(profile, extrusionNormal, extrudeDistance, localPlaneNormal,
-              localPlanePos);
-  // auto geom = Extrude(profile, surface.transformation, extrusionNormal,
-  // EXTRUSION_DISTANCE_HALFSPACE);
+  conway::geometry::Geometry geom = 
+      Extrude(
+        profile,
+        extrusionNormal,
+        extrudeDistance,
+        localPlaneNormal,
+        localPlanePos );
+  // auto geom = Extrude(
+  //   profile,
+  //   surface.transformation,
+  //   extrusionNormal,
+  //   EXTRUSION_DISTANCE_HALFSPACE);
 
   // @Refactor: duplicate of extrudedareasolid
   if (flipWinding) {
