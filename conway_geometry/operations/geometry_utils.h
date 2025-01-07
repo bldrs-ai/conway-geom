@@ -80,7 +80,7 @@ inline bool GetWindingOfTriangle(const glm::dvec3 &a, const glm::dvec3 &b,
                                  const glm::dvec3 &c) {
   auto norm = computeNormal(a, b, c);
 
-  return glm::dot(norm, glm::dvec3(0, 0, 1)) > 0.0;
+  return /*norm.z > 0.0; */glm::dot(norm, glm::dvec3(0, 0, 1)) > 0.0;
 }
 
 //! This implementation generates much more vertices than needed, and does not
@@ -750,9 +750,13 @@ inline Geometry SectionedSurface(
   return geom;
 }
 
-inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
-                           glm::dvec3 cuttingPlaneNormal = glm::dvec3(0),
-                           glm::dvec3 cuttingPlanePos = glm::dvec3(0)) {
+inline Geometry Extrude(
+  IfcProfile profile,
+  const glm::dvec3& dir,
+  double distance,
+  const glm::dvec3& cuttingPlaneNormal = glm::dvec3(0),
+  const glm::dvec3& cuttingPlanePos = glm::dvec3(0)) {
+  
   Geometry geom;
   std::vector<bool> holesIndicesHash;
 
@@ -780,13 +784,16 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
       IfcCurve hole = profile.holes[i];
       int pointCount = hole.points.size();
 
+      bool firstPoint = true;
+
       for (int j = 0; j < pointCount; j++) {
-        holesIndicesHash.push_back(j == 0);
 
         glm::dvec2 pt = hole.points[j];
         glm::dvec4 et = glm::dvec4(glm::dvec3(pt, 0) + dir * distance, 1);
 
         if ( profile.curve.Add2d(pt) ) {
+          holesIndicesHash.push_back( firstPoint );
+          firstPoint = false;
 
           geom.MakeVertex( et );
 
@@ -806,12 +813,12 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
 
     uint32_t offset = 0;
 
-    bool winding = GetWindingOfTriangle(geom.vertices[ offset + indices[ 0 ] ],
-                                        geom.vertices[ offset + indices[ 1 ] ],
-                                        geom.vertices[ offset + indices[ 2 ] ]);
+    bool winding = GetWindingOfTriangle( geom.vertices[ offset + indices[ 0 ] ],
+                                         geom.vertices[ offset + indices[ 1 ] ],
+                                         geom.vertices[ offset + indices[ 2 ] ] );
     bool flipWinding = !winding;
 
-    for (size_t i = 0; i < indices.size(); i += 3) {
+    for ( size_t i = 0, end = indices.size(); i < end; i += 3 ) {
 
       if (flipWinding) {
 
@@ -841,14 +848,15 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
         glm::dvec3 transDir = glm::dvec4(dir, 0);
 
         // project {et} onto the plane, following the extrusion normal
-        double ldotn = glm::dot(transDir, cuttingPlaneNormal);
+        double ldotn = glm::dot( transDir, cuttingPlaneNormal );
+
         if (ldotn == 0) {
           Logger::logWarning("0 direction in extrude");
         } else {
           glm::dvec3 dpos = cuttingPlanePos - glm::dvec3(et);
-          double dist = glm::dot(dpos, cuttingPlaneNormal) / ldotn;
+          double dist = glm::dot( dpos, cuttingPlaneNormal ) / ldotn;
           // we want to apply dist, even when negative
-          et = et + glm::dvec4(dist * transDir, 1);
+          et = et + glm::dvec4( dist * transDir, 1 );
         }
       }
 
@@ -857,7 +865,7 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
 
     for (size_t i = 0; i < indices.size(); i += 3) {
 
-      if (flipWinding) {
+      if ( flipWinding ) {
         geom.MakeTriangle(
           offset + indices[ i + 0 ],
           offset + indices[ i + 1 ],
@@ -872,6 +880,7 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
   }
 
   uint32_t capSize = profile.curve.points.size();
+
   for (size_t i = 1; i < capSize; i++) {
     // https://github.com/tomvandig/web-ifc/issues/5
     if (holesIndicesHash[i]) {
@@ -886,7 +895,7 @@ inline Geometry Extrude(IfcProfile profile, glm::dvec3 dir, double distance,
 
     // this winding should be correct
     geom.MakeTriangle( tl, br, bl );
-    geom.MakeTriangle ( tl, tr, br );
+    geom.MakeTriangle( tl, tr, br );
   }
 
   return geom;

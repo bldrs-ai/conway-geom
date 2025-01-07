@@ -175,7 +175,7 @@ class ConwayGeometryProcessor {
   */
 
   Geometry GetPolygonalBoundedHalfspace(
-      const ParamsGetPolygonalBoundedHalfspace& parameters);
+      const ParamsGetPolygonalBoundedHalfspace& parameters );
 
   // case ifc::IFCREPRESENTATIONMAP
   // TODO(nickcastel50) : see if this is needed

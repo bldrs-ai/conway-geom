@@ -733,6 +733,7 @@ end
        --     "external/fuzzy-bools",
       --      "external/csgjs-cpp",
             "external/CDT/CDT/include"--,
+           -- "external/fast_float/include"--,
            -- "external/tinyobjloader"
         }
 
@@ -950,7 +951,8 @@ end
             "external/draco/src",
        --     "external/fuzzy-bools",
             "external/csgjs-cpp",
-            "external/CDT/CDT/include"--,
+            "external/CDT/CDT/include",
+            "external/fast_float/include"--,
            -- "external/tinyobjloader"
         }
 
