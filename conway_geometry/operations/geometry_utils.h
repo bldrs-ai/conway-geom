@@ -253,13 +253,13 @@ inline Geometry Sweep(
         {
           glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt, directrixSegmentNormal);
 
-          segmentForCurve.Add3d(proj);
+          segmentForCurve.points.push_back( proj );
         }
       }
 
       if (!closed || (i != 0 && i != dpts.size() - 1))
       {
-        curves.push_back(segmentForCurve);
+        curves.emplace_back( std::move( segmentForCurve ) );
       }
     }
 
@@ -294,7 +294,14 @@ inline Geometry Sweep(
     return geom;
 }
 
-inline Geometry SweepCircular(const double scaling, const bool closed, const IfcProfile &profile, const double radius, const IfcCurve &directrix, const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0), const bool rotate90 = false)
+inline Geometry SweepCircular(
+  const double scaling,
+  const bool closed,
+  const IfcProfile &profile,
+  const double radius,
+  const IfcCurve &directrix,
+  const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0),
+  const bool rotate90 = false)
 {
   Geometry geom;
 
@@ -482,13 +489,13 @@ inline Geometry SweepCircular(const double scaling, const bool closed, const Ifc
         {
           glm::dvec3 proj = projectOntoPlane(planeOrigin, planeNormal, pt, directrixSegmentNormal);
 
-          segmentForCurve.Add3d(proj);
+          segmentForCurve.points.push_back( proj );
         }
       }
 
       if (!closed || (i != 0 && i != dpts.size() - 1))
       {
-        curves.push_back(segmentForCurve);
+        curves.emplace_back( std::move( segmentForCurve ) );
       }
     }
 
@@ -510,7 +517,7 @@ inline Geometry SweepCircular(const double scaling, const bool closed, const Ifc
       const auto &c1 = curves[ i - 1 ].points;
       const auto &c2 = curves[ i ].points;
 
-      uint32_t capSize = c1.size();
+      size_t capSize = c1.size();
 
       for (size_t j = 1; j < capSize; j++) {
 
@@ -654,7 +661,7 @@ inline void TriangulateBounds(Geometry &geometry,
 
       glm::dvec2 proj(glm::dot(pt2, v12), glm::dot(pt2, v13));
 
-      test.Add2d(proj);
+      test.points.emplace_back( proj, 0.0 );
     }
 
     // if the outer bound is clockwise under the current projection (v12,v13,n),
