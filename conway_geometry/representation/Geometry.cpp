@@ -89,7 +89,38 @@ void Geometry::Reify() {
 
   if ( !cleanedUp_ ) {
 
-    welder.weld( *this, 0 );
+    welder.weld( *this, DBL_EPSILON );
+
+  } else {
+
+    size_t triangleCursor = 0;
+
+    while ( triangleCursor < triangles.size() ) {
+
+      const Triangle& triangle = triangles[ triangleCursor ];
+
+      uint32_t i0 = triangle.vertices[ 0 ];
+      uint32_t i1 = triangle.vertices[ 1 ];
+      uint32_t i2 = triangle.vertices[ 2 ];
+
+      if ( i0 == i1 || i0 == i2 || i1 == i2 ) {
+
+        DeleteTriangle( triangleCursor );
+        continue;
+      }
+      
+      const glm::dvec3& v0 = vertices[ triangle.vertices[ 0 ] ];
+      const glm::dvec3& v1 = vertices[ triangle.vertices[ 1 ] ];
+      const glm::dvec3& v2 = vertices[ triangle.vertices[ 2 ] ];
+
+      if ( is_zero_area_triangle( v0, v1, v2 ) ) {
+
+        DeleteTriangle( triangleCursor );
+        continue;
+      }
+
+      ++triangleCursor;
+    }
   }
 
   isReified_ = true;
