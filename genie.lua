@@ -849,7 +849,9 @@ project "ConwayGeomWasmWeb"
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
             "-std=c++20",
-            "-fexperimental-library"
+            "-fexperimental-library",
+            "-matomics",
+            "-mbulk-memory",
         }
 
     configuration {"windows or macosx or linux"}
@@ -909,8 +911,6 @@ else
         "-pthread",
         "-s PRECISE_F32=1",
         "-sSHARED_MEMORY",
-        "-matomics",
-        "-mbulk-memory",
         "-s USE_PTHREADS=1",
         "-sPTHREAD_POOL_SIZE=10",
         "--define-macro=REAL_T_IS_DOUBLE",
