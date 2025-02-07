@@ -1,10 +1,11 @@
 #pragma once
 
 #include "hash_functions.h"
-#include "winged_edge.h"
+#include "representation/Geometry.h"
 #include "csg/csg_utils.h"
 #include "structures/box.h"
 #include "operations/morton_code_utils.h"
+#include <utility>
 
 namespace conway::geometry {
 
@@ -13,11 +14,11 @@ namespace conway::geometry {
     UnionFind< uint32_t >                         unified;
     std::unordered_multimap< uint32_t, uint32_t > spatial_hash;
     std::vector< uint32_t >                       remap;
-    std::vector< ConnectedTriangle >              old_triangles;
+    std::vector< Triangle >                       old_triangles;
     std::vector< glm::dvec3 >                     converged;
     std::vector< uint32_t >                       unique_mapping;
 
-    void weld( WingedEdgeDV3& toWeld, double tolerance ) {
+    void weld( Geometry& toWeld, double tolerance ) {
 
       std::vector< glm::dvec3 >& vertices = toWeld.vertices;
 
@@ -47,12 +48,14 @@ namespace conway::geometry {
 
       double inverseStep = 1.0 / std::max( interval[ largestComponent ] / double( MAX_MORTON_COMPONENT ), tolerance );
 
-      unified.allocate( vertices.size() );
-      converged.reserve( vertices.size() );
+      uint32_t verticesSize = static_cast< uint32_t >( vertices.size() );
+
+      unified.allocate( verticesSize );
+      converged.reserve( verticesSize );
 
       for (
-        uint32_t where = 0, end = static_cast<uint32_t>( vertices.size());
-        where < end;
+        uint32_t where = 0;
+        where < verticesSize;
         ++where) {
 
         const glm::dvec3& vertex = vertices[ where ];
@@ -79,7 +82,7 @@ namespace conway::geometry {
               continue;
             }
 
-            for (int32_t x = -1; x <= 1; ++x ) {
+            for ( int32_t x = -1; x <= 1; ++x ) {
 
               int32_t probeX = static_cast<int32_t>( coord.x ) + x;
 
@@ -112,13 +115,6 @@ namespace conway::geometry {
 
                     uint32_t mergeIndex = unified.merge( foundCandidate, foundThis );
 
-                    // we converge towards minimum, because it's monotonic and 
-                    // where error is evenly distributed, it should floor it...
-                    // this is good if you have 2 sets of points each of which is on the same plane,
-                    // but offset a little bit with similar error... and given
-                    // a lot of our planes are axial, this converges particularly nicely.
-                    glm::dvec3 mergedCoord = glm::min( converged[ foundCandidate ], converged[ foundThis ] );
-
                     converged[ mergeIndex ] = vertices[ mergeIndex ];
                   }
                 }
@@ -137,7 +133,7 @@ namespace conway::geometry {
 
       vertices.resize( unique_mapping.size() );
 
-      size_t vertexIndex = 0;
+      uint32_t vertexIndex = 0;
 
       for ( uint32_t uniqueItem : unique_mapping ) {
 
@@ -147,10 +143,11 @@ namespace conway::geometry {
 
       std::swap( old_triangles, toWeld.triangles );
 
+      toWeld.triangle_edges.clear();
       toWeld.edges.clear();
       toWeld.edge_map.clear();
 
-      for ( const ConnectedTriangle& triangle : old_triangles ) {
+      for ( const Triangle& triangle : old_triangles ) {
 
         uint32_t i0 = remap[ unified.find( triangle.vertices[ 0 ] ) ];
         uint32_t i1 = remap[ unified.find( triangle.vertices[ 1 ] ) ];
@@ -169,7 +166,7 @@ namespace conway::geometry {
           continue;
         }
 
-        toWeld.makeTriangle( i0, i1, i2 );
+        toWeld.MakeTriangle( i0, i1, i2 );
       }
     }
   };

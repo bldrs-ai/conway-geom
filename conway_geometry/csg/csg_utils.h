@@ -4,24 +4,10 @@
 #include <glm/glm.hpp>
 #include <math.h>
 #include <vector>
-#include "structures/winged_edge.h"
+//#include "structures/winged_edge.h"
 #include "operations/math_utils.h"
 
-#if defined (_MSC_VER)
-
-#pragma warning( push )
-#pragma warning( disable : 26812 )
-
-#endif
-
-#include "predicates.h"
-
-#if defined (_MSC_VER)
-
-#pragma warning( pop )
-
-#endif
-
+#include "representation/Geometry.h"
 
 namespace conway::geometry {
 
@@ -31,6 +17,23 @@ namespace conway::geometry {
     const glm::dvec3& t2,
     const glm::dvec3& l0,
     const glm::dvec3& l1 ) {
+
+    // // all of these predicates should agree in sign from the previous tests
+    // // against the triangle, guaranteeing the signs and that the point is within
+    // // the triangle.
+    // double e0 = predicates::adaptive::orient3d( &t0.x, &t1.x, &l0.x, &l1.x );
+    // double e1 = predicates::adaptive::orient3d( &t1.x, &t2.x, &l0.x, &l1.x );
+    // double e3 = predicates::adaptive::orient3d( &t2.x, &t0.x, &l0.x, &l1.x );
+
+    // // As all the signs are guaranteed to be correct,
+    // // this normalization factor is guaranteed to have the right sign.
+    // double invDetSum = 1.0 / ( e0 + e1 + e3 );
+
+    // double a = e0 * invDetSum;
+    // double b = e1 * invDetSum;
+    // double c = 1.0 - std::min( a + b, 1.0 );
+
+    // return t2 * a + t0 * b + t1 * c; 
 
     glm::dvec3 direction = l1 - l0;
     
@@ -42,69 +45,6 @@ namespace conway::geometry {
     double t = dot( origin, normal ) / -dot( direction, normal );
 
     return l0 + direction * t;
-  }
-
-  inline double orient2D( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, AxisPair axes ) {
-
-    glm::dvec2 v0t = extract( v0, axes );
-    glm::dvec2 v1t = extract( v1, axes );
-    glm::dvec2 v2t = extract( v2, axes );
-
-    return predicates::adaptive::orient2d(
-      &(v0t.x),
-      &(v1t.x),
-      &(v2t.x) );
-  }
-
-  inline int32_t orient2D(const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, AxisPair axes, double tolerance ) {
-
-    double orientation = orient2D( v0, v1, v2, axes );
-    
-    if ( orientation > tolerance ) {
-
-      return 1;
-    }
-
-    if ( orientation < tolerance ) {
-
-      return -1;
-    }
-
-    return 0;
-  }
-
-  /** Is a 3D triangle zero area, computed with exact predicates, which means that for the tolerance == 0 case, it will give an exact answer */
-  inline bool is_zero_area_triangle( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, double tolerance = 0 ) {
-
-    double doubleTolerance = 2.0 * tolerance;
-
-    return
-      orient2D( v0, v1, v2, AxisPair::X_Y, doubleTolerance ) == 0 &&
-      orient2D( v0, v1, v2, AxisPair::X_Z, doubleTolerance ) == 0 &&
-      orient2D( v0, v1, v2, AxisPair::Y_Z, doubleTolerance ) == 0;
-  } 
-
-  /** Assuming 2 intersecting line segments, this gets the intersection point */
-  inline glm::dvec3 line_segment_line_segment_intersection(
-    const glm::dvec3& a0,
-    const glm::dvec3& a1,
-    const glm::dvec3& b0,
-    const glm::dvec3& b1 ) {
-
-    glm::dvec3 e0        = a1 - a0;
-    glm::dvec3 direction = b1 - b0;
-
-    // intersecting non-colinear line segments are 
-    // coplanar, and have a well defined normal.
-    glm::dvec3 e1     = glm::cross( e0, direction );
-    glm::dvec3 origin = b0 - a0;
-    glm::dvec3 normal = glm::cross( e0, e1 );
-
-    double t = dot( origin, normal ) / -dot( direction, normal );
-
-    // printf( "%f %f %f %f %d %d %d %d\n", t, predicates::adaptive::orient3d( &a0.x, &a1.x, &b0.x, &b1.x ), glm::length( normal ), glm::length( direction ), is_zero_area_triangle( a0, a1, b0 ) ? 1 : 0, is_zero_area_triangle( a0, a1, b1 ) ? 1 : 0, is_zero_area_triangle( a0, b0, b1 ) ? 1 : 0, is_zero_area_triangle( a1, b0, b1 ) ? 1 : 0 );
-
-    return b0 + direction * t;
   }
 
   /** Will get the best 2D projection for a triangle that simply involves truncating an axis
@@ -146,8 +86,8 @@ namespace conway::geometry {
   }
 
   inline void extract_vertices(
-    const WingedEdgeMesh< glm::dvec3 >& first,
-    const WingedEdgeMesh< glm::dvec3 >& second,
+    const Geometry& first,
+    const Geometry& second,
     const uint32_t (&vertexIndices)[3],
     glm::dvec3 (&to)[3] ) {
 
@@ -165,8 +105,8 @@ namespace conway::geometry {
   }
 
   inline void extract_vertices(
-    const WingedEdgeMesh< glm::dvec3 >& mesh,
-    const ConnectedTriangle& triangle,
+    const Geometry& mesh,
+    const Triangle& triangle,
     glm::dvec3 (&to)[3] ) {
 
     const std::vector< glm::dvec3 >& vertices = mesh.vertices;
@@ -175,57 +115,6 @@ namespace conway::geometry {
       
       to[ vertInTriangle ] = vertices[ triangle.vertices[ vertInTriangle ] ];
     }
-  }
-
-  /** Calculate the signed solid angle of a triangle relative a point */
-  inline double triangle_solid_angle( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, const glm::dvec3& from ) {
-
-    glm::dvec3 r0 = v0 - from;
-    glm::dvec3 r1 = v1 - from;
-    glm::dvec3 r2 = v2 - from;
-
-    double r0l = glm::length( r0 );
-    double r1l = glm::length( r1 );
-    double r2l = glm::length( r2 );
-
-    double x =
-      r0l * r1l * r2l + 
-      glm::dot( r0, r1 ) * r2l +
-      glm::dot( r1, r2 ) * r0l +
-      glm::dot( r2, r0 ) * r1l;
-
-    // We use the exactly signed version of the determinant here because we really want the sign to be right,
-    // as this gives us our accurate face winding up close for inside vs outside.
-    // Because the dipoles in the BVH are far away, we don't need the precision, but here we do.
-    double y = predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &from.x );
-
-    return 2.0 * fast_atan2( y, x );
-  }
-
-  /**
-   * Simple determininant based comparison given 4 points that will calculate 3 vectors relative to the first and then
-   * work out the sign of the determinant within tolerance (-1 for negative, 0 for within tolerance of 0 and 1 for positive)
-   */
-  inline int32_t orient3D( const glm::dvec3& v0, const glm::dvec3& v1, const glm::dvec3& v2, const glm::dvec3& v3, double tolerance = 0 ) {
-
-    double result = predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &v3.x );
-
-    if ( result > tolerance ) {
-
-      return 1;
-    }
-
-    if ( result < tolerance ) {
-
-      return -1;
-    }
-
-    return 0;
-  }
-
-  namespace {
-
-    constexpr double ONE_THIRD = 1.0 / 3.0;
   }
 
     /** Not exact, but it will compute a centroid deterministically without regards to order or winding */
@@ -238,6 +127,24 @@ namespace conway::geometry {
     return ( ( vertices[ v0 ] + ( vertices[ v1 ] + vertices[ v2 ] ) ) ) * ONE_THIRD; 
   }
 
+  /** Calcualte the centroid for a collection of triangles */
+  inline glm::dvec3 centroid( const std::vector< glm::dvec3 >& vertices, const std::vector< Triangle >& triangles ) {
+
+    uint32_t vertexCount = 0;
+    glm::dvec3 accumulator( 0 );
+
+    for ( const Triangle& triangle : triangles ) {
+
+      uint32_t v0 = triangle.vertices[ 0 ];
+      uint32_t v1 = triangle.vertices[ 1 ];
+      uint32_t v2 = triangle.vertices[ 2 ];
+
+      vertexCount += 3;
+      accumulator += vertices[ v0 ] + ( vertices[ v1 ] + vertices[ v2 ] ); 
+    }
+
+    return vertexCount > 0 ? ( accumulator / double( vertexCount ) ) : accumulator;
+  }
 
   inline void reorder_to_lowest_vertex(
     uint32_t (&triangleIndicesInputOutput)[ 3 ] 
@@ -315,30 +222,6 @@ namespace conway::geometry {
     return false;
   }
 
-  // inline int32_t orient2D(
-  //   const WingedEdgeMesh< glm::dvec3 >& first,
-  //   const WingedEdgeMesh< glm::dvec3 >& second,
-  //   const uint32_t (&triangleIndices)[ 3 ],
-  //   AxisPair axes,
-  //   double tolerance = 0 ) {
-  //   return orient2D( first, second, triangleIndices[ 0 ], triangleIndices[ 1 ], triangleIndices[ 2 ], axes, tolerance );
-  // }
 
-  inline int32_t orient2D( const glm::dvec3(&vertices)[ 3 ], AxisPair axes, double tolerance = 0 ) {
-
-    double determinant = orient2D( vertices[ 0 ], vertices[ 1 ], vertices[ 2 ], axes );
-
-    if (determinant > tolerance) {
-
-      return 1;
-    }
-
-    if (determinant < tolerance) {
-
-      return -1;
-    }
-
-    return 0;
-  }
 
 }

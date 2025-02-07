@@ -3,11 +3,11 @@
 
 
 /** Clean a mesh by getting its solid skin */
-void conway::geometry::CSG::clean( WingedEdgeMesh< glm::dvec3 >& a ) {
+void conway::geometry::CSG::clean( Geometry& a ) {
 
   index( a );
 
-  WingedEdgeMesh< glm::dvec3 > output;
+  Geometry output;
 
   charter_.process(
     a,
@@ -18,10 +18,11 @@ void conway::geometry::CSG::clean( WingedEdgeMesh< glm::dvec3 >& a ) {
   );
 
   a = std::move( output );
+
 }
 
 /** Index a mesh for self intersections */
-void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double tolerance ) {
+void conway::geometry::CSG::index( Geometry& a, double tolerance ) {
 
   MultiMeshVertexIndex< 2 > vertices( a.vertices );
   
@@ -29,7 +30,7 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double toler
 
   // Note, potentially we should move this out and error on lack of bvh/dipoles,
   // and force this onto the user to keep a and b const.
-  a.makeBVH();
+  a.MakeBVH();
 
   AABBTree& bvhA = *a.bvh;
 
@@ -47,13 +48,16 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double toler
 
   bvhA.intersect( [&]( uint32_t left, uint32_t right ) {
 
-    const ConnectedTriangle& aTriangle = a.triangles[ left ];
-    const ConnectedTriangle& bTriangle = a.triangles[ right ];
+    const Triangle& aTriangle = a.triangles[ left ];
+    const Triangle& bTriangle = a.triangles[ right ];
+
+    const TriangleEdges& aTriangleEdges = a.triangle_edges[ left ];
+    const TriangleEdges& bTriangleEdges = a.triangle_edges[ right ];
 
     bool shareEdge = false;
 
-    std::span< const uint32_t, 3 > edges0{ aTriangle.edges };
-    std::span< const uint32_t, 3 > edges1{ bTriangle.edges };
+    std::span< const uint32_t, 3 > edges0{ aTriangleEdges.edges };
+    std::span< const uint32_t, 3 > edges1{ bTriangleEdges.edges };
 
     for (uint32_t edge0 : edges0) {
 
@@ -116,15 +120,18 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double toler
 
       uint32_t triangleInMeshIndices[2] = { candidatePair.first, candidatePair.second };
 
-      const ConnectedTriangle& aTriangle = a.triangles[ candidatePair.first ];
-      const ConnectedTriangle& bTriangle = a.triangles[ candidatePair.second ];
+      const Triangle& aTriangle = a.triangles[ candidatePair.first ];
+      const Triangle& bTriangle = a.triangles[ candidatePair.second ];
 
-      const ConnectedTriangle* triangles[2] = { &aTriangle, &bTriangle };
+      const TriangleEdges& aTriangleEdges = a.triangle_edges[ candidatePair.first ];
+      const TriangleEdges& bTriangleEdges = a.triangle_edges[ candidatePair.second ];
+
+      const Triangle* triangles[2] = { &aTriangle, &bTriangle };
 
       bool sharedEdge = false;
 
-      std::span< const uint32_t, 3 > edges0 { aTriangle.edges };
-      std::span< const uint32_t, 3 > edges1 { bTriangle.edges };
+      std::span< const uint32_t, 3 > edges0 { aTriangleEdges.edges };
+      std::span< const uint32_t, 3 > edges1 { bTriangleEdges.edges };
 
       for ( uint32_t edge0 : edges0 ) {
 
@@ -174,7 +181,7 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, double toler
  * 
  * This is called by run internally, and does not need to be called before calling run.
  */
-void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMesh< glm::dvec3 >& b, double tolerance ) {
+void conway::geometry::CSG::index( Geometry& a, Geometry& b, double tolerance ) {
 
   MultiMeshVertexIndex< 2 > vertices  = multi_mesh_vertex_index( a, b );
 
@@ -182,11 +189,8 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMe
 
   // Note, potentially we should move this out and error on lack of bvh/dipoles,
   // and force this onto the user to keep a and b const.
-  a.makeBVH();
-  b.makeBVH();
-
-  AABBTree& bvhA = *a.bvh;
-  AABBTree& bvhB = *b.bvh;
+  AABBTree& bvhA = a.MakeBVH();
+  AABBTree& bvhB = b.MakeBVH();
 
   if ( !bvhA.hasDipoles() ) {
 
@@ -213,27 +217,19 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMe
   contacts.clear();
   contacts.resize( candidatePairs.size() );
 
-// #if defined(__EMSCRIPTEN__)
-//   std::transform(
-//     candidatePairs.begin(),
-//     candidatePairs.end(),
-//     contacts.begin(),
-//     [&]( const std::pair< uint32_t, uint32_t >& candidatePair ) {
-// #else
   std::transform(
     std::execution::par_unseq,
     candidatePairs.begin(),
     candidatePairs.end(),
     contacts.begin(),
     [&]( const std::pair< uint32_t, uint32_t >& candidatePair) {
-//#endif
 
     uint32_t triangleInMeshIndices[ 2 ] = { candidatePair.first, candidatePair.second };
 
-    const ConnectedTriangle& aTriangle = a.triangles[ candidatePair.first ];
-    const ConnectedTriangle& bTriangle = b.triangles[ candidatePair.second ];
+    const Triangle& aTriangle = a.triangles[ candidatePair.first ];
+    const Triangle& bTriangle = b.triangles[ candidatePair.second ];
 
-    const ConnectedTriangle* triangles[ 2 ] = {&aTriangle, &bTriangle};
+    const Triangle* triangles[ 2 ] = { &aTriangle, &bTriangle };
 
     return find_intersections( vertices, triangleInMeshIndices, triangles, false, false, tolerance );
   });
@@ -266,7 +262,7 @@ void conway::geometry::CSG::index( WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMe
     []( const TriangleTriangleContactPair& contact ) { return contact.triangles[ 1 ].this_triangle_index; } );
 }
 
-void conway::geometry::CSG::run( Operation operation, WingedEdgeMesh< glm::dvec3 >& a, WingedEdgeMesh< glm::dvec3 >& b, WingedEdgeMesh< glm::dvec3 >& output, double tolerance ) {
+void conway::geometry::CSG::run( Operation operation, Geometry& a, Geometry& b, Geometry& output, double tolerance ) {
 
   index( a, b, tolerance );
 
@@ -305,6 +301,8 @@ void conway::geometry::CSG::run( Operation operation, WingedEdgeMesh< glm::dvec3
     flipBWinding,
     output
   );
+
+  output.MarkedCleanedup();
 }
 
 

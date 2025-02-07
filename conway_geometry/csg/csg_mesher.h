@@ -35,8 +35,8 @@ namespace conway::geometry {
   public:  
 
     void process(
-      WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
-      WingedEdgeDV3& b,
+      Geometry& a, // these are not const because we lazily generate dipoles.
+      Geometry& b,
       const std::vector< TriangleTriangleContactPair >& contacts,
       const PrefixSumMap& aContactMap,
       const PrefixSumMap& bContactMap,
@@ -44,14 +44,14 @@ namespace conway::geometry {
       bool aOutside,
       bool bOutside,
       bool flipBWinding,
-      WingedEdgeDV3& output );
+      Geometry& output );
 
     void process(
-      WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
+      Geometry& a, // these are not const because we lazily generate dipoles.
       const std::vector< TriangleTriangleContactPair >& contacts,
       const PrefixSumMap& aContactMap,
       const std::vector< bool >& boundarySet,
-      WingedEdgeDV3& output );
+      Geometry& output );
 
     void reset();
 
@@ -68,8 +68,8 @@ namespace conway::geometry {
     void walkAndInsertNonBoundary(
       bool outside,
       const std::vector< bool >& boundarySet,
-      const WingedEdgeMesh< glm::dvec3 >& mesh,
-      const WingedEdgeMesh< glm::dvec3 >& otherMesh,
+      const Geometry& mesh,
+      const Geometry& otherMesh,
       bool flippedWinding,
       uint32_t vertexOffset );
 
@@ -77,7 +77,7 @@ namespace conway::geometry {
 
     template < size_t N >
     void triangulate(
-      const WingedEdgeMesh< glm::dvec3 >& mesh,
+      const Geometry& mesh,
       const MultiMeshVertexIndex< N >& vertices,
       uint32_t triangleInMeshIndex,
       bool flippedWinding,

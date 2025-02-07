@@ -40,11 +40,11 @@ namespace conway::geometry {
 
 
 void conway::geometry::CSGMesher::process(
-  WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
+  Geometry& a, // these are not const because we lazily generate dipoles.
   const std::vector< TriangleTriangleContactPair >& contacts,
   const PrefixSumMap& aContactMap,
   const std::vector< bool >& boundarySet,
-  WingedEdgeDV3& output ) {
+  Geometry& output ) {
 
   reset();
 
@@ -71,8 +71,8 @@ void conway::geometry::CSGMesher::process(
       
       if ( contact.isVertexVertex() ) {
 
-        const ConnectedTriangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
-        const ConnectedTriangle& bTriangle = a.triangles[ triangleContacts.other_triangle_index ];
+        const Triangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
+        const Triangle& bTriangle = a.triangles[ triangleContacts.other_triangle_index ];
 
         uint32_t vertexA = aTriangle.vertices[ vertexIndex( contact.with ) ];
         uint32_t vertexB = bTriangle.vertices[ vertexIndex( contact.against ) ];
@@ -101,7 +101,8 @@ void conway::geometry::CSGMesher::process(
       continue;
     }
 
-    const ConnectedTriangle& aTriangle = a.triangles[ aTriangleIndex ];
+    const Triangle& aTriangle           = a.triangles[ aTriangleIndex ];
+    const TriangleEdges& aTriangleEdges = a.triangle_edges[ aTriangleIndex ];
 
     for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
       insertLocalVertex( aTriangle.vertices[ vertexInTriangle ] );
@@ -114,7 +115,8 @@ void conway::geometry::CSGMesher::process(
       uint32_t triangleInPair = contacts[ pairIndex ].triangles[ 0 ].this_triangle_index == aTriangleIndex ? 0 : 1;
 
       const TriangleContacts&  trianglePair = contacts[ pairIndex ].triangles[ triangleInPair ];
-      const ConnectedTriangle& bTriangle    = a.triangles[ trianglePair.other_triangle_index ];
+      const Triangle& bTriangle             = a.triangles[ trianglePair.other_triangle_index ];
+      const TriangleEdges& bTriangleEdges   = a.triangle_edges[ trianglePair.other_triangle_index ];
 
       assert( aTriangleIndex == trianglePair.this_triangle_index );
 
@@ -129,8 +131,8 @@ void conway::geometry::CSGMesher::process(
         if ( contact.isEdgeEdge() ) {
 
           uint32_t edgeInTriangleA = edgeIndex( contact.with );
-          uint32_t edge0           = aTriangle.edges[ edgeInTriangleA ];
-          uint32_t edge1           = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge0           = aTriangleEdges.edges[ edgeInTriangleA ];
+          uint32_t edge1           = bTriangleEdges.edges[ edgeIndex( contact.against ) ];
 
           uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
 
@@ -178,7 +180,7 @@ void conway::geometry::CSGMesher::process(
 
         } else if ( contact.isFaceEdge() ) {              
 
-          uint32_t edge          = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge          = bTriangleEdges.edges[ edgeIndex( contact.against ) ];
           uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
 
           const auto [ to, success ] =
@@ -216,7 +218,7 @@ void conway::geometry::CSGMesher::process(
         } else if ( contact.isEdgeFace() ) {
 
           uint32_t edgeInTriangle = edgeIndex( contact.with );
-          uint32_t edge           = aTriangle.edges[ edgeInTriangle ];
+          uint32_t edge           = aTriangleEdges.edges[ edgeInTriangle ];
 
           uint32_t canidateIndex = vertices( 1, static_cast<uint32_t>( novelVertices_.size() ) );
 
@@ -301,9 +303,9 @@ void conway::geometry::CSGMesher::process(
 
   std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
 
-   glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
+   glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
 
-   double gwn = aBVH.gwn( a, aCentre, aTriangle.second );
+   double gwn = aBVH.gwn( a, aCentre, 3.0, aTriangle.second );
 
    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
  });
@@ -379,15 +381,7 @@ void conway::geometry::CSGMesher::process(
   
     if ( !boundarySet[ aTriangleIndex ] ) {
     
-      const ConnectedTriangle& triangle = a.triangles[ aTriangleIndex ];
-
-      Triangle outputTriangle = {
-          triangle.vertices[0],
-          triangle.vertices[1],
-          triangle.vertices[2]
-      };
-
-      outputTriangleStream_.push_back( outputTriangle );
+      outputTriangleStream_.push_back( a.triangles[ aTriangleIndex ] );
     }
   }
 
@@ -408,7 +402,7 @@ void conway::geometry::CSGMesher::process(
 
       if( !vertexUsed_[ unifiedVertexIndex ] ) {
 
-        mappedVertex = output.makeVertex( vertices[ unifiedVertexIndex ] );
+        mappedVertex = output.MakeVertex( vertices[ unifiedVertexIndex ] );
 
         globalVertexMap_[ unifiedVertexIndex ] = mappedVertex;
         vertexUsed_[ unifiedVertexIndex ]      = true;
@@ -421,13 +415,13 @@ void conway::geometry::CSGMesher::process(
       triangle.vertices[ vertexInTriangle ] = mappedVertex;
     }
     
-    output.makeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
+    output.MakeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
   }
 }
 
 void conway::geometry::CSGMesher::process(
-  WingedEdgeDV3& a, // these are not const because we lazily generate dipoles.
-  WingedEdgeDV3& b,
+  Geometry& a, // these are not const because we lazily generate dipoles.
+  Geometry& b,
   const std::vector< TriangleTriangleContactPair >& contacts,
   const PrefixSumMap& aContactMap,
   const PrefixSumMap& bContactMap,
@@ -435,9 +429,12 @@ void conway::geometry::CSGMesher::process(
   bool aOutside,
   bool bOutside,
   bool flipBWinding,
-  WingedEdgeMesh< glm::dvec3 >& output ) {
+  Geometry& output ) {
   
   reset();
+
+  assert( a.triangles.size() == a.triangle_edges.size() );
+  assert( b.triangles.size() == b.triangle_edges.size() );
 
   unifiedPlanes_.allocate( static_cast< uint32_t >( a.triangles.size() + b.triangles.size() ) ); 
 
@@ -464,8 +461,8 @@ void conway::geometry::CSGMesher::process(
       
       if ( contact.isVertexVertex() ) {
 
-        const ConnectedTriangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
-        const ConnectedTriangle& bTriangle = b.triangles[ triangleContacts.other_triangle_index ];
+        const Triangle& aTriangle = a.triangles[ triangleContacts.this_triangle_index ];
+        const Triangle& bTriangle = b.triangles[ triangleContacts.other_triangle_index ];
 
         uint32_t vertexA = aTriangle.vertices[ vertexIndex( contact.with ) ];
         uint32_t vertexB = vertices( 1, bTriangle.vertices[ vertexIndex( contact.against ) ] );
@@ -495,7 +492,8 @@ void conway::geometry::CSGMesher::process(
       continue;
     }
 
-    const ConnectedTriangle& aTriangle = a.triangles[ aTriangleIndex ];
+    const Triangle&      aTriangle      = a.triangles[ aTriangleIndex ];
+    const TriangleEdges& aTriangleEdges = a.triangle_edges[ aTriangleIndex ];
 
     for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
       insertLocalVertex( aTriangle.vertices[ vertexInTriangle ] );
@@ -505,8 +503,9 @@ void conway::geometry::CSGMesher::process(
 
     for ( uint32_t pairIndex : trianglePairs ) {
 
-      const TriangleContacts&  trianglePair = contacts[ pairIndex].triangles[ 0 ];
-      const ConnectedTriangle& bTriangle    = b.triangles[ trianglePair.other_triangle_index ];
+      const TriangleContacts&  trianglePair   = contacts[ pairIndex].triangles[ 0 ];
+      const Triangle&          bTriangle      = b.triangles[ trianglePair.other_triangle_index ];
+      const TriangleEdges&     bTriangleEdges = b.triangle_edges[ trianglePair.other_triangle_index ];
 
       assert( aTriangleIndex == trianglePair.this_triangle_index );
 
@@ -521,8 +520,8 @@ void conway::geometry::CSGMesher::process(
         if ( contact.isEdgeEdge() ) {
 
           uint32_t edgeInTriangleA = edgeIndex( contact.with );
-          uint32_t edge0           = aTriangle.edges[ edgeInTriangleA ];
-          uint32_t edge1           = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge0           = aTriangleEdges.edges[ edgeInTriangleA ];
+          uint32_t edge1           = bTriangleEdges.edges[ edgeIndex( contact.against ) ];
 
           uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
 
@@ -575,7 +574,7 @@ void conway::geometry::CSGMesher::process(
 
         } else if ( contact.isFaceEdge() ) {              
 
-          uint32_t edge          = bTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge          = bTriangleEdges.edges[ edgeIndex( contact.against ) ];
           uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
 
           const auto [ to, success ] =
@@ -622,7 +621,7 @@ void conway::geometry::CSGMesher::process(
         } else if ( contact.isEdgeFace() ) {
 
           uint32_t edgeInTriangle = edgeIndex( contact.with );
-          uint32_t edge           = aTriangle.edges[ edgeInTriangle ];
+          uint32_t edge           = aTriangleEdges.edges[ edgeInTriangle ];
 
           uint32_t canidateIndex = vertices( 2, static_cast<uint32_t>( novelVertices_.size() ) );
 
@@ -708,7 +707,8 @@ void conway::geometry::CSGMesher::process(
       continue;
     }
 
-    const ConnectedTriangle& bTriangle = b.triangles[ bTriangleIndex ];
+    const Triangle&      bTriangle      = b.triangles[ bTriangleIndex ];
+    const TriangleEdges& bTriangleEdges = b.triangle_edges[ bTriangleIndex ];
 
     for ( uint32_t vertexInTriangle = 0; vertexInTriangle < 3; ++vertexInTriangle ) {
 
@@ -719,8 +719,9 @@ void conway::geometry::CSGMesher::process(
 
     for ( uint32_t pairIndex : trianglePairs ) {
 
-      const TriangleContacts&  trianglePair = contacts[ pairIndex ].triangles[ 1 ];
-      const ConnectedTriangle& aTriangle    = a.triangles[ trianglePair.other_triangle_index ];
+      const TriangleContacts&  trianglePair   = contacts[ pairIndex ].triangles[ 1 ];
+      const Triangle&          aTriangle      = a.triangles[ trianglePair.other_triangle_index ];
+      const TriangleEdges&     aTriangleEdges = a.triangle_edges[ trianglePair.other_triangle_index ];
 
       assert( bTriangleIndex == trianglePair.this_triangle_index );
 
@@ -735,8 +736,8 @@ void conway::geometry::CSGMesher::process(
         if ( contact.isEdgeEdge() ) {
 
           uint32_t edgeInTriangleB = edgeIndex( contact.with );
-          uint32_t edge0           = bTriangle.edges[ edgeInTriangleB ];
-          uint32_t edge1           = aTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge0           = bTriangleEdges.edges[ edgeInTriangleB ];
+          uint32_t edge1           = aTriangleEdges.edges[ edgeIndex( contact.against ) ];
 
           auto to = edgeEdgeVertices_.find( std::make_pair( edge1, edge0 ) );
 
@@ -748,7 +749,7 @@ void conway::geometry::CSGMesher::process(
         }
         else if ( contact.isFaceEdge() ) {
 
-          uint32_t edge = aTriangle.edges[ edgeIndex( contact.against ) ];
+          uint32_t edge = aTriangleEdges.edges[ edgeIndex( contact.against ) ];
 
           const auto to =
             faceEdgeVertices_[1].find(
@@ -763,7 +764,7 @@ void conway::geometry::CSGMesher::process(
         else if ( contact.isEdgeFace() ) {
 
           uint32_t edgeInTriangle = edgeIndex( contact.with );
-          uint32_t edge           = bTriangle.edges[ edgeInTriangle ];
+          uint32_t edge           = bTriangleEdges.edges[ edgeInTriangle ];
 
           const auto to =
             faceEdgeVertices_[ 0 ].find(
@@ -832,9 +833,9 @@ void conway::geometry::CSGMesher::process(
 // #else
   std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
 //#endif
-    glm::dvec3 aCentre = vertices.centroid( aTriangle.first );
+    glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
 
-    double gwn = bBVH.gwn( b, aCentre );
+    double gwn = bBVH.gwn( b, aCentre, 3.0 );
 
     return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
   });
@@ -844,9 +845,9 @@ void conway::geometry::CSGMesher::process(
 // #else
   std::transform( std::execution::par_unseq, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
 //#endif
-    glm::dvec3 bCentre = vertices.centroid( bTriangle.first );
+    glm::dvec3 bCentre = vertices.centroid3( bTriangle.first );
 
-    double gwn = aBVH.gwn( a, bCentre );
+    double gwn = aBVH.gwn( a, bCentre, 3.0 );
 
     return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
   });
@@ -964,7 +965,7 @@ void conway::geometry::CSGMesher::process(
 
       if( !vertexUsed_[ unifiedVertexIndex ] ) {
 
-        mappedVertex = output.makeVertex( vertices[ unifiedVertexIndex ] );
+        mappedVertex = output.MakeVertex( vertices[ unifiedVertexIndex ] );
 
         globalVertexMap_[ unifiedVertexIndex ] = mappedVertex;
         vertexUsed_[ unifiedVertexIndex ]      = true;
@@ -977,7 +978,7 @@ void conway::geometry::CSGMesher::process(
       triangle.vertices[ vertexInTriangle ] = mappedVertex;
     }
     
-    output.makeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
+    output.MakeTriangle( triangle.vertices[ 0 ], triangle.vertices[ 1 ], triangle.vertices[ 2 ] );
   }
 }
 
@@ -995,8 +996,8 @@ void conway::geometry::CSGMesher::reset() {
 void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
   bool outside,
   const std::vector< bool >& boundarySet,
-  const WingedEdgeMesh< glm::dvec3 >& mesh,
-  const WingedEdgeMesh< glm::dvec3 >& otherMesh,
+  const Geometry& mesh,
+  const Geometry& otherMesh,
   bool flippedWinding,
   uint32_t vertexOffset ) {
 
@@ -1018,9 +1019,9 @@ void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
       continue;
     }
 
-    const ConnectedTriangle& initialTriangle = mesh.triangles[ walkedCursor ];
-    glm::dvec3               centre          = centroid( mesh.vertices, initialTriangle );
-    bool                     triangleOutside = fabs( bvh.gwn( otherMesh, centre ) ) < GWN_TOLERANCE;
+    const Triangle& initialTriangle = mesh.triangles[ walkedCursor ];
+    glm::dvec3      centre          = centroid( mesh.vertices, initialTriangle );
+    bool            triangleOutside = fabs( bvh.gwn( otherMesh, centre ) ) < GWN_TOLERANCE;
 
     triangleStack_.push_back(  walkedCursor );
 
@@ -1039,7 +1040,8 @@ void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
 
         walked_[ nextTriangleIndex ] = true;
 
-        const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
+        const Triangle&      triangle      = mesh.triangles[ nextTriangleIndex ];
+        const TriangleEdges& triangleEdges = mesh.triangle_edges[ nextTriangleIndex ];
 
         // Copy explicitly instead of slicing to avoid warnings - CS
         Triangle outputTriangle = { 
@@ -1061,7 +1063,7 @@ void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
 
         for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
           
-          uint32_t edgeIndex = triangle.edges[ triangleInEdge ];
+          uint32_t edgeIndex = triangleEdges.edges[ triangleInEdge ];
 
           if ( edgeIndex == EMPTY_INDEX ) {
 
@@ -1092,11 +1094,11 @@ void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
 
         walked_[ nextTriangleIndex ] = true;
 
-        const ConnectedTriangle& triangle = mesh.triangles[ nextTriangleIndex ];
+        const TriangleEdges& triangleEdges = mesh.triangle_edges[ nextTriangleIndex ];
 
         for ( uint32_t triangleInEdge = 0; triangleInEdge < 3; ++triangleInEdge ) {
 
-          uint32_t edgeIndex = triangle.edges[ triangleInEdge ];
+          uint32_t edgeIndex = triangleEdges.edges[ triangleInEdge ];
 
           if ( edgeIndex == EMPTY_INDEX ) {
 
@@ -1174,13 +1176,15 @@ void conway::geometry::CSGMesher::addEdges(
 
 template < size_t N >
 void conway::geometry::CSGMesher::triangulate(
-  const WingedEdgeMesh< glm::dvec3 >& mesh,
+  const Geometry& mesh,
   const MultiMeshVertexIndex< N >& vertices,
   uint32_t triangleInMeshIndex,
   bool flippedWinding,
   uint32_t outputStreamIndex ) {
-  
-  const ConnectedTriangle& triangle = mesh.triangles[ triangleInMeshIndex ];
+
+  assert( mesh.triangles.size() > triangleInMeshIndex );
+
+  const Triangle& triangle = mesh.triangles[ triangleInMeshIndex ];
 
 #if !defined( __EMSCRIPTEN__ )
   for ( CDT::Edge& edge : edges_ ) {
@@ -1197,15 +1201,12 @@ void conway::geometry::CSGMesher::triangulate(
   // Find any duplicates (including merged vertices) and make them unique.
   for ( uint32_t localVertex : localVertices_ ) {
 
-  //  uint32_t foundVertice = /*unifiedVertices_.find*/(localVertex);
-
     const glm::dvec3& vertex = vertices[ localVertex ];
 
     if ( isnan( vertex.x ) || isnan( vertex.y ) || isnan( vertex.z ) ) {
       continue;
     }
 
-  //  localVertexMap_.try_emplace( foundVertice, static_cast< uint32_t >( localVertexMap_.size() ) );
     localVertexMap_.try_emplace( unifiedVertices_.find( localVertex ), static_cast< uint32_t >( localVertexMap_.size() ) );
   }
 
@@ -1258,7 +1259,7 @@ void conway::geometry::CSGMesher::triangulate(
   // 3 vertices are already fully constrained and triangulated.
   if ( localVertices_.size() == 3 ) {
 
-      Triangle localTriangle { { 
+    Triangle localTriangle { { 
         unifiedVertices_.find( localVertices_[ 0 ] ),
         unifiedVertices_.find( localVertices_[ 1 ] ),
         unifiedVertices_.find( localVertices_[ 2 ] )
@@ -1307,13 +1308,15 @@ void conway::geometry::CSGMesher::triangulate(
   glm::length_t firstAxis  = first_axis( axesToExtract );
   glm::length_t secondAxis = second_axis( axesToExtract );
 
+  assert( axesToExtract != AxisPair::NONE );
+
   for ( uint32_t partitionedIndice : localVertices_ )  {
 
     const glm::dvec3& inputVertex = vertices[ partitionedIndice ];
 
     local2DVertices_.push_back( CDT::V2d< double >::make( inputVertex[ firstAxis ], inputVertex[ secondAxis ] ) );
   }
-
+  
   for ( uint32_t edgeInTriangle = 0; edgeInTriangle < 3; ++edgeInTriangle ) {
 
     std::vector< uint32_t >& edgeVertices = onEdgeVertices_[ edgeInTriangle ];
@@ -1378,8 +1381,6 @@ void conway::geometry::CSGMesher::triangulate(
       triangulation.insertEdges( edges_ );
       triangulation.eraseSuperTriangle();
 
-      assert( triangulation.triangles.size() > 0 );
-
       break;
 
     } catch ( const CDT::DuplicateVertexError& duplicateVertex ) {
@@ -1426,45 +1427,54 @@ void conway::geometry::CSGMesher::triangulate(
       double e1v0 = predicates::adaptive::orient2d( &e10.x, &e01.x, &e00.x );
       double e1v1 = predicates::adaptive::orient2d( &e10.x, &e01.x, &e01.x );
 
-      // Try and resolve the constraint by  
-      if ( fabs( e0v0 ) < WELD_EDGE_TOLERANCE ) {
+      auto edge1 = std::find( edges_.begin(), edges_.end(), constraintError.e1() );
+      auto edge2 = std::find( edges_.begin(), edges_.end(), constraintError.e2() );
+
+      // Try and resolve the constraint by welding
+      if ( fabs( e0v0 ) < WELD_EDGE_TOLERANCE && edge1 != edges_.end() ) {
 
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
 
         edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v1() );
         edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v2() );
 
-      } else if ( fabs( e0v1 ) < WELD_EDGE_TOLERANCE ) {
+      } else if ( fabs( e0v1 ) < WELD_EDGE_TOLERANCE && edge1 != edges_.end()  ) {
 
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
 
         edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v2() );
         edges_.emplace_back( constraintError.e2().v2(), constraintError.e1().v2() );
 
-      } else if ( fabs( e1v0 ) < WELD_EDGE_TOLERANCE ) {
+      } else if ( fabs( e1v0 ) < WELD_EDGE_TOLERANCE && edge2 != edges_.end() ) {
 
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
 
         edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v1() );
         edges_.emplace_back( constraintError.e1().v1(), constraintError.e2().v2() );
 
-      } else if ( fabs( e1v1 ) < WELD_EDGE_TOLERANCE ) {
+      } else if ( fabs( e1v1 ) < WELD_EDGE_TOLERANCE && edge2 != edges_.end() ) {
 
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
-
         edges_.emplace_back( constraintError.e2().v1(), constraintError.e1().v2() );
         edges_.emplace_back( constraintError.e1().v2(), constraintError.e2().v2() );
 
-      } else if ( e0v0 + e0v1 < e1v0 + e1v1 ) {
+      } else if ( ( e0v0 + e0v1 < e1v0 + e1v1 || edges_.end() == edge2 ) && edge1 != edges_.end()) {
         
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e1() ) );
 
-      } else {
+      } else if ( edge2 != edges_.end() ) {
 
         edges_.erase( std::find( edges_.begin(), edges_.end(), constraintError.e2() ) );
+
+      } else {
+
+        printf( "Intersecting constraint error couldn't be resolved due to missing edge in set:\n\t%s\n", constraintError.what() );
+        break;
       }
 
-      triangulation = CDT::Triangulation< double >( CDT::VertexInsertionOrder::AsProvided, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+      triangulation.~Triangulation();
+
+      new (&triangulation) CDT::Triangulation< double >( CDT::VertexInsertionOrder::AsProvided, CDT::IntersectingConstraintEdges::NotAllowed, 0 );
 
       if constexpr ( DUMP_SVGS_ON_TRIANGLE_ERROR ) {
       
@@ -1593,7 +1603,6 @@ void conway::geometry::CSGMesher::triangulate(
       reorder_to_lowest_vertex( localTriangle.vertices );
 
       outputStream.emplace_back( localTriangle, triangleInMeshIndex );
-
     }
   }
 

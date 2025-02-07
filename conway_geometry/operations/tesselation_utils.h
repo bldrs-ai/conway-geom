@@ -5,7 +5,7 @@
 
 #include "structures/winged_edge.h"
 #include <queue>
-#include "representation/IfcGeometry.h"
+#include "representation/Geometry.h"
 
 namespace conway::geometry {
 
@@ -98,11 +98,9 @@ namespace conway::geometry {
   /**
    * Append a winged edge mesh 
    */
-  inline void appendMeshToGeometry( WingedEdgeMesh< ParameterVertex >& mesh, IfcGeometry& geometry ) {
+  inline void appendMeshToGeometry( WingedEdgeMesh< ParameterVertex >& mesh, Geometry& geometry ) {
 
-    uint32_t baseVertex = geometry.vertexData.size() / 6;
-
-    std::vector< glm::dvec3 > normals( mesh.vertices.size(), glm::dvec3( 0 ) );
+    uint32_t baseVertex = geometry.vertices.size();
 
     for ( ConnectedTriangle& triangle : mesh.triangles ) {
 
@@ -115,40 +113,19 @@ namespace conway::geometry {
         std::swap( triangle.edges[ 0 ], triangle.edges[ 2 ] );
       }
 
-      glm::dvec3 triangleAreaNormal = 
-        computeNormal(  
-          mesh.vertices[ triangle.vertices[ 0 ] ],
-          mesh.vertices[ triangle.vertices[ 1 ] ],
-          mesh.vertices[ triangle.vertices[ 2 ] ] ) *
-        ( computeArea(   
-          mesh.vertices[ triangle.vertices[ 0 ] ],
-          mesh.vertices[ triangle.vertices[ 1 ] ],
-          mesh.vertices[ triangle.vertices[ 2 ] ] ) );
-
-      if ( std::isnan( triangleAreaNormal.x ) ) {
-        continue;
-      }
-
-      for ( uint32_t localVertex = 0; localVertex < 3; ++localVertex ) {
-        normals[ triangle.vertices[ localVertex ] ] += triangleAreaNormal;
-      }
     }
+
 
     for ( size_t vertexIndex = 0, end = mesh.vertices.size(); vertexIndex < end; ++vertexIndex ) {
 
-      glm::dvec3 vertex           = mesh.vertices[ vertexIndex ].point;
-      const glm::dvec3& prenormal = normals[ vertexIndex ];
-      glm::dvec3        normal    = glm::normalize( prenormal );
-
-
       // Note, we have to have local versions of vertex and normal
       // cos addpoint isn't const correct.
-      geometry.AddPoint( vertex, normal );
+      geometry.MakeVertex( mesh.vertices[ vertexIndex ].point );
     }
 
     for ( const ConnectedTriangle& triangle : mesh.triangles ) {   
 
-      geometry.AddFace(
+      geometry.MakeTriangle(
         baseVertex + triangle.vertices[ 0 ],
         baseVertex + triangle.vertices[ 1 ],
         baseVertex + triangle.vertices[ 2 ] );
