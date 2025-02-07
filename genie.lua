@@ -609,7 +609,8 @@ project "ConwayGeomWasmNode"
             "-fexceptions",
             "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
             -- TODO(Conor): I want threads for performance reasons.
-            -- "-pthread",
+
+            "-s USE_PTHREADS=1",
             "-std=c++20",
             "-fexperimental-library",
             -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
@@ -681,7 +682,7 @@ else
         "-pthread",
         "-sSHARED_MEMORY",
         "-s USE_PTHREADS=1",
-        "-sPTHREAD_POOL_SIZE=10", --TODO: need a navigator.hardwareconcurrency equivalent for node 
+        "-sPTHREAD_POOL_SIZE=31", --TODO: need a navigator.hardwareconcurrency equivalent for node 
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
