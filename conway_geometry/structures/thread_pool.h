@@ -9,6 +9,8 @@
 
 namespace conway {
 
+#if defined( __EMSCRIPTEN_PTHREADS__ )
+
 class ThreadPool {
 public:
 
@@ -110,9 +112,9 @@ private:
 
         (*iteration_)( cursor );
 
-        ++cursor;
+        cursor += increment_;
 
-        if ( ++complete_ == end ) {
+        if ( ( complete_ += increment_ ) >= end ) {
 
           join_.notify_one();
         }
@@ -139,5 +141,46 @@ private:
   static std::optional< ThreadPool > instance_;
 
 };
+
+#else
+
+class ThreadPool {
+  public:
+  
+    ThreadPool() {
+    }
+  
+    ~ThreadPool() {
+    }
+  
+  
+    /** Simple parallel for, not re-entrant */
+    template < typename FunctionType > 
+    void parallel_for( size_t start, size_t end, FunctionType function, size_t increment = 1, [[maybe_unused]]size_t threadStride = 1 ) {
+  
+      for ( size_t where = start; where < end; where += increment ) {
+
+        function( where );
+      }
+    }
+  
+    static ThreadPool& instance() { 
+  
+      if ( !instance_.has_value() ) {
+  
+        instance_.emplace();
+      }
+  
+      return instance_.value();
+    }
+  
+  private:
+    
+    static std::optional< ThreadPool > instance_;
+  
+  };
+  
+
+#endif
 
 }
