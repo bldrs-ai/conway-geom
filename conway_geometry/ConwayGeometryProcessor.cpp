@@ -195,7 +195,10 @@ glm::dvec3 CalculateCentroid( const Geometry &geometry ) {
 
 Geometry ConwayGeometryProcessor::BoolSubtract(
     std::vector<Geometry> &firstGeoms,
-    std::vector<Geometry> &secondGeoms) {
+    std::vector<Geometry> &secondGeoms,
+    bool isSubtractOperand ) {
+
+  //printf( "%s\n", isSubtractOperand ? "sop" : "nop" );
 
   if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
     
@@ -204,12 +207,9 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
     CSG csg;
 
     firstGeoms[ 0 ].Cleanup();
-    secondGeoms[ 0 ].Cleanup();
+    secondGeoms[ 0 ].Cleanup( !isSubtractOperand );
 
     csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ], secondGeoms[ 0 ], resultMesh, 0 );
-
-  //  resultMesh = firstGeoms[ 0 ];
-  //  resultMesh.AppendGeometry( secondGeoms[ 0 ] );
 
     return resultMesh;
   }
@@ -236,7 +236,7 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
         break;
       }
 
-      secondGeom.Cleanup();
+      secondGeom.Cleanup( !isSubtractOperand );
 
       if ( secondGeom.IsEmpty() ) {
         
@@ -294,7 +294,7 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
           scaleZ * 2,
           secondGeom.halfSpaceOrigin );
 
-        newSecond.Cleanup();
+        newSecond.Cleanup( !isSubtractOperand );
 
         Geometry newResult;
 
@@ -361,7 +361,7 @@ Geometry ConwayGeometryProcessor::RelVoidSubtract(
 
   //   parameters.flatSecondMesh[j].ApplyTransform( newMatrix );
   // }
-  resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh );
+  resultGeometry = BoolSubtract( parameters.flatFirstMesh, parameters.flatSecondMesh, false );
 
   glm::dmat4 combinedMatrix =
        glm::inverse(parameters.parentMatrix);// * glm::translate(originFirstMesh);
@@ -385,7 +385,7 @@ Geometry ConwayGeometryProcessor::GetBooleanResult(
   }
 
   resultGeometry =
-    BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh);
+    BoolSubtract(parameters->flatFirstMesh, parameters->flatSecondMesh, parameters->isSubtractOperand );
 
   return resultGeometry;
 }
@@ -646,7 +646,7 @@ IfcSurface ConwayGeometryProcessor::GetSurface(const ParamsGetSurface& parameter
 IfcCurve ConwayGeometryProcessor::getPolyCurve(
     const ParamsGetPolyCurve &parameters) {
   IfcCurve curve;
-  const float *points = reinterpret_cast<float *>(parameters.points_);
+  const double *points = reinterpret_cast<double *>(parameters.points_);
 
   if (parameters.dimensions == 2) {
     for (int i = 0; i < parameters.pointsLength * parameters.dimensions;
@@ -1741,12 +1741,14 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
 
 conway::geometry::Geometry ConwayGeometryProcessor::getSweptDiskSolid(
   const ParamsGetSweptDiskSolid &parameters) {
+
     IfcCurve directrix = parameters.directrix;
 
     IfcProfile profile;
+
     profile.curve = GetCircleCurve(parameters.radius, parameters.circleSegments);
 
-    Geometry geom = SweepCircular(parameters.scalingFactor, parameters.closed, profile, parameters.radius, directrix);
+    Geometry geom = SweepCircular( parameters.scalingFactor, parameters.closed, profile, parameters.radius, directrix );
 
     return geom;
 }

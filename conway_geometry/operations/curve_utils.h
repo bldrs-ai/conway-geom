@@ -408,7 +408,7 @@ inline bool MatrixFlipsTriangles(const glm::dmat3 &mat) {
 }
 
 //TODO: support IfcAlignment types  
-inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
+inline IfcCurve GetEllipseCurve(double radiusX, double radiusY, int numSegments,
                                 glm::dmat3 placement = glm::dmat3(1),
                                 double startRad = 0,
                                 double endRad = M_PI * 2,
@@ -507,7 +507,7 @@ inline IfcCurve GetEllipseCurve(float radiusX, float radiusY, int numSegments,
   return c;
 }
 
-inline IfcCurve GetCircleCurve(float radius, int numSegments,
+inline IfcCurve GetCircleCurve(double radius, int numSegments,
                                glm::dmat3 placement = glm::dmat3(1)) {
   return GetEllipseCurve(radius, radius, numSegments, placement);
 }

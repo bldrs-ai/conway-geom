@@ -267,7 +267,7 @@ namespace conway {
     // We use the exactly signed version of the determinant here because we really want the sign to be right,
     // as this gives us our accurate face winding up close for inside vs outside.
     // Because the dipoles in the BVH are far away, we don't need the precision, but here we do.
-    double y = predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &from.x );
+    double y = determinant3x3( r0, r1, r2 ); //predicates::adaptive::orient3d< double >( &v0.x, &v1.x, &v2.x, &from.x );
 
     return 2.0 * fast_atan2( y, x );
   }

@@ -2,7 +2,7 @@
 #include "aabb_tree.h"
 #include "representation/Geometry.h"
 
-constexpr double GWN_PRECISION = 3.0;
+constexpr double GWN_PRECISION = 3;
 
 namespace conway::geometry {
 
@@ -129,6 +129,22 @@ conway::geometry::AABBTree::AABBTree( const Geometry& mesh, double tolerance ) {
   boxes_.resize( nodeCount );
 
   construct( mesh, tolerance );
+}
+
+
+    /** Apply a rescale around an origin point to this */
+void conway::geometry::AABBTree::applyRescale( const glm::dvec3& scale, const glm::dvec3& origin ) {
+
+  for ( box3& box : boxes_ ) {
+
+    box.rescale( scale, origin );
+  }
+
+  for ( Dipole& dipole : dipoles_ ) {
+
+    dipole.position = ( ( dipole.position - origin ) * scale ) + origin;
+    dipole.normal  *= scale;
+  }
 }
 
 

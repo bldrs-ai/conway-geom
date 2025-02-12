@@ -46,7 +46,7 @@ namespace conway {
 
       counts.resize( idSize + 1, 0 );
 
-     static_assert(
+      static_assert(
         std::is_invocable_r_v< uint32_t, IdMappingFunction, T, uint32_t > ||
         std::is_invocable_r_v< std::pair< uint32_t, uint32_t >, IdMappingFunction, T, uint32_t >,
         "Construct requires a matching identity mapping function." );
@@ -61,7 +61,7 @@ namespace conway {
 
             uint32_t idValue = idFunction( item, keyIndex );
 
-            assert( idValue < idSize + 1 );
+            assert( idValue < idSize );
 
             ++counts[ idValue ];
           }
@@ -76,8 +76,8 @@ namespace conway {
 
             auto [idValue0, idValue1] = idFunction( item, keyIndex );
 
-            assert( idValue0 < idSize + 1 );
-            assert( idValue1 < idSize + 1 );
+            assert( idValue0 < idSize );
+            assert( idValue1 < idSize );
 
             ++counts[ idValue0 ];
             ++counts[ idValue1 ];
@@ -159,12 +159,11 @@ namespace conway {
         }
 
       }
-
+      
       for ( uint32_t where = 1, end = idSize + 1; where < end; ++where ) {
 
         counts[ where ] += counts[ where - 1 ];
       }
-
 
       if constexpr ( std::is_invocable_r_v< uint32_t, IdMappingFunction, T > ) {
 

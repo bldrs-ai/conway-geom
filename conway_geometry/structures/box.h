@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 
+#include "ray.h"
+
 namespace conway::geometry {
   
   struct box3 {
@@ -19,6 +21,12 @@ namespace conway::geometry {
 
       min = glm::min( with.min, min );
       max = glm::max( with.max, max );
+    }
+
+    void rescale( const glm::dvec3& scale, const glm::dvec3& origin ) {
+
+      min = ( ( min - origin ) * scale ) + origin;
+      max = ( ( max - origin ) * scale ) + origin;
     }
 
     glm::dvec3 interval() const {
@@ -64,6 +72,19 @@ namespace conway::geometry {
     return true;
   }
 
+  inline double overlaps( const box3& box, const ray3& ray, const glm::dvec3& inverseDirection, double& tMin, double& tMax ) {
+
+    glm::dvec3 tMinExtent  = ( box.min - ray.origin ) * inverseDirection;
+    glm::dvec3 tMaxTextent = ( box.max - ray.origin ) * inverseDirection;
+
+    glm::dvec3 tMin3 = glm::min( tMinExtent, tMaxTextent );
+    glm::dvec3 tMax3 = glm::max( tMinExtent, tMaxTextent );
+   
+    tMin = std::min( tMin3.x, std::min( tMin3.y, tMin3.z ) );
+    tMax = std::max( tMax3.x, std::max( tMax3.y, tMax3.z ) );
+
+    return ( tMin < tMax && tMax >= 0 );
+  }
   
   inline bool overlaps( const box3& left, const glm::dvec3& right ) {
 

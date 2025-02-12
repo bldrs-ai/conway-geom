@@ -1,5 +1,6 @@
 import { Deletable } from './deletable'
 import { NativeTransform } from './native_transform'
+import { ParseBuffer } from './parse_buffer'
 import { Vector3 } from './vector3'
 
 
@@ -7,7 +8,7 @@ import { Vector3 } from './vector3'
 export interface GeometryObject extends Deletable {
   GetVertexData: () => any
   getPoint(parameter: number): Vector3
-  
+
   normalize(): Vector3
   GetVertexDataSize: () => number
   GetIndexData: () => any
@@ -20,4 +21,7 @@ export interface GeometryObject extends Deletable {
   clone(): GeometryObject
   applyTransform(parameter: any): void
   dumpToOBJ( preamble: string ): string
+  extractVertices( buffer: ParseBuffer ): void
+  extractTriangles( buffer: ParseBuffer ): void
+  extractVerticesAndTriangles( verticesBuffer: ParseBuffer, trianglesBuffer: ParseBuffer ): void
 }

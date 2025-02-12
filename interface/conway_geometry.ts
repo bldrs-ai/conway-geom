@@ -46,6 +46,7 @@ import { ParamsGetAxis2Placement2D } from './parameters/params_get_axis_2_placem
 import { ParamsAxis2Placement3D } from './parameters/params_axis_2_placement_3D'
 import { ParamsLocalPlacement } from './parameters/params_local_placement'
 import { ParamsGetSweptDiskSolid } from './parameters/params_get_swept_disk_solid'
+import { ParseBuffer } from './parse_buffer'
 
 
 let ConwayGeomWasm: any
@@ -80,6 +81,8 @@ export class ConwayGeometry {
   public wasmModule?: ConwayGeometryWasm
   initialized = false
 
+  private parseBuffers_: ParseBuffer[] = []
+
   /**
    *
    * @param wasmModule_ - Pass loaded wasm module to this function if it's already loaded
@@ -108,6 +111,46 @@ export class ConwayGeometry {
     }
 
     return nativeVectorGeometry_
+  }
+
+  /**
+   *
+   * @return {GeometryObject} - an empty native geometry object
+   */
+  nativeGeometry(initialSize?: number): GeometryObject {
+
+    const nativeGeometry = (new (this.wasmModule.IfcGeometry)) as GeometryObject
+
+    return nativeGeometry
+  }
+
+  /**
+   *
+   *
+   * @return {ParseBuffer} - a parse buffer
+   */
+  nativeParseBuffer(): ParseBuffer {
+
+    if ( this.parseBuffers_.length > 0 ) {
+
+      return this.parseBuffers_.pop()!
+    }
+
+    const nativeParseBuffer =
+      // eslint-disable-next-line new-cap
+      (new (this.wasmModule.ParseBuffer)()) as ParseBuffer
+
+    return nativeParseBuffer
+  }
+
+  /**
+   *
+   *
+   * @param buffer The parse buffer to free
+   */
+  freeParseBuffer( buffer: ParseBuffer ): void {
+
+    this.parseBuffers_.push( buffer )
   }
 
   /**

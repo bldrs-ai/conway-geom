@@ -7,6 +7,8 @@
 #include "box.h"
 #include <bit>
 
+#include "ray.h"
+
 namespace conway::geometry {
 
   struct Geometry;
@@ -22,6 +24,9 @@ namespace conway::geometry {
       const glm::dvec3& against,
       double scale = 1,
       std::optional< uint32_t > triangleInMeshIndex = std::nullopt ) const;
+
+    /** Apply a rescale around an origin point to this */
+    void applyRescale( const glm::dvec3& scale, const glm::dvec3& origin );
 
     /** Does this have dipoles */
     bool hasDipoles() const {
