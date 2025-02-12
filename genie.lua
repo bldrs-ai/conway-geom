@@ -1,3 +1,6 @@
+local nodeCores = "Math.max(require('os').cpus().length - 1, 1)"
+local webCores  = "Math.max(navigator.hardwareConcurrency - 1, 1)"
+
 solution "conway_geom"
     configurations {
         "Debug",
@@ -915,7 +918,7 @@ linkoptions {
     "-pthread",
     "-sSHARED_MEMORY",
     "-s USE_PTHREADS=1",
-    "-sPTHREAD_POOL_SIZE=31", --TODO: need a navigator.hardwareconcurrency equivalent for node 
+    "-sPTHREAD_POOL_SIZE=\"" .. nodeCores .. "\"",
     "--define-macro=REAL_T_IS_DOUBLE",
     "-s ALLOW_MEMORY_GROWTH=1",
     "-s MAXIMUM_MEMORY=4GB",
@@ -1369,7 +1372,7 @@ linkoptions {
     "-s PRECISE_F32=1",
     "-sSHARED_MEMORY",
     "-s USE_PTHREADS=1",
-    "-sPTHREAD_POOL_SIZE=10",
+    "-sPTHREAD_POOL_SIZE=\"" .. webCores .. "\"",
     "--define-macro=REAL_T_IS_DOUBLE",
     "-s ALLOW_MEMORY_GROWTH=1",
     "-s MAXIMUM_MEMORY=4GB",
