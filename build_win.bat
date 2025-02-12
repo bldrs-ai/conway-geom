@@ -88,6 +88,12 @@ if "%1"=="test" (
         ) else if "%2"=="wasmWeb" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasmWeb
+        ) else if "%2"=="wasmNodeMT" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasmNodeMT
+        ) else if "%2"=="wasmWebMT" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasmWebMT
         ) else (
             echo "Platform invalid" >&2
             exit /b 1
@@ -113,9 +119,10 @@ IF "%~3" NEQ "" IF "%~3" == "profile" (
     )
 )
 
-
-
-
+if "%2%"=="wasmWebMT" (
+    echo Patching ConwayGeomWasmWebMT.js...
+    powershell -Command "((Get-Content -Raw -Path '.\bin\release\ConwayGeomWasmWebMT.js') -replace 'var _scriptName = typeof document != ''undefined'' ? document\.currentScript\?\.src : undefined;', 'var _scriptName = \"ConwayGeomWasmWebMT.js\";') | Set-Content -Path '.\bin\release\ConwayGeomWasmWebMT.js'"
+)
 
 cd ..
 
