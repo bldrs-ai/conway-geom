@@ -296,6 +296,8 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
     triangles[ index ] = triangles.back();
   }
 
+  bvh.reset();
+
   triangles.pop_back();
 
   if ( bvh.has_value() ) {
