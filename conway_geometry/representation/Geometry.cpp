@@ -23,6 +23,8 @@
 
 namespace conway::geometry {
 
+constexpr int32_t TOLERANCE = -23;
+
 constexpr double SMOOTHING_GROUP_ANGLE = glm::radians( 40.0 );
 
 VertexWelder welder;
@@ -390,7 +392,7 @@ void Geometry::Cleanup( bool forSubtract ) {
 
   if ( !cleanedUp_ ) {
 
-    welder.weld( *this, exp2( -23 ), forSubtract );
+    welder.weld( *this, exp2( TOLERANCE ), forSubtract );
 
     EnableConnectivity();
 
@@ -407,7 +409,7 @@ void Geometry::Cleanup( bool forSubtract ) {
 
   } else {
 
-    welder.weld( *this, exp2( -23 ), forSubtract );//exp2( -23 ) );
+    welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
 
     EnableConnectivity();
 
