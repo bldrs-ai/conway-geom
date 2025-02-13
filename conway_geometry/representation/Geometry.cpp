@@ -16,6 +16,10 @@
 #include "csg/csg_utils.h"
 #include "csg/csg.h"
 #include "structures/vertex_welder.h"
+#include "structures/parse_buffer.h"
+#include "utilities/buffer_parse.h"
+
+#include <unordered_map>
 
 namespace conway::geometry {
 
@@ -90,7 +94,7 @@ void Geometry::Reify() {
   if ( !cleanedUp_ ) {
 
     welder.weld( *this, DBL_EPSILON );
-
+  
   } else {
 
     size_t triangleCursor = 0;
@@ -142,12 +146,6 @@ void Geometry::Reify() {
     const glm::dvec3& v1 = vertices[ triangle.vertices[ 1 ] ];
     const glm::dvec3& v2 = vertices[ triangle.vertices[ 2 ] ];
 
-    if ( is_zero_area_triangle( v0, v1, v2 ) ) {
-
-      faceNormals[ triangleIndex ] = glm::dvec3( 0 );
-      continue;
-    }
-    
     faceNormals[ triangleIndex ] = glm::cross( v1 - v0, v2 - v0 );
   }
 
@@ -168,7 +166,7 @@ void Geometry::Reify() {
   floatVertexData_.reserve( triangles.size() * 3 );
 
   uint32_t outputVertexIndex = 0;
-  
+
   double cosineCutoff = cos( SMOOTHING_GROUP_ANGLE );
 
   // Greedy vertex smoothing.
@@ -388,21 +386,11 @@ void Geometry::AppendWithScalingTransform(
   }
 }
 
-void Geometry::Cleanup() {
+void Geometry::Cleanup( bool forSubtract ) {
 
   if ( !cleanedUp_ ) {
 
-    if ( !halfSpace ) {
-
-      for ( glm::dvec3& from : vertices ) {
-
-        from *= exp2( 24 );
-        from = glm::round( from );
-        from *= exp2( -24 );
-      }
-    }
-
-    welder.weld( *this, exp2( -23 ) );
+    welder.weld( *this, exp2( -23 ), forSubtract );
 
     EnableConnectivity();
 
@@ -419,16 +407,10 @@ void Geometry::Cleanup() {
 
   } else {
 
-    // for ( glm::dvec3& from : vertices ) {
-
-    //   from *= exp2( 24 );
-    //   from = glm::round( from );
-    //   from *= exp2( -24 );
-    // }
-
-    // welder.weld( *this, exp2( -23 ) );
+    welder.weld( *this, exp2( -23 ), forSubtract );//exp2( -23 ) );
 
     EnableConnectivity();
+
   }
 }
 
@@ -543,6 +525,43 @@ uint32_t Geometry::GetAllocationSize() const {
       byteSize( triangle_edges ) );
 }
 
+
+void Geometry::ExtractVertices( const ParseBuffer& buffer ) {
+
+  parse_vector( buffer.range(), vertices );
+
+}
+
+void Geometry::ExtractTriangles( const ParseBuffer& buffer ) {
+
+  bool hasConnectivity = hasConnectivity_;
+
+  if ( hasConnectivity ) {
+
+    ClearConnectivity();
+  }
+
+  parse_vector( buffer.range(), triangles );
+  
+  for ( Triangle& triangle : triangles ) {
+
+    --triangle.vertices[ 0 ];
+    --triangle.vertices[ 1 ];
+    --triangle.vertices[ 2 ];
+  }
+
+  if ( hasConnectivity ) {
+
+    EnableConnectivity();
+  }
+}
+
+void Geometry::ExtractVerticesAndTriangles( const ParseBuffer& verticesBuffer, const ParseBuffer& triangleBuffer ) {
+
+  ExtractVertices( verticesBuffer );
+  ExtractTriangles( triangleBuffer );
+}
+
 uint32_t Geometry::GetVertexDataSize() {
   
   Reify();
@@ -570,6 +589,29 @@ box3 Geometry::GetAABB() const {
 uint32_t Geometry::GetIndexData() { Reify(); return (uint32_t)(size_t)indexData_.data(); }
 
 uint32_t Geometry::GetIndexDataSize() { Reify(); return static_cast< uint32_t >( indexData_.size() ); }
+
+
+void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin ) {
+
+  if (halfSpace) {
+    halfSpaceOrigin = ( ( halfSpaceOrigin - origin ) * scale ) + origin;
+  }
+
+  for ( glm::dvec3& vertex : vertices ) {
+
+    vertex = ( ( vertex - origin ) * scale ) + origin;
+  }
+
+  ClearReification();
+
+  if ( bvh.has_value() ) {
+
+    bvh->applyRescale( scale, origin );
+  }
+
+  bvh.reset();
+  cleanedUp_ = false;
+}
 
 void Geometry::ApplyTransform( const glm::dmat4& transform ) {
 

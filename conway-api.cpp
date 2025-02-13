@@ -8,8 +8,11 @@
 #include <stack>
 #include <string>
 
+#include "utilities/buffer_parse.h"
+#include "structures/parse_buffer.h"
 #include "conway_geometry/ConwayGeometryProcessor.h"
 #include "logging/Logger.h"
+
 
 std::unique_ptr<conway::geometry::ConwayGeometryProcessor> processor;
 
@@ -513,18 +516,131 @@ glm::dmat3 GetIdentity2DMatrix() { return placementIdentity2D; }
 glm::dmat4 placementIdentity3D(1);
 glm::dmat4 GetIdentity3DMatrix() { return placementIdentity3D; }
 
-std::vector<glm::vec3> createVertexVector(uintptr_t verticesArray_,
+std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
                                           size_t length) {
   const double* verticesArray = reinterpret_cast<double*>(verticesArray_);
   // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
   // accessible here
-  std::vector<glm::vec3> vec;
+  std::vector<glm::dvec3> vec;
   vec.resize(length / 3);
   for (size_t i = 0; i < length / 3; ++i) {
-    glm::vec3 vertex = glm::vec3(verticesArray[i * 3], verticesArray[i * 3 + 1],
+    glm::dvec3 vertex = glm::dvec3(verticesArray[i * 3], verticesArray[i * 3 + 1],
                                  verticesArray[i * 3 + 2]);
 
     vec[i] = vertex;
+  }
+
+  return vec;
+}
+
+std::vector<glm::dvec3> parseVertexVector( const conway::ParseBuffer& data ) {
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
+  std::vector<glm::dvec3> vec;
+
+  if ( auto err = conway::parse_vector( data.range(), vec ).error; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing glm::dvec3 vector data %s", std::error_condition( err ).message().c_str() );
+  }
+
+  return vec;
+}
+
+double parseDouble( const conway::ParseBuffer& data ) {
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
+  const char* buffer    = reinterpret_cast< const char* >( data.data() );
+  size_t         end    = data.size();
+  const char* bufferEnd = buffer + end;
+  double result;
+
+  if ( auto err = fast_float::from_chars( buffer, bufferEnd, result ).ec; err != std::errc() ) {
+
+    return NAN;
+  }
+
+  return result;
+}
+
+std::vector<glm::dvec2> parsePoint2DVector( const conway::ParseBuffer& data ) {
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
+  std::vector<glm::dvec2> vec;
+
+  if ( auto err = conway::parse_vector( data.range(), vec ).error; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing glm::dvec2 vector data %s", std::error_condition( err ).message().c_str() );
+  }
+
+  return vec;
+}
+
+std::vector<glm::dvec2> parsePoint3Dto2DVector( const conway::ParseBuffer& data ) {
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
+  std::vector<glm::dvec2> vec;
+
+  if ( auto err = conway::parse_vector_custom(
+    data.range(),
+    vec,
+    []( const char* begin, const char* end, glm::dvec2& value ) {
+
+      glm::dvec3 intermediate;
+
+      auto result = fast_float::from_chars( begin, end, intermediate );
+
+      value.x = intermediate.x;
+      value.y = intermediate.y;
+
+      return result;
+
+    } ).error; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing vector of glm::dvec3 truncated to glm::dvec2 %s", std::error_condition( err ).message().c_str() );
+  }
+
+  return vec;
+}
+
+glm::dvec2 parsePoint2D( const conway::ParseBuffer& data ) {
+
+  const char* buffer    = reinterpret_cast< const char* >( data.data() );
+  size_t         end    = data.size();
+  const char* bufferEnd = buffer + end;
+  glm::dvec2 result;
+
+  if ( auto err = fast_float::from_chars( buffer, bufferEnd, result ).ec; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing glm::dvec2 %s", std::error_condition( err ).message().c_str() );
+  }
+
+  return result;
+}
+
+glm::dvec2 parsePoint3D( const conway::ParseBuffer& data ) {
+
+  const char* buffer    = reinterpret_cast< const char* >( data.data() );
+  size_t         end    = data.size();
+  const char* bufferEnd = buffer + end;
+  glm::dvec2 result;
+
+  if ( auto err = fast_float::from_chars( buffer, bufferEnd, result ).ec; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing glm::dvec2 %s", std::error_condition( err ).message().c_str() );
+  }
+
+  return result;
+}
+
+
+std::vector<uint32_t> parseUInt32Vector( const conway::ParseBuffer& data ) {
+  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
+  // accessible here
+  std::vector<uint32_t> vec;
+
+  if ( auto err = conway::parse_vector( data.range(), vec ).error; err != std::errc() ) {
+
+    Logger::logError( "Error encountered parsing glm::dvec3 data %s", std::error_condition( err ).message().c_str() );
   }
 
   return vec;
@@ -663,6 +779,12 @@ EMSCRIPTEN_BINDINGS(my_module) {
                 &conway::geometry::Geometry::AppendWithTransform)
       .function("getAllocationSize",
                 &conway::geometry::Geometry::GetAllocationSize)
+      .function("extractVertices",
+                &conway::geometry::Geometry::ExtractVertices)
+      .function("extractTriangles",
+                &conway::geometry::Geometry::ExtractTriangles)
+      .function("extractVerticesAndTriangles",
+                &conway::geometry::Geometry::ExtractVerticesAndTriangles)
       // .function("getAABBCenter", &conway::geometry::Geometry::GetAABBCenter)
       .function("clone", &conway::geometry::Geometry::Clone)
       .function("dumpToOBJ", &conway::geometry::Geometry::GeometryToObj );
@@ -1049,7 +1171,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("flatSecondMesh", &conway::geometry::ConwayGeometryProcessor::
                                       ParamsGetBooleanResult::flatSecondMesh)
       .property("operatorType", &conway::geometry::ConwayGeometryProcessor::
-                                    ParamsGetBooleanResult::operatorType);
+                                    ParamsGetBooleanResult::operatorType)
+      .property("isSubtractOperand", &conway::geometry::ConwayGeometryProcessor::
+                                          ParamsGetBooleanResult::isSubtractOperand);
 
   emscripten::class_<
       conway::geometry::ConwayGeometryProcessor::ParamsTransformProfile>(
@@ -1358,6 +1482,13 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .element(emscripten::index<14>())
       .element(emscripten::index<15>());
 
+  emscripten::class_< conway::ParseBuffer >( "ParseBuffer" )
+    .constructor<>()
+    .function( "resize", &conway::ParseBuffer::resize )
+    .function( "data", &conway::ParseBuffer::dataInteger )
+    .function( "size", &conway::ParseBuffer::size )
+    .function( "capacity", &conway::ParseBuffer::capacity );
+
   emscripten::register_vector<double>("vectorDouble");
   emscripten::register_vector<std::vector<double>>("vectorVectorDouble");
   emscripten::register_vector<glm::vec2>("vec2Array");
@@ -1382,6 +1513,16 @@ EMSCRIPTEN_BINDINGS(my_module) {
 
   emscripten::function("createVertexVector", &createVertexVector,
                        emscripten::allow_raw_pointers());
+  emscripten::function("parseVertexVector", &parseVertexVector,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("parseDouble", &parseDouble,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("parsePoint2DVector", &parsePoint2DVector,
+                       emscripten::allow_raw_pointers());
+  emscripten::function("parsePoint3DTo2DVector", &parsePoint3Dto2DVector,
+                       emscripten::allow_raw_pointers());                       
+  emscripten::function("parseUint32Vector", &parseUInt32Vector,
+                       emscripten::allow_raw_pointers());                          
   emscripten::function("getPolygonalFaceSetGeometry",
                        &GetPolygonalFaceSetGeometry);
   emscripten::function("getTriangulatedFaceSetGeometry",

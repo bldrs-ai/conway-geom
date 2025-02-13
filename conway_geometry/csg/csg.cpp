@@ -111,7 +111,7 @@ void conway::geometry::CSG::index( Geometry& a, double tolerance ) {
 //     [&](const std::pair< uint32_t, uint32_t >& candidatePair) {
 // #else
   std::transform(
-    std::execution::par_unseq,
+    std::execution::par,
     candidatePairs.begin(),
     candidatePairs.end(),
     contacts.begin(),
@@ -218,7 +218,7 @@ void conway::geometry::CSG::index( Geometry& a, Geometry& b, double tolerance ) 
   contacts.resize( candidatePairs.size() );
 
   std::transform(
-    std::execution::par_unseq,
+    std::execution::par,
     candidatePairs.begin(),
     candidatePairs.end(),
     contacts.begin(),

@@ -57,6 +57,7 @@
 #include "operations/geometry_utils.h"
 //#include "representation/IfcGeometry.h"
 #include "representation/Geometry.h"
+#include "structures/parse_buffer.h"
 
 namespace fuzzybools {
 struct Geometry;
@@ -127,7 +128,8 @@ class ConwayGeometryProcessor {
   };
 
   Geometry BoolSubtract( std::vector<Geometry>& firstGroups,
-                            std::vector<Geometry>& secondGroups );
+                         std::vector<Geometry>& secondGroups,
+                         bool isSubtractOperand );
   Geometry BoolSubtractLegacy(const std::vector<Geometry>& firstGeoms,
                                  std::vector<Geometry>& secondGeoms);
 
@@ -137,6 +139,7 @@ class ConwayGeometryProcessor {
     std::vector<Geometry> flatFirstMesh;
     std::vector<Geometry> flatSecondMesh;
     int operatorType = 2;
+    bool isSubtractOperand = false;
   };
   Geometry GetBooleanResult(ParamsGetBooleanResult *parameters);
 
@@ -446,10 +449,10 @@ class ConwayGeometryProcessor {
   // case ifc::IFCINDEXEDPOLYGONALFACEWITHVOIDS:
   // case ifc::IFCINDEXEDPOLYGONALFACE:
   struct ParamsReadIndexedPolygonalFace {
-    const std::vector<glm::vec3>& points;
+    const std::vector<glm::dvec3>& points;
     const IndexedPolygonalFace& face;
 
-    ParamsReadIndexedPolygonalFace(const std::vector<glm::vec3>& points_ref,
+    ParamsReadIndexedPolygonalFace(const std::vector<glm::dvec3>& points_ref,
                                    const IndexedPolygonalFace& face_ref)
         : points(points_ref), face(face_ref) {}
   };
@@ -501,7 +504,7 @@ class ConwayGeometryProcessor {
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
     uint32_t indicesPerFace = 0;
-    std::vector<glm::vec3> points;
+    std::vector<glm::dvec3> points;
     std::vector<IndexedPolygonalFace> faces;
   };
   Geometry getPolygonalFaceSetGeometry(
@@ -530,7 +533,7 @@ class ConwayGeometryProcessor {
   struct ParamsGetIfcIndexedPolyCurve {
     uint32_t dimensions = 2;
     std::vector<Segment> segments;
-    std::vector<glm::vec2> points;
+    std::vector<glm::dvec2> points;
   };
 
   conway::geometry::IfcCurve getIndexedPolyCurve(
@@ -538,7 +541,7 @@ class ConwayGeometryProcessor {
 
   // case ifc::CIRCLEPROFILEDEF
   struct ParamsGetCircleCurve {
-    float radius;
+    double radius;
     bool hasPlacement = true;
     glm::dmat3 placement;
     double thickness = -1.0f;
@@ -552,8 +555,8 @@ class ConwayGeometryProcessor {
 
   // case ifc::EllipseProfileDef
   struct ParamsGetEllipseCurve {
-    float radiusX;
-    float radiusY;
+    double radiusX;
+    double radiusY;
     bool hasPlacement = true;
     glm::dmat3 placement;
     int circleSegments = 12;
@@ -619,7 +622,7 @@ class ConwayGeometryProcessor {
 
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
-    float depth = 0.0f;
+    double depth = 0.0f;
     glm::dvec3 dir;
     IfcProfile profile;
   };

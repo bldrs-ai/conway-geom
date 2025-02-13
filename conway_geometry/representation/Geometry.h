@@ -19,6 +19,11 @@
 #include "material.h"
 #include "Topology.h"
 
+namespace conway {
+
+  class ParseBuffer;
+}
+
 namespace conway::geometry {
 
 template <typename T>
@@ -87,6 +92,14 @@ struct Geometry {
   glm::dvec3 Normalize();
   void ApplyTransform( const glm::dmat4x4& transform );
 
+  void ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin = glm::dvec3( 0 ) );
+
+  void ExtractVertices( const ParseBuffer& buffer );
+
+  void ExtractTriangles( const ParseBuffer& buffer );
+
+  void ExtractVerticesAndTriangles( const ParseBuffer& verticesBuffer, const ParseBuffer& triangleBuffer );
+
   Geometry Clone();
 
   std::string GeometryToObj( const std::string& preamble = "" );
@@ -127,7 +140,7 @@ struct Geometry {
   void MakeTriangle( uint32_t a, uint32_t b, uint32_t c, uint32_t index );
 
   /** Cleanup this mesh for CSG */
-  void Cleanup();
+  void Cleanup( bool forSubtract = false );
 
   void MarkedCleanedup() { cleanedUp_ = true; }
 
@@ -166,6 +179,8 @@ struct Geometry {
 
     isReified_ = false;
   }
+
+  bool isScaled = false;
 
  private:
 
@@ -284,6 +299,11 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
   bvh.reset();
 
   triangles.pop_back();
+
+  if ( bvh.has_value() ) {
+
+    bvh.reset();
+  }
 }
 
 inline uint32_t Geometry::MakeVertex( const glm::dvec3& value ) {

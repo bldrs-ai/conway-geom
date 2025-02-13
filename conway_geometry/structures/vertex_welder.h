@@ -17,8 +17,9 @@ namespace conway::geometry {
     std::vector< Triangle >                       old_triangles;
     std::vector< glm::dvec3 >                     converged;
     std::vector< uint32_t >                       unique_mapping;
+    std::vector< glm::dvec3 >                     area_weighted_normals;
 
-    void weld( Geometry& toWeld, double tolerance ) {
+    void weld( Geometry& toWeld, double tolerance, bool outset = false ) {
 
       std::vector< glm::dvec3 >& vertices = toWeld.vertices;
 
@@ -58,7 +59,11 @@ namespace conway::geometry {
         where < verticesSize;
         ++where) {
 
-        const glm::dvec3& vertex = vertices[ where ];
+        glm::dvec3& vertex = vertices[ where ];
+
+        vertex *= 2.0 / tolerance;
+        vertex = glm::round( vertex );
+        vertex *= 0.5 * tolerance;
 
         converged.push_back( vertex );
 
@@ -167,6 +172,38 @@ namespace conway::geometry {
         }
 
         toWeld.MakeTriangle( i0, i1, i2 );
+      }
+
+      if ( outset ) {
+
+        area_weighted_normals.clear();
+        area_weighted_normals.resize( vertices.size() );
+
+        for ( const Triangle& triangle : toWeld.triangles ) {
+              
+          uint32_t i0 = triangle.vertices[ 0 ];
+          uint32_t i1 = triangle.vertices[ 1 ];
+          uint32_t i2 = triangle.vertices[ 2 ];
+
+          const glm::dvec3& v0 = vertices[ i0 ];
+          const glm::dvec3& v1 = vertices[ i1 ];
+          const glm::dvec3& v2 = vertices[ i2 ];
+
+          glm::dvec3 normal = glm::cross( v1 - v0, v2 - v0 );
+
+          area_weighted_normals[ i0 ] += normal;
+          area_weighted_normals[ i1 ] += normal;
+          area_weighted_normals[ i2 ] += normal;
+        }
+
+        for ( uint32_t vertexIndex = 0, end = vertices.size(); vertexIndex < end; ++vertexIndex ) {
+
+          glm::dvec3 vertexOffset = glm::sign( area_weighted_normals[ vertexIndex ] );
+
+          //printf( "%f %f %f\n", vertexOffset.x, vertexOffset.y, vertexOffset.z );
+
+          vertices[ vertexIndex ] += tolerance * vertexOffset;
+        }
       }
     }
   };

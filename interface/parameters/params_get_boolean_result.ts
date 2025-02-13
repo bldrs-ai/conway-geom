@@ -8,4 +8,5 @@ export interface ParamsGetBooleanResult extends Deletable {
   flatFirstMesh: StdVector< GeometryObject >
   flatSecondMesh: StdVector< GeometryObject >
   operatorType: number
+  isSubtractOperand: boolean
 }

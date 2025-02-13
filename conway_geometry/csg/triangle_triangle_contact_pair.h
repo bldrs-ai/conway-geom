@@ -106,7 +106,7 @@ namespace conway::geometry {
     int32_t (&aFaceSigns)[ 3 ] = vertexFaceSigns[ 0 ];
     int32_t (&bFaceSigns)[ 3 ] = vertexFaceSigns[ 1 ];
 
-    FaceFace aFaceFace = vertex_face_signs( localVertices[ 0 ], localVertices[ 1 ], aFaceSigns, tolerance );
+    FaceFace aFaceFace = vertex_face_signs( localVertices[ 0 ], localVertices[ 1 ], aFaceSigns, 0 );
     
     result.triangles[ 0 ].face_to_face = aFaceFace;
 
@@ -117,7 +117,7 @@ namespace conway::geometry {
       return result;
     }
     
-    FaceFace bFaceFace = vertex_face_signs( localVertices[ 1 ], localVertices[ 0 ], bFaceSigns, tolerance );
+    FaceFace bFaceFace = vertex_face_signs( localVertices[ 1 ], localVertices[ 0 ], bFaceSigns, 0 );
         
     result.triangles[ 1 ].face_to_face = bFaceFace;
 

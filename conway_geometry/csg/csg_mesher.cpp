@@ -301,7 +301,7 @@ void conway::geometry::CSGMesher::process(
 
   AABBTree& aBVH = *a.bvh;
 
-  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+  std::transform( std::execution::par, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
 
    glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
 
@@ -828,12 +828,21 @@ void conway::geometry::CSGMesher::process(
   AABBTree& aBVH = *a.bvh;
   AABBTree& bBVH = *b.bvh;
 
+  box3 bBounds = bBVH.bounds();
+  box3 aBounds = aBVH.bounds();
+
+
 // #if defined(__EMSCRIPTEN__)
 //   std::transform( aWhere, aEnd, outside_[0].begin(), [&]( const Triangle& aTriangle ) {
 // #else
-  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+  std::transform( std::execution::par, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
 //#endif
     glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
+
+    if ( !overlaps( bBounds, aCentre / 3.0 ) ) {
+
+      return uint8_t( 1 );
+    }
 
     double gwn = bBVH.gwn( b, aCentre, 3.0 );
 
@@ -843,9 +852,14 @@ void conway::geometry::CSGMesher::process(
 // #if defined(__EMSCRIPTEN__)
 //   std::transform( bWhere, bEnd, outside_[1].begin(), [&]( const Triangle& bTriangle ) {
 // #else
-  std::transform( std::execution::par_unseq, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
+  std::transform( std::execution::par, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
 //#endif
     glm::dvec3 bCentre = vertices.centroid3( bTriangle.first );
+
+    if ( !overlaps( aBounds, bCentre / 3.0 ) ) {
+
+      return uint8_t( 1 );
+    }
 
     double gwn = aBVH.gwn( a, bCentre, 3.0 );
 
