@@ -1,6 +1,6 @@
 
 var ConwayGeomWasm = (() => {
-  var _scriptName = "ConwayGeomWasmWebMT.js";
+  var _scriptName = typeof document != 'undefined' ? document.currentScript?.src : undefined;
   
   return (
 function(moduleArg = {}) {
