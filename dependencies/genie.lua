@@ -70,7 +70,8 @@ buildoptions_cpp {
     "-Wall",
     "-fexceptions",
     "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-    "-std=c++17"
+    "-std=c++17",
+    "-pthread"
 }
 
 configuration {"windows or macosx or linux"}
@@ -156,7 +157,8 @@ buildoptions_cpp {
     "-Wall",
     "-fexceptions",
     "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-    "-std=c++17"
+    "-std=c++17",
+    "-pthread"
 }
 
 configuration {"windows or macosx or linux"}
@@ -241,7 +243,8 @@ buildoptions_cpp {
     "-Wall",
     "-fexceptions",
     "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-    "-std=c++17"
+    "-std=c++17",
+    "-pthread"
 }
 
 configuration {"windows or macosx or linux"}

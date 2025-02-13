@@ -92,6 +92,12 @@ else
         elif [ "$2" = "wasmWeb" ]; then
             ( cd gmake &&
             make config=${wasm_config} ConwayGeomWasmWeb )
+        elif [ "$2" = "wasmNodeMT" ]; then
+            ( cd gmake &&
+            make config=${wasm_config} ConwayGeomWasmNodeMT )
+        elif [ "$2" = "wasmWebMT" ]; then
+            ( cd gmake &&
+            make config=${wasm_config} ConwayGeomWasmWebMT )
         else
             echo "Platform invalid!" 1>&2
             exit 1
@@ -128,6 +134,11 @@ if [ -n "$3" ] && [ "$3" = "profile" ]; then
 
     # Cleanup backup file
     rm "$SOURCE_MAP.bak"
-fi 
+fi
+
+if [ "$2" = "wasmWebMT" ]; then
+    echo "Patching ConwayGeomWasmWebMT.js..."
+    sed -i.bak "s/var _scriptName = typeof document != 'undefined' ? document\.currentScript\?\.src : undefined;/var _scriptName = \"ConwayGeomWasmWebMT.js\";/" ./bin/release/ConwayGeomWasmWebMT.js && rm ./bin/release/ConwayGeomWasmWebMT.js.bak
+fi
 
 echo "Finished."

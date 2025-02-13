@@ -48,6 +48,27 @@ import { ParamsLocalPlacement } from './parameters/params_local_placement'
 import { ParamsGetSweptDiskSolid } from './parameters/params_get_swept_disk_solid'
 import { ParseBuffer } from './parse_buffer'
 
+function pThreadsAllowed(): boolean {
+
+  if (process.env.FORCE_SINGLE_THREAD === 'true') {
+    return false
+  }
+
+  // Pthreads (WASM threads) require SharedArrayBuffer
+  if (typeof SharedArrayBuffer === 'undefined') {
+    return false;
+  }
+
+  // If we’re in a browser, check if the context is cross-origin isolated.
+  // (SharedArrayBuffer may exist but will only work with threads if 
+  // crossOriginIsolated is true.)
+  if (process.env.PLATFORM === 'web' && typeof window !== 'undefined') {
+    return window.crossOriginIsolated === true;
+  }
+
+  return true
+}
+
 
 let ConwayGeomWasm: any
 
@@ -57,12 +78,22 @@ let ConwayGeomWasm: any
 async function loadWasmModule() {
   if (process.env.PLATFORM === 'web') {
     // Load browser-specific WebAssembly module
-    const module = await import('../Dist/ConwayGeomWasmWeb.js')
-    ConwayGeomWasm = module.default
+    if (pThreadsAllowed()) {
+      const module = await import('../Dist/ConwayGeomWasmWebMT.js')
+      ConwayGeomWasm = module.default
+    } else {
+      const module = await import('../Dist/ConwayGeomWasmWeb.js')
+      ConwayGeomWasm = module.default
+    }
   } else {
     // Load Node.js-specific WebAssembly module
-    const module = await import('../Dist/ConwayGeomWasmNode.js')
-    ConwayGeomWasm = module.default
+    if (pThreadsAllowed()) {
+      const module = await import('../Dist/ConwayGeomWasmNodeMT.js')
+      ConwayGeomWasm = module.default
+    } else {
+      const module = await import('../Dist/ConwayGeomWasmNode.js')
+      ConwayGeomWasm = module.default
+    }
   }
 }
 
@@ -243,7 +274,21 @@ export class ConwayGeometry {
 
     if (this.wasmModule === void 0) {
       // eslint-disable-next-line new-cap
-      this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
+      if (process.env.PLATFORM === 'web') {
+        this.wasmModule = await ConwayGeomWasm({
+          noInitialRun: true,
+          locateFile: (filename:string, prefix:string) => {
+            if (filename.endsWith('.wasm')) {
+              return (pThreadsAllowed()) ? '/static/js/ConwayGeomWasmWebMT.wasm' 
+              : '/static/js/ConwayGeomWasmWeb.wasm'
+            }
+            // fallback to whatever Emscripten does
+            return prefix + filename
+          }
+        })
+      } else {
+        this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
+      }
     }
 
     this.initialized = false
