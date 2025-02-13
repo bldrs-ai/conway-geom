@@ -3,7 +3,6 @@ gmake/
 .vscode/
 .DS_Store
 **/.DS_Store
-Dist/
 dependencies/**/*.a
 /.vs
 build/

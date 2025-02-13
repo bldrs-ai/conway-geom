@@ -1,5 +1,6 @@
 #include "csg.h"
 #include "multi_mesh_vertex_index.h"
+#include "structures/thread_pool.h"
 
 
 /** Clean a mesh by getting its solid skin */
@@ -110,14 +111,18 @@ void conway::geometry::CSG::index( Geometry& a, double tolerance ) {
 //     contacts.begin(),
 //     [&](const std::pair< uint32_t, uint32_t >& candidatePair) {
 // #else
-  std::transform(
-    std::execution::par_unseq,
-    candidatePairs.begin(),
-    candidatePairs.end(),
-    contacts.begin(),
-    [&](const std::pair< uint32_t, uint32_t >& candidatePair) {
+  // std::transform(
+  //   std::execution::par,
+  //   candidatePairs.begin(),
+  //   candidatePairs.end(),
+  //   contacts.begin(),
+  //   [&](const std::pair< uint32_t, uint32_t >& candidatePair) {
 //#endif
 
+  ThreadPool::instance().parallel_for( 0, candidatePairs.size(), [&]( size_t where ) {
+
+      const std::pair< uint32_t, uint32_t >& candidatePair = candidatePairs_[ where ];
+  
       uint32_t triangleInMeshIndices[2] = { candidatePair.first, candidatePair.second };
 
       const Triangle& aTriangle = a.triangles[ candidatePair.first ];
@@ -145,7 +150,7 @@ void conway::geometry::CSG::index( Geometry& a, double tolerance ) {
         }
       }
 
-      return find_intersections( vertices, triangleInMeshIndices, triangles, true, sharedEdge, tolerance );
+      contacts[ where ] = find_intersections( vertices, triangleInMeshIndices, triangles, true, sharedEdge, tolerance );
     });
 
   candidatePairs_.clear();
@@ -217,12 +222,15 @@ void conway::geometry::CSG::index( Geometry& a, Geometry& b, double tolerance ) 
   contacts.clear();
   contacts.resize( candidatePairs.size() );
 
-  std::transform(
-    std::execution::par_unseq,
-    candidatePairs.begin(),
-    candidatePairs.end(),
-    contacts.begin(),
-    [&]( const std::pair< uint32_t, uint32_t >& candidatePair) {
+  // std::transform(
+  //   std::execution::par,
+  //   candidatePairs.begin(),
+  //   candidatePairs.end(),
+  //   contacts.begin(),
+  //   [&]( const std::pair< uint32_t, uint32_t >& candidatePair) {
+  ThreadPool::instance().parallel_for( 0, candidatePairs.size(), [&]( size_t where ) {
+
+    const std::pair< uint32_t, uint32_t >& candidatePair = candidatePairs[ where ];
 
     uint32_t triangleInMeshIndices[ 2 ] = { candidatePair.first, candidatePair.second };
 
@@ -231,7 +239,7 @@ void conway::geometry::CSG::index( Geometry& a, Geometry& b, double tolerance ) 
 
     const Triangle* triangles[ 2 ] = { &aTriangle, &bTriangle };
 
-    return find_intersections( vertices, triangleInMeshIndices, triangles, false, false, tolerance );
+    contacts[ where ] = find_intersections( vertices, triangleInMeshIndices, triangles, false, false, tolerance );
   });
 
   candidatePairs_.clear();

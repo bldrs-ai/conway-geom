@@ -8,6 +8,7 @@
 #include <sstream>
 
 #include "representation/SVGContext.h"
+#include "structures/thread_pool.h"
 
 constexpr bool OUTPUT_A                        = true;
 constexpr bool OUTPUT_B                        = true;
@@ -301,14 +302,25 @@ void conway::geometry::CSGMesher::process(
 
   AABBTree& aBVH = *a.bvh;
 
-  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+  ThreadPool::instance().parallel_for( 0, initialChartTriangles_[ 0 ].size(), [&]( size_t where ) {
 
-   glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
+    const std::pair< Triangle, uint32_t >& aTriangle = initialChartTriangles_[ 0 ][ where ];
 
-   double gwn = aBVH.gwn( a, aCentre, 3.0, aTriangle.second );
+    glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
 
-   return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
- });
+    double gwn = aBVH.gwn( a, aCentre, 3.0, aTriangle.second );
+
+    outside_[ 0 ][ where ] = fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+  });
+
+//  std::transform( std::execution::par, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+
+//    glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
+
+//    double gwn = aBVH.gwn( a, aCentre, 3.0, aTriangle.second );
+
+//    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+// });
 
   auto aGWN = outside_[ 0 ].begin();
 
@@ -831,25 +843,50 @@ void conway::geometry::CSGMesher::process(
 // #if defined(__EMSCRIPTEN__)
 //   std::transform( aWhere, aEnd, outside_[0].begin(), [&]( const Triangle& aTriangle ) {
 // #else
-  std::transform( std::execution::par_unseq, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
-//#endif
+//  std::transform( std::execution::par, aWhere, aEnd, outside_[0].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
+// //#endif
+//     glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
+
+//     double gwn = bBVH.gwn( b, aCentre, 3.0 );
+
+//     return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+//   });
+
+  ThreadPool::instance().parallel_for( 0, initialChartTriangles_[ 0 ].size(), [&]( size_t where ) {
+
+    const std::pair< Triangle, uint32_t >& aTriangle = initialChartTriangles_[ 0 ][ where ];
+  
     glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
 
     double gwn = bBVH.gwn( b, aCentre, 3.0 );
 
-    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+    outside_[ 0 ][ where ] = fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+
   });
+
 
 // #if defined(__EMSCRIPTEN__)
 //   std::transform( bWhere, bEnd, outside_[1].begin(), [&]( const Triangle& bTriangle ) {
 // #else
-  std::transform( std::execution::par_unseq, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
-//#endif
+//   std::transform( std::execution::par, bWhere, bEnd, outside_[1].begin(), [&]( const std::pair< Triangle, uint32_t >& bTriangle ) {
+// //#endif
+//     glm::dvec3 bCentre = vertices.centroid3( bTriangle.first );
+
+//     double gwn = aBVH.gwn( a, bCentre, 3.0 );
+
+//     return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+//   });
+
+ThreadPool::instance().parallel_for( 0, initialChartTriangles_[ 1 ].size(), [&]( size_t where ) {
+
+    const std::pair< Triangle, uint32_t >& bTriangle = initialChartTriangles_[ 1 ][ where ];
+
     glm::dvec3 bCentre = vertices.centroid3( bTriangle.first );
 
     double gwn = aBVH.gwn( a, bCentre, 3.0 );
 
-    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+    outside_[ 1 ][ where ] = fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
+
   });
 
   auto aGWN = outside_[ 0 ].begin();

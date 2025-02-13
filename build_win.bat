@@ -88,6 +88,12 @@ if "%1"=="test" (
         ) else if "%2"=="wasmWeb" (
             cd gmake
             make config=%wasm_config% ConwayGeomWasmWeb
+        ) else if "%2"=="wasmNodeMT" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasmNodeMT
+        ) else if "%2"=="wasmWebMT" (
+            cd gmake
+            make config=%wasm_config% ConwayGeomWasmWebMT
         ) else (
             echo "Platform invalid" >&2
             exit /b 1
@@ -112,10 +118,6 @@ IF "%~3" NEQ "" IF "%~3" == "profile" (
         powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -File "%CD%\..\remap_source_map_win.ps1" -SOURCE_MAP "..\bin\release\ConwayGeomWasm.wasm.map"
     )
 )
-
-
-
-
 
 cd ..
 
