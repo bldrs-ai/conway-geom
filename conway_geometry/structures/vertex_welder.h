@@ -61,10 +61,6 @@ namespace conway::geometry {
 
         glm::dvec3& vertex = vertices[ where ];
 
-        vertex *= 2.0 / tolerance;
-        vertex = glm::round( vertex );
-        vertex *= 0.5 * tolerance;
-
         converged.push_back( vertex );
 
         glm::uvec3 coord = unpacked_coord3( vertex, boundingBox.min, inverseStep );
@@ -202,8 +198,26 @@ namespace conway::geometry {
 
           //printf( "%f %f %f\n", vertexOffset.x, vertexOffset.y, vertexOffset.z );
 
-          vertices[ vertexIndex ] += tolerance * vertexOffset;
+          glm::dvec3& vertex = vertices[ vertexIndex ];
+
+          vertex += tolerance * vertexOffset;
+
+          vertex *= 2.0 / tolerance;
+          vertex = glm::round( vertex );
+          vertex *= 0.5 * tolerance;
+
         }
+      } else {
+
+        for ( uint32_t vertexIndex = 0, end = vertices.size(); vertexIndex < end; ++vertexIndex ) {
+
+          glm::dvec3& vertex = vertices[ vertexIndex ];
+
+          vertex *= 2.0 / tolerance;
+          vertex = glm::round( vertex );
+          vertex *= 0.5 * tolerance;
+        }
+
       }
     }
   };
