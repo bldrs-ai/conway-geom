@@ -41,18 +41,27 @@ public:
 
   /** Simple parallel for, not re-entrant */
   template < typename FunctionType > 
-  void parallel_for( size_t start, size_t end, FunctionType function, size_t increment = 1, size_t threadStride = 1 ) {
+  void parallel_for( size_t start, size_t end, FunctionType function, size_t threadStride = 2 ) {
+
+    if ( ( end - start ) <= threadStride ) {
+
+      for ( size_t where = start; where < end; ++where ) {
+
+        function( where );
+      }
+
+      return;
+    }
 
     std::function< void ( size_t ) > wrapper( function );
 
     {
       std::lock_guard< std::mutex > guard( lock_ );
 
-      complete_ = start;
-      increment_ = increment;
+      complete_     = start;
       threadStride_ = threadStride;
-      end_ = end;
-      counter_ = start;
+      end_          = end;
+      counter_      = start;
 
       iteration_ = &wrapper;
     }
@@ -112,9 +121,9 @@ private:
 
         (*iteration_)( cursor );
 
-        cursor += increment_;
+        ++cursor;
 
-        if ( ( complete_ += increment_ ) >= end ) {
+        if ( ( ++complete_ ) >= end ) {
 
           join_.notify_one();
         }
@@ -123,7 +132,6 @@ private:
   }
   
   std::atomic< size_t > threadStride_ = 0;
-  std::atomic< size_t > increment_ = 0;
   std::atomic< size_t > end_ = 0;
   std::atomic< size_t > counter_ = 0;
   std::atomic< size_t > complete_ = 0;
@@ -156,7 +164,7 @@ class ThreadPool {
   
     /** Simple parallel for, not re-entrant */
     template < typename FunctionType > 
-    void parallel_for( size_t start, size_t end, FunctionType function, size_t increment = 1, [[maybe_unused]]size_t threadStride = 1 ) {
+    void parallel_for( size_t start, size_t end, FunctionType function, [[maybe_unused]]size_t threadStride = 1 ) {
   
       for ( size_t where = start; where < end; where += increment ) {
 
