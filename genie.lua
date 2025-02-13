@@ -837,15 +837,18 @@ project "ConwayGeomWasmWeb"
   ConwaySourceFiles = {"conway-api.cpp"}
 
     configuration {"linux or macosx or ios or gmake"}
-        buildoptions_cpp {
-            "-O3",
-            "-DNDEBUG",
-            "-Wall",
-            "-fexceptions",
-            "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
-            "-std=c++20",
-            "-fexperimental-library"
-        }
+      buildoptions_cpp {
+        "-Wall",
+        "-fexceptions",
+        "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
+        -- TODO(Conor): I want threads for performance reasons.
+        -- "-pthread",
+        "-std=c++20",
+        "-fexperimental-library",
+        -- TODO(pablo): https://github.com/bldrs-ai/conway/wiki/Performance#simd
+        -- "-msimd128",
+        -- "-DGLM_FORCE_INTRINSICS=1"
+    }
 
     configuration {"windows or macosx or linux"}
         files {
@@ -875,6 +878,7 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         "--dts",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
+        "-s PRECISE_F32=1",
         "-s ENVIRONMENT=web",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
@@ -895,6 +899,10 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     }
 else 
     configuration {"gmake"}
+    buildoptions_cpp {
+      "-O3",
+      "-DNDEBUG"
+    }
     linkoptions {
         "-O3",
         "--bind",
@@ -902,6 +910,7 @@ else
         "-03",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
+        "-s PRECISE_F32=1",
         "-s ALLOW_MEMORY_GROWTH=1",
         "-s MAXIMUM_MEMORY=4GB",
         "-s STACK_SIZE=5MB",
