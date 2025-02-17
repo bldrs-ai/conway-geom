@@ -166,7 +166,7 @@ class ThreadPool {
     template < typename FunctionType > 
     void parallel_for( size_t start, size_t end, FunctionType function, [[maybe_unused]]size_t threadStride = 1 ) {
   
-      for ( size_t where = start; where < end; where += increment ) {
+      for ( size_t where = start; where < end; ++where ) {
 
         function( where );
       }
