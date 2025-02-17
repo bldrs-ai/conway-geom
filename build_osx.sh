@@ -136,9 +136,4 @@ if [ -n "$3" ] && [ "$3" = "profile" ]; then
     rm "$SOURCE_MAP.bak"
 fi
 
-if [ "$2" = "wasmWebMT" ]; then
-    echo "Patching ConwayGeomWasmWebMT.js..."
-    sed -i.bak "s/var _scriptName = typeof document != 'undefined' ? document\.currentScript\?\.src : undefined;/var _scriptName = \"ConwayGeomWasmWebMT.js\";/" ./bin/release/ConwayGeomWasmWebMT.js && rm ./bin/release/ConwayGeomWasmWebMT.js.bak
-fi
-
 echo "Finished."

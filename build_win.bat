@@ -119,11 +119,6 @@ IF "%~3" NEQ "" IF "%~3" == "profile" (
     )
 )
 
-if "%2%"=="wasmWebMT" (
-    echo Patching ConwayGeomWasmWebMT.js...
-    powershell -Command "((Get-Content -Raw -Path '.\bin\release\ConwayGeomWasmWebMT.js') -replace 'var _scriptName = typeof document != ''undefined'' ? document\.currentScript\?\.src : undefined;', 'var _scriptName = \"ConwayGeomWasmWebMT.js\";') | Set-Content -Path '.\bin\release\ConwayGeomWasmWebMT.js'"
-)
-
 cd ..
 
 if errorlevel 1 (

@@ -275,17 +275,28 @@ export class ConwayGeometry {
     if (this.wasmModule === void 0) {
       // eslint-disable-next-line new-cap
       if (process.env.PLATFORM === 'web') {
-        this.wasmModule = await ConwayGeomWasm({
+        const config: any = {
           noInitialRun: true,
-          locateFile: (filename:string, prefix:string) => {
+          locateFile: (filename: string, prefix: string) => {
             if (filename.endsWith('.wasm')) {
-              return (pThreadsAllowed()) ? '/static/js/ConwayGeomWasmWebMT.wasm' 
-              : '/static/js/ConwayGeomWasmWeb.wasm'
+              return (pThreadsAllowed())
+                ? '/static/js/ConwayGeomWasmWebMT.wasm' 
+                : '/static/js/ConwayGeomWasmWeb.wasm'
+            } else if (filename.endsWith('ConwayGeomWasmWebMT.js')) {
+              return '/static/js/ConwayGeomWasmWebMT.js'
             }
-            // fallback to whatever Emscripten does
+            // fallback
             return prefix + filename
           }
-        })
+        };
+        
+        // Only set mainScriptUrlOrBlob if pThreadsAllowed() returns true
+        if (pThreadsAllowed()) {
+          config.mainScriptUrlOrBlob = '/static/js/ConwayGeomWasmWebMT.js';
+        }
+        
+        // Now pass the config to your WASM factory
+        this.wasmModule = await ConwayGeomWasm(config);
       } else {
         this.wasmModule = await ConwayGeomWasm({ noInitialRun: true, locateFile: fileHandler })
       }
