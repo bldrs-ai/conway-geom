@@ -41,9 +41,9 @@ public:
 
   /** Simple parallel for, not re-entrant */
   template < typename FunctionType > 
-  void parallel_for( size_t start, size_t end, FunctionType function, size_t threadStride = 2 ) {
+  void parallel_for( size_t start, size_t end, FunctionType function, size_t threadStride = 2, size_t minParallelBatch = 4 ) {
 
-    if ( ( end - start ) <= threadStride ) {
+    if ( ( end - start ) < minParallelBatch ) {
 
       for ( size_t where = start; where < end; ++where ) {
 
