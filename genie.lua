@@ -1371,6 +1371,11 @@ linkoptions {
 }
 else 
 configuration {"gmake"}
+buildoptions_cpp {
+  "-O3",
+  "-DNDEBUG",
+  "-pthread"
+}
 linkoptions {
     "-O3",
     "--bind",
@@ -1397,7 +1402,6 @@ linkoptions {
     "-lworkerfs.js",
     "-sNO_DISABLE_EXCEPTION_CATCHING",
     "-sASSERTIONS",
-    "-s SAFE_HEAP=1",
 }
 end
 
