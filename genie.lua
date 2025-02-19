@@ -871,6 +871,11 @@ configuration {"windows"}
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
+flags {
+  "Symbols",
+  "FullSymbols",
+  "UseObjectResponseFile"
+}
 linkoptions {
     "-fsanitize=address",
     "-g -O0",
@@ -943,11 +948,6 @@ end
 configuration {}
     libdirs {}
     links {}
-    flags {
-        "Symbols",
-        "FullSymbols",
-        "UseObjectResponseFile"
-    }
 
     includedirs {
         ".",
@@ -1111,6 +1111,11 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     buildoptions_cpp {
       "-fsanitize=address"
     }
+    flags {
+      "Symbols",
+      "FullSymbols",
+      "UseObjectResponseFile"
+    }
     linkoptions {
         "-g -O0",
         "-gdwarf-5",
@@ -1172,11 +1177,6 @@ end
     configuration {}
         libdirs {}
         links {}
-        flags {
-            "Symbols",
-            "FullSymbols",
-            "UseObjectResponseFile"
-        }
         includedirs {
             ".",
             "utility",
@@ -1309,7 +1309,6 @@ ConwaySourceFiles = {"conway-api.cpp"}
 configuration {"linux or macosx or ios or gmake"}
     buildoptions_cpp {
         "-O3",
-        "-DNDEBUG",
         "-Wall",
         "-fexceptions",
         "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
@@ -1380,7 +1379,6 @@ linkoptions {
     "-O3",
     "--bind",
     "--dts",
-    "-03",
     "-flto",
     "-pthread",
     "-s PRECISE_F32=1",
@@ -1401,18 +1399,12 @@ linkoptions {
     "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
     "-lworkerfs.js",
     "-sNO_DISABLE_EXCEPTION_CATCHING",
-    "-sASSERTIONS",
 }
 end
 
 configuration {}
     libdirs {}
     links {}
-    flags {
-        "Symbols",
-        "FullSymbols",
-        "UseObjectResponseFile"
-    }
     includedirs {
         ".",
         "utility",
