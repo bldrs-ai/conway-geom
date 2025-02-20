@@ -69,7 +69,7 @@ function pThreadsAllowed(): boolean {
   return true
 }
 
-
+export let wasmType:string = ""
 let ConwayGeomWasm: any
 
 /**
@@ -81,18 +81,22 @@ async function loadWasmModule() {
     if (pThreadsAllowed()) {
       const module = await import('../Dist/ConwayGeomWasmWebMT.js')
       ConwayGeomWasm = module.default
+      wasmType = "WebMT"
     } else {
       const module = await import('../Dist/ConwayGeomWasmWeb.js')
       ConwayGeomWasm = module.default
+      wasmType = "Web"
     }
   } else {
     // Load Node.js-specific WebAssembly module
     if (pThreadsAllowed()) {
       const module = await import('../Dist/ConwayGeomWasmNodeMT.js')
       ConwayGeomWasm = module.default
+      wasmType = "NodeMT"
     } else {
       const module = await import('../Dist/ConwayGeomWasmNode.js')
       ConwayGeomWasm = module.default
+      wasmType = "Node"
     }
   }
 }
