@@ -871,11 +871,6 @@ configuration {"windows"}
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
-flags {
-  "Symbols",
-  "FullSymbols",
-  "UseObjectResponseFile"
-}
 linkoptions {
     "-fsanitize=address",
     "-g -O0",
@@ -892,7 +887,7 @@ linkoptions {
     "-s STACK_SIZE=10MB",
     "-s FORCE_FILESYSTEM=1",
     "-gsource-map",
-    "--source-map-base " .. _ARGS[2],
+    "--source-map-base \"" .. _ARGS[2] .. "\"",
     "-s NODERAWFS=1",
     --"-sASSERTIONS",
 --     "-s SAFE_HEAP=1",
@@ -948,6 +943,11 @@ end
 configuration {}
     libdirs {}
     links {}
+    flags {
+      "Symbols",
+      "FullSymbols",
+      "UseObjectResponseFile"
+    }
 
     includedirs {
         ".",
@@ -1111,11 +1111,6 @@ if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
     buildoptions_cpp {
       "-fsanitize=address"
     }
-    flags {
-      "Symbols",
-      "FullSymbols",
-      "UseObjectResponseFile"
-    }
     linkoptions {
         "-g -O0",
         "-gdwarf-5",
@@ -1177,6 +1172,11 @@ end
     configuration {}
         libdirs {}
         links {}
+        flags {
+          "Symbols",
+          "FullSymbols",
+          "UseObjectResponseFile"
+        }        
         includedirs {
             ".",
             "utility",
@@ -1404,7 +1404,12 @@ end
 
 configuration {}
     libdirs {}
-    links {}
+    links {}    
+    flags {
+      "Symbols",
+      "FullSymbols",
+      "UseObjectResponseFile"
+    }
     includedirs {
         ".",
         "utility",
