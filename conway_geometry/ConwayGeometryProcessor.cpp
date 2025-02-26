@@ -193,6 +193,12 @@ glm::dvec3 CalculateCentroid( const Geometry &geometry ) {
   return centroid( geometry.vertices, geometry.triangles );
 }
 
+namespace {
+
+  CSG csg;
+
+}
+
 Geometry ConwayGeometryProcessor::BoolSubtract(
     std::vector<Geometry> &firstGeoms,
     std::vector<Geometry> &secondGeoms,
@@ -203,8 +209,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
   if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
     
     Geometry resultMesh;
-
-    CSG csg;
 
     firstGeoms[ 0 ].Cleanup();
     secondGeoms[ 0 ].Cleanup( !isSubtractOperand );
@@ -298,8 +302,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
 
         Geometry newResult;
 
-        CSG csg;
-
         csg.run( CSG::Operation::SUBTRACTION, result, newSecond, newResult, 0 );
 
         result = std::move( newResult );
@@ -307,8 +309,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
       } else {
 
         Geometry newResult;
-
-        CSG csg;
         
         csg.run( CSG::Operation::SUBTRACTION, result, secondGeom, newResult, 0 );
 

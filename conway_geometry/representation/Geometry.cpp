@@ -390,30 +390,11 @@ void Geometry::AppendWithScalingTransform(
 
 void Geometry::Cleanup( bool forSubtract ) {
 
-  if ( !cleanedUp_ ) {
+  welder.weld( *this, exp2( TOLERANCE ), forSubtract );
 
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );
+  EnableConnectivity();
 
-    EnableConnectivity();
-
-    assert( triangles.size() == triangle_edges.size() );
-
-    if ( !halfSpace ) {
-      CSG cleaner;
-
-      cleaner.clean( *this );
-      EnableConnectivity();
-    }
-    
-    cleanedUp_ = true;
-
-  } else {
-
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
-
-    EnableConnectivity();
-
-  }
+  cleanedUp_ = true;
 }
 
 glm::dvec3 Geometry::Normalize() {

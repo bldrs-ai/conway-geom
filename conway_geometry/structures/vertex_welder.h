@@ -170,8 +170,9 @@ namespace conway::geometry {
         toWeld.MakeTriangle( i0, i1, i2 );
       }
 
-      if ( outset ) {
 
+
+      if ( outset ) {
         area_weighted_normals.clear();
         area_weighted_normals.resize( vertices.size() );
 
@@ -202,7 +203,7 @@ namespace conway::geometry {
 
           vertex += tolerance * vertexOffset;
 
-          vertex *= 2.0 / tolerance;
+          vertex /= 0.5 * tolerance;
           vertex = glm::round( vertex );
           vertex *= 0.5 * tolerance;
 
@@ -213,7 +214,7 @@ namespace conway::geometry {
 
           glm::dvec3& vertex = vertices[ vertexIndex ];
 
-          vertex *= 2.0 / tolerance;
+          vertex /= 0.5 * tolerance;
           vertex = glm::round( vertex );
           vertex *= 0.5 * tolerance;
         }

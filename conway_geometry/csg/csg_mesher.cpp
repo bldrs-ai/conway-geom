@@ -313,15 +313,6 @@ void conway::geometry::CSGMesher::process(
     outside_[ 0 ][ where ] = fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
   });
 
-//  std::transform( std::execution::par, aWhere, aEnd, outside_[ 0 ].begin(), [&]( const std::pair< Triangle, uint32_t >& aTriangle ) {
-
-//    glm::dvec3 aCentre = vertices.centroid3( aTriangle.first );
-
-//    double gwn = aBVH.gwn( a, aCentre, 3.0, aTriangle.second );
-
-//    return fabs( gwn ) < GWN_TOLERANCE ? uint8_t( 1 ) : uint8_t( 0 );
-// });
-
   auto aGWN = outside_[ 0 ].begin();
 
   if ( initialChartTriangles_[ 0 ].size() > 1 ) {
@@ -565,18 +556,8 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               line_segment_line_segment_intersection( e0v0, e0v1, e1v0, e1v1 );
 
-            //const auto [ existing, novelSuccess ] = 
-            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
-
-            //if ( novelSuccess ) {
-
               novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
               unifiedVertices_.allocate();
-         /*   }
-            else {
-
-              to->second = existing->second;
-            }*/
           }
 
           additionalVertices.push(
@@ -614,18 +595,8 @@ void conway::geometry::CSGMesher::process(
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
 
-            //const auto [ existing, novelSuccess ] =
-            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
-
-            //if ( novelSuccess ) {
-
-              novelVertices_.push_back( novelVertex ); 
-              unifiedVertices_.allocate();
-         /*   }
-            else {
-
-              to->second = existing->second;
-            }*/
+            novelVertices_.push_back( novelVertex ); 
+            unifiedVertices_.allocate();
           }
 
           additionalVertices.push( insertLocalVertex( to->second ) );
@@ -658,23 +629,12 @@ void conway::geometry::CSGMesher::process(
 
               std::swap( ev0, ev1 );
             }
-            
 
             glm::dvec3 novelVertex =
               plane_line_segment_intersection( t0, t1, t2, ev0, ev1 );
 
-            //const auto [ existing, novelSuccess ] =
-            //  duplicateVertexMap_.try_emplace( novelVertex, canidateIndex );
-
-            //if ( novelSuccess ) {
-
-              novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
-              unifiedVertices_.allocate();
-         /*   }
-            else {
-
-              to->second = existing->second;
-            }*/
+            novelVertices_.push_back( novelVertex ); // todo, add correct vertex generation.
+            unifiedVertices_.allocate();
           }
 
           additionalVertices.push(
@@ -1038,12 +998,64 @@ ThreadPool::instance().parallel_for( 0, initialChartTriangles_[ 1 ].size(), [&](
 
 void conway::geometry::CSGMesher::reset() {
 
+  // UnionFind< uint32_t > unifiedVertices_;
+  // UnionFind< uint32_t > unifiedPlanes_;
+
+  // std::vector< glm::dvec3 > novelVertices_;
+
+  // std::unordered_map< std::pair< uint32_t, uint32_t >, uint32_t > edgeEdgeVertices_; 
+  // std::unordered_map< std::pair< uint32_t, uint32_t >, uint32_t > faceEdgeVertices_[ 2 ];
+  // std::unordered_map< glm::dvec3, uint32_t > duplicateVertexMap_;
+
+  // std::vector< uint32_t > onEdgeVertices_[ 3 ];
+
+  // std::vector< uint8_t > outside_[ 2 ];
+
+  // std::vector< Triangle > outputTriangleStream_;
+  // std::vector< std::pair< Triangle, uint32_t > > initialChartTriangles_[ 2 ];
+  // std::vector< CDT::Edge > edges_;
+  // std::unordered_map< uint32_t, uint32_t > localVertexMap_;
+  // std::vector< uint32_t >  localVertices_;
+  // std::vector< uint8_t > localVertexEdgeFlags_;
+  // std::vector< CDT::V2d< double > > local2DVertices_;
+  // std::vector< bool > walked_;
+  // std::vector< uint32_t > triangleStack_;
+  // std::vector< bool > vertexUsed_;
+  // std::vector< uint32_t > globalVertexMap_;
+
   unifiedVertices_.reset();
+  unifiedPlanes_.reset();
   novelVertices_.clear();
+    
   edgeEdgeVertices_.clear();
+
   faceEdgeVertices_[ 0 ].clear();
   faceEdgeVertices_[ 1 ].clear();
+
+  onEdgeVertices_[ 0 ].clear();
+  onEdgeVertices_[ 1 ].clear();
+  onEdgeVertices_[ 2 ].clear();
+
+  outside_[ 0 ].clear();
+  outside_[ 1 ].clear();
+
+  outputTriangleStream_.clear();
+
+  initialChartTriangles_[ 0 ].clear();
+  initialChartTriangles_[ 1 ].clear();
+
+  edges_.clear();
+
+  localVertexMap_.clear();
+  localVertices_.clear();
+  localVertexEdgeFlags_.clear();
+  local2DVertices_.clear();
+  
+  walked_.clear();
+
+  triangleStack_.clear();
   vertexUsed_.clear();
+  globalVertexMap_.clear();
 }
 
 void conway::geometry::CSGMesher::walkAndInsertNonBoundary(
