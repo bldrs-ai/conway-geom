@@ -194,6 +194,14 @@ class ConwayGeometryProcessor {
     double scaling;
   };
 
+  struct ParamsAddFaceToGeometrySimple {
+    std::vector<IfcBound3D> boundsArray;
+    double scaling;
+  };
+
+  void AddFaceToGeometrySimple(ParamsAddFaceToGeometrySimple& parameters, 
+    Geometry& geometry);
+
   struct ParamsGetBrep {
     uint32_t boundsSize = 0;
     uint32_t indicesPerFace = 0;

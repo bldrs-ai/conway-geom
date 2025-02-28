@@ -184,6 +184,15 @@ void AddFaceToGeometry(
   }
 }
 
+void AddFaceToGeometrySimple(
+  conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometrySimple&
+      parameters,
+  conway::geometry::Geometry& geometry) {
+  if (processor) {
+    return processor->AddFaceToGeometrySimple(parameters, geometry);
+  }
+}
+
 std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
   size_t length) {
   const double* verticesArray = reinterpret_cast<double*>(verticesArray_);
@@ -1275,6 +1284,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("scaling", &conway::geometry::ConwayGeometryProcessor::
                             ParamsAddFaceToGeometry::scaling);
 
+  // conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometrySimple>(
+      "ParamsAddFaceToGeometrySimple")
+      .field("boundsArray", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsAddFaceToGeometrySimple::boundsArray)
+      .field("scaling", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsAddFaceToGeometrySimple::scaling);
+
   // ifc::IFCRECTANGLEPROFILEDEF
   // ifc::IFCROUNDEDRECTANGLEPROFILEDEF
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
@@ -1600,6 +1618,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
     &createSimpleBound3D, 
     emscripten::allow_raw_pointers());
   emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
+  emscripten::function("addFaceToGeometrySimple", &AddFaceToGeometrySimple);
   emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
   emscripten::function("getIdentityTransform", &getIdentityTransform);
   emscripten::function("multiplyNativeMatrices", &multiplyNativeMatrices);

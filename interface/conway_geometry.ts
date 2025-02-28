@@ -7,6 +7,7 @@ import { MaterialObject } from './material_object'
 import { ParamsGetLoop } from './parameters/params_get_loop'
 import { StdVector } from './std_vector'
 import { ParamsAddFaceToGeometry } from './parameters/params_add_face_to_geometry'
+import { ParamsAddFaceToGeometrySimple } from './parameters/params_add_face_to_geometry_simple'
 import {
   ParamsCartesianTransformationOperator3D,
 } from './parameters/params_cartesian_transform_operator_3D'
@@ -328,6 +329,14 @@ export class ConwayGeometry {
    */
   addFaceToGeometry(parameters: ParamsAddFaceToGeometry, geometry: GeometryObject): void {
     this.wasmModule.addFaceToGeometry(parameters, geometry)
+  }
+
+  /**
+   *
+   * @param parameters ParamsAddFaceToGeometrySimple parsed from data model
+   */
+  addFaceToGeometrySimple(parameters: ParamsAddFaceToGeometrySimple, geometry: GeometryObject): void {
+    this.wasmModule.addFaceToGeometrySimple(parameters, geometry)
   }
 
   /**
