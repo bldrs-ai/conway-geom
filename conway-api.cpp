@@ -184,6 +184,50 @@ void AddFaceToGeometry(
   }
 }
 
+std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
+  size_t length) {
+  const double* verticesArray = reinterpret_cast<double*>(verticesArray_);
+  std::vector<glm::dvec3> vec;
+  vec.resize(length / 3);
+  for (size_t i = 0; i < length / 3; ++i) {
+    glm::dvec3 vertex = glm::dvec3(verticesArray[i * 3], verticesArray[i * 3 + 1],
+    verticesArray[i * 3 + 2]);
+
+    vec[i] = vertex;
+  }
+
+  return vec;
+}
+
+conway::geometry::IfcBound3D createSimpleBound3D(uintptr_t verticesArray_, size_t length, bool orientation, uint32_t type) {
+  conway::geometry::IfcCurve curve;
+  curve.points = createVertexVector(verticesArray_, length);
+
+  conway::geometry::IfcBound3D bounds3D;
+  bounds3D.curve = curve;
+  bounds3D.orientation = orientation;
+
+  if (!orientation) {
+    std::reverse(bounds3D.curve.points.begin(), bounds3D.curve.points.end());
+  }
+
+  switch (type) {
+    case 0:
+      bounds3D.type = conway::geometry::IfcBoundType::OUTERBOUND;
+      break;
+    case 1:
+      bounds3D.type = conway::geometry::IfcBoundType::BOUND;
+      break;
+    default:
+      Logger::logWarning("Invalid value for IfcBoundType enum!\n");
+      // Handle the case when the uint32_t value doesn't correspond to any enum
+      // value. You might want to provide a default or throw an exception here.
+      break;
+  }
+
+  return bounds3D;
+}
+
 struct ParamsCreateBound3D {
   conway::geometry::IfcCurve curve;
   bool orientation;
@@ -515,23 +559,6 @@ glm::dmat3 GetIdentity2DMatrix() { return placementIdentity2D; }
 
 glm::dmat4 placementIdentity3D(1);
 glm::dmat4 GetIdentity3DMatrix() { return placementIdentity3D; }
-
-std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
-                                          size_t length) {
-  const double* verticesArray = reinterpret_cast<double*>(verticesArray_);
-  // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
-  // accessible here
-  std::vector<glm::dvec3> vec;
-  vec.resize(length / 3);
-  for (size_t i = 0; i < length / 3; ++i) {
-    glm::dvec3 vertex = glm::dvec3(verticesArray[i * 3], verticesArray[i * 3 + 1],
-                                 verticesArray[i * 3 + 2]);
-
-    vec[i] = vertex;
-  }
-
-  return vec;
-}
 
 std::vector<glm::dvec3> parseVertexVector( const conway::ParseBuffer& data ) {
   // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
@@ -1569,6 +1596,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getBSplineCurve", &GetBSplineCurve);
   emscripten::function("getLoop", &GetLoop);
   emscripten::function("createBound3D", &createBound3D);
+  emscripten::function("createSimpleBound3D", 
+    &createSimpleBound3D, 
+    emscripten::allow_raw_pointers());
   emscripten::function("addFaceToGeometry", &AddFaceToGeometry);
   emscripten::function("getRectangleProfileCurve", &GetRectangleProfileCurve);
   emscripten::function("getIdentityTransform", &getIdentityTransform);
