@@ -88,6 +88,17 @@ conway::geometry::IfcCurve GetIndexedPolyCurve(
   return curve;
 }
 
+conway::geometry::IfcCurve GetIndexedPolyCurve3D(
+  const conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve3D&
+      parameters) {
+if (processor) {
+  return processor->getIndexedPolyCurve3D(parameters);
+}
+
+conway::geometry::IfcCurve curve;
+return curve;
+}
+
 conway::geometry::IfcCurve GetCircleCurve(
     const conway::geometry::ConwayGeometryProcessor::ParamsGetCircleCurve&
         parameters) {
@@ -598,6 +609,19 @@ double parseDouble( const conway::ParseBuffer& data ) {
   return result;
 }
 
+std::vector<glm::dvec3> parsePoint3DVector(const conway::ParseBuffer& data) {
+  std::vector<glm::dvec3> vec;
+
+  if (auto err = conway::parse_vector(data.range(), vec).error; err != std::errc()) {
+      Logger::logError(
+          "Error encountered parsing glm::dvec3 vector data: %s",
+          std::error_condition(err).message().c_str()
+      );
+  }
+
+  return vec;
+}
+
 std::vector<glm::dvec2> parsePoint2DVector( const conway::ParseBuffer& data ) {
   // Assume 'vec' is a std::vector<glm::vec3> that's part of your class or
   // accessible here
@@ -1003,6 +1027,17 @@ EMSCRIPTEN_BINDINGS(my_module) {
                              ParamsGetIfcIndexedPolyCurve::segments)
       .field("points", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetIfcIndexedPolyCurve::points);
+
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve3D
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve3D>(
+      "ParamsGetIfcIndexedPolyCurve3D")
+      .field("dimensions", &conway::geometry::ConwayGeometryProcessor::
+                               ParamsGetIfcIndexedPolyCurve3D::dimensions)
+      .field("segments", &conway::geometry::ConwayGeometryProcessor::
+                             ParamsGetIfcIndexedPolyCurve3D::segments)
+      .field("points", &conway::geometry::ConwayGeometryProcessor::
+                           ParamsGetIfcIndexedPolyCurve3D::points);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
   emscripten::value_object<conway::geometry::ConwayGeometryProcessor::
@@ -1564,6 +1599,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("parsePoint2DVector", &parsePoint2DVector,
                        emscripten::allow_raw_pointers());
+  emscripten::function("parsePoint3DVector", &parsePoint3DVector,
+                        emscripten::allow_raw_pointers());
   emscripten::function("parsePoint3DTo2DVector", &parsePoint3Dto2DVector,
                        emscripten::allow_raw_pointers());                       
   emscripten::function("parseUint32Vector", &parseUInt32Vector,
@@ -1574,6 +1611,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        &GetTriangulatedFaceSetGeometry,
                        emscripten::allow_raw_pointers());
   emscripten::function("getIndexedPolyCurve", &GetIndexedPolyCurve);
+  emscripten::function("getIndexedPolyCurve3D", &GetIndexedPolyCurve3D);
   emscripten::function("getCircleCurve", &GetCircleCurve);
   emscripten::function("initializeGeometryProcessor",
                        &InitializeGeometryProcessor);
