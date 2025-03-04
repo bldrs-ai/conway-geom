@@ -638,7 +638,6 @@ project "webifc_native"
     if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         configuration {"gmake"}
         linkoptions {
-            "-fsanitize=address",
             "-g -O0",
             "-gdwarf-5",
             "-gpubnames",
@@ -655,8 +654,6 @@ project "webifc_native"
             "-gsource-map",
             "--source-map-base " .. _ARGS[2],
             "-s NODERAWFS=1",
-            --"-sASSERTIONS",
-       --     "-s SAFE_HEAP=1",
             "-s EXPORT_NAME=ConwayGeomWasm",
             "-s ABORTING_MALLOC=0",
             --"-s USE_ES6_IMPORT_META=0",
@@ -872,7 +869,6 @@ configuration {"windows"}
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
 linkoptions {
-    "-fsanitize=address",
     "-g -O0",
     "-gdwarf-5",
     "-gpubnames",
@@ -1335,9 +1331,6 @@ configuration {"windows"}
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
-buildoptions_cpp {
-  "-fsanitize=address"
-}
 linkoptions {
     "-g -O0",
     "-gdwarf-5",
@@ -1357,8 +1350,8 @@ linkoptions {
     "-s FORCE_FILESYSTEM=1",
     "-gsource-map",
     "--source-map-base " .. _ARGS[2],
-    "-sASSERTIONS",
-    "-s SAFE_HEAP=1",
+    --"-sASSERTIONS",
+    --"-s SAFE_HEAP=1",
     "-s EXPORT_NAME=ConwayGeomWasm",
     "-s USE_ES6_IMPORT_META=0",
     "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",

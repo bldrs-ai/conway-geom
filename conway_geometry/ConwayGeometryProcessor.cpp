@@ -502,6 +502,14 @@ Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   return geometry;
 }*/
 
+
+void ConwayGeometryProcessor::AddFaceToGeometrySimple( 
+  ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
+  if (parameters.boundsArray.size() > 0) {
+    TriangulateBounds(geometry, parameters.boundsArray);
+  }
+}
+
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
   if (!parameters.advancedBrep) {
