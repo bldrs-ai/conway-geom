@@ -27,7 +27,7 @@ import { ParamsGetZShapeCurve } from './parameters/params_get_z_shape_curve'
 import { ParamsGetIfcCircle } from './parameters/params_get_ifc_circle'
 import { ParamsGetIfcLine } from './parameters/params_get_ifc_line'
 import { ParamsGetBSplineCurve } from './parameters/params_get_bspline_curve'
-import { ParamsGetIfcIndexedPolyCurve } from './parameters/params_get_ifc_indexed_poly_curve'
+import { ParamsGetIfcIndexedPolyCurve, ParamsGetIfcIndexedPolyCurve3D } from './parameters/params_get_ifc_indexed_poly_curve'
 import { ParamsGetCircleCurve } from './parameters/params_get_circle_curve'
 import { ParamsGetEllipseCurve } from './parameters/params_get_ellipse_curve'
 import { ParamsCreateNativeIfcProfile } from './parameters/params_create_native_ifc_profile'
@@ -490,6 +490,16 @@ export class ConwayGeometry {
     const result = this.wasmModule.getIndexedPolyCurve(parameters)
     return result
   }
+
+  /**
+   *
+   * @param parameters - ParamsGetIfcIndexedPolyCurve parsed from data model
+   * @return {CurveObject}
+   */
+    getIndexedPolyCurve3D(parameters: ParamsGetIfcIndexedPolyCurve3D): CurveObject {
+      const result = this.wasmModule.getIndexedPolyCurve3D(parameters)
+      return result
+    }
 
   /**
    *

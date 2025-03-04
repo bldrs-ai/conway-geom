@@ -544,8 +544,17 @@ class ConwayGeometryProcessor {
     std::vector<glm::dvec2> points;
   };
 
+  struct ParamsGetIfcIndexedPolyCurve3D {
+    uint32_t dimensions = 2;
+    std::vector<Segment> segments;
+    std::vector<glm::dvec3> points;
+  };
+
   conway::geometry::IfcCurve getIndexedPolyCurve(
       const ParamsGetIfcIndexedPolyCurve& parameters);
+
+  conway::geometry::IfcCurve getIndexedPolyCurve3D(
+    const ParamsGetIfcIndexedPolyCurve3D& parameters);
 
   // case ifc::CIRCLEPROFILEDEF
   struct ParamsGetCircleCurve {

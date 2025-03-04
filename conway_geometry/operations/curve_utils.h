@@ -22,14 +22,13 @@ inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c) {
 }
 
 inline IfcCurve Build3DArc3Pt(const glm::dvec3 &p1, const glm::dvec3 &p2,
-                              const glm::dvec3 &p3,
-                              double EPS_MINSIZE) {
+                              const glm::dvec3 &p3) {
   // Calculate the center of the circle
   glm::dvec3 v1 = p2 - p1;
   glm::dvec3 v2 = p3 - p1;
   glm::dvec3 center;
 
-  if (glm::length(glm::cross(v1, v2)) < EPS_MINSIZE) {
+  if (glm::length(glm::cross(v1, v2)) < /*EPS_MINSIZE*/1.0E-12) {
     // Points are collinear, so there's no unique circle.
     // You can handle this case differently or return an error.
     // For simplicity, let's return an empty curve.
