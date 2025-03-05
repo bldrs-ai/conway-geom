@@ -502,6 +502,14 @@ Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
   return geometry;
 }*/
 
+
+void ConwayGeometryProcessor::AddFaceToGeometrySimple( 
+  ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
+  if (parameters.boundsArray.size() > 0) {
+    TriangulateBounds(geometry, parameters.boundsArray);
+  }
+}
+
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
   if (!parameters.advancedBrep) {
@@ -1785,11 +1793,46 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve(
         curve.Add2d(pt);
       }
     }
-  } else {
-    Logger::logWarning("Parsing ifcindexedpolycurve in 3D is not possible\n");
   }
 
   return curve;
+}
+
+conway::geometry::IfcCurve ConwayGeometryProcessor::getIndexedPolyCurve3D(
+  const ParamsGetIfcIndexedPolyCurve3D &parameters) {
+IfcCurve curve;
+
+if (parameters.dimensions == 3) {
+  if (parameters.segments.size() > 0) {
+    for (auto &sg : parameters.segments) {
+      if (!sg.isArcType) {
+        auto pts = parameters.points;
+        for (auto &pt : sg.indices) {
+          curve.Add3d(pts[pt - 1]);
+        }
+      }
+      if (sg.isArcType) {
+
+        auto pts = parameters.points;
+
+        IfcCurve arc =
+            Build3DArc3Pt(pts[sg.indices[0] - 1], pts[sg.indices[1] - 1],
+                        pts[sg.indices[2] - 1]);
+
+        for (auto &pt : arc.points) {
+          curve.Add3d(pt);
+        }
+      }
+    }
+  } else {
+    auto pts = parameters.points;
+    for (auto &pt : pts) {
+      curve.Add3d(pt);
+    }
+  }
+}
+
+return curve;
 }
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getEllipseCurve(
@@ -2134,7 +2177,7 @@ double lengthDegrees = 0;
 
 if (parameters.paramsGetIfcTrimmedCurve.senseAgreement)
 {
-  if (startDegrees > endDegrees)
+  if (startDegrees >= endDegrees)
   {
     endDegrees += 360;
   }
@@ -2142,7 +2185,7 @@ if (parameters.paramsGetIfcTrimmedCurve.senseAgreement)
 }
 else
 {
-  if (startDegrees < endDegrees)
+  if (startDegrees <= endDegrees)
   {
     startDegrees += 360;
   }
