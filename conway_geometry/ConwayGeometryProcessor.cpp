@@ -2177,7 +2177,7 @@ double lengthDegrees = 0;
 
 if (parameters.paramsGetIfcTrimmedCurve.senseAgreement)
 {
-  if (startDegrees >= endDegrees)
+  if (startDegrees > endDegrees)
   {
     endDegrees += 360;
   }
@@ -2185,7 +2185,7 @@ if (parameters.paramsGetIfcTrimmedCurve.senseAgreement)
 }
 else
 {
-  if (startDegrees <= endDegrees)
+  if (startDegrees < endDegrees)
   {
     startDegrees += 360;
   }
