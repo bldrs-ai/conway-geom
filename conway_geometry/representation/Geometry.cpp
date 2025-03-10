@@ -189,11 +189,11 @@ void Geometry::Reify() {
         continue;
       }
 
-      glm::fvec3 vertex( vertices[ vertexIndex ] );
+      const glm::dvec3& vertex = vertices[ vertexIndex ];
 
-      floatVertexData_.push_back( vertex.x );
-      floatVertexData_.push_back( vertex.y );
-      floatVertexData_.push_back( vertex.z );
+      floatVertexData_.push_back( static_cast< float >( vertex.x ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.y ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.z ) );
     
       const glm::dvec3& normal     = faceNormals[ triangleIndex ];
       double            doubleArea = glm::length( normal );
@@ -390,30 +390,31 @@ void Geometry::AppendWithScalingTransform(
 
 void Geometry::Cleanup( bool forSubtract ) {
 
-  if ( !cleanedUp_ ) {
 
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );
+  welder.weld( *this, exp2( TOLERANCE ), forSubtract );
 
-    EnableConnectivity();
+  EnableConnectivity();
 
-    assert( triangles.size() == triangle_edges.size() );
+  // if ( !cleanedUp_ ) {
 
-    if ( !halfSpace ) {
-      CSG cleaner;
+  //   assert( triangles.size() == triangle_edges.size() );
 
-      cleaner.clean( *this );
-      EnableConnectivity();
-    }
+  //   if ( !halfSpace ) {
+  //     CSG cleaner;
+
+  //     cleaner.clean( *this );
+  //     EnableConnectivity();
+  //   }
     
-    cleanedUp_ = true;
+     cleanedUp_ = true;
+  // }
+  // } else {
 
-  } else {
+  //   // welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
 
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
+  //   // EnableConnectivity();
 
-    EnableConnectivity();
-
-  }
+  // }
 }
 
 glm::dvec3 Geometry::Normalize() {

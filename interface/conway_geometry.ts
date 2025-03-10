@@ -73,32 +73,42 @@ function pThreadsAllowed(): boolean {
 export let wasmType:string = ""
 let ConwayGeomWasm: any
 
+let modulePrefix = '../Dist/'
+
+/**
+ * Sets a non default prefix for the wasm module.
+ *
+ * @param to The new prefix.
+ */
+export function setModulePrefix( to: string ) {
+
+  modulePrefix = to
+}
+
 /**
  * Load the WebAssembly module based on the environment
  */
 async function loadWasmModule() {
+
   if (process.env.PLATFORM === 'web') {
     // Load browser-specific WebAssembly module
     if (pThreadsAllowed()) {
-      const module = await import('../Dist/ConwayGeomWasmWebMT.js')
+      const module = await import(`${modulePrefix}ConwayGeomWasmWebMT.js`)
       ConwayGeomWasm = module.default
       wasmType = "WebMT"
     } else {
-      const module = await import('../Dist/ConwayGeomWasmWeb.js')
+      const module = await import(`${modulePrefix}ConwayGeomWasmWeb.js`)
       ConwayGeomWasm = module.default
       wasmType = "Web"
     }
+  } else if (pThreadsAllowed()) { // Load Node.js-specific WebAssembly module
+    const module = await import(`${modulePrefix}ConwayGeomWasmNodeMT.js`)
+    ConwayGeomWasm = module.default
+    wasmType = "NodeMT"
   } else {
-    // Load Node.js-specific WebAssembly module
-    if (pThreadsAllowed()) {
-      const module = await import('../Dist/ConwayGeomWasmNodeMT.js')
-      ConwayGeomWasm = module.default
-      wasmType = "NodeMT"
-    } else {
-      const module = await import('../Dist/ConwayGeomWasmNode.js')
-      ConwayGeomWasm = module.default
-      wasmType = "Node"
-    }
+    const module = await import(`${modulePrefix}ConwayGeomWasmNode.js`)
+    ConwayGeomWasm = module.default
+    wasmType = "Node"
   }
 }
 
@@ -123,7 +133,7 @@ export class ConwayGeometry {
    *
    * @param wasmModule_ - Pass loaded wasm module to this function if it's already loaded
    */
-  constructor(wasmModule_?: any) {
+  constructor(wasmModule_?: ConwayGeometryWasm) {
     if (wasmModule_ !== void 0) {
       this.wasmModule = wasmModule_
     }
@@ -177,6 +187,38 @@ export class ConwayGeometry {
       (new (this.wasmModule.ParseBuffer)()) as ParseBuffer
 
     return nativeParseBuffer
+  }
+
+  /**
+   * Get a slice of 32bit float elements from the wasm heap 
+   *
+   * @param pointer The pointer (in bytes, 4 byte aligned)
+   * @param size The number of elements (in floats)
+   * @return {Float32Array} A view of the wasm heap representing the slice.
+   */
+  floatHeapSlice( pointer: number, size: number ): Float32Array {
+
+    // eslint-disable-next-line no-magic-numbers
+    const alignedAddress = pointer >>> 2
+    const alignedEnd     = alignedAddress + size
+
+    return (this.wasmModule!.HEAPF32 as Float32Array).subarray( alignedAddress, alignedEnd )
+  }
+
+  /**
+   * Get a slice of 32bit unsigned int elements from the wasm heap
+   *
+   * @param pointer The pointer (in bytes, 4 byte aligned)
+   * @param size The number of elements (in floats)
+   * @return {Uint32Array} A view of the wasm heap representing the slice.
+   */
+  uint32HeapSlice( pointer: number, size: number ): Uint32Array {
+
+    // eslint-disable-next-line no-magic-numbers
+    const alignedAddress = pointer >>> 2
+    const alignedEnd     = alignedAddress + size
+
+    return (this.wasmModule!.HEAPU32 as Uint32Array).subarray( alignedAddress, alignedEnd )
   }
 
   /**
@@ -273,8 +315,8 @@ export class ConwayGeometry {
    */
   async initialize(fileHandler?: FileHandlerFunction): Promise<boolean> {
     // Wait for the WebAssembly module to load if it's not already set
-    if (!ConwayGeomWasm) {
-      await loadWasmModule();
+    if (ConwayGeomWasm === void 0 ) {
+      await loadWasmModule()
     }
 
     if (this.wasmModule === void 0) {
@@ -285,7 +327,7 @@ export class ConwayGeometry {
           locateFile: (filename: string, prefix: string) => {
             if (filename.endsWith('.wasm')) {
               return (pThreadsAllowed())
-                ? '/static/js/ConwayGeomWasmWebMT.wasm' 
+                ? '/static/js/ConwayGeomWasmWebMT.wasm'
                 : '/static/js/ConwayGeomWasmWeb.wasm'
             } else if (filename.endsWith('ConwayGeomWasmWebMT.js')) {
               return '/static/js/ConwayGeomWasmWebMT.js'

@@ -8,6 +8,7 @@ import { Vector3 } from './vector3'
 export interface GeometryObject extends Deletable {
   GetVertexData: () => any
   getPoint(parameter: number): Vector3
+  getVertexCount(): number
 
   normalize(): Vector3
   GetVertexDataSize: () => number
