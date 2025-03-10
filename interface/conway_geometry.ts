@@ -7,6 +7,7 @@ import { MaterialObject } from './material_object'
 import { ParamsGetLoop } from './parameters/params_get_loop'
 import { StdVector } from './std_vector'
 import { ParamsAddFaceToGeometry } from './parameters/params_add_face_to_geometry'
+import { ParamsAddFaceToGeometrySimple } from './parameters/params_add_face_to_geometry_simple'
 import {
   ParamsCartesianTransformationOperator3D,
 } from './parameters/params_cartesian_transform_operator_3D'
@@ -26,7 +27,7 @@ import { ParamsGetZShapeCurve } from './parameters/params_get_z_shape_curve'
 import { ParamsGetIfcCircle } from './parameters/params_get_ifc_circle'
 import { ParamsGetIfcLine } from './parameters/params_get_ifc_line'
 import { ParamsGetBSplineCurve } from './parameters/params_get_bspline_curve'
-import { ParamsGetIfcIndexedPolyCurve } from './parameters/params_get_ifc_indexed_poly_curve'
+import { ParamsGetIfcIndexedPolyCurve, ParamsGetIfcIndexedPolyCurve3D } from './parameters/params_get_ifc_indexed_poly_curve'
 import { ParamsGetCircleCurve } from './parameters/params_get_circle_curve'
 import { ParamsGetEllipseCurve } from './parameters/params_get_ellipse_curve'
 import { ParamsCreateNativeIfcProfile } from './parameters/params_create_native_ifc_profile'
@@ -69,7 +70,7 @@ function pThreadsAllowed(): boolean {
   return true
 }
 
-
+export let wasmType:string = ""
 let ConwayGeomWasm: any
 
 /**
@@ -81,18 +82,22 @@ async function loadWasmModule() {
     if (pThreadsAllowed()) {
       const module = await import('../Dist/ConwayGeomWasmWebMT.js')
       ConwayGeomWasm = module.default
+      wasmType = "WebMT"
     } else {
       const module = await import('../Dist/ConwayGeomWasmWeb.js')
       ConwayGeomWasm = module.default
+      wasmType = "Web"
     }
   } else {
     // Load Node.js-specific WebAssembly module
     if (pThreadsAllowed()) {
       const module = await import('../Dist/ConwayGeomWasmNodeMT.js')
       ConwayGeomWasm = module.default
+      wasmType = "NodeMT"
     } else {
       const module = await import('../Dist/ConwayGeomWasmNode.js')
       ConwayGeomWasm = module.default
+      wasmType = "Node"
     }
   }
 }
@@ -328,6 +333,14 @@ export class ConwayGeometry {
 
   /**
    *
+   * @param parameters ParamsAddFaceToGeometrySimple parsed from data model
+   */
+  addFaceToGeometrySimple(parameters: ParamsAddFaceToGeometrySimple, geometry: GeometryObject): void {
+    this.wasmModule.addFaceToGeometrySimple(parameters, geometry)
+  }
+
+  /**
+   *
    * @param parameters - ParamsCartesianTransformationOperator3D parsed from data model
    * @return {GeometryObject} - Native geometry object
    */
@@ -477,6 +490,16 @@ export class ConwayGeometry {
     const result = this.wasmModule.getIndexedPolyCurve(parameters)
     return result
   }
+
+  /**
+   *
+   * @param parameters - ParamsGetIfcIndexedPolyCurve parsed from data model
+   * @return {CurveObject}
+   */
+    getIndexedPolyCurve3D(parameters: ParamsGetIfcIndexedPolyCurve3D): CurveObject {
+      const result = this.wasmModule.getIndexedPolyCurve3D(parameters)
+      return result
+    }
 
   /**
    *

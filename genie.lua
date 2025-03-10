@@ -638,7 +638,6 @@ project "webifc_native"
     if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
         configuration {"gmake"}
         linkoptions {
-            "-fsanitize=address",
             "-g -O0",
             "-gdwarf-5",
             "-gpubnames",
@@ -655,8 +654,6 @@ project "webifc_native"
             "-gsource-map",
             "--source-map-base " .. _ARGS[2],
             "-s NODERAWFS=1",
-            --"-sASSERTIONS",
-       --     "-s SAFE_HEAP=1",
             "-s EXPORT_NAME=ConwayGeomWasm",
             "-s ABORTING_MALLOC=0",
             --"-s USE_ES6_IMPORT_META=0",
@@ -872,7 +869,6 @@ configuration {"windows"}
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
 linkoptions {
-    "-fsanitize=address",
     "-g -O0",
     "-gdwarf-5",
     "-gpubnames",
@@ -887,7 +883,7 @@ linkoptions {
     "-s STACK_SIZE=10MB",
     "-s FORCE_FILESYSTEM=1",
     "-gsource-map",
-    "--source-map-base " .. _ARGS[2],
+    "--source-map-base \"" .. _ARGS[2] .. "\"",
     "-s NODERAWFS=1",
     --"-sASSERTIONS",
 --     "-s SAFE_HEAP=1",
@@ -944,9 +940,9 @@ configuration {}
     libdirs {}
     links {}
     flags {
-        "Symbols",
-        "FullSymbols",
-        "UseObjectResponseFile"
+      "Symbols",
+      "FullSymbols",
+      "UseObjectResponseFile"
     }
 
     includedirs {
@@ -1173,10 +1169,10 @@ end
         libdirs {}
         links {}
         flags {
-            "Symbols",
-            "FullSymbols",
-            "UseObjectResponseFile"
-        }
+          "Symbols",
+          "FullSymbols",
+          "UseObjectResponseFile"
+        }        
         includedirs {
             ".",
             "utility",
@@ -1309,7 +1305,6 @@ ConwaySourceFiles = {"conway-api.cpp"}
 configuration {"linux or macosx or ios or gmake"}
     buildoptions_cpp {
         "-O3",
-        "-DNDEBUG",
         "-Wall",
         "-fexceptions",
         "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP",
@@ -1336,9 +1331,6 @@ configuration {"windows"}
 
 if _ARGS[1] == "profile" and _ARGS[2] ~= nil then
 configuration {"gmake"}
-buildoptions_cpp {
-  "-fsanitize=address"
-}
 linkoptions {
     "-g -O0",
     "-gdwarf-5",
@@ -1358,8 +1350,8 @@ linkoptions {
     "-s FORCE_FILESYSTEM=1",
     "-gsource-map",
     "--source-map-base " .. _ARGS[2],
-    "-sASSERTIONS",
-    "-s SAFE_HEAP=1",
+    --"-sASSERTIONS",
+    --"-s SAFE_HEAP=1",
     "-s EXPORT_NAME=ConwayGeomWasm",
     "-s USE_ES6_IMPORT_META=0",
     "-s EXPORTED_RUNTIME_METHODS=[\"FS, WORKERFS\"]",
@@ -1371,11 +1363,15 @@ linkoptions {
 }
 else 
 configuration {"gmake"}
+buildoptions_cpp {
+  "-O3",
+  "-DNDEBUG",
+  "-pthread"
+}
 linkoptions {
     "-O3",
     "--bind",
     "--dts",
-    "-03",
     "-flto",
     "-pthread",
     "-s PRECISE_F32=1",
@@ -1396,18 +1392,16 @@ linkoptions {
     "-s EXPORTED_FUNCTIONS=[\"_malloc, _free\"]",
     "-lworkerfs.js",
     "-sNO_DISABLE_EXCEPTION_CATCHING",
-    "-sASSERTIONS",
-    "-s SAFE_HEAP=1",
 }
 end
 
 configuration {}
     libdirs {}
-    links {}
+    links {}    
     flags {
-        "Symbols",
-        "FullSymbols",
-        "UseObjectResponseFile"
+      "Symbols",
+      "FullSymbols",
+      "UseObjectResponseFile"
     }
     includedirs {
         ".",
