@@ -31,11 +31,6 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
-struct ScaleAndBias {
-
-  glm::dvec3 bias;
-  double scale;
-};
 
 struct Geometry {
 
@@ -302,8 +297,6 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
 
     triangles[ index ] = triangles.back();
   }
-
-  bvh.reset();
 
   triangles.pop_back();
 
