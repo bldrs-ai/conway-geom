@@ -86,12 +86,17 @@ void Geometry::EnableConnectivity() {
   }
 }
 
-void Geometry::Reify() {
+void Geometry::Reify( const glm::dvec3& offset ) {
 
-  if ( isReified_ ) {
+  if ( isReified_ && offset == previousReificationOffset_ ) {
 
     return;
   }
+
+  previousReificationOffset_ = offset;
+
+  floatVertexData_.clear();
+  indexData_.clear();
 
   if ( !cleanedUp_ ) {
 
@@ -191,10 +196,10 @@ void Geometry::Reify() {
 
       const glm::dvec3& vertex = vertices[ vertexIndex ];
 
-      floatVertexData_.push_back( static_cast< float >( vertex.x ) );
-      floatVertexData_.push_back( static_cast< float >( vertex.y ) );
-      floatVertexData_.push_back( static_cast< float >( vertex.z ) );
-    
+      floatVertexData_.push_back( static_cast< float >( vertex.x - offset.x ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.y - offset.y ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.z - offset.z ) );
+
       const glm::dvec3& normal     = faceNormals[ triangleIndex ];
       double            doubleArea = glm::length( normal );
 
@@ -260,8 +265,8 @@ void Geometry::Reify() {
 }
 
 uint32_t Geometry::GetVertexData() {
-  
-  Reify();
+
+  Reify( previousReificationOffset_ );
 
   if ( floatVertexData_.empty() ) {
     return 0;
@@ -277,7 +282,7 @@ std::string Geometry::GeometryToObj(
 
   if ( !isReified ) {
 
-    Reify();
+    Reify( previousReificationOffset_ );
   }
 
   std::string obj;
@@ -567,7 +572,7 @@ void Geometry::ExtractVerticesAndTriangles( const ParseBuffer& verticesBuffer, c
 
 uint32_t Geometry::GetVertexDataSize() {
   
-  Reify();
+  Reify( previousReificationOffset_ );
 
   return (uint32_t)( floatVertexData_.size() );
 }
@@ -589,9 +594,9 @@ box3 Geometry::GetAABB() const {
   return result;
 }
 
-uint32_t Geometry::GetIndexData() { Reify(); return (uint32_t)(size_t)indexData_.data(); }
+uint32_t Geometry::GetIndexData() { Reify( previousReificationOffset_ ); return (uint32_t)(size_t)indexData_.data(); }
 
-uint32_t Geometry::GetIndexDataSize() { Reify(); return static_cast< uint32_t >( indexData_.size() ); }
+uint32_t Geometry::GetIndexDataSize() { Reify( previousReificationOffset_ ); return static_cast< uint32_t >( indexData_.size() ); }
 
 
 void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin ) {

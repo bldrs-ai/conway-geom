@@ -170,7 +170,7 @@ struct Geometry {
 
   uint32_t MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex );
 
-  void Reify();
+  void Reify( const glm::dvec3& offset = glm::dvec3( 0 ) );
 
   void ClearReification() {
 
@@ -190,6 +190,8 @@ struct Geometry {
   bool isReified_       = false;
   bool cleanedUp_       = false;
   bool normalized_      = false;
+
+  glm::dvec3 previousReificationOffset_ = glm::dvec3( 0 );
 
   std::vector< float >    floatVertexData_;
   std::vector< uint32_t > indexData_;
