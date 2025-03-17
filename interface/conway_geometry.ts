@@ -57,14 +57,14 @@ function pThreadsAllowed(): boolean {
 
   // Pthreads (WASM threads) require SharedArrayBuffer
   if (typeof SharedArrayBuffer === 'undefined') {
-    return false;
+    return false
   }
 
   // If we’re in a browser, check if the context is cross-origin isolated.
   // (SharedArrayBuffer may exist but will only work with threads if 
   // crossOriginIsolated is true.)
-  if (process.env.PLATFORM === 'web' && typeof window !== 'undefined') {
-    return window.crossOriginIsolated === true;
+  if ( ( process.env.PLATFORM === 'web' || window?.document !== void 0 ) && typeof window !== 'undefined') {
+    return window.crossOriginIsolated === true
   }
 
   return true
@@ -85,21 +85,41 @@ export function setModulePrefix( to: string ) {
   modulePrefix = to
 }
 
+const dynamicImport = new Function( 'module', 'return import(module)' )
+
 /**
  * Load the WebAssembly module based on the environment
  */
 async function loadWasmModule() {
 
-  if (process.env.PLATFORM === 'web') {
-    // Load browser-specific WebAssembly module
-    if (pThreadsAllowed()) {
-      const module = await import(`${modulePrefix}ConwayGeomWasmWebMT.js`)
-      ConwayGeomWasm = module.default
-      wasmType = "WebMT"
+  if (process.env.PLATFORM === 'web' || ( typeof window !== 'undefined' && window?.document !== void 0 ) ) {
+
+    if ( modulePrefix === '../Dist/' ) {
+      // Load browser-specific WebAssembly module
+      if (pThreadsAllowed()) {
+        const module = await import( '../Dist/ConwayGeomWasmWebMT.js')
+  //     const module = await dynamicImport(`${modulePrefix}ConwayGeomWasmWebMT.js`)
+        ConwayGeomWasm = module.default
+        wasmType = "WebMT"
+      } else {
+        const module = await import( '../Dist/ConwayGeomWasmWeb.js')
+        //    const module = await dynamicImport(`${modulePrefix}ConwayGeomWasmWeb.js`)
+        ConwayGeomWasm = module.default
+        wasmType = "Web"
+      }
     } else {
-      const module = await import(`${modulePrefix}ConwayGeomWasmWeb.js`)
-      ConwayGeomWasm = module.default
-      wasmType = "Web"
+
+      // Actually dynamic case required for different loading routes, such as the
+      // conway viewer demo.
+      if (pThreadsAllowed()) {
+       const module = await dynamicImport(`${modulePrefix}ConwayGeomWasmWebMT.js`)
+        ConwayGeomWasm = module.default
+        wasmType = "WebMT"
+      } else {
+        const module = await dynamicImport(`${modulePrefix}ConwayGeomWasmWeb.js`)
+        ConwayGeomWasm = module.default
+        wasmType = "Web"
+      }
     }
   } else if (pThreadsAllowed()) { // Load Node.js-specific WebAssembly module
     const module = await import(`${modulePrefix}ConwayGeomWasmNodeMT.js`)
