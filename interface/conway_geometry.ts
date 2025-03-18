@@ -49,6 +49,11 @@ import { ParamsLocalPlacement } from './parameters/params_local_placement'
 import { ParamsGetSweptDiskSolid } from './parameters/params_get_swept_disk_solid'
 import { ParseBuffer } from './parse_buffer'
 
+/**
+ * Check if pthreads are allowed in this runtime environment.
+ *
+ * @return {boolean} - true if pthreads are allowed
+ */
 function pThreadsAllowed(): boolean {
 
   if ( typeof process !== 'undefined' && process?.env?.FORCE_SINGLE_THREAD === 'true') {
@@ -347,6 +352,11 @@ export class ConwayGeometry {
   }
 
   /**
+   * Initialize the conway geometry wasm submodule.
+   *
+   * @param fileHandler - File handler function (optional),
+   * used to load the wasm module in non-web environments
+   * that need custom loading.
    *
    * @return {Promise<boolean>} - initialization status
    */
