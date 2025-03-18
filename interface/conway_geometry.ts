@@ -51,7 +51,7 @@ import { ParseBuffer } from './parse_buffer'
 
 function pThreadsAllowed(): boolean {
 
-  if (process.env.FORCE_SINGLE_THREAD === 'true') {
+  if ( typeof process !== 'undefined' && process?.env?.FORCE_SINGLE_THREAD === 'true') {
     return false
   }
 
@@ -63,7 +63,8 @@ function pThreadsAllowed(): boolean {
   // If we’re in a browser, check if the context is cross-origin isolated.
   // (SharedArrayBuffer may exist but will only work with threads if 
   // crossOriginIsolated is true.)
-  if ( ( process.env.PLATFORM === 'web' || window?.document !== void 0 ) && typeof window !== 'undefined') {
+  if ( isWebPlatform() ) {
+
     return window.crossOriginIsolated === true
   }
 
@@ -85,6 +86,20 @@ export function setModulePrefix( to: string ) {
   modulePrefix = to
 }
 
+/**
+ * Is this web platform?
+ *
+ * @return {boolean} - true if the platform is web
+ */
+function isWebPlatform(): boolean {
+  
+  return ( typeof process !== 'undefined' &&
+    process.env !== void 0 &&
+    process.env.PLATFORM !== void 0 &&
+    process.env.PLATFORM === 'web' ) || 
+    ( typeof window !== 'undefined' && typeof window?.document !== 'undefined' )
+}
+
 const dynamicImport = new Function( 'module', 'return import(module)' )
 
 /**
@@ -92,7 +107,7 @@ const dynamicImport = new Function( 'module', 'return import(module)' )
  */
 async function loadWasmModule() {
 
-  if (process.env.PLATFORM === 'web' || ( typeof window !== 'undefined' && window?.document !== void 0 ) ) {
+  if ( isWebPlatform() ) {
 
     if ( modulePrefix === '../Dist/' ) {
       // Load browser-specific WebAssembly module
@@ -122,10 +137,12 @@ async function loadWasmModule() {
       }
     }
   } else if (pThreadsAllowed()) { // Load Node.js-specific WebAssembly module
+
     const module = await import(`${modulePrefix}ConwayGeomWasmNodeMT.js`)
     ConwayGeomWasm = module.default
     wasmType = "NodeMT"
   } else {
+
     const module = await import(`${modulePrefix}ConwayGeomWasmNode.js`)
     ConwayGeomWasm = module.default
     wasmType = "Node"
@@ -341,7 +358,8 @@ export class ConwayGeometry {
 
     if (this.wasmModule === void 0) {
       // eslint-disable-next-line new-cap
-      if (process.env.PLATFORM === 'web') {
+      if ( isWebPlatform() ) {
+        
         const config: any = {
           noInitialRun: true,
           locateFile: (filename: string, prefix: string) => {
