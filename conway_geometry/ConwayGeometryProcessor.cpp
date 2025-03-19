@@ -193,6 +193,12 @@ glm::dvec3 CalculateCentroid( const Geometry &geometry ) {
   return centroid( geometry.vertices, geometry.triangles );
 }
 
+namespace {
+
+  CSG csg;
+
+}
+
 Geometry ConwayGeometryProcessor::BoolSubtract(
     std::vector<Geometry> &firstGeoms,
     std::vector<Geometry> &secondGeoms,
@@ -203,8 +209,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
   if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
     
     Geometry resultMesh;
-
-    CSG csg;
 
     firstGeoms[ 0 ].Cleanup();
     secondGeoms[ 0 ].Cleanup( !isSubtractOperand );
@@ -298,8 +302,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
 
         Geometry newResult;
 
-        CSG csg;
-
         csg.run( CSG::Operation::SUBTRACTION, result, newSecond, newResult, 0 );
 
         result = std::move( newResult );
@@ -307,8 +309,6 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
       } else {
 
         Geometry newResult;
-
-        CSG csg;
         
         csg.run( CSG::Operation::SUBTRACTION, result, secondGeom, newResult, 0 );
 
@@ -1085,6 +1085,10 @@ ConwayGeometryProcessor::GeometryToGltf(
     std::vector<Microsoft::glTF::KHR::MeshPrimitives::DracoMeshCompression>
         dracoPrimitives;
 
+    bool hasFirstPoint = false;
+
+    glm::dvec3 positionBias;
+
     for (conway::geometry::GeometryCollection &geom : geoms) {
       // create a mesh object
       std::unique_ptr<draco::Mesh> dracoMesh;
@@ -1157,14 +1161,22 @@ ConwayGeometryProcessor::GeometryToGltf(
              geometryComponentIndex < geom.components.size();
              ++geometryComponentIndex) {
           Geometry &component = *geom.components[geometryComponentIndex];
-          glm::mat4 geomTransform =
+          glm::dmat4 geomTransform =
               transform * geom.transforms[geometryComponentIndex];
 
           for ( const glm::dvec3 *where = component.vertices.data(),
                             *end = where + component.vertices.size();
                where < end; ++where ) {
-            glm::dvec4 t =
-                geomTransform * glm::dvec4( *where, 1);
+            glm::dvec3 t = glm::dvec3(
+                geomTransform * glm::dvec4( *where, 1) );
+
+            if ( !hasFirstPoint ) {
+
+              hasFirstPoint = true;
+              positionBias = t;
+            }
+
+            t = t - positionBias;
 
             float vertexVal[3] = {static_cast<float>(t.x),
                                   static_cast<float>(t.y),
@@ -1337,8 +1349,16 @@ ConwayGeometryProcessor::GeometryToGltf(
              where < end;
              ++where ) {
 
-          glm::dvec4 t =
-              geomTransform * glm::dvec4( *where, 1 );
+          glm::dvec3 t =
+              glm::dvec3( geomTransform * glm::dvec4( *where, 1 ) );
+
+          if ( !hasFirstPoint ) {
+
+            hasFirstPoint = true;
+            positionBias = glm::dvec3( t );
+          }
+
+          t -= positionBias;
 
           *(positionOutputCursor++) = (float)t.x;
           *(positionOutputCursor++) = (float)t.y;

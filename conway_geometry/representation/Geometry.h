@@ -31,6 +31,7 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
+
 struct Geometry {
 
   std::vector< glm::dvec3 >                vertices;
@@ -90,6 +91,7 @@ struct Geometry {
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();
   glm::dvec3 Normalize();
+  uint32_t GetVertexCount() const { return static_cast< uint32_t >( vertices.size() ); }
   void ApplyTransform( const glm::dmat4x4& transform );
 
   void ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin = glm::dvec3( 0 ) );
@@ -168,7 +170,7 @@ struct Geometry {
 
   uint32_t MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex );
 
-  void Reify();
+  void Reify( const glm::dvec3& offset = glm::dvec3( 0 ) );
 
   void ClearReification() {
 
@@ -188,6 +190,8 @@ struct Geometry {
   bool isReified_       = false;
   bool cleanedUp_       = false;
   bool normalized_      = false;
+
+  glm::dvec3 previousReificationOffset_ = glm::dvec3( 0 );
 
   std::vector< float >    floatVertexData_;
   std::vector< uint32_t > indexData_;
@@ -295,8 +299,6 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
 
     triangles[ index ] = triangles.back();
   }
-
-  bvh.reset();
 
   triangles.pop_back();
 

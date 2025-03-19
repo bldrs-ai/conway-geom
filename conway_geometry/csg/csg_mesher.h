@@ -94,7 +94,6 @@ namespace conway::geometry {
 
     std::unordered_map< std::pair< uint32_t, uint32_t >, uint32_t > edgeEdgeVertices_; 
     std::unordered_map< std::pair< uint32_t, uint32_t >, uint32_t > faceEdgeVertices_[ 2 ];
-    std::unordered_map< glm::dvec3, uint32_t > duplicateVertexMap_;
 
     std::vector< uint32_t > onEdgeVertices_[ 3 ];
 

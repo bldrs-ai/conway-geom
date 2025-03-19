@@ -826,6 +826,9 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .function("GetVertexDataSize",
                 &conway::geometry::Geometry::GetVertexDataSize)
       .function("getPoint", &conway::geometry::Geometry::GetPoint)
+      .function("getVertexCount", &conway::geometry::Geometry::GetVertexCount)
+      .function("reify", &conway::geometry::Geometry::Reify)
+      .function("clearReification", &conway::geometry::Geometry::ClearReification)
       .function("GetIndexData", &conway::geometry::Geometry::GetIndexData)
       .function("GetIndexDataSize",
                 &conway::geometry::Geometry::GetIndexDataSize)

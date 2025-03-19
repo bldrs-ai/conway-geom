@@ -202,24 +202,55 @@ namespace conway::geometry {
 
           vertex += tolerance * vertexOffset;
 
-          vertex *= 2.0 / tolerance;
+          vertex /= 0.5 * tolerance;
           vertex = glm::round( vertex );
           vertex *= 0.5 * tolerance;
 
         }
+
       } else {
 
         for ( uint32_t vertexIndex = 0, end = vertices.size(); vertexIndex < end; ++vertexIndex ) {
 
           glm::dvec3& vertex = vertices[ vertexIndex ];
 
-          vertex *= 2.0 / tolerance;
+          vertex /= 0.5 * tolerance;
           vertex = glm::round( vertex );
           vertex *= 0.5 * tolerance;
         }
+      }
+        
+      size_t triangleIndex = 0;
 
+      while ( triangleIndex < toWeld.triangles.size() ) {
+              
+        const Triangle& triangle = toWeld.triangles[ triangleIndex ];
+
+        uint32_t i0 = triangle.vertices[ 0 ];
+        uint32_t i1 = triangle.vertices[ 1 ];
+        uint32_t i2 = triangle.vertices[ 2 ];
+
+        if( i0 == i1 || i0 == i2 || i1 == i2 ) {
+
+          toWeld.DeleteTriangle( static_cast< uint32_t >( triangleIndex ) );
+          continue;
+        }
+
+        const glm::dvec3& v0 = vertices[ i0 ];
+        const glm::dvec3& v1 = vertices[ i1 ];
+        const glm::dvec3& v2 = vertices[ i2 ];
+
+        if ( is_zero_area_triangle(
+          v0,
+          v1,
+          v2 ) ) {
+
+          toWeld.DeleteTriangle( static_cast< uint32_t >( triangleIndex ) );
+          continue;
+        }
+
+        ++triangleIndex;
       }
     }
   };
-
 }

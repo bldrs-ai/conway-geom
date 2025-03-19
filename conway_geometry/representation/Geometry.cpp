@@ -86,12 +86,17 @@ void Geometry::EnableConnectivity() {
   }
 }
 
-void Geometry::Reify() {
+void Geometry::Reify( const glm::dvec3& offset ) {
 
-  if ( isReified_ ) {
+  if ( isReified_ && offset == previousReificationOffset_ ) {
 
     return;
   }
+
+  previousReificationOffset_ = offset;
+
+  floatVertexData_.clear();
+  indexData_.clear();
 
   if ( !cleanedUp_ ) {
 
@@ -189,12 +194,12 @@ void Geometry::Reify() {
         continue;
       }
 
-      glm::fvec3 vertex( vertices[ vertexIndex ] );
+      const glm::dvec3& vertex = vertices[ vertexIndex ];
 
-      floatVertexData_.push_back( vertex.x );
-      floatVertexData_.push_back( vertex.y );
-      floatVertexData_.push_back( vertex.z );
-    
+      floatVertexData_.push_back( static_cast< float >( vertex.x - offset.x ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.y - offset.y ) );
+      floatVertexData_.push_back( static_cast< float >( vertex.z - offset.z ) );
+
       const glm::dvec3& normal     = faceNormals[ triangleIndex ];
       double            doubleArea = glm::length( normal );
 
@@ -260,8 +265,8 @@ void Geometry::Reify() {
 }
 
 uint32_t Geometry::GetVertexData() {
-  
-  Reify();
+
+  Reify( previousReificationOffset_ );
 
   if ( floatVertexData_.empty() ) {
     return 0;
@@ -277,7 +282,7 @@ std::string Geometry::GeometryToObj(
 
   if ( !isReified ) {
 
-    Reify();
+    Reify( previousReificationOffset_ );
   }
 
   std::string obj;
@@ -390,30 +395,31 @@ void Geometry::AppendWithScalingTransform(
 
 void Geometry::Cleanup( bool forSubtract ) {
 
-  if ( !cleanedUp_ ) {
 
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );
+  welder.weld( *this, exp2( TOLERANCE ), forSubtract );
 
-    EnableConnectivity();
+  EnableConnectivity();
 
-    assert( triangles.size() == triangle_edges.size() );
+  // if ( !cleanedUp_ ) {
 
-    if ( !halfSpace ) {
-      CSG cleaner;
+  //   assert( triangles.size() == triangle_edges.size() );
 
-      cleaner.clean( *this );
-      EnableConnectivity();
-    }
+  //   if ( !halfSpace ) {
+  //     CSG cleaner;
+
+  //     cleaner.clean( *this );
+  //     EnableConnectivity();
+  //   }
     
-    cleanedUp_ = true;
+     cleanedUp_ = true;
+  // }
+  // } else {
 
-  } else {
+  //   // welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
 
-    welder.weld( *this, exp2( TOLERANCE ), forSubtract );//exp2( -23 ) );
+  //   // EnableConnectivity();
 
-    EnableConnectivity();
-
-  }
+  // }
 }
 
 glm::dvec3 Geometry::Normalize() {
@@ -566,7 +572,7 @@ void Geometry::ExtractVerticesAndTriangles( const ParseBuffer& verticesBuffer, c
 
 uint32_t Geometry::GetVertexDataSize() {
   
-  Reify();
+  Reify( previousReificationOffset_ );
 
   return (uint32_t)( floatVertexData_.size() );
 }
@@ -588,9 +594,9 @@ box3 Geometry::GetAABB() const {
   return result;
 }
 
-uint32_t Geometry::GetIndexData() { Reify(); return (uint32_t)(size_t)indexData_.data(); }
+uint32_t Geometry::GetIndexData() { Reify( previousReificationOffset_ ); return (uint32_t)(size_t)indexData_.data(); }
 
-uint32_t Geometry::GetIndexDataSize() { Reify(); return static_cast< uint32_t >( indexData_.size() ); }
+uint32_t Geometry::GetIndexDataSize() { Reify( previousReificationOffset_ ); return static_cast< uint32_t >( indexData_.size() ); }
 
 
 void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin ) {
