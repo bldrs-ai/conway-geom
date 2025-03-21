@@ -7,5 +7,5 @@ dependencies/**/*.a
 /.vs
 build/
 cache/
-Dist/ConwayGeomWasm.wasm.map
+Dist/
 vs2022/
