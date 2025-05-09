@@ -200,7 +200,7 @@ namespace conway::geometry {
 
           glm::dvec3& vertex = vertices[ vertexIndex ];
 
-          vertex += tolerance * vertexOffset;
+          vertex += 2.0 * ( tolerance  ) * vertexOffset;
 
           vertex /= 0.5 * tolerance;
           vertex = glm::round( vertex );

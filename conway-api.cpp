@@ -515,6 +515,28 @@ conway::geometry::IfcCurve GetPolyCurve(
   return curve;
 }
 
+namespace {
+  void correctProfileWinding(
+    conway::geometry::IfcProfile& profile) {
+    
+    if ( !profile.curve.IsCCW() ) {
+      profile.curve.Invert();
+    }
+
+    for ( auto& hole : profile.holes ) {
+      if ( hole.IsCCW() ) {
+        hole.Invert();
+      }
+    }
+
+    if ( !profile.profiles.empty() ) {
+      for ( auto& subProfile : profile.profiles ) {
+        correctProfileWinding( subProfile );
+      }
+    }
+  }
+}
+
 struct ParamsCreateNativeIfcProfile {
   conway::geometry::IfcCurve curve;
   std::vector<conway::geometry::IfcCurve> holes;
@@ -532,6 +554,8 @@ conway::geometry::IfcProfile createNativeIfcProfile(
   profile.isConvex = parameters.isConvex;
   profile.isComposite = parameters.isComposite;
   profile.profiles = parameters.profiles;
+
+  correctProfileWinding( profile );
 
   return profile;
 }

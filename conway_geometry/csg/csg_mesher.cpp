@@ -34,7 +34,7 @@ namespace conway::geometry {
   
     inline bool lexicographical_less( const glm::dvec3& a, const glm::dvec3& b ) {
 
-      return a.x < b.x || ( a.x == b.x && a.y < b. y);
+      return a.x < b.x || ( a.x == b.x && a.y < b. y) || ( a.y == b.y && a.z < b.z );
     }
   }
 }
