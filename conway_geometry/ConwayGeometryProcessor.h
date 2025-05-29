@@ -234,8 +234,11 @@ class ConwayGeometryProcessor {
     double xDim = 0.0f;
     double yDim = 0.0f;
     bool hasPlacement = false;
+    bool hasRoundingRadius = false;
+    double roundingRadius = 0.0f;
     glm::dmat3 matrix;
     double thickness = -1.0f;
+    int circleSegments = 12;
   };
 
   struct ParamsGetCShapeCurve {

@@ -153,11 +153,21 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
   double ydim = parameters.yDim;
 
   if (parameters.hasPlacement) {
-    curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+
+    if (parameters.hasRoundingRadius && parameters.roundingRadius > 0.0) {
+      curve = GetRoundedRectangleCurve(xdim, ydim, parameters.roundingRadius, parameters.circleSegments, parameters.matrix);
+    } else {
+      curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+    }
   } else {
     glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
                                       glm::dvec3(0, 0, 1));
-    curve = GetRectangleCurve(xdim, ydim, placement);
+
+    if (parameters.hasRoundingRadius && parameters.roundingRadius > 0.0) {
+      curve = GetRoundedRectangleCurve(xdim, ydim, parameters.roundingRadius, parameters.circleSegments, placement);
+    } else {
+      curve = GetRectangleCurve(xdim, ydim, placement);
+    }
   }
 
   if (!curve.IsCCW()) {

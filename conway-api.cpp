@@ -1388,10 +1388,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
                          ParamsGetRectangleProfileCurve::yDim)
       .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("hasRoundingRadius", &conway::geometry::ConwayGeometryProcessor::
+      ParamsGetRectangleProfileCurve::hasRoundingRadius)
+      .field("roundingRadius", &conway::geometry::ConwayGeometryProcessor::
+      ParamsGetRectangleProfileCurve::roundingRadius)
       .field("matrix", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetRectangleProfileCurve::matrix)
       .field("thickness", &conway::geometry::ConwayGeometryProcessor::
-                              ParamsGetRectangleProfileCurve::thickness);
+                              ParamsGetRectangleProfileCurve::thickness)
+      .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::circleSegments);
 
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve>(
