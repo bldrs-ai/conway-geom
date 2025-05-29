@@ -48,6 +48,7 @@ import { ParamsAxis2Placement3D } from './parameters/params_axis_2_placement_3D'
 import { ParamsLocalPlacement } from './parameters/params_local_placement'
 import { ParamsGetSweptDiskSolid } from './parameters/params_get_swept_disk_solid'
 import { ParseBuffer } from './parse_buffer'
+import { ParamsGetBlock } from './parameters/params_get_block'
 
 /**
  * Check if pthreads are allowed in this runtime environment.
@@ -698,6 +699,16 @@ export class ConwayGeometry {
    */
   getExtrudedAreaSolid(parameters: ParamsGetExtrudedAreaSolid): GeometryObject {
     const result = this.wasmModule.getExtrudedAreaSolid(parameters)
+    return result
+  }
+
+  /**
+   * 
+   * @param parameters ParamsGetBlock parsed from data model
+   * @return {GeometryObject} - Native Geometry Object
+   */
+  getBlock(parameters:ParamsGetBlock):GeometryObject {
+    const result = this.wasmModule.getBlock(parameters)
     return result
   }
 

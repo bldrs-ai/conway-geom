@@ -153,11 +153,21 @@ IfcCurve ConwayGeometryProcessor::GetRectangleProfileCurve(
   double ydim = parameters.yDim;
 
   if (parameters.hasPlacement) {
-    curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+
+    if (parameters.hasRoundingRadius && parameters.roundingRadius > 0.0) {
+      curve = GetRoundedRectangleCurve(xdim, ydim, parameters.roundingRadius, parameters.circleSegments, parameters.matrix);
+    } else {
+      curve = GetRectangleCurve(xdim, ydim, parameters.matrix);
+    }
   } else {
     glm::dmat3 placement = glm::dmat3(glm::dvec3(1, 0, 0), glm::dvec3(0, 1, 0),
                                       glm::dvec3(0, 0, 1));
-    curve = GetRectangleCurve(xdim, ydim, placement);
+
+    if (parameters.hasRoundingRadius && parameters.roundingRadius > 0.0) {
+      curve = GetRoundedRectangleCurve(xdim, ydim, parameters.roundingRadius, parameters.circleSegments, placement);
+    } else {
+      curve = GetRectangleCurve(xdim, ydim, placement);
+    }
   }
 
   if (!curve.IsCCW()) {
@@ -367,6 +377,57 @@ Geometry ConwayGeometryProcessor::RelVoidSubtract(
        glm::inverse(parameters.parentMatrix);// * glm::translate(originFirstMesh);
 
   resultGeometry.ApplyTransform( combinedMatrix );
+
+  return resultGeometry;
+}
+
+Geometry ConwayGeometryProcessor::GetBlock(
+    const ParamsGetBlock &parameters) {
+  Geometry resultGeometry;
+
+  if (parameters.xLength <= 0 || parameters.yLength <= 0 ||
+      parameters.zLength <= 0) {
+    Logger::logWarning("block size zero\n");
+    return resultGeometry;
+  }
+
+  const double xLength = parameters.xLength;
+  const double yLength = parameters.yLength;
+  const double zLength = parameters.zLength;  
+  glm::dmat4 placement = parameters.placement;
+
+  //make vertices
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(xLength, yLength, zLength, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(0, yLength, zLength, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(0, 0, zLength, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(xLength, 0, zLength, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(xLength, yLength, 0, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(0, yLength, 0, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(0, 0, 0, 1)));
+  resultGeometry.MakeVertex(glm::dvec3(placement * glm::dvec4(xLength, 0, 0, 1)));
+
+  //make triangles
+  resultGeometry.MakeTriangle(0, 1, 2);
+  resultGeometry.MakeTriangle( 2, 3, 0 );
+
+  resultGeometry.MakeTriangle( 7, 6, 5 );
+  resultGeometry.MakeTriangle( 5, 4, 7 );
+
+  resultGeometry.MakeTriangle( 0, 4, 5 );
+  resultGeometry.MakeTriangle( 5, 1, 0 );
+
+  resultGeometry.MakeTriangle( 1, 5, 6 );
+  resultGeometry.MakeTriangle( 6, 2, 1 );
+
+  resultGeometry.MakeTriangle( 2, 6, 7 );
+  resultGeometry.MakeTriangle( 7, 3, 2 );
+
+  resultGeometry.MakeTriangle( 3, 7, 4 );
+  resultGeometry.MakeTriangle( 4, 0, 3 );
+
+  if (MatrixFlipsTriangles(placement)) {
+    resultGeometry.ReverseFaces();
+  }
 
   return resultGeometry;
 }

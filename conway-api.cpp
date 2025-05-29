@@ -336,6 +336,16 @@ glm::dmat4 GetAxis2Placement3D(
   return resultMat;
 }
 
+conway::geometry::Geometry GetBlock(
+    const conway::geometry::ConwayGeometryProcessor::ParamsGetBlock& parameters) {
+  if (processor) {
+    return processor->GetBlock(parameters);
+  }
+
+  conway::geometry::Geometry geometry;
+  return geometry;
+}
+
 conway::geometry::Geometry GetBooleanResult(
     conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult*
         parameters) {
@@ -1260,6 +1270,18 @@ EMSCRIPTEN_BINDINGS(my_module) {
              &conway::geometry::ConwayGeometryProcessor::ParamsGetIfcLine::
                  paramsGetIfcTrimmedCurve);
 
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetBlock>(
+      "ParamsGetBlock")
+      .field("xLength", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetBlock::xLength)
+      .field("yLength", &conway::geometry::ConwayGeometryProcessor::
+                                     ParamsGetBlock::yLength)
+      .field("zLength", &conway::geometry::ConwayGeometryProcessor::
+      ParamsGetBlock::zLength)
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                                          ParamsGetBlock::placement);
+
   emscripten::class_<
       conway::geometry::ConwayGeometryProcessor::ParamsGetBooleanResult>(
       "ParamsGetBooleanResult")
@@ -1366,10 +1388,15 @@ EMSCRIPTEN_BINDINGS(my_module) {
                          ParamsGetRectangleProfileCurve::yDim)
       .field("hasPlacement", &conway::geometry::ConwayGeometryProcessor::
                                  ParamsGetRectangleProfileCurve::hasPlacement)
+      .field("hasRoundingRadius", &conway::geometry::ConwayGeometryProcessor::
+      ParamsGetRectangleProfileCurve::hasRoundingRadius)
+      .field("roundingRadius", &conway::geometry::ConwayGeometryProcessor::
+      ParamsGetRectangleProfileCurve::roundingRadius)
       .field("matrix", &conway::geometry::ConwayGeometryProcessor::
                            ParamsGetRectangleProfileCurve::matrix)
       .field("thickness", &conway::geometry::ConwayGeometryProcessor::
-                              ParamsGetRectangleProfileCurve::thickness);
+                              ParamsGetRectangleProfileCurve::thickness)
+      .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::ParamsGetRectangleProfileCurve::circleSegments);
 
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetCShapeCurve>(
@@ -1658,6 +1685,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
   emscripten::function("getPolygonalBoundedHalfspace", &GetPolygonalBoundedHalfspace);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
+  emscripten::function("getBlock", &GetBlock);
   emscripten::function("getBooleanResult", &GetBooleanResult,
                        emscripten::allow_raw_pointers());
   emscripten::function("deleteParamsGetBooleanResult",
