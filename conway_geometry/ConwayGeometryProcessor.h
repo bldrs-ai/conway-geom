@@ -133,6 +133,15 @@ class ConwayGeometryProcessor {
   Geometry BoolSubtractLegacy(const std::vector<Geometry>& firstGeoms,
                                  std::vector<Geometry>& secondGeoms);
 
+  struct ParamsGetBlock {
+    uint32_t xLength = 0;
+    uint32_t yLength = 0;
+    uint32_t zLength = 0;
+    glm::dmat4 placement = glm::dmat4(1.0);
+  };
+
+  Geometry GetBlock(const ParamsGetBlock& parameters);
+
   // case ifc::IFCBOOLEANCLIPPINGRESULT:
   // case ifc::IFCBOOLEANRESULT:
   struct ParamsGetBooleanResult {
