@@ -176,6 +176,17 @@ conway::geometry::Geometry GetExtrudedAreaSolid(
   return geom;
 }
 
+conway::geometry::Geometry GetRevolvedAreaSolid(
+    conway::geometry::ConwayGeometryProcessor::ParamsGetRevolvedAreaSolid
+        parameters) {
+  if (processor) {
+    return processor->getRevolvedAreaSolid(parameters);
+  }
+
+  conway::geometry::Geometry geom;
+  return geom;
+}
+
 conway::geometry::IfcCurve GetLoop(
     conway::geometry::ConwayGeometryProcessor::ParamsGetLoop parameters) {
   if (processor) {
@@ -1044,6 +1055,36 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("profile", &conway::geometry::ConwayGeometryProcessor::
                             ParamsGetExtrudedAreaSolid::profile);
 
+  // conway::geometry::ConwayGeometryProcessor::ParamsGetRevolvedAreaSolid
+  /**
+   *  struct ParamsGetRevolvedAreaSolid {
+  glm::dmat4 placement = glm::dmat4(1.0);
+  glm::dvec3 axisPosition = glm::dvec3(0, 0, 1);
+   glm::dvec3 axis = glm::dvec3(0, 0, 1);
+  double angle = 0;
+  IfcProfile profile;
+  float scalingFactor = 1.0f;
+  uint32_t circleSegments = 12;
+}
+   */
+  emscripten::value_object<
+      conway::geometry::ConwayGeometryProcessor::ParamsGetRevolvedAreaSolid>(
+      "ParamsGetRevolvedAreaSolid")
+      .field("placement", &conway::geometry::ConwayGeometryProcessor::
+                          ParamsGetRevolvedAreaSolid::placement)
+      .field("axisPosition", &conway::geometry::ConwayGeometryProcessor::
+                        ParamsGetRevolvedAreaSolid::axisPosition)
+      .field("axis", &conway::geometry::ConwayGeometryProcessor::
+                        ParamsGetRevolvedAreaSolid::axis)
+      .field("angle", &conway::geometry::ConwayGeometryProcessor::
+                        ParamsGetRevolvedAreaSolid::angle)
+      .field("profile", &conway::geometry::ConwayGeometryProcessor::
+                            ParamsGetRevolvedAreaSolid::profile)
+      .field("scalingFactor", &conway::geometry::ConwayGeometryProcessor::
+                                  ParamsGetRevolvedAreaSolid::scalingFactor)
+      .field("circleSegments", &conway::geometry::ConwayGeometryProcessor::
+                                   ParamsGetRevolvedAreaSolid::circleSegments);
+
   // conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid
   emscripten::value_object<
       conway::geometry::ConwayGeometryProcessor::ParamsGetHalfspaceSolid>(
@@ -1683,6 +1724,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());
   emscripten::function("createNativeIfcProfile", &createNativeIfcProfile);
   emscripten::function("getExtrudedAreaSolid", &GetExtrudedAreaSolid);
+  emscripten::function("getRevolvedAreaSolid", &GetRevolvedAreaSolid);
   emscripten::function("getPolygonalBoundedHalfspace", &GetPolygonalBoundedHalfspace);
   emscripten::function("getHalfSpaceSolid", &GetHalfSpaceSolid);
   emscripten::function("getBlock", &GetBlock);

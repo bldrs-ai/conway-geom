@@ -35,7 +35,6 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 
-
 // draco
 #include <draco/compression/config/compression_shared.h>
 #include <draco/compression/encode.h>
@@ -55,7 +54,7 @@
 #include <GLTFSDK/Serialize.h>
 
 #include "operations/geometry_utils.h"
-//#include "representation/IfcGeometry.h"
+// #include "representation/IfcGeometry.h"
 #include "representation/Geometry.h"
 #include "structures/parse_buffer.h"
 
@@ -71,11 +70,9 @@ namespace {
 // specific.
 class StreamWriter : public Microsoft::glTF::IStreamWriter {
  public:
-  StreamWriter(const std::filesystem::path& pathBase)
-      : m_pathBase( pathBase ) {
-
-    //printf( "%s\n", m_pathBase.c_str() );
-    //assert(m_pathBase.has_root_path());
+  StreamWriter(const std::filesystem::path& pathBase) : m_pathBase(pathBase) {
+    // printf( "%s\n", m_pathBase.c_str() );
+    // assert(m_pathBase.has_root_path());
   }
 
   const std::vector<std::string>& getUris() const { return uris; }
@@ -85,7 +82,7 @@ class StreamWriter : public Microsoft::glTF::IStreamWriter {
   std::shared_ptr<std::ostream> GetOutputStream(
       const std::string& filename) const override {
     auto stream = std::make_shared<std::ostringstream>();
-    uris.push_back( filename );
+    uris.push_back(filename);
     return stream;
   }
 
@@ -127,11 +124,11 @@ class ConwayGeometryProcessor {
     IfcComposedMesh ifcPresentationMesh;
   };
 
-  Geometry BoolSubtract( std::vector<Geometry>& firstGroups,
-                         std::vector<Geometry>& secondGroups,
-                         bool isSubtractOperand );
+  Geometry BoolSubtract(std::vector<Geometry>& firstGroups,
+                        std::vector<Geometry>& secondGroups,
+                        bool isSubtractOperand);
   Geometry BoolSubtractLegacy(const std::vector<Geometry>& firstGeoms,
-                                 std::vector<Geometry>& secondGeoms);
+                              std::vector<Geometry>& secondGeoms);
 
   struct ParamsGetBlock {
     uint32_t xLength = 0;
@@ -150,7 +147,7 @@ class ConwayGeometryProcessor {
     int operatorType = 2;
     bool isSubtractOperand = false;
   };
-  Geometry GetBooleanResult(ParamsGetBooleanResult *parameters);
+  Geometry GetBooleanResult(ParamsGetBooleanResult* parameters);
 
   struct ParamsRelVoidSubtract {
     std::vector<Geometry> flatFirstMesh;
@@ -158,8 +155,8 @@ class ConwayGeometryProcessor {
     int operatorType = 2;
     glm::dmat4 parentMatrix;
   };
-  
-  Geometry RelVoidSubtract( ParamsRelVoidSubtract& parameters );
+
+  Geometry RelVoidSubtract(ParamsRelVoidSubtract& parameters);
 
   // case ifc::IFCHALFSPACESOLID:
   struct ParamsGetHalfspaceSolid {
@@ -187,7 +184,7 @@ class ConwayGeometryProcessor {
   */
 
   Geometry GetPolygonalBoundedHalfspace(
-      const ParamsGetPolygonalBoundedHalfspace& parameters );
+      const ParamsGetPolygonalBoundedHalfspace& parameters);
 
   // case ifc::IFCREPRESENTATIONMAP
   // TODO(nickcastel50) : see if this is needed
@@ -208,8 +205,8 @@ class ConwayGeometryProcessor {
     double scaling;
   };
 
-  void AddFaceToGeometrySimple(ParamsAddFaceToGeometrySimple& parameters, 
-    Geometry& geometry);
+  void AddFaceToGeometrySimple(ParamsAddFaceToGeometrySimple& parameters,
+                               Geometry& geometry);
 
   struct ParamsGetBrep {
     uint32_t boundsSize = 0;
@@ -324,7 +321,8 @@ class ConwayGeometryProcessor {
 
   IfcCurve GetZShapeCurve(const ParamsGetZShapeCurve& parameters);
 
-  IfcCurve GetRectangleProfileCurve(const ParamsGetRectangleProfileCurve& parameters);
+  IfcCurve GetRectangleProfileCurve(
+      const ParamsGetRectangleProfileCurve& parameters);
 
   IfcCurve GetRectangleHollowProfileHole(
       const ParamsGetRectangleProfileCurve& parameters);
@@ -499,7 +497,7 @@ class ConwayGeometryProcessor {
     IfcProfile profile;
   };
 
-  IfcProfile transformProfile(ParamsTransformProfile *parameters);
+  IfcProfile transformProfile(ParamsTransformProfile* parameters);
 
   struct ParamsGetPolyCurve {
     uintptr_t points_ = 0;
@@ -509,9 +507,9 @@ class ConwayGeometryProcessor {
     bool isEdge = false;
   };
 
-  IfcCurve getPolyCurve(const ParamsGetPolyCurve &parameters);
+  IfcCurve getPolyCurve(const ParamsGetPolyCurve& parameters);
 
-  //casae ifc::IFCTRIANGULATEDFACESET
+  // casae ifc::IFCTRIANGULATEDFACESET
   struct ParamsGetTriangulatedFaceSetGeometry {
     uintptr_t indicesArray_;
     uint32_t indicesArrayLength = 0;
@@ -519,7 +517,8 @@ class ConwayGeometryProcessor {
     uint32_t pointsArrayLength = 0;
   };
 
-  Geometry getTriangulatedFaceSetGeometry(const ParamsGetTriangulatedFaceSetGeometry &parameters);
+  Geometry getTriangulatedFaceSetGeometry(
+      const ParamsGetTriangulatedFaceSetGeometry& parameters);
 
   // case ifc::IFCPOLYGONALFACESET:
   struct ParamsGetPolygonalFaceSetGeometry {
@@ -547,7 +546,8 @@ class ConwayGeometryProcessor {
     double scalingFactor;
   };
 
-  conway::geometry::Geometry getSweptDiskSolid(const ParamsGetSweptDiskSolid& parameters);
+  conway::geometry::Geometry getSweptDiskSolid(
+      const ParamsGetSweptDiskSolid& parameters);
 
   // case ifc::IFCINDEXEDPOLYCURVE
   struct ParamsGetIfcIndexedPolyCurve {
@@ -566,7 +566,7 @@ class ConwayGeometryProcessor {
       const ParamsGetIfcIndexedPolyCurve& parameters);
 
   conway::geometry::IfcCurve getIndexedPolyCurve3D(
-    const ParamsGetIfcIndexedPolyCurve3D& parameters);
+      const ParamsGetIfcIndexedPolyCurve3D& parameters);
 
   // case ifc::CIRCLEPROFILEDEF
   struct ParamsGetCircleCurve {
@@ -630,8 +630,7 @@ class ConwayGeometryProcessor {
     ParamsGetIfcTrimmedCurve paramsGetIfcTrimmedCurve;
   };
 
-  conway::geometry::IfcCurve getIfcLine(
-  const ParamsGetIfcLine &parameters);
+  conway::geometry::IfcCurve getIfcLine(const ParamsGetIfcLine& parameters);
 
   conway::geometry::IfcCurve getIfcCircle(const ParamsGetIfcCircle& parameters);
 
@@ -648,6 +647,20 @@ class ConwayGeometryProcessor {
 
   conway::geometry::IfcCurve getBSplineCurve(
       const ParamsGetBSplineCurve& parameters);
+
+  // case ifc::IFCREVOLVEDAREASOLID:
+  struct ParamsGetRevolvedAreaSolid {
+    glm::dmat4 placement = glm::dmat4(1.0);
+    glm::dvec3 axisPosition = glm::dvec3(0, 0, 1);
+    glm::dvec3 axis = glm::dvec3(0, 0, 1);
+    double angle = 0;
+    IfcProfile profile;
+    float scalingFactor = 1.0f;
+    uint32_t circleSegments = 12;
+  };
+
+  conway::geometry::Geometry getRevolvedAreaSolid(
+      const ParamsGetRevolvedAreaSolid& parameters);
 
   // case ifc::IFCEXTRUDEDAREASOLID:
   struct ParamsGetExtrudedAreaSolid {
@@ -668,16 +681,15 @@ class ConwayGeometryProcessor {
 
   bool DUMP_CSG_MESHES = false;
 
-public:
+ public:
   static constexpr int CIRCLE_SEGMENTS_LOW = 6;
   static constexpr int CIRCLE_SEGMENTS_MEDIUM = 24;
   static constexpr int CIRCLE_SEGMENTS_HIGH = 96;
 
   static constexpr double CIRCLE_SEGMENT_TO_DIAMETER = 0.05;
-  static constexpr double CIRCLE_SEGMENT_TO_RADIUS_RATIO = 0.05 / ( 2.0 * M_PI );
+  static constexpr double CIRCLE_SEGMENT_TO_RADIUS_RATIO = 0.05 / (2.0 * M_PI);
 
-private:
-
+ private:
   bool MESH_CACHE = false;
   int BOOL_ABORT_THRESHOLD = 10000;  // 10k verts
 };

@@ -478,23 +478,22 @@ inline IfcCurve GetCircleCurve(double radius, int numSegments,
   return GetEllipseCurve(radius, radius, numSegments, placement);
 }
 
-inline void AddArc2d(IfcCurve &c,
-                     const glm::dvec2 &center,
-                     double radius,
-                     double startAngle,    // in radians
-                     double sweepAngle,    // in radians, positive CCW
-                     uint16_t segments = 8 // number of line‐segments to use
+inline void AddArc2d(IfcCurve& c, const glm::dvec2& center, double radius,
+                     double startAngle,     // in radians
+                     double sweepAngle,     // in radians, positive CCW
+                     uint16_t segments = 8  // number of line‐segments to use
 ) {
-    for (uint16_t i = 0; i <= segments; ++i) {
-        double t   = double(i) / double(segments);
-        double ang = startAngle + sweepAngle * t;
-        glm::dvec2 p = center +
-                       glm::dvec2(std::cos(ang), std::sin(ang)) * radius;
-        c.Add2d(p);
-    }
+  for (uint16_t i = 0; i <= segments; ++i) {
+    double t = double(i) / double(segments);
+    double ang = startAngle + sweepAngle * t;
+    glm::dvec2 p = center + glm::dvec2(std::cos(ang), std::sin(ang)) * radius;
+    c.Add2d(p);
+  }
 }
 
-inline IfcCurve GetRoundedRectangleCurve(double xdim, double ydim, double roundingRadius, uint32_t circleSegments,
+inline IfcCurve GetRoundedRectangleCurve(double xdim, double ydim,
+                                         double roundingRadius,
+                                         uint32_t circleSegments,
                                          glm::dmat3 placement = glm::dmat3(1)) {
   double halfX = xdim * 0.5;
   double halfY = ydim * 0.5;
@@ -518,13 +517,13 @@ inline IfcCurve GetRoundedRectangleCurve(double xdim, double ydim, double roundi
   // bottom-left: from 180° → 270°
   AddArc2d(c, ctrBL, r, M_PI, M_PI_2, circleSegments);
 
-   // ensure a consistent CCW orientation in world‐space
-    bool flip = MatrixFlipsTriangles(M);
-    if (flip ^ !c.IsCCW()) {
-        c.Invert();
-    }
+  // ensure a consistent CCW orientation in world‐space
+  bool flip = MatrixFlipsTriangles(M);
+  if (flip ^ !c.IsCCW()) {
+    c.Invert();
+  }
 
-    return c;
+  return c;
 }
 
 inline IfcCurve GetRectangleCurve(double xdim, double ydim,
@@ -844,8 +843,9 @@ inline IfcCurve GetTrapeziumCurve(double bottomXDim, double topXDim,
   return c;
 }
 
-inline IfcCurve BuildArc(const glm::dvec3& pos, const glm::dvec3& axis,
-                         double angleRad, uint16_t _circleSegments) {
+inline IfcCurve BuildArc(double scale, const glm::dvec3& pos,
+                         const glm::dvec3& axis, double angleRad,
+                         uint16_t _circleSegments) {
   IfcCurve curve;
 
   // project pos onto axis
