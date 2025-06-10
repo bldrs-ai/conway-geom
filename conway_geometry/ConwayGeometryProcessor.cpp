@@ -2323,6 +2323,43 @@ if (!parameters.paramsGetIfcTrimmedCurve.trimExists)
   return curve;
 }
 
+conway::geometry::Geometry ConwayGeometryProcessor::getRevolvedAreaSolid(
+    const ParamsGetRevolvedAreaSolid &parameters) {
+  conway::geometry::Geometry geom;
+
+  conway::geometry::IfcProfile profile = parameters.profile;
+  glm::dmat4 placement = parameters.placement;
+  glm::dvec3 axis = parameters.axis;
+
+  double angle = parameters.angle;
+
+  bool closed = false;
+
+  glm::dvec3 pos = parameters.axisPosition;
+
+  IfcCurve directrix = BuildArc(parameters.scalingFactor, pos, axis, angle, parameters.circleSegments);
+  if(glm::distance(directrix.points[0], directrix.points[directrix.points.size() - 1]) < 1.0E-04) //EPS_BIG
+  {
+      closed = true;
+  }
+
+  if (!profile.isComposite)
+  {
+      geom = Sweep(parameters.scalingFactor, closed, profile, directrix, axis, false);
+  }
+  else
+  {
+      for (uint32_t i = 0; i < profile.profiles.size(); i++)
+      {
+          conway::geometry::Geometry geom_t = Sweep(parameters.scalingFactor, closed, profile.profiles[i], directrix, axis, false, false);
+          // geom.AddPart(geom_t);
+          geom.AppendGeometry(geom_t);
+      }
+  }
+
+  return geom;
+}
+
 conway::geometry::Geometry ConwayGeometryProcessor::getExtrudedAreaSolid(
     const ParamsGetExtrudedAreaSolid &parameters) {
   conway::geometry::Geometry geom;

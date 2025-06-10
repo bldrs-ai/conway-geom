@@ -38,6 +38,7 @@ import {
   ParamsGetPolygonalBoundedHalfspace,
 } from './parameters/params_get_polygonal_bounded_halfspace'
 import { ParamsGetExtrudedAreaSolid } from './parameters/params_get_extruded_area_solid'
+import { ParamsGetRevolvedAreaSolid } from './parameters/params_get_revolved_area_solid'
 import { ParamsGetBooleanResult } from './parameters/params_get_boolean_result'
 import { ParamsRelVoidSubtract } from './parameters/params_rel_void_subtract'
 import { NativeTransform3x3, NativeTransform4x4 } from './native_transform'
@@ -699,6 +700,16 @@ export class ConwayGeometry {
    */
   getExtrudedAreaSolid(parameters: ParamsGetExtrudedAreaSolid): GeometryObject {
     const result = this.wasmModule.getExtrudedAreaSolid(parameters)
+    return result
+  }
+
+    /**
+   *
+   * @param parameters ParamsGetRevolvedAreaSolid parsed from data model
+   * @return {GeometryObject}
+   */
+  getRevolvedAreaSolid(parameters: ParamsGetRevolvedAreaSolid): GeometryObject {
+    const result = this.wasmModule.getRevolvedAreaSolid(parameters)
     return result
   }
 
