@@ -2711,12 +2711,18 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getAP214Circle(
       }
 
     } else  {
-      
+
+      // sense disagreement: sweep from trim1 to trim2 with DECREASING
+      // parameter, i.e. a negative length (the sampling loop below walks
+      // `startRad + ratio * lengthRad`, so a negative length lands exactly
+      // on trim2). This used to negate back to a positive sweep, which
+      // walked the complement arc CCW from trim1 and finished ~360deg away
+      // from trim2 — the final Add3d(trim2) then stitched a chord across
+      // the curve. The trim1 == trim2 full-circle case above stays correct
+      // (start - 360 remains -360: one full CW revolution).
       if ( lengthDegrees > 0.0) {
         lengthDegrees -= 360.0;
       }
-
-      lengthDegrees = -lengthDegrees;
     }
   }
 
@@ -2727,9 +2733,38 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getAP214Circle(
 
   size_t startIndex = curve.points.size();
 
-  for (int i = startOffset; i < ( CIRCLE_SEGMENTS_MEDIUM + endOffset ); i++)
-  { 
-    double ratio = static_cast<double>(i) / (CIRCLE_SEGMENTS_MEDIUM - 1);
+  // Adapt the sample count to the swept arc length so micro-arcs (CAD
+  // fillet slivers exported as fractions of a millimetre) don't emit a
+  // fixed 23 interior points. Those samples land closer together than
+  // ~100x the 2^-24 Add3d quantisation grid, and the quantisation wobble
+  // on such short constraint segments is what produced the CDT
+  // "Intersecting constraint edges" failures on otherwise-valid faces
+  // (Onshape AmazingHand Right_Hand.step). The chord floor is expressed
+  // in multiples of the quantum so it tracks the *actual* hazard —
+  // quantisation noise — independent of the file's length unit. Arcs
+  // longer than CIRCLE_SEGMENTS_MEDIUM chords keep the legacy fixed
+  // density (bit-identical output for typical models).
+  constexpr double LOOP_POINT_QUANTUM = 0x1p-24;
+  constexpr double MIN_SAMPLE_CHORD   = 256.0 * LOOP_POINT_QUANTUM;
+
+  double arcLength =
+      std::abs( degreesToRadians( lengthDegrees ) ) *
+      std::max( std::abs( radius1 ), std::abs( radius2 ) );
+
+  // Trimmed arcs may collapse to their chord (endpoints are appended
+  // exactly); an untrimmed full circle needs enough samples to stay a
+  // ring, so keep the LOW floor there.
+  int minimumSegments =
+      parameters.paramsGetIfcTrimmedCurve.trimExists ? 2 : CIRCLE_SEGMENTS_LOW;
+
+  int segments = std::clamp(
+      static_cast< int >( std::ceil( arcLength / MIN_SAMPLE_CHORD ) ),
+      minimumSegments,
+      CIRCLE_SEGMENTS_MEDIUM );
+
+  for (int i = startOffset; i < ( segments + endOffset ); i++)
+  {
+    double ratio = static_cast<double>(i) / (segments - 1);
     double angle = startRad + ratio * lengthRad;
 
     if (parameters.dimensions == 2)
