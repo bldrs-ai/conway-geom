@@ -31,7 +31,6 @@
 
 namespace conway::geometry {
 
-constexpr double MAX_DEFLECTION            = 0.000001;
 constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
 
 
@@ -324,7 +323,7 @@ inline bool triangulateUnwrappedLoops(
 
   CDT::Triangulation< double > triangulation(
     CDT::VertexInsertionOrder::Auto,
-    CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+    CDT::IntersectingConstraintEdges::TryResolve, 0 );
 
   try
   {
@@ -477,7 +476,7 @@ inline void TriangulateRevolution(Geometry &geometry,
       mesh,
       surfaceProjection,
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      MAX_DEFLECTION );
+      relativeDeflectionSquared( mesh ) );
 
     appendMeshToGeometry( mesh, geometry );
   };
@@ -742,7 +741,7 @@ inline void TriangulateRevolution(Geometry &geometry,
 
           CDT::Triangulation< double > triangulation(
             CDT::VertexInsertionOrder::Auto,
-            CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+            CDT::IntersectingConstraintEdges::TryResolve, 0 );
 
           bool triangulated = false;
 
@@ -1056,7 +1055,7 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
       return glm::normalize( point - cent ) * radius + cent;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    MAX_DEFLECTION );
+    relativeDeflectionSquared( mesh ) );
 
   appendMeshToGeometry( mesh, geometry );
 }
@@ -1647,7 +1646,7 @@ inline void TriangulateToroidalSurface(
 
       CDT::Triangulation< double > triangulation(
         CDT::VertexInsertionOrder::Auto,
-        CDT::IntersectingConstraintEdges::NotAllowed, 0);
+        CDT::IntersectingConstraintEdges::TryResolve, 0);
 
       bool logFailure = vertexCount == boundaryVertexCount;
 
@@ -1735,20 +1734,10 @@ inline void TriangulateToroidalSurface(
 
   // --- 6. Shared adaptive on-surface refinement -----------------------------
 
-  // Scale-aware refinement floor, as in the extrusion/cylinder unwraps: the
-  // absolute MAX_DEFLECTION is unreachable at model scale and reads as
+  // Scale-aware refinement threshold (relativeDeflectionSquared): the old
+  // absolute MAX_DEFLECTION was unreachable at large model scale and read as
   // "refine until the budget runs out" - tolerable when the budget was tiny
   // (boundary-only CDT), runaway now that interior seeding raises it.
-  glm::dvec3 boxMin( std::numeric_limits< double >::max() );
-  glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
-
-  for ( const glm::dvec3 &vertex : mesh.vertices ) {
-    boxMin = glm::min( boxMin, vertex );
-    boxMax = glm::max( boxMax, vertex );
-  }
-
-  double deflection = glm::distance( boxMin, boxMax ) * 1e-3;
-
   tesselate(
     mesh,
     [&]( const glm::dvec3& point ) {
@@ -1779,7 +1768,7 @@ inline void TriangulateToroidalSurface(
         vecZ * pointOnIdentityRing.z + cent;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    std::max( MAX_DEFLECTION, deflection * deflection ) );
+    relativeDeflectionSquared( mesh ) );
 
   appendMeshToGeometry( mesh, geometry );
 }
@@ -1956,19 +1945,6 @@ inline void TriangulateConicalSurface(
 
       if ( triangulateUnwrappedLoops( loops, mesh, "cone" ) ) {
 
-        // Scale-aware refinement floor, as in the extrusion unwrap: the
-        // shared absolute MAX_DEFLECTION reads as "refine until the budget
-        // runs out" at large model scales.
-        glm::dvec3 boxMin( std::numeric_limits< double >::max() );
-        glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
-
-        for ( const glm::dvec3 &vertex : mesh.vertices ) {
-          boxMin = glm::min( boxMin, vertex );
-          boxMax = glm::max( boxMax, vertex );
-        }
-
-        double deflection = glm::distance( boxMin, boxMax ) * 1e-3;
-
         tesselate(
           mesh,
           [&]( const glm::dvec3 &point ) {
@@ -1993,7 +1969,7 @@ inline void TriangulateConicalSurface(
               vecZ * dz;
           },
           mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-          std::max( MAX_DEFLECTION, deflection * deflection ) );
+          relativeDeflectionSquared( mesh ) );
 
         appendMeshToGeometry( mesh, geometry );
         return;
@@ -2175,7 +2151,7 @@ inline void TriangulateConicalSurface(
       return cent + coneSpacePoint.x * vecX + coneSpacePoint.y * vecY + coneSpacePoint.z * vecZ;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    MAX_DEFLECTION );
+    relativeDeflectionSquared( mesh ) );
 
   appendMeshToGeometry( mesh, geometry, sameSense );
 }
@@ -2208,9 +2184,9 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
   // axis, t the normalized axial coordinate - and CDT them with exact hole
   // nesting. The legacy path below earcuts an annulus projection whose
   // ring ordering assumes strict radial nesting by max-z; its chord
-  // triangles then get inflated by the budgeted refinement (the absolute
-  // MAX_DEFLECTION is unreachable at model scale) into lumpy off-surface
-  // shelves. Any degeneracy here falls back to that legacy path unchanged.
+  // triangles then get inflated by the budgeted refinement into lumpy
+  // off-surface shelves. Any degeneracy here falls back to that legacy
+  // path unchanged.
   {
     using namespace unwrap_detail;
 
@@ -2306,17 +2282,6 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
       if ( triangulateUnwrappedLoops( loops, unwrapMesh, "cylinder" ) ) {
 
-        // Scale-aware refinement floor, as in the extrusion unwrap.
-        glm::dvec3 boxMin( std::numeric_limits< double >::max() );
-        glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
-
-        for ( const glm::dvec3 &vertex : unwrapMesh.vertices ) {
-          boxMin = glm::min( boxMin, vertex );
-          boxMax = glm::max( boxMax, vertex );
-        }
-
-        double deflection = glm::distance( boxMin, boxMax ) * 1e-3;
-
         tesselate(
           unwrapMesh,
           [&]( const glm::dvec3 &point ) {
@@ -2338,7 +2303,7 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
               vecZ * dz;
           },
           unwrapMesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-          std::max( MAX_DEFLECTION, deflection * deflection ) );
+          relativeDeflectionSquared( unwrapMesh ) );
 
         appendMeshToGeometry( unwrapMesh, geometry );
         return;
@@ -2523,7 +2488,7 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
       return cent + newInPlane.x * vecX + newInPlane.y * vecY + vecZ * dz;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    MAX_DEFLECTION );
+    relativeDeflectionSquared( mesh ) );
 
   appendMeshToGeometry( mesh, geometry, sameSense );
 }
@@ -2640,30 +2605,20 @@ inline void TriangulateExtrusion(Geometry &geometry,
     return foot + axis * t;
   };
 
-  // Scale-aware refinement floor: stop subdividing once midpoint deviation
-  // drops below 0.1% of the face's extent (the same visual criterion as the
-  // revolution ring count). The shared absolute MAX_DEFLECTION reads as
-  // "refine until the budget runs out" at large model scales, and with
-  // 1,370 extrusion faces on the jet compressor alone that doubled the
-  // model's triangle count for invisible gains.
+  // Scale-aware refinement threshold (relativeDeflectionSquared): stop
+  // subdividing once midpoint deviation drops below 0.1% of the face's
+  // extent (the same visual criterion as the revolution ring count). The
+  // old shared absolute MAX_DEFLECTION read as "refine until the budget
+  // runs out" at large model scales, and with 1,370 extrusion faces on the
+  // jet compressor alone that doubled the model's triangle count for
+  // invisible gains.
   auto refineAndAppend = [&]( WingedEdgeMesh< glm::dvec3 > &mesh ) {
-
-    glm::dvec3 boxMin( std::numeric_limits< double >::max() );
-    glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
-
-    for ( const glm::dvec3 &vertex : mesh.vertices ) {
-      boxMin = glm::min( boxMin, vertex );
-      boxMax = glm::max( boxMax, vertex );
-    }
-
-    double diagonal   = glm::distance( boxMin, boxMax );
-    double deflection = diagonal * 1e-3;
 
     tesselate(
       mesh,
       surfaceProjection,
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      std::max( MAX_DEFLECTION, deflection * deflection ) );
+      relativeDeflectionSquared( mesh ) );
 
     appendMeshToGeometry( mesh, geometry );
   };
@@ -2896,7 +2851,7 @@ inline void TriangulateExtrusion(Geometry &geometry,
 
   CDT::Triangulation< double > triangulation(
     CDT::VertexInsertionOrder::Auto,
-    CDT::IntersectingConstraintEdges::NotAllowed, 0 );
+    CDT::IntersectingConstraintEdges::TryResolve, 0 );
 
   try
   {
@@ -3341,7 +3296,7 @@ inline void TriangulateBspline(Geometry &geometry,
         return bSplineInverseEvaluation.evaluator.point( from.x, from.y );
       },
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      MAX_DEFLECTION );
+      relativeDeflectionSquared( mesh ) );
 
     appendMeshToGeometry( mesh, geometry, !surface.sameSense );
 

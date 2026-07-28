@@ -14,9 +14,45 @@
 namespace conway::geometry {
 
 constexpr double MIN_T_DELTA = 0.01;
-constexpr double MAX_CURVE_DEFLECTION = 0.001;
-constexpr double MAX_CURVE_DEFLECTION2 =
-    MAX_CURVE_DEFLECTION * MAX_CURVE_DEFLECTION;
+
+/**
+ * Squared chord-deviation threshold for adaptive B-spline curve sampling,
+ * relative to the curve's control hull extent (0.1% of its bounding-box
+ * diagonal). The old absolute MAX_CURVE_DEFLECTION (1mm linear) silently
+ * assumed millimetre-ish numeric scale: metre-unit STEP files (Onshape
+ * AP242 exports) stopped subdividing fingertip-sized silhouette edges at
+ * 1mm true deviation — visible faceting on the AmazingHand distal shells —
+ * matching the surface-side fix in tesselation_utils'
+ * relativeDeflectionSquared. The floor is the 2^-24 loop-point
+ * quantisation grid of IfcCurve::Add3d, below which a chord target is
+ * meaningless; it also guards degenerate zero-extent hulls.
+ *
+ * @param controlPoints The curve's control points (their hull bounds the
+ *   curve).
+ * @return The squared deflection threshold for the subdivision loop.
+ */
+template< typename PointType >
+inline double relativeCurveDeflectionSquared(
+    const std::vector< PointType >& controlPoints ) {
+
+  PointType boxMin( std::numeric_limits< double >::max() );
+  PointType boxMax( std::numeric_limits< double >::lowest() );
+
+  for ( const PointType& point : controlPoints ) {
+    boxMin = glm::min( boxMin, point );
+    boxMax = glm::max( boxMax, point );
+  }
+
+  constexpr double RELATIVE_DEFLECTION_FACTOR = 1e-3;
+  constexpr double MIN_DEFLECTION             = 0x1p-24;
+
+  double deflection =
+    controlPoints.empty() ?
+      0.0 :
+      glm::distance( boxMin, boxMax ) * RELATIVE_DEFLECTION_FACTOR;
+
+  return std::max( MIN_DEFLECTION * MIN_DEFLECTION, deflection * deflection );
+}
 
 inline bool isConvexOrColinear(glm::dvec2 a, glm::dvec2 b, glm::dvec2 c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0;
@@ -396,6 +432,8 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
 
   std::vector<std::pair<double, glm::dvec3> > spanStack;
 
+  double maxDeflection2 = relativeCurveDeflectionSquared( points );
+
   double acceptedT = 0;
 
   result.push_back(InterpolateRationalBSplineCurveWithKnots(tStart, degree, points,
@@ -420,7 +458,7 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
     glm::dvec3 deflectionVector = midPointSpline - midPointLinear;
 
     if ( fabs( deltaT ) > MIN_T_DELTA &&
-        glm::dot(deflectionVector, deflectionVector) > MAX_CURVE_DEFLECTION2 ) {
+        glm::dot(deflectionVector, deflectionVector) > maxDeflection2 ) {
       spanStack.emplace_back(candidateT, midPointSpline);
 
     } else {
@@ -440,6 +478,8 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
   std::vector<glm::dvec2> result;
 
   std::vector<std::pair<double, glm::dvec2> > spanStack;
+
+  double maxDeflection2 = relativeCurveDeflectionSquared( points );
 
   double acceptedT = 0;
 
@@ -465,7 +505,7 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
     glm::dvec2 deflectionVector = midPointSpline - midPointLinear;
 
     if ( fabs( deltaT ) > MIN_T_DELTA &&
-        glm::dot(deflectionVector, deflectionVector) > MAX_CURVE_DEFLECTION2) {
+        glm::dot(deflectionVector, deflectionVector) > maxDeflection2) {
       spanStack.emplace_back(candidateT, midPointSpline);
 
     } else {
