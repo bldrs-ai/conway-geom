@@ -354,6 +354,14 @@ inline bool triangulateUnwrappedLoops(
       continue;
     }
 
+    // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+    if (
+      cdtv1 >= cdtWorld.size() ||
+      cdtv2 >= cdtWorld.size() ||
+      cdtv3 >= cdtWorld.size() ) {
+      continue;
+    }
+
     mesh.makeTriangle( cdtv1, cdtv2, cdtv3 );
   }
 
@@ -776,6 +784,14 @@ inline void TriangulateRevolution(Geometry &geometry,
               auto [ cdtv1, cdtv2, cdtv3 ] = triangle.vertices;
 
               if ( cdtv1 == cdtv2 || cdtv2 == cdtv3 || cdtv3 == cdtv1 ) {
+                continue;
+              }
+
+              // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+              if (
+                cdtv1 >= cdtWorld.size() ||
+                cdtv2 >= cdtWorld.size() ||
+                cdtv3 >= cdtWorld.size() ) {
                 continue;
               }
 
@@ -1714,6 +1730,14 @@ inline void TriangulateToroidalSurface(
       auto [ cdtv1, cdtv2, cdtv3 ] = triangle.vertices;
 
       if ( cdtv1 == cdtv2 || cdtv2 == cdtv3 || cdtv3 == cdtv1 ) {
+        continue;
+      }
+
+      // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+      if (
+        cdtv1 >= usedVertexCount ||
+        cdtv2 >= usedVertexCount ||
+        cdtv3 >= usedVertexCount ) {
         continue;
       }
 
@@ -2882,6 +2906,14 @@ inline void TriangulateExtrusion(Geometry &geometry,
     auto [ cdtv1, cdtv2, cdtv3 ] = triangle.vertices;
 
     if ( cdtv1 == cdtv2 || cdtv2 == cdtv3 || cdtv3 == cdtv1 ) {
+      continue;
+    }
+
+    // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+    if (
+      cdtv1 >= cdtWorld.size() ||
+      cdtv2 >= cdtWorld.size() ||
+      cdtv3 >= cdtWorld.size() ) {
       continue;
     }
 

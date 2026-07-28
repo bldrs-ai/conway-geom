@@ -349,6 +349,15 @@ namespace conway::geometry
         continue;
       }
 
+      // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+      if (
+        cdtv1 >= vertexRemapping.size() ||
+        cdtv2 >= vertexRemapping.size() ||
+        cdtv3 >= vertexRemapping.size() )
+      {
+        continue;
+      }
+
       uint32_t v1 = vertexRemapping[ cdtv1 ];
       uint32_t v2 = vertexRemapping[ cdtv2 ];
       uint32_t v3 = vertexRemapping[ cdtv3 ];
@@ -785,6 +794,15 @@ namespace conway::geometry
         continue;
       }
 
+      // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+      if (
+        cdtv1 >= vertexRemapping.size() ||
+        cdtv2 >= vertexRemapping.size() ||
+        cdtv3 >= vertexRemapping.size() )
+      {
+        continue;
+      }
+
       uint32_t v1 = vertexRemapping[ cdtv1 ];
       uint32_t v2 = vertexRemapping[ cdtv2 ];
       uint32_t v3 = vertexRemapping[ cdtv3 ];
@@ -1138,6 +1156,15 @@ namespace conway::geometry
         auto [ v1, v2, v3 ] = triangle.vertices;
 
         if ( v1 == v2 || v2 == v3 || v3 == v1 )
+        {
+          continue;
+        }
+
+        // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+        if (
+          v1 >= reverseVertexRemapping.size() ||
+          v2 >= reverseVertexRemapping.size() ||
+          v3 >= reverseVertexRemapping.size() )
         {
           continue;
         }
