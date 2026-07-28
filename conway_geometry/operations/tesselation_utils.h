@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <limits>
 #include <glm/glm.hpp>
 
 #include "structures/winged_edge.h"
@@ -37,8 +38,66 @@ namespace conway::geometry {
 
     glm::dvec3 point;
     glm::dvec2 uv;
-    
+
   };
+
+  /** Position accessors so bound computations span both mesh vertex types. */
+  inline const glm::dvec3& refinementPoint( const glm::dvec3& vertex ) {
+    return vertex;
+  }
+
+  /** Position of a UV parameterized vertex. */
+  inline const glm::dvec3& refinementPoint( const ParameterVertex& vertex ) {
+    return vertex.point;
+  }
+
+  /**
+   * Squared deflection threshold for `tesselate`, relative to the seed
+   * mesh's own extent — 0.1% of its bounding-box diagonal, squared to match
+   * the squared-deflection comparison in the refinement loop.
+   *
+   * Unit-independence is the point. The shared absolute MAX_DEFLECTION
+   * (1e-6, i.e. 1mm linear deflection) silently assumed millimetre-ish
+   * numeric scale: in metre-unit STEP files (Onshape AP242 exports) every
+   * curved face smaller than a metre bottomed out on the absolute constant
+   * and stopped refining at ~1mm true deflection — visibly faceted
+   * fingertip-sized B-spline/cylinder faces on the AmazingHand model —
+   * while in millimetre-unit files the same constant was so fine it read
+   * as "refine until the triangle budget runs out" (see the extrusion
+   * unwrap's jet-compressor note). The relative criterion follows the
+   * 0.1%-of-extent convention the revolution/extrusion/cylinder unwraps
+   * already used; the tiny floor (the 2^-24 loop-point quantisation grid
+   * of IfcCurve::Add3d, below which a deflection target is meaningless)
+   * only guards degenerate zero-extent seeds against refine-to-zero churn.
+   *
+   * @param mesh The seed mesh about to be refined.
+   * @return The squared deflection threshold to pass to `tesselate`.
+   */
+  template< typename VertexType >
+  inline double relativeDeflectionSquared(
+      const WingedEdgeMesh< VertexType >& mesh ) {
+
+    glm::dvec3 boxMin( std::numeric_limits< double >::max() );
+    glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
+
+    for ( const VertexType& vertex : mesh.vertices ) {
+
+      const glm::dvec3& point = refinementPoint( vertex );
+
+      boxMin = glm::min( boxMin, point );
+      boxMax = glm::max( boxMax, point );
+    }
+
+    constexpr double RELATIVE_DEFLECTION_FACTOR = 1e-3;
+    constexpr double MIN_DEFLECTION             = 0x1p-24;
+
+    double deflection =
+      mesh.vertices.empty() ?
+        0.0 :
+        glm::distance( boxMin, boxMax ) * RELATIVE_DEFLECTION_FACTOR;
+
+    return std::max( MIN_DEFLECTION * MIN_DEFLECTION, deflection * deflection );
+  }
 
   /**
    * Compute the normal of a parameter vertex.

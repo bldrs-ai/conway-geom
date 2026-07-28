@@ -299,9 +299,17 @@ namespace conway::geometry
       }
     }
 
+    // TryResolve (here and at the other face-tessellation CDT sites in this
+    // file and mesh_utils.h): split intersecting constraints at their
+    // crossing instead of throwing — the throw dropped the whole face,
+    // leaving a hole in the mesh. Real CAD input reaches this with
+    // near-degenerate sliver boundaries (Onshape AmazingHand
+    // Right_Hand.step); a locally-imperfect triangulation beats a missing
+    // face. The csg_mesher sites deliberately keep NotAllowed: the boolean
+    // pipeline relies on exact constraint topology.
     CDT::Triangulation< double > triangulation(
       CDT::VertexInsertionOrder::AsProvided,
-      CDT::IntersectingConstraintEdges::NotAllowed, 0);
+      CDT::IntersectingConstraintEdges::TryResolve, 0);
 
     try
     {
@@ -337,6 +345,15 @@ namespace conway::geometry
         cdtv1 == cdtv2 ||
         cdtv2 == cdtv3 ||
         cdtv3 == cdtv1 )
+      {
+        continue;
+      }
+
+      // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+      if (
+        cdtv1 >= vertexRemapping.size() ||
+        cdtv2 >= vertexRemapping.size() ||
+        cdtv3 >= vertexRemapping.size() )
       {
         continue;
       }
@@ -733,7 +750,7 @@ namespace conway::geometry
 
     CDT::Triangulation< double > triangulation(
       CDT::VertexInsertionOrder::Auto,
-      CDT::IntersectingConstraintEdges::NotAllowed, 0);
+      CDT::IntersectingConstraintEdges::TryResolve, 0);
 
     try
     {
@@ -773,6 +790,15 @@ namespace conway::geometry
         cdtv1 == cdtv2 ||
         cdtv2 == cdtv3 ||
         cdtv3 == cdtv1 )
+      {
+        continue;
+      }
+
+      // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+      if (
+        cdtv1 >= vertexRemapping.size() ||
+        cdtv2 >= vertexRemapping.size() ||
+        cdtv3 >= vertexRemapping.size() )
       {
         continue;
       }
@@ -1107,7 +1133,7 @@ namespace conway::geometry
 
       CDT::Triangulation< double > triangulation(
         CDT::VertexInsertionOrder::AsProvided,
-        CDT::IntersectingConstraintEdges::NotAllowed,
+        CDT::IntersectingConstraintEdges::TryResolve,
         0);
 
       try
@@ -1134,9 +1160,24 @@ namespace conway::geometry
           continue;
         }
 
-        uint32_t outputV1 = reverseVertexRemapping[ v1 ];
-        uint32_t outputV2 = reverseVertexRemapping[ v2 ];
-        uint32_t outputV3 = reverseVertexRemapping[ v3 ];
+        // TryResolve can add split vertices past the input set; they have no
+        // world-space lift here, so skip the sliver triangles that touch them.
+        // vertexRemapping is CDT index -> mesh vertex, so its size is the CDT
+        // input count — the correct bound for that check. (This loop used to
+        // read reverseVertexRemapping[ cdt index ], which maps the OPPOSITE
+        // direction — mesh vertex -> CDT index, sized to the whole mesh — so
+        // every stitch triangle got scrambled or EMPTY_INDEX vertex ids.)
+        if (
+          v1 >= vertexRemapping.size() ||
+          v2 >= vertexRemapping.size() ||
+          v3 >= vertexRemapping.size() )
+        {
+          continue;
+        }
+
+        uint32_t outputV1 = vertexRemapping[ v1 ];
+        uint32_t outputV2 = vertexRemapping[ v2 ];
+        uint32_t outputV3 = vertexRemapping[ v3 ];
 
         output.makeTriangle( outputV1, outputV2, outputV3 );
       }
