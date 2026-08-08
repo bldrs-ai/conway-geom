@@ -1999,10 +1999,12 @@ inline void TriangulateConicalSurface(
         // radius model this unwrap tesselates against is
         // `meanR + slope * (dz - meanZ)`, so the generator runs along
         // (radial, slope) and the outward normal along (radial, -slope).
+        // surface.sameSense for the same reason as the cylinder path: the
+        // local `sameSense` carries the noise-signed negation above.
         appendMeshToGeometry(
           mesh,
           geometry,
-          sameSense,
+          surface.sameSense,
           [&]( const glm::dvec3& point ) {
 
             glm::dvec3 delta  = point - cent;
@@ -2351,10 +2353,17 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
         // A cylinder's outward normal is the radial component of the
         // offset from the axis; the axial part carries no orientation.
+        // surface.sameSense, NOT the local `sameSense`: that one has been
+        // negated on `glm::dot( vecZ, vecX ) > 0`, a test on two orthonormal
+        // columns of the placement whose sign is floating-point noise
+        // (GetAxis2Placement3D builds xAxis = normalize(cross(yAxis, zAxis)),
+        // so the dot is ~1e-17). It was harmless while this path ignored the
+        // flag; feeding it in would flip a whole face on rounding noise for
+        // any cylinder on a rotated placement.
         appendMeshToGeometry(
           unwrapMesh,
           geometry,
-          sameSense,
+          surface.sameSense,
           [&]( const glm::dvec3& point ) {
 
             glm::dvec3 delta = point - cent;
