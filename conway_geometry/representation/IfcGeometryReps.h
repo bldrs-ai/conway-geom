@@ -289,6 +289,18 @@ struct IfcSurface {
   Extrusion ExtrusionSurface;
   bool sameSense = false;
 
+  /**
+   * Whether `sameSense` above was actually populated by the extractor.
+   *
+   * The flag is only meaningful when someone set it: the AP214/STEP
+   * extractor copies advanced_face.same_sense, but the IFC extractor
+   * never has, so for IFC `sameSense` is just its default and reading it
+   * as a real answer would invert every advanced face. Orientation code
+   * that depends on the face sense keeps its previous behaviour when
+   * this is false. See https://github.com/bldrs-ai/conway/issues/459.
+   */
+  bool sameSenseKnown = false;
+
   glm::dvec3 normal() {
     if (!CylinderSurface.Active && !BSplineSurface.Active &&
         !RevolutionSurface.Active) {

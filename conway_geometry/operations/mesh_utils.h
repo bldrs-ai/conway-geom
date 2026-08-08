@@ -1999,25 +1999,34 @@ inline void TriangulateConicalSurface(
         // radius model this unwrap tesselates against is
         // `meanR + slope * (dz - meanZ)`, so the generator runs along
         // (radial, slope) and the outward normal along (radial, -slope).
-        // surface.sameSense for the same reason as the cylinder path: the
-        // local `sameSense` carries the noise-signed negation above.
-        appendMeshToGeometry(
-          mesh,
-          geometry,
-          surface.sameSense,
-          [&]( const glm::dvec3& point ) {
+        // Gated on sameSenseKnown, and reading surface.sameSense rather
+        // than the noise-negated local, for the same reasons as the
+        // cylinder path above.
+        if ( surface.sameSenseKnown ) {
 
-            glm::dvec3 delta  = point - cent;
-            glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
-            double     length = glm::length( radial );
+          appendMeshToGeometry(
+            mesh,
+            geometry,
+            surface.sameSense,
+            [&]( const glm::dvec3& point ) {
 
-            if ( length < 1e-12 ) {
+              glm::dvec3 delta  = point - cent;
+              glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
+              double     length = glm::length( radial );
 
-              return glm::dvec3( 0.0, 0.0, 0.0 );  // On the axis (apex).
-            }
+              if ( length < 1e-12 ) {
 
-            return ( radial / length ) - vecZ * slope;
-          } );
+                return glm::dvec3( 0.0, 0.0, 0.0 );  // On the axis (apex).
+              }
+
+              return ( radial / length ) - vecZ * slope;
+            } );
+
+        } else {
+
+          appendMeshToGeometry( mesh, geometry );
+        }
+
         return;
       }
     }
@@ -2353,6 +2362,12 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
         // A cylinder's outward normal is the radial component of the
         // offset from the axis; the axial part carries no orientation.
+        // Only orient against the surface normal when the face sense is
+        // actually known — see IfcSurface::sameSenseKnown. Extractors that
+        // never populated it (IFC) keep the previous projection-based
+        // behaviour rather than being handed a default as if it were an
+        // answer.
+        //
         // surface.sameSense, NOT the local `sameSense`: that one has been
         // negated on `glm::dot( vecZ, vecX ) > 0`, a test on two orthonormal
         // columns of the placement whose sign is floating-point noise
@@ -2360,16 +2375,24 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
         // so the dot is ~1e-17). It was harmless while this path ignored the
         // flag; feeding it in would flip a whole face on rounding noise for
         // any cylinder on a rotated placement.
-        appendMeshToGeometry(
-          unwrapMesh,
-          geometry,
-          surface.sameSense,
-          [&]( const glm::dvec3& point ) {
+        if ( surface.sameSenseKnown ) {
 
-            glm::dvec3 delta = point - cent;
+          appendMeshToGeometry(
+            unwrapMesh,
+            geometry,
+            surface.sameSense,
+            [&]( const glm::dvec3& point ) {
 
-            return delta - vecZ * glm::dot( delta, vecZ );
-          } );
+              glm::dvec3 delta = point - cent;
+
+              return delta - vecZ * glm::dot( delta, vecZ );
+            } );
+
+        } else {
+
+          appendMeshToGeometry( unwrapMesh, geometry );
+        }
+
         return;
       }
     }
