@@ -1995,7 +1995,27 @@ inline void TriangulateConicalSurface(
           mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
           relativeDeflectionSquared( mesh ) );
 
-        appendMeshToGeometry( mesh, geometry );
+        // Same idea as the cylinder, tilted by the cone's taper: the
+        // radius model this unwrap tesselates against is
+        // `meanR + slope * (dz - meanZ)`, so the generator runs along
+        // (radial, slope) and the outward normal along (radial, -slope).
+        appendMeshToGeometry(
+          mesh,
+          geometry,
+          sameSense,
+          [&]( const glm::dvec3& point ) {
+
+            glm::dvec3 delta  = point - cent;
+            glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
+            double     length = glm::length( radial );
+
+            if ( length < 1e-12 ) {
+
+              return glm::dvec3( 0.0, 0.0, 0.0 );  // On the axis (apex).
+            }
+
+            return ( radial / length ) - vecZ * slope;
+          } );
         return;
       }
     }
@@ -2329,7 +2349,18 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
           unwrapMesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
           relativeDeflectionSquared( unwrapMesh ) );
 
-        appendMeshToGeometry( unwrapMesh, geometry );
+        // A cylinder's outward normal is the radial component of the
+        // offset from the axis; the axial part carries no orientation.
+        appendMeshToGeometry(
+          unwrapMesh,
+          geometry,
+          sameSense,
+          [&]( const glm::dvec3& point ) {
+
+            glm::dvec3 delta = point - cent;
+
+            return delta - vecZ * glm::dot( delta, vecZ );
+          } );
         return;
       }
     }
