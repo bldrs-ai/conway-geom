@@ -2014,7 +2014,10 @@ inline void TriangulateConicalSurface(
               glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
               double     length = glm::length( radial );
 
-              if ( length < 1e-12 ) {
+              // Radius-relative for the same reason as the cylinder
+              // path; an absolute epsilon misjudges very small and very
+              // large cones alike.
+              if ( length < fabs( meanR ) * 1e-9 ) {
 
                 return glm::dvec3( 0.0, 0.0, 0.0 );  // On the axis (apex).
               }
@@ -2383,9 +2386,22 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
             surface.sameSense,
             [&]( const glm::dvec3& point ) {
 
-              glm::dvec3 delta = point - cent;
+              glm::dvec3 delta  = point - cent;
+              glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
 
-              return delta - vecZ * glm::dot( delta, vecZ );
+              // A centroid can land on the axis even when all three
+              // vertices are on the surface — the midpoint of two
+              // diametrically opposed points is exactly there. The radial
+              // direction is then pure noise and the triangle would be
+              // swapped on its sign, which is the failure this overload
+              // exists to remove. Scaled by the radius so a millimetre
+              // bore and a metre drum behave alike.
+              if ( glm::length( radial ) < radius * 1e-9 ) {
+
+                return glm::dvec3( 0.0, 0.0, 0.0 );
+              }
+
+              return radial;
             } );
 
         } else {
