@@ -1119,7 +1119,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("torus", &conway::geometry::IfcSurface::ToroidalSurface)
       .property("revolution", &conway::geometry::IfcSurface::RevolutionSurface)
       .property("extrusion", &conway::geometry::IfcSurface::ExtrusionSurface)
-      .property("sameSense", &conway::geometry::IfcSurface::sameSense);
+      .property("sameSense", &conway::geometry::IfcSurface::sameSense)
+      .property("sameSenseKnown", &conway::geometry::IfcSurface::sameSenseKnown);
 
   emscripten::class_<conway::geometry::IfcBound3D>("IfcBound3D")
       .constructor<>();

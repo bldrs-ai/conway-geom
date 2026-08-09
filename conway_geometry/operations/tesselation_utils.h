@@ -252,6 +252,84 @@ namespace conway::geometry {
   }
 
   /**
+   * Append a winged edge mesh, orienting every triangle against the
+   * analytic normal of the surface it lies on.
+   *
+   * The two-argument overload above cannot do this. It calls orient2D,
+   * which projects each triangle onto ITS OWN best axis pair and forces a
+   * positive sign there. On a planar face every triangle shares a plane,
+   * one projection is chosen for all of them, and the result is
+   * consistent. On a curved face the dominant axis changes as the surface
+   * turns, so triangles end up oriented toward a fixed half-space instead
+   * of consistently outward — roughly a 180 degree arc of every cylinder
+   * came back wound inward, while planar faces were always correct
+   * (https://github.com/bldrs-ai/conway/issues/459).
+   *
+   * Taking the normal from the surface removes the guess: `normalAt`
+   * returns the surface's own outward normal at a point (it need not be
+   * unit length, only correctly directed), and `sameSense` applies the
+   * STEP advanced_face flag that says whether the face agrees with it —
+   * so a boss and the bore it sits in get opposite windings from the same
+   * cylinder, which is what the flag is for. The unwrap paths previously
+   * computed `sameSense` and then discarded it here.
+   *
+   * @param mesh The tesselated mesh, in world space.
+   * @param geometry Destination geometry.
+   * @param sameSense The face's same_sense flag.
+   * @param normalAt Outward surface normal at a point.
+   */
+  template< typename NormalFunction >
+  inline void appendMeshToGeometry(
+    WingedEdgeMesh< glm::dvec3 >& mesh,
+    Geometry& geometry,
+    bool sameSense,
+    NormalFunction&& normalAt ) {
+
+    uint32_t baseVertex = geometry.vertices.size();
+
+    geometry.vertices.reserve( geometry.vertices.size() + mesh.vertices.size() );
+    geometry.vertices.insert(
+      geometry.vertices.end(),
+      mesh.vertices.begin(),
+      mesh.vertices.end() );
+
+    for ( const ConnectedTriangle& triangle : mesh.triangles ) {
+
+      uint32_t v0 = triangle.vertices[ 0 ];
+      uint32_t v1 = triangle.vertices[ 1 ];
+      uint32_t v2 = triangle.vertices[ 2 ];
+
+      const glm::dvec3& p0 = mesh.vertices[ v0 ];
+      const glm::dvec3& p1 = mesh.vertices[ v1 ];
+      const glm::dvec3& p2 = mesh.vertices[ v2 ];
+
+      glm::dvec3 winding = glm::cross( p1 - p0, p2 - p0 );
+      glm::dvec3 outward = normalAt( ( p0 + p1 + p2 ) / 3.0 );
+
+      if ( !sameSense ) {
+
+        outward = -outward;
+      }
+
+      double agreement = glm::dot( winding, outward );
+
+      // A zero dot means a degenerate triangle or a point where the
+      // normal is undefined (on the axis). Neither has an orientation
+      // worth flipping for, so it is left as the triangulator produced
+      // it rather than swapped on the sign of noise.
+      if ( agreement < 0.0 ) {
+
+        std::swap( v0, v2 );
+      }
+
+      geometry.MakeTriangle(
+        baseVertex + v0,
+        baseVertex + v1,
+        baseVertex + v2 );
+    }
+  }
+
+  /**
    * Given a parameterized surface (UV)->(XYZ),
    * this will take a starting mesh with parameterized vertices and tesselate the internal triangles
    */
