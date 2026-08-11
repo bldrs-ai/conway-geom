@@ -821,40 +821,49 @@ inline void TriangulateRevolution(Geometry &geometry,
   // ... by adding the middle point of all curves
 
   for (size_t i = 0; i < bounds.size(); i++) {
-    // indices is read in lockstep with points below, and indices[0] is read
-    // before the loop even starts, so a bound that carries no points - or
-    // fewer indices than points - would read past the end of the vector.
-    if ( bounds[ i ].curve.points.empty() ||
-         bounds[ i ].curve.indices.size() < bounds[ i ].curve.points.size() ) {
+
+    const std::vector< glm::dvec3 > &curvePoints  = bounds[ i ].curve.points;
+    const std::vector< uint16_t >   &curveIndices = bounds[ i ].curve.indices;
+
+    if ( curvePoints.empty() ) {
       continue;
     }
+
+    // indices is only populated on the edge-loop branch of GetLoop; poly loops
+    // and vertex loops arrive points-only from both front ends. Dropping those
+    // bounds would erase the whole boundary for a poly-loop-bounded revolution
+    // face, so a bound with no usable indices is treated as ONE group - which
+    // is exactly what an edge loop whose points all share an edge id does.
+    const bool grouped = curveIndices.size() == curvePoints.size();
 
     double xx = 0;
     double yy = 0;
     double zz = 0;
     double cc = 0;
-    int lastTeam = bounds[i].curve.indices[0];
-    for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
+    int lastTeam = grouped ? static_cast< int >( curveIndices[ 0 ] ) : 0;
+    for (size_t j = 0; j < curvePoints.size(); j++) {
+      const int team = grouped ? static_cast< int >( curveIndices[ j ] ) : 0;
+
       // If it is the first point of the group we close the previous group ...
       //  ... and create a new one. Else, the point is of the current group
-      if (lastTeam != bounds[i].curve.indices[j] ||
-          j == (bounds[i].curve.points.size() - 1)) {
+      if (lastTeam != team ||
+          j == (curvePoints.size() - 1)) {
         if (cc > 0) {
           xx /= cc;
           yy /= cc;
           zz /= cc;
           bounding.push_back(glm::dvec3(xx, yy, zz));
         }
-        xx = bounds[i].curve.points[j].x;
-        yy = bounds[i].curve.points[j].y;
-        zz = bounds[i].curve.points[j].z;
+        xx = curvePoints[j].x;
+        yy = curvePoints[j].y;
+        zz = curvePoints[j].z;
         cc = 1;
 
-        lastTeam = bounds[i].curve.indices[j];
+        lastTeam = team;
       } else {
-        xx += bounds[i].curve.points[j].x;
-        yy += bounds[i].curve.points[j].y;
-        zz += bounds[i].curve.points[j].z;
+        xx += curvePoints[j].x;
+        yy += curvePoints[j].y;
+        zz += curvePoints[j].z;
         cc++;
       }
     }
@@ -911,9 +920,20 @@ inline void TriangulateRevolution(Geometry &geometry,
   // arises from bounds skipped above. Emitting nothing is the conservative
   // reading; fabricating a full revolution would invent geometry the face may
   // not cover.
-  if ( angleVec.empty() ) {
-    Logger::logWarning(
-      "Revolution face has no usable angular boundary; skipping the swept fallback." );
+  //
+  // Fewer than TWO samples, not merely zero: a single sample leaves
+  // startDegrees == endDegrees, so radSpan is 0, numRots clamps to 10, and the
+  // sweep emits ten coincident rings of zero-area triangles. Those DO get
+  // appended, so warnFaceAddedNothing stays silent and the face looks handled
+  // when it produced nothing usable.
+  //
+  // Returning silently, like the sibling bail-outs in this function: the
+  // face-contributed-nothing warning downstream already covers this case, and
+  // a second warning per face would fill the fixed 128-entry deferred log
+  // buffer twice as fast on exactly the degenerate models that need it (#466).
+  constexpr size_t MINIMUM_ANGULAR_SAMPLES = 2;
+
+  if ( angleVec.size() < MINIMUM_ANGULAR_SAMPLES ) {
     return;
   }
 
