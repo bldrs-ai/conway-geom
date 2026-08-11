@@ -522,15 +522,6 @@ Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 
 
 
-void ConwayGeometryProcessor::AddFaceToGeometrySimple(
-  ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
-  AllocTelemetryScope telemetryScope;
-  if (parameters.boundsArray.size() > 0) {
-
-    TriangulateBounds(geometry, parameters.boundsArray);
-  }
-}
-
 namespace {
 
   /**
@@ -551,7 +542,62 @@ namespace {
 
     return "planar/bounds";
   }
+
+  /**
+   * Warn that a face added nothing to its geometry.
+   *
+   * Reports the surface kind and bound count because the two causes want
+   * different fixes: no bounds at all is an extraction-side gap, while
+   * bounds that produced nothing is a triangulator bailing on geometry it
+   * was handed.
+   *
+   * KNOWN LIMITATION: Logger uses EM_ASM, which evaluates in the calling
+   * pthread's own Worker scope, and the JS sink is only installed on the
+   * main thread. Faces triangulated through FinalizeStagedFaces therefore
+   * warn into the void — the very failure this exists to remove — and
+   * because parallel_for runs serially below its threshold and the
+   * calling thread joins the work, which faces report is not even
+   * deterministic. The immediate path (today's default) is unaffected.
+   * Fixing it means making Logger thread-safe, which also repairs the
+   * pre-existing logError calls in FinalizeStagedFaces, and is its own
+   * change: MAIN_THREAD_EM_ASM proxies synchronously to the main thread,
+   * which is blocked waiting on the pool at exactly that moment.
+   * Tracked in https://github.com/bldrs-ai/conway/issues/466.
+   *
+   * @param surfaceKind Human-readable surface kind.
+   * @param boundCount How many bounds the face was given.
+   */
+  void warnFaceAddedNothing( const char* surfaceKind, size_t boundCount ) {
+
+    Logger::logWarning(
+      "Face contributed no geometry (%s surface, %zu bound(s))",
+      surfaceKind,
+      boundCount );
+  }
 }
+
+void ConwayGeometryProcessor::AddFaceToGeometrySimple(
+  ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
+  AllocTelemetryScope telemetryScope;
+
+  // Instrumented for the same reason as the advanced path: this one drops
+  // just as silently, and it is the one IFC calls directly, so leaving it
+  // out would have made coverage depend on which mode a model happened to
+  // take — with today's default reporting less than the staged path.
+  const size_t trianglesBefore = geometry.triangles.size();
+
+  if (parameters.boundsArray.size() > 0) {
+
+    TriangulateBounds(geometry, parameters.boundsArray);
+  }
+
+  if ( geometry.triangles.size() == trianglesBefore ) {
+
+    warnFaceAddedNothing(
+      "simple/bounds", static_cast< size_t >( parameters.boundsArray.size() ) );
+  }
+}
+
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
@@ -609,11 +655,7 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
 
   if ( geometry.triangles.size() == trianglesBefore ) {
 
-    // Reports the bound count too, because the two causes need different
-    // fixes: no bounds at all is an extraction-side gap, while bounds that
-    // produced nothing is a triangulator bailing on geometry it was given.
-    Logger::logWarning(
-      "Face contributed no geometry (%s surface, %zu bound(s))",
+    warnFaceAddedNothing(
       parameters.advancedBrep ? surfaceKindName( parameters.surface ) : "non-advanced",
       static_cast< size_t >( parameters.boundsArray.size() ) );
   }
