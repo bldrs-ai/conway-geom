@@ -2005,7 +2005,7 @@ inline void TriangulateConicalSurface(
         // `meanR + slope * (dz - meanZ)`, so the generator runs along
         // (radial, slope) and the outward normal along (radial, -slope).
         // Gated on sameSenseKnown, and reading surface.sameSense rather
-        // than the noise-negated local, for the same reasons as the
+        // than the handedness-flipped local, for the same reasons as the
         // cylinder path above.
         if ( surface.sameSenseKnown ) {
 
@@ -2381,13 +2381,13 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
         // behaviour rather than being handed a default as if it were an
         // answer.
         //
-        // surface.sameSense, NOT the local `sameSense`: that one has been
-        // negated on `glm::dot( vecZ, vecX ) > 0`, a test on two orthonormal
-        // columns of the placement whose sign is floating-point noise
-        // (GetAxis2Placement3D builds xAxis = normalize(cross(yAxis, zAxis)),
-        // so the dot is ~1e-17). It was harmless while this path ignored the
-        // flag; feeding it in would flip a whole face on rounding noise for
-        // any cylinder on a rotated placement.
+        // surface.sameSense, NOT the local `sameSense`: that one carries
+        // the legacy path's handedness flip (see the det(vecX,vecY,vecZ)
+        // test above), which corrects a uv-space winding decision. The
+        // normal handed to appendMeshToGeometry below is computed in world
+        // space, so it already points outward whichever way the placement
+        // is handed. Feeding the flipped local in would apply the
+        // correction twice and invert every face on a mirrored placement.
         if ( surface.sameSenseKnown ) {
 
           appendMeshToGeometry(
