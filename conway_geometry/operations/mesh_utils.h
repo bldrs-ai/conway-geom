@@ -747,9 +747,28 @@ inline void TriangulateRevolution(Geometry &geometry,
 
         if ( inputFinite && cdtEdges.size() >= 3 ) {
 
+          // NotAllowed, not TryResolve. The two differ ONLY when constraint
+          // edges actually intersect: on a clean boundary neither has anything
+          // to resolve and they triangulate identically. On a self-overlapping
+          // one, TryResolve splits each intersection into new vertices whose
+          // edges intersect again, and does not terminate - it allocates until
+          // the wasm heap is exhausted and then throws.
+          //
+          // Measured on ISSUE_159 (conway#473): a 92-vertex / 94-edge unwrap -
+          // one loop, so 94 > 92 means the boundary revisits vertices - entered
+          // insertEdges and never returned, burning ~30s and ~3.4GB per face on
+          // an 8-face light-fixture BREP and emitting nothing. Entry/exit
+          // markers around insertEdges show "begin" with no matching "end";
+          // every probe that logged AFTER the call was structurally blind to
+          // it, which is why this took a while to pin down.
+          //
+          // With NotAllowed, CDT throws on the first intersecting constraint
+          // and the catch below drops to the swept-grid fallback - the path
+          // this function already documents as reproducing the pre-trim
+          // behaviour, so a dirty boundary still cannot make output worse.
           CDT::Triangulation< double > triangulation(
             CDT::VertexInsertionOrder::Auto,
-            CDT::IntersectingConstraintEdges::TryResolve, 0 );
+            CDT::IntersectingConstraintEdges::NotAllowed, 0 );
 
           bool triangulated = false;
 
