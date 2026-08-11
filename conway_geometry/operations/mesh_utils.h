@@ -747,25 +747,38 @@ inline void TriangulateRevolution(Geometry &geometry,
 
         if ( inputFinite && cdtEdges.size() >= 3 ) {
 
-          // NotAllowed, not TryResolve. The two differ ONLY when constraint
-          // edges actually intersect: on a clean boundary neither has anything
-          // to resolve and they triangulate identically. On a self-overlapping
-          // one, TryResolve splits each intersection into new vertices whose
-          // edges intersect again, and does not terminate - it allocates until
-          // the wasm heap is exhausted and then throws.
+          // TryResolve does not terminate on a malformed loop set. It splits
+          // each intersection into new vertices whose edges intersect again,
+          // allocating until the wasm heap is exhausted - measured on ISSUE_159
+          // (conway#473) at ~30s and ~3.4GB for ONE face, which then emitted
+          // nothing. Entry/exit markers around insertEdges show "begin" with no
+          // matching "end"; every probe that logged after the call was blind to
+          // it, since the call never returns.
           //
-          // Measured on ISSUE_159 (conway#473): a 92-vertex / 94-edge unwrap -
-          // one loop, so 94 > 92 means the boundary revisits vertices - entered
-          // insertEdges and never returned, burning ~30s and ~3.4GB per face on
-          // an 8-face light-fixture BREP and emitting nothing. Entry/exit
-          // markers around insertEdges show "begin" with no matching "end";
-          // every probe that logged AFTER the call was structurally blind to
-          // it, which is why this took a while to pin down.
+          // The cost is real and is NOT "never worse than before": TryResolve
+          // handles ordinary crossings correctly and in microseconds, and every
+          // such face now falls to the swept-grid path instead, which sweeps
+          // the whole profile over the union angular bbox and so fills holes
+          // and squares off non-rectangular trims. Measured on
+          // FM_ARC_DigitalHub: 46 faces diverted, 99,641 -> 120,947 vertices.
+          // visual-diff puts that below its 0.05% whole-model threshold, which
+          // is weaker evidence than it sounds - those are small fittings on a
+          // large building - but it is the evidence there is.
           //
-          // With NotAllowed, CDT throws on the first intersecting constraint
-          // and the catch below drops to the swept-grid fallback - the path
-          // this function already documents as reproducing the pre-trim
-          // behaviour, so a dirty boundary still cannot make output worse.
+          // Gating on loop-set shape was tried and does not work. Closed loops
+          // contribute one edge per vertex, so `cdtEdges.size() ==
+          // cdtVertices.size()` looked like it would separate ISSUE_159's
+          // runaway (92 vertices / 94 edges) from FM_ARC's resolvable
+          // crossings. Measured: it does not. FM_ARC's faces are malformed by
+          // that test too, take the NotAllowed branch anyway, and its vertex
+          // count is unchanged at 120,947 - so the gate bought nothing and was
+          // removed rather than left as dead weight in a hot path.
+          //
+          // That is consistent with what CDT actually branches on: a
+          // transversal crossing, `fixedEdges.count( Edge( iVL, iVR ) )`, which
+          // edge/vertex parity neither implies nor excludes. Separating
+          // "resolves in microseconds" from "never terminates" needs a real
+          // bound inside the resolver, which CDT does not expose today.
           CDT::Triangulation< double > triangulation(
             CDT::VertexInsertionOrder::Auto,
             CDT::IntersectingConstraintEdges::NotAllowed, 0 );
