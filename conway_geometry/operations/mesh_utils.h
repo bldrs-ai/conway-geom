@@ -830,10 +830,11 @@ inline void TriangulateRevolution(Geometry &geometry,
     }
 
     // indices is only populated on the edge-loop branch of GetLoop; poly loops
-    // and vertex loops arrive points-only from both front ends. Dropping those
-    // bounds would erase the whole boundary for a poly-loop-bounded revolution
-    // face, so a bound with no usable indices is treated as ONE group - which
-    // is exactly what an edge loop whose points all share an edge id does.
+    // and vertex loops arrive points-only from both front ends. Without
+    // indices each point stands as its own group, so the loop's real angular
+    // extent survives. Collapsing them into ONE group instead would yield a
+    // single bounding entry and a zero-width sweep - erasing exactly the faces
+    // this is here to keep.
     const bool grouped = curveIndices.size() == curvePoints.size();
 
     double xx = 0;
@@ -842,7 +843,8 @@ inline void TriangulateRevolution(Geometry &geometry,
     double cc = 0;
     int lastTeam = grouped ? static_cast< int >( curveIndices[ 0 ] ) : 0;
     for (size_t j = 0; j < curvePoints.size(); j++) {
-      const int team = grouped ? static_cast< int >( curveIndices[ j ] ) : 0;
+      const int team =
+        grouped ? static_cast< int >( curveIndices[ j ] ) : static_cast< int >( j );
 
       // If it is the first point of the group we close the previous group ...
       //  ... and create a new one. Else, the point is of the current group
@@ -889,6 +891,16 @@ inline void TriangulateRevolution(Geometry &geometry,
     //				double dz = vecZ.x * xx + vecZ.y * yy + vecZ.z *
     // zz;
     double temp = VectorToAngle(dx, dy);
+
+    // A bounding point sitting exactly on the axis has no defined angle:
+    // VectorToAngle(0, 0) divides 0 by 0 and returns NaN. Both normalizations
+    // below compare false for NaN, so it would flow into radSpan, reach
+    // static_cast< int >( NaN ) when sizing the ring count (UB), and land in
+    // every emitted vertex - appendMeshToGeometry does no finiteness filtering.
+    if ( !std::isfinite( temp ) ) {
+      continue;
+    }
+
     while (temp < 0) {
       temp += 360;
     }
@@ -898,39 +910,21 @@ inline void TriangulateRevolution(Geometry &geometry,
     angleVec.push_back(temp);
   }
 
-  // No angular samples means the boundary carried no trim information, so
-  // there is no angular bounding box for this fallback to sweep. Bailing out
-  // is what keeps the loop below bounded: angleVec.size() - 1 is unsigned, so
-  // on an empty vector it is SIZE_MAX rather than -1, and the body would then
-  // push_back into angleDsp until the wasm heap was exhausted. angleVec is
-  // empty whenever every bound was skipped above, or when a bound's grouping
-  // never closes a group - a curve of a single point does exactly that.
-  //
-  // Found while investigating conway#473, but NOT that issue's cause: with
-  // this guard in place ISSUE_159 still reaches ~3.7 GB and tens of seconds
-  // (measured before/after on the same tree), so the runaway there is a
-  // separate defect. This is a latent memory-safety bug on its own terms - an
-  // unsigned underflow guarding an unbounded push_back, next to two unchecked
-  // [0] reads.
-  //
-  // Deliberately NOT sweeping a full turn here. That is the right answer for a
-  // face bounded solely by a degenerate VERTEX_LOOP, which ISO 10303-42 says
-  // covers the whole surface (the sphere fallback added for conway#461 does
-  // exactly that), but an empty angleVec does not establish that case - it also
-  // arises from bounds skipped above. Emitting nothing is the conservative
-  // reading; fabricating a full revolution would invent geometry the face may
-  // not cover.
-  //
-  // Fewer than TWO samples, not merely zero: a single sample leaves
+  // Two samples minimum, and the guard is load-bearing twice over. It keeps
+  // the loop below bounded - angleVec.size() - 1 is unsigned, so on an empty
+  // vector it is SIZE_MAX, not -1, and the body would push_back into angleDsp
+  // until the wasm heap was gone. And a single sample leaves
   // startDegrees == endDegrees, so radSpan is 0, numRots clamps to 10, and the
-  // sweep emits ten coincident rings of zero-area triangles. Those DO get
-  // appended, so warnFaceAddedNothing stays silent and the face looks handled
-  // when it produced nothing usable.
+  // sweep emits ten coincident rings of zero-area triangles; those DO get
+  // appended, so warnFaceAddedNothing stays silent and the face reads as
+  // handled.
   //
-  // Returning silently, like the sibling bail-outs in this function: the
-  // face-contributed-nothing warning downstream already covers this case, and
-  // a second warning per face would fill the fixed 128-entry deferred log
-  // buffer twice as fast on exactly the degenerate models that need it (#466).
+  // Emitting nothing rather than sweeping a full turn is deliberate. A full
+  // sweep is right for a face bounded solely by a degenerate VERTEX_LOOP (ISO
+  // 10303-42, as the sphere fallback in #461 does), but too few samples does
+  // not establish that case, and inventing a full revolution would fabricate
+  // geometry the face may not cover. Silent, like the sibling bail-outs here:
+  // warnFaceAddedNothing downstream already reports it.
   constexpr size_t MINIMUM_ANGULAR_SAMPLES = 2;
 
   if ( angleVec.size() < MINIMUM_ANGULAR_SAMPLES ) {
@@ -967,6 +961,18 @@ inline void TriangulateRevolution(Geometry &geometry,
   double startRad = startDegrees / 180 * (double)CONST_PI;
   double endRad   = endDegrees / 180 * (double)CONST_PI;
   double radSpan  = endRad - startRad;
+
+  // Sample COUNT alone does not establish a sweep: several samples can share
+  // one angle (a boundary parallel to the axis), which lands here with a zero
+  // span and produces the same ten coincident rings of zero-area triangles the
+  // count guard above exists to avoid - appended, so nothing warns. The
+  // threshold is the smallest span that can still separate two of the 64
+  // segments a full turn is divided into.
+  constexpr double MINIMUM_RAD_SPAN = 1e-9;
+
+  if ( !std::isfinite( radSpan ) || std::abs( radSpan ) < MINIMUM_RAD_SPAN ) {
+    return;
+  }
 
   // Ring count adapts to the swept span: 64 segments per full turn (sagitta
   // ~0.12% of radius) instead of the old fixed 10 rings, whose ~40-degree
