@@ -821,6 +821,14 @@ inline void TriangulateRevolution(Geometry &geometry,
   // ... by adding the middle point of all curves
 
   for (size_t i = 0; i < bounds.size(); i++) {
+    // indices is read in lockstep with points below, and indices[0] is read
+    // before the loop even starts, so a bound that carries no points - or
+    // fewer indices than points - would read past the end of the vector.
+    if ( bounds[ i ].curve.points.empty() ||
+         bounds[ i ].curve.indices.size() < bounds[ i ].curve.points.size() ) {
+      continue;
+    }
+
     double xx = 0;
     double yy = 0;
     double zz = 0;
@@ -881,7 +889,35 @@ inline void TriangulateRevolution(Geometry &geometry,
     angleVec.push_back(temp);
   }
 
-  for (size_t i = 0; i < angleVec.size() - 1; i++) {
+  // No angular samples means the boundary carried no trim information, so
+  // there is no angular bounding box for this fallback to sweep. Bailing out
+  // is what keeps the loop below bounded: angleVec.size() - 1 is unsigned, so
+  // on an empty vector it is SIZE_MAX rather than -1, and the body would then
+  // push_back into angleDsp until the wasm heap was exhausted. angleVec is
+  // empty whenever every bound was skipped above, or when a bound's grouping
+  // never closes a group - a curve of a single point does exactly that.
+  //
+  // Found while investigating conway#473, but NOT that issue's cause: with
+  // this guard in place ISSUE_159 still reaches ~3.7 GB and tens of seconds
+  // (measured before/after on the same tree), so the runaway there is a
+  // separate defect. This is a latent memory-safety bug on its own terms - an
+  // unsigned underflow guarding an unbounded push_back, next to two unchecked
+  // [0] reads.
+  //
+  // Deliberately NOT sweeping a full turn here. That is the right answer for a
+  // face bounded solely by a degenerate VERTEX_LOOP, which ISO 10303-42 says
+  // covers the whole surface (the sphere fallback added for conway#461 does
+  // exactly that), but an empty angleVec does not establish that case - it also
+  // arises from bounds skipped above. Emitting nothing is the conservative
+  // reading; fabricating a full revolution would invent geometry the face may
+  // not cover.
+  if ( angleVec.empty() ) {
+    Logger::logWarning(
+      "Revolution face has no usable angular boundary; skipping the swept fallback." );
+    return;
+  }
+
+  for (size_t i = 0; i + 1 < angleVec.size(); i++) {
     if (angleVec[i] - angleVec[i + 1] > 180) {
       angleDsp.push_back(360 - (angleVec[i] - angleVec[i + 1]));
     } else if (angleVec[i] - angleVec[i + 1] < -180) {
