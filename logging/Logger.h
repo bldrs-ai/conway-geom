@@ -42,7 +42,9 @@ public:
      * nest, but only on that same thread; a scope opened on a worker while
      * another is live would make whichever closes last the flusher, and a
      * worker flushing pushes the whole buffer through EM_ASM in a scope with
-     * no sink, losing main-thread messages too. Asserted in debug builds.
+     * no sink, losing main-thread messages too. Checked at runtime: a scope
+     * constructed off the main runtime thread reports the mistake and stays
+     * inert rather than opening.
      *
      * Ordering: messages emit in the order the buffer received them, so
      * main-thread messages raised inside the scope are held back with the
@@ -64,6 +66,10 @@ public:
 
         DeferredScope(const DeferredScope&) = delete;
         DeferredScope& operator=(const DeferredScope&) = delete;
+
+    private:
+        /** Whether this scope actually took a depth, so ~ knows to release. */
+        bool opened_ = false;
     };
 };
 

@@ -1,5 +1,4 @@
 #include "Logger.h"
-#include <cassert>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -132,6 +131,76 @@ size_t          bufferedCount = 0;
 size_t          droppedCount  = 0;
 int             deferDepth    = 0;
 
+/**
+ * Copy one message into a slot, marking it if it did not fit.
+ *
+ * Callers format into 1024 bytes but slots hold 256, and several of the
+ * messages that land here put coordinates ahead of the interesting part -
+ * manifold_utils.h and mesh_utils.h format eight %f values before the
+ * trailing exception text - so a silent cut removes exactly the words worth
+ * reading. The marker at least says the text is short of the original.
+ *
+ * @param slot Destination.
+ * @param level Severity.
+ * @param message Formatted text, NUL-terminated.
+ */
+void fill( DeferredMessage& slot, Level level, const char* message ) {
+
+    constexpr const char* ELLIPSIS = "...";
+    constexpr size_t      ELLIPSIS_LENGTH = 3;
+
+    slot.level = level;
+    std::strncpy( slot.text, message, DEFERRED_LIMIT - 1 );
+    slot.text[ DEFERRED_LIMIT - 1 ] = '\0';
+
+    if ( std::strlen( message ) > DEFERRED_LIMIT - 1 ) {
+        std::strcpy( slot.text + ( DEFERRED_LIMIT - 1 - ELLIPSIS_LENGTH ), ELLIPSIS );
+    }
+}
+
+
+/**
+ * Store a message, or account for it if the buffer is full.
+ *
+ * Overflow is NOT first-come-first-served, because that loses the wrong
+ * message. A degenerate model raises a per-face warning for thousands of
+ * faces, which would fill the buffer long before FinalizeStagedFaces's catch
+ * handler reports the exception that actually stopped the work - the single
+ * message this whole change exists to deliver. An ERROR arriving into a full
+ * buffer therefore displaces the oldest non-error entry.
+ *
+ * Caller must hold bufferLock.
+ *
+ * @param level Severity.
+ * @param message Formatted text, NUL-terminated.
+ */
+void store( Level level, const char* message ) {
+
+    if ( bufferedCount < MAX_DEFERRED ) {
+
+        fill( buffered[ bufferedCount++ ], level, message );
+        return;
+    }
+
+    if ( level == Level::ERROR ) {
+
+        for ( size_t where = 0; where < MAX_DEFERRED; ++where ) {
+
+            if ( buffered[ where ].level != Level::ERROR ) {
+
+                fill( buffered[ where ], level, message );
+                ++droppedCount;
+                return;
+            }
+        }
+    }
+
+    // Count rather than grow. The overflow is reported on flush, so a
+    // truncated diagnostic still says it was truncated - silently dropping
+    // the tail is the failure mode this whole change exists to remove.
+    ++droppedCount;
+}
+
 #endif
 
 
@@ -146,32 +215,32 @@ void route( Level level, const char* message ) {
 
 #if defined(DEFER_LOGS)
 
-    {
+    // Only a message with nowhere to go is buffered. The main runtime thread
+    // owns the JS sink, so its EM_ASM reaches a listener whether or not a
+    // scope is open — and buffering it would be a REGRESSION, not a fix:
+    // parallel_for runs serially below minParallelBatch and the calling
+    // thread joins the work, so those iterations used to print immediately
+    // and would now vanish on a wasm trap mid-tessellation, which is exactly
+    // when a diagnostic matters most.
+    //
+    // It also drops main-thread traffic out of the fixed buffer entirely,
+    // leaving the capacity to the messages that actually need it.
+    if ( !emscripten_is_main_runtime_thread() ) {
+
         std::lock_guard< std::mutex > guard( bufferLock );
 
         // Tested under the lock, not before it, so that "is a scope open" and
         // "store into its buffer" are one atomic step.
         if ( deferDepth > 0 ) {
 
-            if ( bufferedCount < MAX_DEFERRED ) {
-
-                DeferredMessage& slot = buffered[ bufferedCount++ ];
-
-                slot.level = level;
-                std::strncpy( slot.text, message, DEFERRED_LIMIT - 1 );
-                slot.text[ DEFERRED_LIMIT - 1 ] = '\0';
-
-            } else {
-
-                // Count rather than grow. The overflow is reported on flush,
-                // so a truncated diagnostic still says it was truncated -
-                // silently dropping the tail is the failure mode this whole
-                // change exists to remove.
-                ++droppedCount;
-            }
-
+            store( level, message );
             return;
         }
+
+        // No scope open: fall through and emit, which on a worker means the
+        // message is lost. That is the pre-existing behaviour this change
+        // narrows rather than something it introduces — a parallel region
+        // that can log needs a DeferredScope around it.
     }
 
 #endif
@@ -219,18 +288,31 @@ Logger::DeferredScope::DeferredScope() {
 
 #if defined(DEFER_LOGS)
 
-    // The contract is that the flush happens somewhere a JS sink exists, and
-    // under emscripten that is knowable rather than a matter of convention.
-    // Checking the runtime thread catches a scope opened on a pool thread,
-    // which comparing against a previously-recorded owner cannot: at depth 0
-    // that comparison is against the value just written, so it is a tautology
-    // and passes for any thread.
-    assert( emscripten_is_main_runtime_thread() &&
-            "Logger::DeferredScope must be opened on the main runtime thread" );
+    // A real runtime guard, not an assert. genie.lua applies -DNDEBUG from an
+    // unfiltered `configuration {"gmake"}` block, so it reaches the debug
+    // emscripten config too - an assert here would be compiled out of every
+    // build that defers, leaving the contract unenforced everywhere while the
+    // header claimed otherwise.
+    //
+    // Refusing to open, rather than opening anyway, is what keeps the failure
+    // safe: a scope opened on a pool thread would make whichever scope closes
+    // last the flusher, and a worker flushing pushes the entire buffer -
+    // main-thread messages included - through EM_ASM in a scope with no sink.
+    // Inert here costs only the worker messages that a wrong scope could
+    // never have delivered anyway.
+    if ( !emscripten_is_main_runtime_thread() ) {
+
+        emitNow(
+            Level::ERROR,
+            "Logger::DeferredScope opened off the main runtime thread; "
+            "deferral disabled for it. Worker logs inside it will be lost." );
+        return;
+    }
 
     std::lock_guard< std::mutex > guard( bufferLock );
 
     ++deferDepth;
+    opened_ = true;
 
 #endif
 }
@@ -238,6 +320,10 @@ Logger::DeferredScope::DeferredScope() {
 Logger::DeferredScope::~DeferredScope() {
 
 #if defined(DEFER_LOGS)
+
+    if ( !opened_ ) {
+        return;
+    }
 
     DeferredMessage pending[ MAX_DEFERRED ];
     size_t          pendingCount = 0;
