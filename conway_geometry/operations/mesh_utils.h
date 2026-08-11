@@ -821,32 +821,54 @@ inline void TriangulateRevolution(Geometry &geometry,
   // ... by adding the middle point of all curves
 
   for (size_t i = 0; i < bounds.size(); i++) {
+
+    const std::vector< glm::dvec3 > &curvePoints  = bounds[ i ].curve.points;
+    const std::vector< uint16_t >   &curveIndices = bounds[ i ].curve.indices;
+
+    if ( curvePoints.empty() ) {
+      continue;
+    }
+
+    // indices is only populated on the edge-loop branch of GetLoop, so poly
+    // loops and vertex loops arrive points-only and every read below - starting
+    // with indices[0], before the loop - was out of bounds for them. Absent
+    // indices are read as a single group, which is what the surrounding code
+    // already does for an edge loop whose points share one edge id.
+    //
+    // A size match means the indices are READABLE, not that they still line up:
+    // GetBound and createBound3D reverse curve.points for a .F.-oriented bound
+    // and leave curve.indices alone, so those bounds group points against
+    // another edge's id. Pre-existing, and untouched here.
+    const bool grouped = curveIndices.size() == curvePoints.size();
+
     double xx = 0;
     double yy = 0;
     double zz = 0;
     double cc = 0;
-    int lastTeam = bounds[i].curve.indices[0];
-    for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
+    int lastTeam = grouped ? static_cast< int >( curveIndices[ 0 ] ) : 0;
+    for (size_t j = 0; j < curvePoints.size(); j++) {
+      const int team = grouped ? static_cast< int >( curveIndices[ j ] ) : 0;
+
       // If it is the first point of the group we close the previous group ...
       //  ... and create a new one. Else, the point is of the current group
-      if (lastTeam != bounds[i].curve.indices[j] ||
-          j == (bounds[i].curve.points.size() - 1)) {
+      if (lastTeam != team ||
+          j == (curvePoints.size() - 1)) {
         if (cc > 0) {
           xx /= cc;
           yy /= cc;
           zz /= cc;
           bounding.push_back(glm::dvec3(xx, yy, zz));
         }
-        xx = bounds[i].curve.points[j].x;
-        yy = bounds[i].curve.points[j].y;
-        zz = bounds[i].curve.points[j].z;
+        xx = curvePoints[j].x;
+        yy = curvePoints[j].y;
+        zz = curvePoints[j].z;
         cc = 1;
 
-        lastTeam = bounds[i].curve.indices[j];
+        lastTeam = team;
       } else {
-        xx += bounds[i].curve.points[j].x;
-        yy += bounds[i].curve.points[j].y;
-        zz += bounds[i].curve.points[j].z;
+        xx += curvePoints[j].x;
+        yy += curvePoints[j].y;
+        zz += curvePoints[j].z;
         cc++;
       }
     }
@@ -881,7 +903,32 @@ inline void TriangulateRevolution(Geometry &geometry,
     angleVec.push_back(temp);
   }
 
-  for (size_t i = 0; i < angleVec.size() - 1; i++) {
+  // angleVec.size() - 1 is unsigned, so on an empty vector it is SIZE_MAX, not
+  // -1, and the loop below would push_back into angleDsp until the wasm heap
+  // was exhausted. angleVec is empty when every bound carried no points; the
+  // angleVec[0] reads just past the loop would be out of bounds in that case
+  // too. Returning silently matches the sibling bail-outs here -
+  // warnFaceAddedNothing downstream already reports a face that emits nothing.
+  //
+  // Scope note: this is a memory-safety fix only. The degenerate-but-bounded
+  // outputs this function can still produce (a single angular sample sweeping
+  // ten coincident rings, NaN angles from on-axis samples, a VERTEX_LOOP-
+  // bounded full revolution emitting nothing where #461 gives the sphere a
+  // full parametric grid) are pre-existing and each needs its own change and
+  // fixture - attempts to fix them here kept introducing new erasures.
+  // Below TWO, not merely zero. One sample leaves startDegrees == endDegrees,
+  // so radSpan is 0 and the sweep lays ten coincident rings of zero-area
+  // triangles - which appendMeshToGeometry appends unfiltered, suppressing
+  // warnFaceAddedNothing so the face vanishes with nothing reported. Bailing
+  // gives the same (empty) picture and lets that warning fire. The points-only
+  // branch above produces exactly one sample, so this is its normal exit.
+  constexpr size_t MINIMUM_ANGULAR_SAMPLES = 2;
+
+  if ( angleVec.size() < MINIMUM_ANGULAR_SAMPLES ) {
+    return;
+  }
+
+  for (size_t i = 0; i + 1 < angleVec.size(); i++) {
     if (angleVec[i] - angleVec[i + 1] > 180) {
       angleDsp.push_back(360 - (angleVec[i] - angleVec[i + 1]));
     } else if (angleVec[i] - angleVec[i + 1] < -180) {
