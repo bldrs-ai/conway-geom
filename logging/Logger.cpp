@@ -1,8 +1,10 @@
 #include "Logger.h"
+#include <cassert>
 #include <cstdarg>
 #include <cstdio>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -12,21 +14,40 @@
 
 #endif
 
+// Deferral only exists to work around EM_ASM evaluating in the calling
+// pthread's scope. Where that cannot happen - native builds, and wasm built
+// without pthreads - buffering would be pure downside: an abort or hang
+// inside the deferred region (wasm OOM, a stack overflow in a triangulator,
+// which is exactly when the per-face logError matters most) never runs the
+// destructor, so the whole buffer is discarded where previously those lines
+// had already been printed. Keep those builds on immediate emission.
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+#define DEFER_LOGS 1
+#endif
+
 namespace {
 
 enum class Level { INFO, WARNING, ERROR };
 
 /**
- * Deferred-mode state.
+ * Deferred-mode state. ALL of it - the depth included - is guarded by
+ * bufferLock and nothing else.
  *
- * `depth` is atomic because worker threads read it on every log call while
- * the owning thread writes it at scope open/close; the buffer itself is
- * guarded by `lock`. A non-atomic depth would be a data race even though
- * only one thread ever writes it.
+ * In particular deferDepth is a plain int, deliberately. Do not add an
+ * unsynchronised `deferDepth == 0` fast path to route() to save a lock:
+ * worker threads read it on every log call while the owning thread writes it
+ * at scope open and close, so an unguarded read is a data race, and the lock
+ * is what makes "test the depth and buffer the message" one atomic step.
  */
 std::mutex bufferLock;
 std::vector< std::pair< Level, std::string > > buffered;
 int deferDepth = 0;
+
+/**
+ * The thread that opened the outermost live DeferredScope. Only meaningful
+ * while deferDepth > 0.
+ */
+std::thread::id deferOwner;
 
 /**
  * Emit one already-formatted message to the host.
@@ -104,18 +125,22 @@ void emitNow( Level level, const char* message ) {
  */
 void route( Level level, const char* message ) {
 
+#if defined(DEFER_LOGS)
+
     {
         std::lock_guard< std::mutex > guard( bufferLock );
 
-        // Tested under the lock, not before it: a worker must not read
-        // "not deferring" while the owning thread is mid-flush and then
-        // emit into a dead scope.
+        // Tested under the lock, not before it, so that "is a scope open"
+        // and "append to its buffer" are one atomic step. See the note on
+        // deferDepth above before adding a lock-free fast path here.
         if ( deferDepth > 0 ) {
 
             buffered.emplace_back( level, message );
             return;
         }
     }
+
+#endif
 
     emitNow( level, message );
 }
@@ -180,23 +205,53 @@ void Logger::flushDeferred() {
 
 Logger::DeferredScope::DeferredScope() {
 
+#if defined(DEFER_LOGS)
+
     std::lock_guard< std::mutex > guard( bufferLock );
 
-    ++deferDepth;
+    if ( deferDepth++ == 0 ) {
+
+        deferOwner = std::this_thread::get_id();
+    }
+
+    // Nesting is only meaningful on the owning thread. A scope opened on a
+    // pool thread while another is live would make the LAST scope to close
+    // the flusher, and if that is the worker it would push the whole buffer -
+    // main-thread messages included - through EM_ASM in a scope with no sink,
+    // which is the bug this class exists to fix.
+    assert( deferOwner == std::this_thread::get_id() &&
+            "Logger::DeferredScope must not be opened on a pool thread" );
+
+#endif
 }
 
 Logger::DeferredScope::~DeferredScope() {
+
+#if defined(DEFER_LOGS)
+
+    std::vector< std::pair< Level, std::string > > pending;
 
     {
         std::lock_guard< std::mutex > guard( bufferLock );
 
         if ( --deferDepth > 0 ) {
 
-            // An inner scope closing: leave the buffer for the outer one, so
-            // nesting does not flush from a thread that may not be the owner.
+            // An inner scope closing: leave the buffer for the outer one.
             return;
         }
+
+        // Claimed in the SAME critical section that drops the depth to zero.
+        // Doing it in two steps would leave a window where the scope reads as
+        // closed but its buffer is still pending, so a message raised in that
+        // window would take the immediate path and land ahead of messages
+        // logged before it.
+        pending.swap( buffered );
     }
 
-    flushDeferred();
+    for ( const auto& entry : pending ) {
+
+        emitNow( entry.first, entry.second.c_str() );
+    }
+
+#endif
 }

@@ -13,8 +13,14 @@
  *
  * DeferredScope is the way around that. Inside one, every log call - from any
  * thread - is formatted and buffered instead of emitted, and the whole buffer
- * is flushed from the scope's own thread when it closes. Wrap any region that
- * dispatches through ThreadPool in one and its diagnostics survive.
+ * is flushed when it closes. Wrap any region that dispatches through
+ * ThreadPool in one, ON THE THREAD THAT DISPATCHES, and its diagnostics
+ * survive.
+ *
+ * Deferral is compiled in only for pthreads-enabled wasm, the one
+ * configuration where the problem exists. Elsewhere the scope is inert and
+ * logs emit immediately, so an abort inside the region cannot swallow a
+ * buffer that was never filled.
  *
  * The obvious alternative, MAIN_THREAD_EM_ASM, deadlocks: it proxies
  * synchronously to the main thread, and the main thread is blocked inside
@@ -29,15 +35,20 @@ public:
 
     /**
      * Buffers every log raised while it is alive, from any thread, and emits
-     * them on destruction from the thread that constructed it.
+     * them when the outermost scope closes.
+     *
+     * MUST be constructed on the thread that will dispatch the parallel work
+     * - i.e. one that has a live JS sink - and never on a pool thread. Scopes
+     * nest, but only on that same thread; a scope opened on a worker while
+     * another is live would make whichever closes last the flusher, and a
+     * worker flushing pushes the whole buffer through EM_ASM in a scope with
+     * no sink, losing main-thread messages too. Asserted in debug builds.
      *
      * Ordering: messages emit in the order the buffer received them, so
      * main-thread messages raised inside the scope are held back with the
      * rest rather than jumping ahead of them. Ordering *between* worker
      * threads is whatever the race produced - inherent to concurrent
      * tessellation, not something this could fix.
-     *
-     * Nesting is safe; only the outermost scope flushes.
      */
     class DeferredScope {
     public:
