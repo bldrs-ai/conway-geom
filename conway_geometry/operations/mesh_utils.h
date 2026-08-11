@@ -1020,24 +1020,28 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
   // The torus already handles its own full-coverage case with a parametric
   // grid (see TriangulateToroidalSurface's wrapsTheta && wrapsPhi branch);
   // this is the same treatment for the sphere's closed domain.
-  size_t boundaryPointCount = 0;
-
-  for ( const IfcBound3D& bound : bounds ) {
-    boundaryPointCount += bound.curve.points.size();
-  }
-
-  // One or two points cannot bound an area on any surface, so there is nothing
+  // Test the SINGLE bound, not a sum over all of them. "Bounded solely by a
+  // degenerate loop" means exactly one bound, and summing loses that: a face
+  // carrying a VERTEX_LOOP plus an EDGE_LOOP whose edges all failed to yield a
+  // basis curve (GetLoop emits a 0-point curve in that case) sums to 1 and
+  // would take this branch, which is precisely the extraction-failure case the
+  // next paragraph rules out.
+  //
+  // One or two points cannot enclose area on any surface, so there is nothing
   // to trim with even when the loop is not literally a VERTEX_LOOP.
   //
-  // ZERO points is a different thing and deliberately excluded: a bound
-  // reaches here empty when every one of its edges failed to yield a basis
-  // curve (GetLoop emits a 0-point curve in that case). Treating that as
-  // full coverage would turn a small trimmed patch into a whole sphere at
-  // the placement centre - spurious volume, inflated bounds, occlusion - and
-  // do it silently, since emitting triangles suppresses the
-  // contributed-no-geometry warning. An extraction failure has to keep
-  // looking like one.
+  // ZERO points is deliberately excluded for that same reason: treating a
+  // failed extraction as full coverage would turn a small trimmed patch into a
+  // whole sphere at the placement centre - spurious volume, inflated bounds,
+  // occlusion - and do it silently, since emitting triangles suppresses the
+  // contributed-no-geometry warning. An extraction failure has to keep looking
+  // like one.
   constexpr size_t MINIMUM_TRIM_POINTS = 3;
+
+  // Multiple bounds fall through to the unwrap by reporting a count that
+  // cannot be degenerate.
+  const size_t boundaryPointCount =
+    bounds.size() == 1 ? bounds[ 0 ].curve.points.size() : MINIMUM_TRIM_POINTS;
 
   if ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) {
 
