@@ -522,18 +522,96 @@ Geometry ConwayGeometryProcessor::GetPolygonalBoundedHalfspace(
 
 
 
+namespace {
+
+  /**
+   * Name the surface a face was built on, for diagnostics.
+   *
+   * @param surface The face's surface.
+   * @return A static, human-readable surface kind.
+   */
+  const char* surfaceKindName( const IfcSurface& surface ) {
+
+    if ( surface.BSplineSurface.Active )   { return "b-spline"; }
+    if ( surface.CylinderSurface.Active )  { return "cylindrical"; }
+    if ( surface.SphericalSurface.Active ) { return "spherical"; }
+    if ( surface.ToroidalSurface.Active )  { return "toroidal"; }
+    if ( surface.ConicalSurface.Active )   { return "conical"; }
+    if ( surface.RevolutionSurface.Active ){ return "revolution"; }
+    if ( surface.ExtrusionSurface.Active ) { return "extrusion"; }
+
+    return "planar/bounds";
+  }
+
+  /**
+   * Warn that a face added nothing to its geometry.
+   *
+   * Reports the surface kind and bound count because the two causes want
+   * different fixes: no bounds at all is an extraction-side gap, while
+   * bounds that produced nothing is a triangulator bailing on geometry it
+   * was handed.
+   *
+   * KNOWN LIMITATION: Logger uses EM_ASM, which evaluates in the calling
+   * pthread's own Worker scope, and the JS sink is only installed on the
+   * main thread. Faces triangulated through FinalizeStagedFaces therefore
+   * warn into the void — the very failure this exists to remove — and
+   * because parallel_for runs serially below its threshold and the
+   * calling thread joins the work, which faces report is not even
+   * deterministic. The immediate path (today's default) is unaffected.
+   * Fixing it means making Logger thread-safe, which also repairs the
+   * pre-existing logError calls in FinalizeStagedFaces, and is its own
+   * change: MAIN_THREAD_EM_ASM proxies synchronously to the main thread,
+   * which is blocked waiting on the pool at exactly that moment.
+   * Tracked in https://github.com/bldrs-ai/conway/issues/466.
+   *
+   * @param surfaceKind Human-readable surface kind.
+   * @param boundCount How many bounds the face was given.
+   */
+  void warnFaceAddedNothing( const char* surfaceKind, size_t boundCount ) {
+
+    Logger::logWarning(
+      "Face contributed no geometry (%s surface, %zu bound(s))",
+      surfaceKind,
+      boundCount );
+  }
+}
+
 void ConwayGeometryProcessor::AddFaceToGeometrySimple(
   ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
   AllocTelemetryScope telemetryScope;
+
+  // Instrumented for the same reason as the advanced path: this one drops
+  // just as silently, and it is the one IFC calls directly, so leaving it
+  // out would have made coverage depend on which mode a model happened to
+  // take — with today's default reporting less than the staged path.
+  const size_t trianglesBefore = geometry.triangles.size();
+
   if (parameters.boundsArray.size() > 0) {
 
     TriangulateBounds(geometry, parameters.boundsArray);
   }
+
+  if ( geometry.triangles.size() == trianglesBefore ) {
+
+    warnFaceAddedNothing(
+      "simple/bounds", static_cast< size_t >( parameters.boundsArray.size() ) );
+  }
 }
+
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
   AllocTelemetryScope telemetryScope;
+
+  // A face that contributes nothing is recoverable information, and until
+  // now it was thrown away: every triangulator returns void, and one that
+  // bails leaves a model quietly missing a face — or, when the face was
+  // the whole body, missing entirely. A whole-sphere STEP loaded as zero
+  // meshes with not one line of output, and a torus lost exactly half its
+  // surface the same way; both took a 68-part corpus to notice rather
+  // than a single load. See https://github.com/bldrs-ai/conway/issues/461.
+  const size_t trianglesBefore = geometry.triangles.size();
+
   if (!parameters.advancedBrep) {
     if (parameters.boundsArray.size() > 0) {
       conway::AllocTagScope tag( conway::AllocSite::TriBounds );
@@ -573,6 +651,13 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
         TriangulateBounds(geometry, parameters.boundsArray);
       }
     }
+  }
+
+  if ( geometry.triangles.size() == trianglesBefore ) {
+
+    warnFaceAddedNothing(
+      parameters.advancedBrep ? surfaceKindName( parameters.surface ) : "non-advanced",
+      static_cast< size_t >( parameters.boundsArray.size() ) );
   }
 }
 
