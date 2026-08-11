@@ -834,6 +834,11 @@ inline void TriangulateRevolution(Geometry &geometry,
     // with indices[0], before the loop - was out of bounds for them. Absent
     // indices are read as a single group, which is what the surrounding code
     // already does for an edge loop whose points share one edge id.
+    //
+    // A size match means the indices are READABLE, not that they still line up:
+    // GetBound and createBound3D reverse curve.points for a .F.-oriented bound
+    // and leave curve.indices alone, so those bounds group points against
+    // another edge's id. Pre-existing, and untouched here.
     const bool grouped = curveIndices.size() == curvePoints.size();
 
     double xx = 0;
@@ -911,7 +916,15 @@ inline void TriangulateRevolution(Geometry &geometry,
   // bounded full revolution emitting nothing where #461 gives the sphere a
   // full parametric grid) are pre-existing and each needs its own change and
   // fixture - attempts to fix them here kept introducing new erasures.
-  if ( angleVec.empty() ) {
+  // Below TWO, not merely zero. One sample leaves startDegrees == endDegrees,
+  // so radSpan is 0 and the sweep lays ten coincident rings of zero-area
+  // triangles - which appendMeshToGeometry appends unfiltered, suppressing
+  // warnFaceAddedNothing so the face vanishes with nothing reported. Bailing
+  // gives the same (empty) picture and lets that warning fire. The points-only
+  // branch above produces exactly one sample, so this is its normal exit.
+  constexpr size_t MINIMUM_ANGULAR_SAMPLES = 2;
+
+  if ( angleVec.size() < MINIMUM_ANGULAR_SAMPLES ) {
     return;
   }
 
