@@ -991,6 +991,151 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
   glm::dvec3 vecY   = glm::normalize(surface.transformation[1]);
   glm::dvec3 vecZ   = glm::normalize(surface.transformation[2]);
 
+  // Sphere point in world space from (theta, phi): theta is longitude about
+  // vecZ, phi is latitude in [-pi/2, +pi/2].
+  auto spherePoint = [&]( double theta, double phi ) {
+
+    double ring = radius * std::cos( phi );
+
+    glm::dvec3 local(
+      ring * std::cos( theta ),
+      ring * std::sin( theta ),
+      radius * std::sin( phi ) );
+
+    return vecX * local.x + vecY * local.y + vecZ * local.z + cent;
+  };
+
+  // ISO 10303-42: a face bounded solely by a degenerate loop (a VERTEX_LOOP,
+  // whose single vertex marks a pole rather than a trim) covers the WHOLE
+  // surface. That is how OCCT writes a plain sphere: one ADVANCED_FACE on a
+  // SPHERICAL_SURFACE, one FACE_BOUND, one VERTEX_LOOP at the north pole.
+  // (Not how it writes fillet corner blends - those are trimmed patches with
+  // real edge loops and never reach this branch.) The dual-hemisphere unwrap
+  // below needs a real boundary polygon to constrain a CDT against, so one
+  // point walks out as zero triangles and the sphere loads as an empty mesh
+  // - silently, since nothing downstream distinguishes "trimmed away to
+  // nothing" from "never triangulated".
+  // See https://github.com/bldrs-ai/conway/issues/461.
+  //
+  // The torus already handles its own full-coverage case with a parametric
+  // grid (see TriangulateToroidalSurface's wrapsTheta && wrapsPhi branch);
+  // this is the same treatment for the sphere's closed domain.
+  size_t boundaryPointCount = 0;
+
+  for ( const IfcBound3D& bound : bounds ) {
+    boundaryPointCount += bound.curve.points.size();
+  }
+
+  // One or two points cannot bound an area on any surface, so there is nothing
+  // to trim with even when the loop is not literally a VERTEX_LOOP.
+  //
+  // ZERO points is a different thing and deliberately excluded: a bound
+  // reaches here empty when every one of its edges failed to yield a basis
+  // curve (GetLoop emits a 0-point curve in that case). Treating that as
+  // full coverage would turn a small trimmed patch into a whole sphere at
+  // the placement centre - spurious volume, inflated bounds, occlusion - and
+  // do it silently, since emitting triangles suppresses the
+  // contributed-no-geometry warning. An extraction failure has to keep
+  // looking like one.
+  constexpr size_t MINIMUM_TRIM_POINTS = 3;
+
+  if ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) {
+
+    // Longitude x latitude divisions. Matched to the torus grid's angular
+    // density; the sphere is closed in theta but not in phi, so the poles
+    // are single vertices with triangle fans rather than another ring.
+    constexpr int GRID_THETA = 48;
+    constexpr int GRID_PHI   = 24;
+
+    constexpr double kHalfPi = unwrap_detail::kPi * 0.5;
+
+    WingedEdgeMesh< glm::dvec3 > gridMesh;
+
+    auto& gridVertices = gridMesh.vertices;
+
+    // Layout: south pole, then GRID_PHI - 1 interior rings of GRID_THETA,
+    // then north pole.
+    gridVertices.push_back( spherePoint( 0.0, -kHalfPi ) );
+
+    for ( int ring = 1; ring < GRID_PHI; ++ring ) {
+
+      double phi = -kHalfPi + ( ring * unwrap_detail::kPi / GRID_PHI );
+
+      for ( int step = 0; step < GRID_THETA; ++step ) {
+        gridVertices.push_back( spherePoint( step * unwrap_detail::kTwoPi / GRID_THETA, phi ) );
+      }
+    }
+
+    gridVertices.push_back( spherePoint( 0.0, kHalfPi ) );
+
+    const uint32_t southPole = 0;
+    const uint32_t northPole = static_cast< uint32_t >( gridVertices.size() - 1 );
+
+    // First vertex of interior ring `ring` (1-based, matching the loop above).
+    auto ringBase = []( int ring ) {
+
+      return static_cast< uint32_t >( 1 + ( ( ring - 1 ) * GRID_THETA ) );
+    };
+
+    // Winding below is outward everywhere: cross(d/dtheta, d/dphi) points
+    // away from the centre, so (lower_i, lower_i+1, upper_i+1) and
+    // (lower_i, upper_i+1, upper_i) are both front-facing. The pole fans
+    // follow from the same rule with one ring collapsed - which is why the
+    // south cap runs i+1 before i and the north cap does not.
+    for ( int step = 0; step < GRID_THETA; ++step ) {
+
+      uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+      gridMesh.makeTriangle(
+        southPole,
+        ringBase( 1 ) + next,
+        ringBase( 1 ) + static_cast< uint32_t >( step ) );
+    }
+
+    for ( int ring = 1; ring + 1 < GRID_PHI; ++ring ) {
+
+      uint32_t lower = ringBase( ring );
+      uint32_t upper = ringBase( ring + 1 );
+
+      for ( int step = 0; step < GRID_THETA; ++step ) {
+
+        uint32_t here = static_cast< uint32_t >( step );
+        uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+        gridMesh.makeTriangle( lower + here, lower + next, upper + next );
+        gridMesh.makeTriangle( lower + here, upper + next, upper + here );
+      }
+    }
+
+    for ( int step = 0; step < GRID_THETA; ++step ) {
+
+      uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+      gridMesh.makeTriangle(
+        northPole,
+        ringBase( GRID_PHI - 1 ) + static_cast< uint32_t >( step ),
+        ringBase( GRID_PHI - 1 ) + next );
+    }
+
+    // Orient against the true radial normal rather than the projection
+    // heuristic, so the grid keeps the winding built above. Extractors that
+    // never populate the face sense (IFC - see IfcSurface::sameSenseKnown)
+    // get outward, which is the only defensible default for a closed sphere
+    // and is strictly more information than the `false` the field defaults
+    // to; this path emitted nothing at all before, so there is no prior
+    // behaviour to preserve.
+    appendMeshToGeometry(
+      gridMesh,
+      geometry,
+      surface.sameSenseKnown ? surface.sameSense : true,
+      [&]( const glm::dvec3& point ) {
+
+        return glm::normalize( point - cent );
+      } );
+
+    return;
+  }
+
   WingedEdgeMesh< glm::dvec3 > mesh;
 
   tesselateDualParametrization(
@@ -1821,7 +1966,12 @@ inline void TriangulateConicalSurface(
   
   bool sameSense = surface.sameSense;
 
-  if ( glm::dot( vecZ, vecX ) > 0 ) {
+  // A mirrored (left-handed) placement flips the surface normal, so the
+  // face sense has to flip with it. The previous test, dot(vecZ, vecX),
+  // compared two ORTHONORMAL columns of that placement — always ~1e-17,
+  // so its sign was rounding noise and an entire face's winding turned on
+  // a coin toss. See https://github.com/bldrs-ai/conway/issues/463.
+  if ( glm::dot( glm::cross( vecX, vecY ), vecZ ) < 0 ) {
 
     sameSense = !sameSense;
   }
@@ -2000,7 +2150,7 @@ inline void TriangulateConicalSurface(
         // `meanR + slope * (dz - meanZ)`, so the generator runs along
         // (radial, slope) and the outward normal along (radial, -slope).
         // Gated on sameSenseKnown, and reading surface.sameSense rather
-        // than the noise-negated local, for the same reasons as the
+        // than the handedness-flipped local, for the same reasons as the
         // cylinder path above.
         if ( surface.sameSenseKnown ) {
 
@@ -2232,7 +2382,12 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
   bool sameSense = surface.sameSense;
 
-  if ( glm::dot( vecZ, vecX ) > 0 ) {
+  // A mirrored (left-handed) placement flips the surface normal, so the
+  // face sense has to flip with it. The previous test, dot(vecZ, vecX),
+  // compared two ORTHONORMAL columns of that placement — always ~1e-17,
+  // so its sign was rounding noise and an entire face's winding turned on
+  // a coin toss. See https://github.com/bldrs-ai/conway/issues/463.
+  if ( glm::dot( glm::cross( vecX, vecY ), vecZ ) < 0 ) {
 
     sameSense = !sameSense;
   }
@@ -2371,13 +2526,13 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
         // behaviour rather than being handed a default as if it were an
         // answer.
         //
-        // surface.sameSense, NOT the local `sameSense`: that one has been
-        // negated on `glm::dot( vecZ, vecX ) > 0`, a test on two orthonormal
-        // columns of the placement whose sign is floating-point noise
-        // (GetAxis2Placement3D builds xAxis = normalize(cross(yAxis, zAxis)),
-        // so the dot is ~1e-17). It was harmless while this path ignored the
-        // flag; feeding it in would flip a whole face on rounding noise for
-        // any cylinder on a rotated placement.
+        // surface.sameSense, NOT the local `sameSense`: that one carries
+        // the legacy path's handedness flip (see the det(vecX,vecY,vecZ)
+        // test above), which corrects a uv-space winding decision. The
+        // normal handed to appendMeshToGeometry below is computed in world
+        // space, so it already points outward whichever way the placement
+        // is handed. Feeding the flipped local in would apply the
+        // correction twice and invert every face on a mirrored placement.
         if ( surface.sameSenseKnown ) {
 
           appendMeshToGeometry(
