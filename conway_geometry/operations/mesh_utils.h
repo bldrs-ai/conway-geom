@@ -1821,7 +1821,12 @@ inline void TriangulateConicalSurface(
   
   bool sameSense = surface.sameSense;
 
-  if ( glm::dot( vecZ, vecX ) > 0 ) {
+  // A mirrored (left-handed) placement flips the surface normal, so the
+  // face sense has to flip with it. The previous test, dot(vecZ, vecX),
+  // compared two ORTHONORMAL columns of that placement — always ~1e-17,
+  // so its sign was rounding noise and an entire face's winding turned on
+  // a coin toss. See https://github.com/bldrs-ai/conway/issues/463.
+  if ( glm::dot( glm::cross( vecX, vecY ), vecZ ) < 0 ) {
 
     sameSense = !sameSense;
   }
@@ -2232,7 +2237,12 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
   bool sameSense = surface.sameSense;
 
-  if ( glm::dot( vecZ, vecX ) > 0 ) {
+  // A mirrored (left-handed) placement flips the surface normal, so the
+  // face sense has to flip with it. The previous test, dot(vecZ, vecX),
+  // compared two ORTHONORMAL columns of that placement — always ~1e-17,
+  // so its sign was rounding noise and an entire face's winding turned on
+  // a coin toss. See https://github.com/bldrs-ai/conway/issues/463.
+  if ( glm::dot( glm::cross( vecX, vecY ), vecZ ) < 0 ) {
 
     sameSense = !sameSense;
   }
