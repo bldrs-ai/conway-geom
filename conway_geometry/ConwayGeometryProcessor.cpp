@@ -531,9 +531,41 @@ void ConwayGeometryProcessor::AddFaceToGeometrySimple(
   }
 }
 
+namespace {
+
+  /**
+   * Name the surface a face was built on, for diagnostics.
+   *
+   * @param surface The face's surface.
+   * @return A static, human-readable surface kind.
+   */
+  const char* surfaceKindName( const IfcSurface& surface ) {
+
+    if ( surface.BSplineSurface.Active )   { return "b-spline"; }
+    if ( surface.CylinderSurface.Active )  { return "cylindrical"; }
+    if ( surface.SphericalSurface.Active ) { return "spherical"; }
+    if ( surface.ToroidalSurface.Active )  { return "toroidal"; }
+    if ( surface.ConicalSurface.Active )   { return "conical"; }
+    if ( surface.RevolutionSurface.Active ){ return "revolution"; }
+    if ( surface.ExtrusionSurface.Active ) { return "extrusion"; }
+
+    return "planar/bounds";
+  }
+}
+
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
   AllocTelemetryScope telemetryScope;
+
+  // A face that contributes nothing is recoverable information, and until
+  // now it was thrown away: every triangulator returns void, and one that
+  // bails leaves a model quietly missing a face — or, when the face was
+  // the whole body, missing entirely. A whole-sphere STEP loaded as zero
+  // meshes with not one line of output, and a torus lost exactly half its
+  // surface the same way; both took a 68-part corpus to notice rather
+  // than a single load. See https://github.com/bldrs-ai/conway/issues/461.
+  const size_t trianglesBefore = geometry.triangles.size();
+
   if (!parameters.advancedBrep) {
     if (parameters.boundsArray.size() > 0) {
       conway::AllocTagScope tag( conway::AllocSite::TriBounds );
@@ -573,6 +605,17 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
         TriangulateBounds(geometry, parameters.boundsArray);
       }
     }
+  }
+
+  if ( geometry.triangles.size() == trianglesBefore ) {
+
+    // Reports the bound count too, because the two causes need different
+    // fixes: no bounds at all is an extraction-side gap, while bounds that
+    // produced nothing is a triangulator bailing on geometry it was given.
+    Logger::logWarning(
+      "Face contributed no geometry (%s surface, %zu bound(s))",
+      parameters.advancedBrep ? surfaceKindName( parameters.surface ) : "non-advanced",
+      static_cast< size_t >( parameters.boundsArray.size() ) );
   }
 }
 
