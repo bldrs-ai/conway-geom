@@ -830,21 +830,29 @@ inline void TriangulateRevolution(Geometry &geometry,
     }
 
     // indices is only populated on the edge-loop branch of GetLoop; poly loops
-    // and vertex loops arrive points-only from both front ends. Without
-    // indices each point stands as its own group, so the loop's real angular
-    // extent survives. Collapsing them into ONE group instead would yield a
-    // single bounding entry and a zero-width sweep - erasing exactly the faces
-    // this is here to keep.
-    const bool grouped = curveIndices.size() == curvePoints.size();
+    // and vertex loops arrive points-only from both front ends, and reading
+    // indices[0] on those was the out-of-bounds read this guards. Such a bound
+    // has no grouping to derive, so every point stands on its own and is taken
+    // verbatim - the grouping loop below would drop the last point (it opens a
+    // group at j == size()-1 and never closes it), which for a two-point poly
+    // loop leaves a single sample and trips the guard further down, erasing
+    // the very faces this branch exists to keep.
+    if ( curveIndices.size() != curvePoints.size() ) {
+
+      for ( const glm::dvec3 &point : curvePoints ) {
+        bounding.push_back( point );
+      }
+
+      continue;
+    }
 
     double xx = 0;
     double yy = 0;
     double zz = 0;
     double cc = 0;
-    int lastTeam = grouped ? static_cast< int >( curveIndices[ 0 ] ) : 0;
+    int lastTeam = static_cast< int >( curveIndices[ 0 ] );
     for (size_t j = 0; j < curvePoints.size(); j++) {
-      const int team =
-        grouped ? static_cast< int >( curveIndices[ j ] ) : static_cast< int >( j );
+      const int team = static_cast< int >( curveIndices[ j ] );
 
       // If it is the first point of the group we close the previous group ...
       //  ... and create a new one. Else, the point is of the current group
@@ -965,13 +973,25 @@ inline void TriangulateRevolution(Geometry &geometry,
   // Sample COUNT alone does not establish a sweep: several samples can share
   // one angle (a boundary parallel to the axis), which lands here with a zero
   // span and produces the same ten coincident rings of zero-area triangles the
-  // count guard above exists to avoid - appended, so nothing warns. The
-  // threshold is the smallest span that can still separate two of the 64
-  // segments a full turn is divided into.
+  // count guard above exists to avoid - appended, so nothing warns. This is a
+  // pure degeneracy epsilon, not a quality threshold: a span this small is
+  // indistinguishable from zero, while anything larger is left to the ring
+  // count to resolve.
   constexpr double MINIMUM_RAD_SPAN = 1e-9;
 
   if ( !std::isfinite( radSpan ) || std::abs( radSpan ) < MINIMUM_RAD_SPAN ) {
     return;
+  }
+
+  // Per-point sampling can accumulate more than one turn - two bounds that
+  // each wind fully add to ~4pi - and numRots caps at 65, so an unclamped span
+  // sweeps the profile repeatedly at half the intended per-turn density,
+  // laying coincident rings on top of each other. One turn is the most a
+  // surface of revolution can cover.
+  constexpr double FULL_TURN = 2.0 * (double)CONST_PI;
+
+  if ( std::abs( radSpan ) > FULL_TURN ) {
+    radSpan = std::copysign( FULL_TURN, radSpan );
   }
 
   // Ring count adapts to the swept span: 64 segments per full turn (sagitta
