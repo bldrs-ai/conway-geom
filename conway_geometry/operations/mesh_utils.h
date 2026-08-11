@@ -1007,12 +1007,15 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
 
   // ISO 10303-42: a face bounded solely by a degenerate loop (a VERTEX_LOOP,
   // whose single vertex marks a pole rather than a trim) covers the WHOLE
-  // surface. That is how OCCT writes a plain sphere, and how OCCT emits the
-  // corner blends of a filleted solid. The dual-hemisphere unwrap below needs
-  // a real boundary polygon to constrain a CDT against, so one point walks
-  // out as zero triangles and the sphere loads as an empty mesh - silently,
-  // since nothing downstream distinguishes "trimmed away to nothing" from
-  // "never triangulated". See https://github.com/bldrs-ai/conway/issues/461.
+  // surface. That is how OCCT writes a plain sphere: one ADVANCED_FACE on a
+  // SPHERICAL_SURFACE, one FACE_BOUND, one VERTEX_LOOP at the north pole.
+  // (Not how it writes fillet corner blends - those are trimmed patches with
+  // real edge loops and never reach this branch.) The dual-hemisphere unwrap
+  // below needs a real boundary polygon to constrain a CDT against, so one
+  // point walks out as zero triangles and the sphere loads as an empty mesh
+  // - silently, since nothing downstream distinguishes "trimmed away to
+  // nothing" from "never triangulated".
+  // See https://github.com/bldrs-ai/conway/issues/461.
   //
   // The torus already handles its own full-coverage case with a parametric
   // grid (see TriangulateToroidalSurface's wrapsTheta && wrapsPhi branch);
@@ -1023,11 +1026,20 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
     boundaryPointCount += bound.curve.points.size();
   }
 
-  // Fewer than three points cannot bound an area on any surface, so there is
-  // nothing to trim with even when the loop is not literally a VERTEX_LOOP.
+  // One or two points cannot bound an area on any surface, so there is nothing
+  // to trim with even when the loop is not literally a VERTEX_LOOP.
+  //
+  // ZERO points is a different thing and deliberately excluded: a bound
+  // reaches here empty when every one of its edges failed to yield a basis
+  // curve (GetLoop emits a 0-point curve in that case). Treating that as
+  // full coverage would turn a small trimmed patch into a whole sphere at
+  // the placement centre - spurious volume, inflated bounds, occlusion - and
+  // do it silently, since emitting triangles suppresses the
+  // contributed-no-geometry warning. An extraction failure has to keep
+  // looking like one.
   constexpr size_t MINIMUM_TRIM_POINTS = 3;
 
-  if ( boundaryPointCount < MINIMUM_TRIM_POINTS ) {
+  if ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) {
 
     // Longitude x latitude divisions. Matched to the torus grid's angular
     // density; the sphere is closed in theta but not in phi, so the poles
