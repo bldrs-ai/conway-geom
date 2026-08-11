@@ -551,18 +551,13 @@ namespace {
    * bounds that produced nothing is a triangulator bailing on geometry it
    * was handed.
    *
-   * KNOWN LIMITATION: Logger uses EM_ASM, which evaluates in the calling
-   * pthread's own Worker scope, and the JS sink is only installed on the
-   * main thread. Faces triangulated through FinalizeStagedFaces therefore
-   * warn into the void — the very failure this exists to remove — and
-   * because parallel_for runs serially below its threshold and the
-   * calling thread joins the work, which faces report is not even
-   * deterministic. The immediate path (today's default) is unaffected.
-   * Fixing it means making Logger thread-safe, which also repairs the
-   * pre-existing logError calls in FinalizeStagedFaces, and is its own
-   * change: MAIN_THREAD_EM_ASM proxies synchronously to the main thread,
-   * which is blocked waiting on the pool at exactly that moment.
-   * Tracked in https://github.com/bldrs-ai/conway/issues/466.
+   * Reaches the host from pool threads as well as the main thread, but only
+   * because FinalizeStagedFaces opens a Logger::DeferredScope around its
+   * parallel_for. Without one, a bare EM_ASM evaluates in the calling
+   * worker's own scope, where no sink is installed, and the warning vanishes
+   * — non-deterministically, since parallel_for runs serially below its
+   * threshold and the calling thread joins the work. Any future parallel
+   * region that can log needs the same scope (conway#466).
    *
    * @param surfaceKind Human-readable surface kind.
    * @param boundCount How many bounds the face was given.
@@ -709,6 +704,13 @@ void ConwayGeometryProcessor::FinalizeStagedFaces() {
   // then append the results in staging order so output ordering (and
   // therefore output data) matches the immediate AddFaceToGeometry path.
   std::vector< Geometry > results( jobCount );
+
+  // Everything logged below happens on pool threads, where a bare EM_ASM
+  // evaluates in the worker's own scope and is silently dropped - including
+  // the catch handlers here, which are the only report a caller gets that a
+  // face threw. Buffer for the duration and flush on this thread when the
+  // scope closes. See conway#466.
+  Logger::DeferredScope deferLogs;
 
   ThreadPool::instance().parallel_for( 0, jobCount, [&]( size_t where ) {
 
