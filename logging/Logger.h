@@ -49,6 +49,13 @@ public:
      * rest rather than jumping ahead of them. Ordering *between* worker
      * threads is whatever the race produced - inherent to concurrent
      * tessellation, not something this could fix.
+     *
+     * The buffer is fixed-size and never allocates, because logError is
+     * called from catch handlers that run when memory has already failed.
+     * Messages past its capacity are counted and reported as a single
+     * "N further messages were dropped" line rather than lost silently, and
+     * each stored message is truncated. A deferred log is a diagnostic, not
+     * a transcript.
      */
     class DeferredScope {
     public:
@@ -58,13 +65,6 @@ public:
         DeferredScope(const DeferredScope&) = delete;
         DeferredScope& operator=(const DeferredScope&) = delete;
     };
-
-    /**
-     * Emit and clear anything buffered so far, without closing the scope.
-     * Call from the thread that owns the scope, at a point where no worker
-     * can be logging - between parallel regions, not inside one.
-     */
-    static void flushDeferred();
 };
 
 #endif // LOGGER_H
