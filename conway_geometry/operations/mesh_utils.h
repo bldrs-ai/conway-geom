@@ -991,6 +991,139 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
   glm::dvec3 vecY   = glm::normalize(surface.transformation[1]);
   glm::dvec3 vecZ   = glm::normalize(surface.transformation[2]);
 
+  // Sphere point in world space from (theta, phi): theta is longitude about
+  // vecZ, phi is latitude in [-pi/2, +pi/2].
+  auto spherePoint = [&]( double theta, double phi ) {
+
+    double ring = radius * std::cos( phi );
+
+    glm::dvec3 local(
+      ring * std::cos( theta ),
+      ring * std::sin( theta ),
+      radius * std::sin( phi ) );
+
+    return vecX * local.x + vecY * local.y + vecZ * local.z + cent;
+  };
+
+  // ISO 10303-42: a face bounded solely by a degenerate loop (a VERTEX_LOOP,
+  // whose single vertex marks a pole rather than a trim) covers the WHOLE
+  // surface. That is how OCCT writes a plain sphere, and how OCCT emits the
+  // corner blends of a filleted solid. The dual-hemisphere unwrap below needs
+  // a real boundary polygon to constrain a CDT against, so one point walks
+  // out as zero triangles and the sphere loads as an empty mesh - silently,
+  // since nothing downstream distinguishes "trimmed away to nothing" from
+  // "never triangulated". See https://github.com/bldrs-ai/conway/issues/461.
+  //
+  // The torus already handles its own full-coverage case with a parametric
+  // grid (see TriangulateToroidalSurface's wrapsTheta && wrapsPhi branch);
+  // this is the same treatment for the sphere's closed domain.
+  size_t boundaryPointCount = 0;
+
+  for ( const IfcBound3D& bound : bounds ) {
+    boundaryPointCount += bound.curve.points.size();
+  }
+
+  // Fewer than three points cannot bound an area on any surface, so there is
+  // nothing to trim with even when the loop is not literally a VERTEX_LOOP.
+  constexpr size_t MINIMUM_TRIM_POINTS = 3;
+
+  if ( boundaryPointCount < MINIMUM_TRIM_POINTS ) {
+
+    // Longitude x latitude divisions. Matched to the torus grid's angular
+    // density; the sphere is closed in theta but not in phi, so the poles
+    // are single vertices with triangle fans rather than another ring.
+    constexpr int GRID_THETA = 48;
+    constexpr int GRID_PHI   = 24;
+
+    constexpr double kHalfPi = unwrap_detail::kPi * 0.5;
+
+    WingedEdgeMesh< glm::dvec3 > gridMesh;
+
+    auto& gridVertices = gridMesh.vertices;
+
+    // Layout: south pole, then GRID_PHI - 1 interior rings of GRID_THETA,
+    // then north pole.
+    gridVertices.push_back( spherePoint( 0.0, -kHalfPi ) );
+
+    for ( int ring = 1; ring < GRID_PHI; ++ring ) {
+
+      double phi = -kHalfPi + ( ring * unwrap_detail::kPi / GRID_PHI );
+
+      for ( int step = 0; step < GRID_THETA; ++step ) {
+        gridVertices.push_back( spherePoint( step * unwrap_detail::kTwoPi / GRID_THETA, phi ) );
+      }
+    }
+
+    gridVertices.push_back( spherePoint( 0.0, kHalfPi ) );
+
+    const uint32_t southPole = 0;
+    const uint32_t northPole = static_cast< uint32_t >( gridVertices.size() - 1 );
+
+    // First vertex of interior ring `ring` (1-based, matching the loop above).
+    auto ringBase = []( int ring ) {
+
+      return static_cast< uint32_t >( 1 + ( ( ring - 1 ) * GRID_THETA ) );
+    };
+
+    // Winding below is outward everywhere: cross(d/dtheta, d/dphi) points
+    // away from the centre, so (lower_i, lower_i+1, upper_i+1) and
+    // (lower_i, upper_i+1, upper_i) are both front-facing. The pole fans
+    // follow from the same rule with one ring collapsed - which is why the
+    // south cap runs i+1 before i and the north cap does not.
+    for ( int step = 0; step < GRID_THETA; ++step ) {
+
+      uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+      gridMesh.makeTriangle(
+        southPole,
+        ringBase( 1 ) + next,
+        ringBase( 1 ) + static_cast< uint32_t >( step ) );
+    }
+
+    for ( int ring = 1; ring + 1 < GRID_PHI; ++ring ) {
+
+      uint32_t lower = ringBase( ring );
+      uint32_t upper = ringBase( ring + 1 );
+
+      for ( int step = 0; step < GRID_THETA; ++step ) {
+
+        uint32_t here = static_cast< uint32_t >( step );
+        uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+        gridMesh.makeTriangle( lower + here, lower + next, upper + next );
+        gridMesh.makeTriangle( lower + here, upper + next, upper + here );
+      }
+    }
+
+    for ( int step = 0; step < GRID_THETA; ++step ) {
+
+      uint32_t next = static_cast< uint32_t >( ( step + 1 ) % GRID_THETA );
+
+      gridMesh.makeTriangle(
+        northPole,
+        ringBase( GRID_PHI - 1 ) + static_cast< uint32_t >( step ),
+        ringBase( GRID_PHI - 1 ) + next );
+    }
+
+    // Orient against the true radial normal rather than the projection
+    // heuristic, so the grid keeps the winding built above. Extractors that
+    // never populate the face sense (IFC - see IfcSurface::sameSenseKnown)
+    // get outward, which is the only defensible default for a closed sphere
+    // and is strictly more information than the `false` the field defaults
+    // to; this path emitted nothing at all before, so there is no prior
+    // behaviour to preserve.
+    appendMeshToGeometry(
+      gridMesh,
+      geometry,
+      surface.sameSenseKnown ? surface.sameSense : true,
+      [&]( const glm::dvec3& point ) {
+
+        return glm::normalize( point - cent );
+      } );
+
+    return;
+  }
+
   WingedEdgeMesh< glm::dvec3 > mesh;
 
   tesselateDualParametrization(
