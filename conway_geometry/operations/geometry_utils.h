@@ -595,26 +595,27 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {
 
-  // Two bars, not one, mirroring what the original code was reaching for with
-  // EARLY_OUT and `bestArea > 0` - only as sin^2, so they mean the same thing
-  // at every model scale.
+  // One bar, and it is the noise floor: below this the caller's normalize() of
+  // a cross product is rounding error rather than a direction, so the face is
+  // refused and logged - which the caller already handles - rather than
+  // propagating inf/NaN into every vertex it contributes, silently, since NaN
+  // geometry is not obviously distinguishable downstream from ordinary output.
   //
-  // GOOD is "stop looking": a first triple this well conditioned is taken and
-  // the search below is skipped. Purely an optimization - the search is two
-  // O(n) passes over a face's points and can only improve the basis - so this
-  // wants to sit clearly ABOVE the awkward inputs rather than near them.
-  // sin(theta) > 0.5 is that: 30 degrees off collinear, well past any
-  // tessellation density. Consecutive vertices of a regular n-gon sit at
-  // sin^2 = sin^2(pi/n), which is 9.6e-3 at n = 32 and 2.4e-3 at n = 64, so a
-  // bar anywhere around 1e-2 would land in the middle of ordinary tessellation
-  // and short-circuit at one density while searching at the next.
+  // The original EARLY_OUT had a second job, "this triple is good enough, stop
+  // looking", and two attempts at a scale-free version of that bar were both
+  // wrong, in the same way: there is no value clear of tessellated input.
+  // Three consecutive vertices of a regular n-gon give sin^2(2*pi/n) at the
+  // middle vertex, which runs 0.5 at n=8, 0.25 at n=12, 3.8e-2 at n=32 and
+  // 9.6e-3 at n=64 - so any threshold in the useful range lands between two
+  // ordinary tessellation densities and short-circuits one while searching the
+  // next, deciding which basis a face gets on nothing more principled than its
+  // segment count.
   //
-  // MIN is "usable at all". Below it the caller's normalize() of a cross
-  // product is noise rather than a direction, so the face is refused and
-  // logged - which the caller already handles - rather than propagating
-  // inf/NaN into every vertex it contributes, silently, since NaN geometry is
-  // not obviously distinguishable downstream from ordinary output.
-  constexpr double GOOD_SIN_SQUARED = 0.25;
+  // So there is no early out. The search below is two O(n) passes over one
+  // face's points and, with the first triple held and restored, can only
+  // improve on it; measured across the public corpus the difference does not
+  // clear the noise in a contended batch run. Paying it unconditionally buys
+  // a basis that depends on the geometry rather than on where a constant fell.
   constexpr double MIN_SIN_SQUARED = 1e-16;
 
   // Three points are needed to span a plane. TriangulateBounds guarantees a
@@ -640,10 +641,6 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
   // at v2 is arbitrarily small, since the two differ by the ratio of the edge
   // lengths and that ratio is unbounded.
   const double firstSinSquared = sinSquaredAt( v2, v1, v3 );
-
-  if ( firstSinSquared > GOOD_SIN_SQUARED ) {
-    return true;
-  }
 
   // Held so the search cannot make things worse. It re-anchors v2 on the
   // farthest point, which is usually better but not always: a needle bound
@@ -760,6 +757,12 @@ inline void TriangulateBounds(Geometry &geometry,
 
     uint32_t offset = geometry.vertices.size();
 
+    // Whether any bound actually declared itself the outer one. Hoisted out of
+    // the multi-bound block because the basis search below needs it: it is the
+    // difference between "bounds[0] is the outer bound" and "bounds[0] is
+    // whichever loop happened to be listed first".
+    bool outerBoundKnown = bounds.size() == 1;
+
     // if more than one bound
     if (bounds.size() > 1) {
         // locate the outer bound index
@@ -776,52 +779,65 @@ inline void TriangulateBounds(Geometry &geometry,
       } else {
         // swap the outer bound to the first position
         std::swap(bounds[0], bounds[outerIndex]);
+        outerBoundKnown = true;
       }
     }
 
 
     glm::dvec3 v1, v2, v3;
 
-    // Take the basis from the first bound that can give one, not from
-    // bounds[0] whatever it is.
+    // Where no bound declared itself outer, whichever loop is listed first is
+    // an ordering accident, so refusing the face because THAT one is
+    // degenerate would discard every valid loop behind it. There, take the
+    // basis from the first bound that can supply one. A too-short loop and a
+    // collinear one are the same accident and get the same treatment.
     //
-    // bounds[0] is only reliably the outer bound when some bound was typed
-    // OUTERBOUND. Where none is - legal IFC, handled a few lines up with a
-    // warning and no swap - whichever loop happens to be listed first is an
-    // ordering accident, so refusing the face because THAT one is degenerate
-    // discards every valid loop behind it. A too-short loop and a collinear
-    // one are the same accident and get the same treatment; splitting them
-    // would leave the second half of the bug in place.
-    //
-    // This is also where the out-of-bounds read was. GetBasisFromCoplanarPoints
-    // reads its argument's first three points and nothing established that
-    // there were three - the branch above only guarantees a bound EXISTS - so
-    // reading off the end of a std::vector was undefined behaviour rather than
-    // a caught error. Not hypothetical: 63 bounds across three models of the
-    // public corpus have one or two points.
+    // Where the outer bound IS known, bounds[0] is it and nothing may be
+    // promoted over it. Everything else is a hole, and swapping a hole into
+    // first position would hand the winding test the hole's winding and the
+    // tesselatePlane fallback a ring to fill as solid - a face emitted inside
+    // out with its hole plugged, silently, which is worse than the reported
+    // drop this replaces.
     size_t usable = 0;
+    const size_t searchEnd = outerBoundKnown ? 1 : bounds.size();
 
-    while ( usable < bounds.size() &&
+    while ( usable < searchEnd &&
             !GetBasisFromCoplanarPoints(
               bounds[usable].curve.points, v1, v2, v3 ) ) {
       ++usable;
     }
 
-    if ( usable >= bounds.size() ) {
+    if ( usable >= searchEnd ) {
 
-      // Point count of the first bound is carried because it separates the two
-      // ways to get here - a loop too short to be a face at all, whose fix is
-      // upstream in whatever built it, versus a full loop that is collinear -
-      // which the old single "No basis found for brep!" could not distinguish.
-      // That conflation is part of why the read above went unnoticed.
+      // Two categories, two messages, and no counts interpolated into either:
+      // dedup keys on the message text, so a per-face number here would split
+      // one family across a row per distinct count and stop `count` from
+      // sizing it. The split that carries information is "the loop was never
+      // long enough to be a face", whose fix is upstream in whatever built it,
+      // versus "the loop is a full one that happens to be collinear" - which
+      // the old single "No basis found for brep!" could not distinguish, and
+      // that conflation is part of why the out-of-bounds read below went
+      // unnoticed.
+      //
+      // GetBasisFromCoplanarPoints reads its argument's first three points and
+      // nothing established there were three - the branch above only
+      // guarantees a bound EXISTS - so that read ran off the end of a
+      // std::vector, undefined behaviour rather than a caught error. Not
+      // hypothetical: 63 bounds across three models of the public corpus have
+      // one or two points.
       //
       // No trailing newline: the regression batch writes each distinct message
       // as one errors.csv cell, and one here makes every such row a quoted
       // multi-line field for no gain.
-      Logger::logError(
-        "No bound of this face can form a basis: %zu bound(s), first has %zu point(s)",
-        bounds.size(),
-        bounds[0].curve.points.size() );
+      bool anyLongEnough = false;
+
+      for ( size_t where = 0; where < searchEnd; ++where ) {
+        anyLongEnough |= bounds[where].curve.points.size() >= 3;
+      }
+
+      Logger::logError( anyLongEnough ?
+        "No bound of this face can form a basis, all are collinear" :
+        "No bound of this face has enough points to form it" );
       return;
     }
 
