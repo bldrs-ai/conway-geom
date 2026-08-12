@@ -545,13 +545,18 @@ inline Geometry SweepCircular(
 /**
  * Squared sine of the angle at `a` in triangle (a, b, c).
  *
- * areaOfTriangle2 returns |ab x ac|^2 - the SQUARED cross product magnitude,
+ * areaOfTriangle2 returned |ab x ac|^2 - the SQUARED cross product magnitude,
  * so (2 * area)^2, scaling as length^4. Dividing by |ab|^2 |ac|^2 cancels the
  * scale entirely and leaves sin^2(theta), which is what "is this triangle
  * usable as a basis" actually asks. Being dimensionless is the point: one
  * threshold then means the same thing for a model in metres and the same
  * model in millimetres, where an absolute cutoff on a length^4 quantity is
  * off by 10^12 between the two.
+ *
+ * WHICH vertex matters. The value is symmetric in b and c but NOT in a:
+ * sin at each corner shares the same 2 * area numerator and divides by that
+ * corner's own two edge lengths, so the three differ by unbounded ratios.
+ * Callers must measure at the corner whose edges they actually build from.
  *
  * @param a Vertex the angle is measured at.
  * @param b Second vertex.
@@ -590,12 +595,24 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {
 
-  // Below this the basis is not usable: the caller immediately normalizes
-  // cross products of these vectors, and at sin(theta) ~ 1e-8 that result is
-  // noise rather than a direction. Reported as "no basis" instead, which the
-  // caller already handles, rather than propagating inf/NaN into every vertex
-  // the face contributes - silently, since NaN geometry is not obviously
-  // distinguishable downstream from ordinary output.
+  // Two bars, not one, mirroring what the original code was reaching for with
+  // EARLY_OUT and `bestArea > 0` - only as sin^2 so they mean the same thing
+  // at every model scale.
+  //
+  // GOOD is "stop looking": the first triple this well conditioned is taken
+  // and the search is skipped. It has to sit well above the noise floor or the
+  // search never runs, which matters because a tessellated arc's first three
+  // points are nearly collinear by construction (sin ~ 1e-5 for a 64-segment
+  // circle) - accepted, the 1/sin amplification of any non-planarity tilts the
+  // projection plane enough to fold the polygon over itself and hand earcut a
+  // self-intersecting ring.
+  //
+  // MIN is "usable at all". Below it the caller's normalize() of a cross
+  // product is noise rather than a direction, so the face is refused and
+  // logged - which the caller already handles - rather than propagating
+  // inf/NaN into every vertex it contributes, silently, since NaN geometry is
+  // not obviously distinguishable downstream from ordinary output.
+  constexpr double GOOD_SIN_SQUARED = 1e-2;
   constexpr double MIN_SIN_SQUARED = 1e-16;
 
   // Three points are needed to span a plane. TriangulateBounds guarantees a
@@ -610,7 +627,17 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
   v2 = points[1];
   v3 = points[2];
 
-  if ( sinSquaredAt( v1, v2, v3 ) > MIN_SIN_SQUARED ) {
+  // Measured AT v2, because that is the corner the caller builds from:
+  //
+  //   v12 = normalize( v3 - v2 ); v13 = normalize( v1 - v2 );
+  //   n   = normalize( cross( v12, v13 ) );
+  //
+  // both edges leave v2, and crossing two unit vectors gives exactly
+  // sin(angle at v2). Conditioning on the angle at v1 instead - which is what
+  // this did, following areaOfTriangle2's argument order - can pass a triple
+  // whose angle at v2 is arbitrarily small, since the two differ by the ratio
+  // of the edge lengths and that ratio is unbounded.
+  if ( sinSquaredAt( v2, v1, v3 ) > GOOD_SIN_SQUARED ) {
     return true;
   }
 
@@ -631,6 +658,7 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
     }
   }
 
+  // Every point coincides with points[0], so there is no edge to build on.
   if ( distanceSqr <= 0.0 ) {
     return false;
   }
@@ -639,12 +667,12 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
 
   for (auto &p : points) {
 
-    double candidate = sinSquaredAt( v1, v2, p );
+    double candidate = sinSquaredAt( v2, v1, p );
 
     if ( candidate > bestSinSquared ) {
       v3 = p;
 
-      if ( candidate > MIN_SIN_SQUARED ) {
+      if ( candidate > GOOD_SIN_SQUARED ) {
         return true;
       }
 
@@ -652,15 +680,12 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
     }
   }
 
-  // Measured inert on the public corpus: a build that returned
-  // `bestSinSquared > 0` here instead produced byte-identical digests on every
-  // model that exercises this path, so nothing in the corpus lands in
-  // (0, MIN_SIN_SQUARED]. Kept as the hard reject anyway, because the two
-  // differ only on input we have not seen, and there the reject is the better
-  // failure: the caller logs and skips the face, where accepting a basis at
-  // sin(theta) < 1e-8 normalizes a cross product that is pure rounding error
-  // and pushes NaN vertices downstream with nothing logged at all.
-  return false;
+  // Nothing reached GOOD, so v3 holds the best of a bad set. Take it if it
+  // clears the noise floor - a poorly conditioned basis still triangulates a
+  // sliver correctly enough - and refuse otherwise. This is the only exit that
+  // can drop a face the old code kept, which is why it is a floor and not the
+  // GOOD bar.
+  return bestSinSquared > MIN_SIN_SQUARED;
 }
 
 inline void TriangulateBounds(Geometry &geometry,
@@ -718,23 +743,46 @@ inline void TriangulateBounds(Geometry &geometry,
 
     glm::dvec3 v1, v2, v3;
 
-    // Reported apart from the collinear case below, because it is a different
-    // defect with a different fix: the bound never had enough points to be a
-    // face, so the problem is upstream in whatever built the loop, not in the
-    // conditioning of a basis we could have chosen better. Conflating the two
-    // is also how this went unnoticed - the read of points[1]/points[2] below
-    // used to run off the end of the vector here, which is undefined
-    // behaviour, and whatever it happened to pick up triangulated into
-    // garbage under the same message as a genuinely collinear face.
+    // GetBasisFromCoplanarPoints reads bounds[0]'s first three points, and
+    // until now nothing established that it had three: the branch above only
+    // guarantees a bound EXISTS. Reading past the end of a std::vector is
+    // undefined behaviour rather than a caught error, and it is not
+    // hypothetical - 63 bounds across three models of the public corpus have
+    // one or two points.
+    //
+    // Promote a usable bound rather than giving up on the face. bounds[0] is
+    // only reliably the outer one when some bound was typed OUTERBOUND; where
+    // none is (legal IFC - see ConwayGeometryProcessor.cpp's all-IfcFaceBound
+    // faces) the swap above never happened, so a degenerate loop listed first
+    // is an ordering accident, and dropping the face over it would discard
+    // whatever valid loops follow.
     if ( bounds[0].curve.points.size() < 3 ) {
 
-      // No trailing newline: the regression batch writes each distinct message
-      // as one errors.csv cell, and one here makes every such row a quoted
-      // multi-line field for no gain.
-      Logger::logError(
-        "Bound has too few points to form a face: %zu",
-        bounds[0].curve.points.size() );
-      return;
+      size_t usable = 0;
+
+      while ( usable < bounds.size() &&
+              bounds[usable].curve.points.size() < 3 ) {
+        ++usable;
+      }
+
+      if ( usable >= bounds.size() ) {
+
+        // Reported apart from the collinear case below: this is a different
+        // defect with a different fix - the loop never had enough points to be
+        // a face at all, so the problem is upstream of any basis we could have
+        // chosen better. Conflating the two under "No basis found for brep!"
+        // is part of why the out-of-bounds read went unnoticed.
+        //
+        // No trailing newline: the regression batch writes each distinct
+        // message as one errors.csv cell, and one here makes every such row a
+        // quoted multi-line field for no gain.
+        Logger::logError(
+          "Face has no bound with enough points to form it: %zu bound(s)",
+          bounds.size() );
+        return;
+      }
+
+      std::swap( bounds[0], bounds[usable] );
     }
 
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
@@ -835,8 +883,13 @@ inline void TriangulateBounds(Geometry &geometry,
         offset + indices[ i + 2 ] );
     }
   } else {
-    
-    Logger::logError("bad bound %zu %zu\n", bounds.size(), bounds[0].curve.points.size());
+
+    // Reached only when bounds is EMPTY - the two branches above cover
+    // size() == 1 with three points and size() > 0 - so the message this used
+    // to print, which read bounds[0].curve.points.size(), indexed an empty
+    // vector every time it fired. Same defect class as the one in
+    // GetBasisFromCoplanarPoints above, found alongside it.
+    Logger::logError( "Face has no bounds" );
   }
 }
 
