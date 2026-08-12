@@ -569,6 +569,44 @@ namespace {
       surfaceKind,
       boundCount );
   }
+
+  /**
+   * Roll a geometry back to the state it was in before a face began
+   * appending to it.
+   *
+   * A triangulator that throws part-way has usually already pushed some of
+   * the face's vertices and triangles. Keeping them renders a torn fragment
+   * of a face, which is worse than the missing face: it looks like geometry,
+   * so nothing downstream treats it as absent. This is the same all-or-
+   * nothing rule FinalizeStagedFaces applies with Geometry::Clear on its
+   * per-face local geometry, expressed as a truncation because the immediate
+   * path appends into a geometry that already holds earlier faces.
+   *
+   * Connectivity and the BVH are derived caches keyed on the arrays being
+   * truncated, so they are dropped rather than fixed up. Neither is built
+   * during face triangulation today; dropping them keeps that from becoming
+   * a silent correctness bug if one ever is.
+   *
+   * @param geometry      Geometry to truncate.
+   * @param vertexCount   vertices.size() before the face ran.
+   * @param triangleCount triangles.size() before the face ran.
+   */
+  void rollbackFace(
+    Geometry& geometry,
+    size_t    vertexCount,
+    size_t    triangleCount ) {
+
+    if ( geometry.triangles.size() > triangleCount ) {
+      geometry.triangles.resize( triangleCount );
+    }
+
+    if ( geometry.vertices.size() > vertexCount ) {
+      geometry.vertices.resize( vertexCount );
+    }
+
+    geometry.ClearConnectivity();
+    geometry.bvh.reset();
+  }
 }
 
 void ConwayGeometryProcessor::AddFaceToGeometrySimple(
@@ -580,16 +618,45 @@ void ConwayGeometryProcessor::AddFaceToGeometrySimple(
   // out would have made coverage depend on which mode a model happened to
   // take — with today's default reporting less than the staged path.
   const size_t trianglesBefore = geometry.triangles.size();
+  const size_t verticesBefore  = geometry.vertices.size();
+  const size_t boundCount = static_cast< size_t >( parameters.boundsArray.size() );
 
-  if (parameters.boundsArray.size() > 0) {
+  // Guarded for the same reason as the advanced path, which documents it:
+  // this is also bound directly (`addFaceToGeometrySimple`) and also called
+  // by the IFC front end, so an unguarded throw here costs the whole product.
+  try {
 
-    TriangulateBounds(geometry, parameters.boundsArray);
+    if (parameters.boundsArray.size() > 0) {
+
+      TriangulateBounds(geometry, parameters.boundsArray);
+    }
+
+  } catch ( const std::exception& error ) {
+
+    rollbackFace( geometry, verticesBefore, trianglesBefore );
+
+    Logger::logError(
+      "Face threw while triangulating (simple/bounds surface, %zu bound(s)): %s",
+      boundCount,
+      error.what() );
+
+    return;
+
+  } catch ( ... ) {
+
+    rollbackFace( geometry, verticesBefore, trianglesBefore );
+
+    Logger::logError(
+      "Face threw an unknown exception while triangulating "
+      "(simple/bounds surface, %zu bound(s))",
+      boundCount );
+
+    return;
   }
 
   if ( geometry.triangles.size() == trianglesBefore ) {
 
-    warnFaceAddedNothing(
-      "simple/bounds", static_cast< size_t >( parameters.boundsArray.size() ) );
+    warnFaceAddedNothing( "simple/bounds", boundCount );
   }
 }
 
@@ -606,53 +673,97 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
   // surface the same way; both took a 68-part corpus to notice rather
   // than a single load. See https://github.com/bldrs-ai/conway/issues/461.
   const size_t trianglesBefore = geometry.triangles.size();
+  const size_t verticesBefore  = geometry.vertices.size();
 
-  if (!parameters.advancedBrep) {
-    if (parameters.boundsArray.size() > 0) {
-      conway::AllocTagScope tag( conway::AllocSite::TriBounds );
-      TriangulateBounds(geometry, parameters.boundsArray);
-    }
-  } else {
-    if (parameters.boundsArray.size() > 0) {
-      auto surface = parameters.surface;
+  // A face that THROWS is the other half of that gap, and until now it cost
+  // far more than the face: this is the path IFC uses (`addFaceToGeometry`
+  // binds here; the staged path is not on the IFC front end), it had no
+  // guard, and the exception propagated out through embind to the extractor's
+  // per-product catch — so one bad face lost the entire product, reported as
+  // a bare "CDT Exception at Triangulation.hpp:983" with nothing naming the
+  // surface or even the face. ISSUE_159 shipped that way for months
+  // (conway#473). Catch per face, name the surface kind and bound count the
+  // way the added-nothing path does, and let the rest of the product build.
+  //
+  // Deliberately swallowed, not rethrown. Losing one face of a product beats
+  // losing the product, and the loss is not silent: every occurrence logs an
+  // error, which reaches errors.csv in the regression harness, and a model
+  // that loses ALL its faces this way lands in zero_geometry.csv (conway#478).
+  const char* const surfaceKind =
+    parameters.advancedBrep ? surfaceKindName( parameters.surface ) : "non-advanced";
+  const size_t boundCount = static_cast< size_t >( parameters.boundsArray.size() );
 
-      if (surface.BSplineSurface.Active) {
-         conway::AllocTagScope tag( conway::AllocSite::TriBspline );
-         TriangulateBspline(geometry, parameters.boundsArray, surface,
-                            parameters.scaling);
-      } else if (surface.CylinderSurface.Active) {
-         conway::AllocTagScope tag( conway::AllocSite::TriCylinder );
-         TriangulateCylindricalSurface(geometry, parameters.boundsArray,
-                                       surface);
-      } else if (surface.SphericalSurface.Active) {
-        conway::AllocTagScope tag( conway::AllocSite::TriSphere );
-        TriangulateSphericalSurface(geometry, parameters.boundsArray,
-                                    surface);
-      } else if (surface.ToroidalSurface.Active) {
-       conway::AllocTagScope tag( conway::AllocSite::TriToroidal );
-       TriangulateToroidalSurface(geometry, parameters.boundsArray,
-                                   surface);
-      } else if (surface.ConicalSurface.Active) {
-       conway::AllocTagScope tag( conway::AllocSite::TriConical );
-       TriangulateConicalSurface(geometry, parameters.boundsArray, surface);
-      } else if (surface.RevolutionSurface.Active) {
-        conway::AllocTagScope tag( conway::AllocSite::TriRevolution );
-        TriangulateRevolution(geometry, parameters.boundsArray, surface);
-      } else if (surface.ExtrusionSurface.Active) {
-        conway::AllocTagScope tag( conway::AllocSite::TriExtrusion );
-        TriangulateExtrusion(geometry, parameters.boundsArray, surface);
-      } else {
+  try {
+
+    if (!parameters.advancedBrep) {
+      if (parameters.boundsArray.size() > 0) {
         conway::AllocTagScope tag( conway::AllocSite::TriBounds );
         TriangulateBounds(geometry, parameters.boundsArray);
       }
+    } else {
+      if (parameters.boundsArray.size() > 0) {
+        auto surface = parameters.surface;
+
+        if (surface.BSplineSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriBspline );
+          TriangulateBspline(geometry, parameters.boundsArray, surface,
+                             parameters.scaling);
+        } else if (surface.CylinderSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriCylinder );
+          TriangulateCylindricalSurface(geometry, parameters.boundsArray,
+                                        surface);
+        } else if (surface.SphericalSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriSphere );
+          TriangulateSphericalSurface(geometry, parameters.boundsArray,
+                                      surface);
+        } else if (surface.ToroidalSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriToroidal );
+          TriangulateToroidalSurface(geometry, parameters.boundsArray,
+                                     surface);
+        } else if (surface.ConicalSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriConical );
+          TriangulateConicalSurface(geometry, parameters.boundsArray, surface);
+        } else if (surface.RevolutionSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriRevolution );
+          TriangulateRevolution(geometry, parameters.boundsArray, surface);
+        } else if (surface.ExtrusionSurface.Active) {
+          conway::AllocTagScope tag( conway::AllocSite::TriExtrusion );
+          TriangulateExtrusion(geometry, parameters.boundsArray, surface);
+        } else {
+          conway::AllocTagScope tag( conway::AllocSite::TriBounds );
+          TriangulateBounds(geometry, parameters.boundsArray);
+        }
+      }
     }
+
+  } catch ( const std::exception& error ) {
+
+    rollbackFace( geometry, verticesBefore, trianglesBefore );
+
+    Logger::logError(
+      "Face threw while triangulating (%s surface, %zu bound(s)): %s",
+      surfaceKind,
+      boundCount,
+      error.what() );
+
+    return;
+
+  } catch ( ... ) {
+
+    rollbackFace( geometry, verticesBefore, trianglesBefore );
+
+    Logger::logError(
+      "Face threw an unknown exception while triangulating "
+      "(%s surface, %zu bound(s))",
+      surfaceKind,
+      boundCount );
+
+    return;
   }
 
   if ( geometry.triangles.size() == trianglesBefore ) {
 
-    warnFaceAddedNothing(
-      parameters.advancedBrep ? surfaceKindName( parameters.surface ) : "non-advanced",
-      static_cast< size_t >( parameters.boundsArray.size() ) );
+    warnFaceAddedNothing( surfaceKind, boundCount );
   }
 }
 

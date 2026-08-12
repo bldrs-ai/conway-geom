@@ -332,7 +332,14 @@ inline bool triangulateUnwrappedLoops(
     triangulation.insertEdges( cdtEdges );
     triangulation.eraseOuterTrianglesAndHoles();
   }
-  catch ( const CDT::Error &e )
+  // std::exception, not CDT::Error (which derives from it), because the
+  // failure that actually costs a model here is std::bad_alloc, not a CDT
+  // diagnostic: TryResolve splits intersections into fresh intersecting
+  // edges and can allocate until the wasm heap is gone (conway#473 measured
+  // ~3.4GB on one face). Narrowed to CDT::Error, that escaped the fallback
+  // and, before AddFaceToGeometry's per-face guard, took the whole product
+  // with it. Every site below is widened for the same reason.
+  catch ( const std::exception &e )
   {
     Logger::logError( "CDT Exception (%s unwrap): %s", label, e.what() );
     return false;
@@ -793,7 +800,7 @@ inline void TriangulateRevolution(Geometry &geometry,
             triangulation.eraseOuterTrianglesAndHoles();
             triangulated = true;
           }
-          catch ( const CDT::Error &e )
+          catch ( const std::exception &e )
           {
             // Fall back to the swept grid - never worse than the old output.
             Logger::logError( "CDT Exception (revolution unwrap): %s", e.what() );
@@ -819,7 +826,15 @@ inline void TriangulateRevolution(Geometry &geometry,
                 continue;
               }
 
-              // TryResolve can add split vertices past the input set; they have no world-space lift here, so skip the sliver triangles that touch them.
+              // Defensive, and unreachable as written: the guard dates from
+              // when this site used TryResolve, which adds split vertices
+              // past the input set that have no world-space lift in
+              // cdtWorld. Under NotAllowed (above) a crossing throws instead
+              // of splitting, so no such vertex can reach here. Kept because
+              // the cost is three compares against a value already in
+              // registers and the failure it prevents is an out-of-range
+              // read; the sibling copy in unwrap_detail IS live, since that
+              // path is still TryResolve.
               if (
                 cdtv1 >= cdtWorld.size() ||
                 cdtv2 >= cdtWorld.size() ||
@@ -1917,7 +1932,7 @@ inline void TriangulateToroidalSurface(
         }
         return std::nullopt;
       }
-      catch ( const CDT::Error &e )
+      catch ( const std::exception &e )
       {
         if ( logFailure ) {
           Logger::logError( "CDT Exception (torus unwrap): %s", e.what() );
@@ -3201,7 +3216,7 @@ inline void TriangulateExtrusion(Geometry &geometry,
     triangulation.insertEdges( cdtEdges );
     triangulation.eraseOuterTrianglesAndHoles();
   }
-  catch ( const CDT::Error &e )
+  catch ( const std::exception &e )
   {
     Logger::logError( "CDT Exception (extrusion unwrap): %s", e.what() );
     TriangulateBounds( geometry, bounds );
