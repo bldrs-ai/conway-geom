@@ -708,20 +708,34 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
   // rounding error, and that is sin at v2.
   const double searchSinSquared = sinSquaredAt( v2, v1, v3 );
 
-  // Either way this is the only exit that can drop a face the old code kept,
-  // which is why it tests the noise floor and not the GOOD bar: a poorly
-  // conditioned basis still triangulates a sliver correctly enough to be worth
-  // keeping.
-  if ( searchSinSquared < firstSinSquared ) {
+  if ( searchSinSquared > MIN_SIN_SQUARED ) {
+    return true;
+  }
+
+  // Fall back to the first triple only when the search came back UNUSABLE, not
+  // merely with a lower sin. The held triple exists to stop a face being
+  // refused while a working basis is in hand, and nothing more: preferring it
+  // on sin alone would reintroduce, at this exit, exactly the defect the v3
+  // ranking above avoids. On a 1 m by 1 um sliver whose points[0..2] happen to
+  // meet at a right angle across the short edge, sin there is ~1 and sin on
+  // the searched long-edge basis is small - yet the long edge is the one worth
+  // having, because the frame built from the 1 um edge amplifies the bound's
+  // own out-of-plane deviation by the ratio of the two and folds the projected
+  // ring.
+  if ( firstSinSquared > MIN_SIN_SQUARED ) {
 
     v1 = firstV1;
     v2 = firstV2;
     v3 = firstV3;
 
-    return firstSinSquared > MIN_SIN_SQUARED;
+    return true;
   }
 
-  return searchSinSquared > MIN_SIN_SQUARED;
+  // Neither is usable. The only exit that can drop a face the old code kept,
+  // which is why it is the noise floor and nothing higher: a poorly
+  // conditioned basis still triangulates a sliver correctly enough to be worth
+  // keeping.
+  return false;
 }
 
 inline void TriangulateBounds(Geometry &geometry,
@@ -829,15 +843,23 @@ inline void TriangulateBounds(Geometry &geometry,
       // No trailing newline: the regression batch writes each distinct message
       // as one errors.csv cell, and one here makes every such row a quoted
       // multi-line field for no gain.
+      // Scope matters as much as category. Only [0, searchEnd) was examined,
+      // which is the outer bound alone whenever one was typed, so a message
+      // about "no bound of this face" would be a false claim about the holes
+      // on exactly the faces where they were never looked at.
       bool anyLongEnough = false;
 
       for ( size_t where = 0; where < searchEnd; ++where ) {
         anyLongEnough |= bounds[where].curve.points.size() >= 3;
       }
 
-      Logger::logError( anyLongEnough ?
-        "No bound of this face can form a basis, all are collinear" :
-        "No bound of this face has enough points to form it" );
+      Logger::logError( outerBoundKnown ?
+        ( anyLongEnough ?
+          "Outer bound of this face is collinear, cannot form a basis" :
+          "Outer bound of this face has too few points to form it" ) :
+        ( anyLongEnough ?
+          "No bound of this face can form a basis, all are collinear" :
+          "No bound of this face has enough points to form it" ) );
       return;
     }
 
