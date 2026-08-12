@@ -582,10 +582,18 @@ namespace {
    * per-face local geometry, expressed as a truncation because the immediate
    * path appends into a geometry that already holds earlier faces.
    *
-   * Connectivity and the BVH are derived caches keyed on the arrays being
-   * truncated, so they are dropped rather than fixed up. Neither is built
-   * during face triangulation today; dropping them keeps that from becoming
-   * a silent correctness bug if one ever is.
+   * Connectivity, the BVH and the reification are derived caches keyed on
+   * the arrays being truncated, so they are dropped rather than fixed up.
+   * None is built during face triangulation today; dropping them keeps that
+   * from becoming a silent correctness bug if one ever is. The reification
+   * matters most: GetVertexDataSize/GetIndexDataSize report its lengths
+   * straight to the embind callers, which turn them into typed-array views
+   * over the wasm heap, so a stale one is not a wrong picture but a
+   * RangeError or an out-of-bounds read.
+   *
+   * Truncation is sound because MakeVertex is a plain push_back — there is
+   * no vertex weld map to desync — and triangles only ever reference
+   * vertices at or below their own index.
    *
    * @param geometry      Geometry to truncate.
    * @param vertexCount   vertices.size() before the face ran.
@@ -605,6 +613,7 @@ namespace {
     }
 
     geometry.ClearConnectivity();
+    geometry.ClearReification();
     geometry.bvh.reset();
   }
 }
