@@ -541,20 +541,82 @@ inline Geometry SweepCircular(
     return geom;
   }
 
+/**
+ * Squared sine of the angle at `a` in triangle (a, b, c).
+ *
+ * areaOfTriangle2 returns |ab x ac|^2 - the SQUARED cross product magnitude,
+ * so (2 * area)^2, scaling as length^4. Dividing by |ab|^2 |ac|^2 cancels the
+ * scale entirely and leaves sin^2(theta), which is what "is this triangle
+ * usable as a basis" actually asks. Being dimensionless is the point: one
+ * threshold then means the same thing for a model in metres and the same
+ * model in millimetres, where an absolute cutoff on a length^4 quantity is
+ * off by 10^12 between the two.
+ *
+ * @param a Vertex the angle is measured at.
+ * @param b Second vertex.
+ * @param c Third vertex.
+ * @return {double} sin^2(theta), or 0 when either edge is degenerate.
+ */
+inline double sinSquaredAt( const glm::dvec3& a,
+                            const glm::dvec3& b,
+                            const glm::dvec3& c ) {
+
+  const glm::dvec3 ab = b - a;
+  const glm::dvec3 ac = c - a;
+
+  const double abSqr = glm::dot( ab, ab );
+  const double acSqr = glm::dot( ac, ac );
+
+  if ( abSqr <= 0.0 || acSqr <= 0.0 ) {
+    return 0.0;
+  }
+
+  const glm::dvec3 norm = glm::cross( ab, ac );
+
+  return glm::dot( norm, norm ) / ( abSqr * acSqr );
+}
+
+/**
+ * Pick three points of a bound that span a plane, for use as a basis.
+ *
+ * @param points The bound's points. Fewer than three cannot span a plane.
+ * @param v1 First basis point.
+ * @param v2 Second basis point.
+ * @param v3 Third basis point.
+ * @return {bool} True when a usable basis was found.
+ */
 inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
                                        glm::dvec3 &v1, glm::dvec3 &v2,
                                        glm::dvec3 &v3) {
 
-  constexpr double EARLY_OUT = 0.001;
+  // Below this the basis is not usable: the caller immediately normalizes
+  // cross products of these vectors, and at sin(theta) ~ 1e-8 that result is
+  // noise rather than a direction. Reported as "no basis" instead, which the
+  // caller already handles, rather than propagating inf/NaN into every vertex
+  // the face contributes - silently, since NaN geometry is not obviously
+  // distinguishable downstream from ordinary output.
+  constexpr double MIN_SIN_SQUARED = 1e-16;
+
+  // Three points are needed to span a plane. TriangulateBounds guarantees a
+  // bound EXISTS, never that it has three points - a VERTEX_LOOP is one point
+  // by design - so without this the reads below are out of bounds on a
+  // std::vector, which is undefined behaviour rather than a caught error.
+  if ( points.size() < 3 ) {
+    return false;
+  }
 
   v1 = points[0];
   v2 = points[1];
   v3 = points[2];
 
-  if ( areaOfTriangle2( v1, v2, v3 ) > EARLY_OUT ) {
+  if ( sinSquaredAt( v1, v2, v3 ) > MIN_SIN_SQUARED ) {
     return true;
   }
 
+  // Farthest point from v1, to give the basis its longest first edge. This
+  // one IS a squared distance, so it is compared against squared distances
+  // and nothing else - the previous code shared a single constant between
+  // this test and the length^4 one above, which cannot be right for both.
   double distanceSqr = 0;
 
   for (auto &p : points) {
@@ -564,33 +626,32 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
 
     if ( candidate2 > distanceSqr ) {
       v2 = p;
-
-      if ( candidate2 > EARLY_OUT ) {
-        break;
-      }
-
       distanceSqr = candidate2;
     }
   }
 
-  double bestArea = 0;
+  if ( distanceSqr <= 0.0 ) {
+    return false;
+  }
+
+  double bestSinSquared = 0;
 
   for (auto &p : points) {
 
-    double area = areaOfTriangle2( v1, v2, p );
+    double candidate = sinSquaredAt( v1, v2, p );
 
-    if ( area > bestArea ) {
+    if ( candidate > bestSinSquared ) {
       v3 = p;
 
-      if ( area > EARLY_OUT ) {
+      if ( candidate > MIN_SIN_SQUARED ) {
         return true;
       }
 
-      bestArea = area;
+      bestSinSquared = candidate;
     }
   }
 
-  return ( bestArea > 0 );
+  return false;
 }
 
 inline void TriangulateBounds(Geometry &geometry,
