@@ -37,13 +37,14 @@ namespace conway::geometry {
 
 constexpr double EPS_BIG2 = 1e-3;
 
-inline double areaOfTriangle2(glm::dvec3 a, glm::dvec3 b, glm::dvec3 c) {
-  glm::dvec3 ab = b - a;
-  glm::dvec3 ac = c - a;
-
-  glm::dvec3 norm = glm::cross(ab, ac);
-  return glm::dot(norm, norm);
-}
+// areaOfTriangle2 lived here and had one caller, GetBasisFromCoplanarPoints,
+// which is now on sinSquaredAt instead. Removed rather than left for reuse:
+// the name says "area" but the value is |ab x ac|^2, i.e. (2 * area)^2, which
+// scales as length^4 - and comparing that against a fixed constant, as its
+// only caller did, is scale-dependent by a factor of 10^12 between a model in
+// metres and the same model in millimetres. That was the bug. Anything
+// needing a real area wants 0.5 * sqrt of it, and anything asking "are these
+// three points usable as a basis" wants sinSquaredAt.
 
 constexpr double DOUBLE_TO_RADIANS = M_PI / 180.0;
 
@@ -651,6 +652,14 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
     }
   }
 
+  // Measured inert on the public corpus: a build that returned
+  // `bestSinSquared > 0` here instead produced byte-identical digests on every
+  // model that exercises this path, so nothing in the corpus lands in
+  // (0, MIN_SIN_SQUARED]. Kept as the hard reject anyway, because the two
+  // differ only on input we have not seen, and there the reject is the better
+  // failure: the caller logs and skips the face, where accepting a basis at
+  // sin(theta) < 1e-8 normalizes a cross product that is pure rounding error
+  // and pushes NaN vertices downstream with nothing logged at all.
   return false;
 }
 
@@ -708,6 +717,25 @@ inline void TriangulateBounds(Geometry &geometry,
 
 
     glm::dvec3 v1, v2, v3;
+
+    // Reported apart from the collinear case below, because it is a different
+    // defect with a different fix: the bound never had enough points to be a
+    // face, so the problem is upstream in whatever built the loop, not in the
+    // conditioning of a basis we could have chosen better. Conflating the two
+    // is also how this went unnoticed - the read of points[1]/points[2] below
+    // used to run off the end of the vector here, which is undefined
+    // behaviour, and whatever it happened to pick up triangulated into
+    // garbage under the same message as a genuinely collinear face.
+    if ( bounds[0].curve.points.size() < 3 ) {
+
+      // No trailing newline: the regression batch writes each distinct message
+      // as one errors.csv cell, and one here makes every such row a quoted
+      // multi-line field for no gain.
+      Logger::logError(
+        "Bound has too few points to form a face: %zu",
+        bounds[0].curve.points.size() );
+      return;
+    }
 
     if (!GetBasisFromCoplanarPoints(bounds[0].curve.points, v1, v2, v3)) {
       // these points are on a line
