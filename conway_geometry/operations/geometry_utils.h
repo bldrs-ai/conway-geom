@@ -32,6 +32,8 @@
 #endif
 
 #include <math.h>
+#include <algorithm>
+#include <cmath>
 
 namespace conway::geometry {
 
@@ -1097,33 +1099,80 @@ inline Geometry Extrude(
 
       // Say WHICH degeneracy, and at the level it deserves. Measured over the
       // three worst models of the private corpus - 73 + 31 + 30 occurrences -
-      // every single one is a three-point outer profile of exactly zero area,
+      // every single one is a three-point outer profile with no area at all,
       // i.e. collinear or coincident points in the source file. That extrudes
       // to a solid of zero volume, so nothing visible is lost and there is
       // nothing conway could recover: it is a note about the input, not a
-      // failure of ours, and reporting it as an error put 150 rows of
+      // failure of ours, and reporting it as an error put 134 rows of
       // unactionable noise in a baseline that is diffed for regressions.
       //
       // A polygon that has real area and still defeats earcut is a different
       // thing - self-intersecting, or a hole arrangement we mishandled - and
       // that IS potentially lost geometry, so it stays an error.
-      double doubleArea = 0;
+      //
+      // The test is an UNSIGNED fan area about the ring's first point,
+      // compared against the ring's own extent. Both properties are load
+      // bearing, and a signed shoelace about the origin - the obvious version -
+      // gets both wrong:
+      //
+      //   Unsigned, because signed areas cancel. A unit square traversed
+      //   forward and then back, which is what a mis-stitched composite curve
+      //   produces, sums to exactly zero signed area while bounding a real
+      //   1x1 region - so the signed test calls the one case that must stay an
+      //   error "zero area". Unsigned scores it 4.0 by the measure below.
+      //
+      //   Relative and recentred, because absolute zero is unreachable. Over
+      //   random exactly-collinear rings the signed shoelace about the origin
+      //   leaves residues up to 5e-11 of extent^2, growing with distance from
+      //   the origin - so `== 0.0` would push most collinear profiles in a
+      //   mm-unit model into the error branch this exists to keep them out of.
+      //   Recentring first holds the residue under 4e-13 of extent^2.
+      //
+      // 1e-10 therefore sits ~250x above the worst collinear residue measured
+      // and ~10 orders below a genuinely self-intersecting ring.
+      constexpr double MIN_RELATIVE_AREA = 1e-10;
 
-      for ( size_t where = 0, count = polygon[0].size(); where < count; ++where ) {
+      const auto& ring = polygon[0];
 
-        const auto& current = polygon[0][where];
-        const auto& next = polygon[0][( where + 1 ) % count];
+      if ( ring.size() < 3 ) {
 
-        doubleArea += current[0] * next[1] - next[0] * current[1];
-      }
-
-      if ( polygon[0].size() < 3 ) {
         Logger::logWarning(
           "Extruded profile has fewer than three points; nothing to extrude" );
-      } else if ( doubleArea == 0.0 ) {
+        return geom;
+      }
+
+      const auto& origin = ring[0];
+
+      double minX = 0, maxX = 0, minY = 0, maxY = 0;
+      double unsignedDoubleArea = 0;
+
+      for ( size_t where = 1; where < ring.size(); ++where ) {
+
+        const double x = ring[where][0] - origin[0];
+        const double y = ring[where][1] - origin[1];
+
+        minX = std::min( minX, x );
+        maxX = std::max( maxX, x );
+        minY = std::min( minY, y );
+        maxY = std::max( maxY, y );
+
+        if ( where + 1 < ring.size() ) {
+
+          const double nextX = ring[where + 1][0] - origin[0];
+          const double nextY = ring[where + 1][1] - origin[1];
+
+          unsignedDoubleArea += std::abs( x * nextY - nextX * y );
+        }
+      }
+
+      const double extent = std::max( maxX - minX, maxY - minY );
+
+      if ( unsignedDoubleArea <= MIN_RELATIVE_AREA * extent * extent ) {
+
         Logger::logWarning(
-          "Extruded profile has zero area; extrudes to zero volume" );
+          "Extruded profile has no area; extrudes to zero volume" );
       } else {
+
         Logger::logError(
           "Extruded profile has area but could not be triangulated" );
       }
