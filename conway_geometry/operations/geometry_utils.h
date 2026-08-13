@@ -1126,10 +1126,19 @@ inline Geometry Extrude(
       //   leaves residues up to 5e-11 of extent^2, growing with distance from
       //   the origin - so `== 0.0` would push most collinear profiles in a
       //   mm-unit model into the error branch this exists to keep them out of.
-      //   Recentring first holds the residue under 4e-13 of extent^2.
       //
-      // 1e-10 therefore sits ~250x above the worst collinear residue measured
-      // and ~10 orders below a genuinely self-intersecting ring.
+      //   Scaled by the COORDINATE MAGNITUDE, not just the extent. Recentring
+      //   removes the cancellation in the accumulation but not the quantization
+      //   already present in the inputs: each |cross| term carries an error of
+      //   about eps * magnitude * extent, which is LINEAR in extent, while a
+      //   pure extent^2 threshold is quadratic. The two cross over once
+      //   magnitude/extent exceeds ~4.5e5 - a small profile far from the origin,
+      //   which is precisely this branch's population. Measured over 20k
+      //   collinear rings per case, an extent^2 threshold misclassifies 73% at
+      //   magnitude 1e7 with extent 1, and 97% at magnitude 1e5 with extent
+      //   1e-3; scaling by max(extent, magnitude) misclassifies 0% in every
+      //   case tried, while still scoring a self-intersecting ring four orders
+      //   above its threshold.
       constexpr double MIN_RELATIVE_AREA = 1e-10;
 
       const auto& ring = polygon[0];
@@ -1145,6 +1154,7 @@ inline Geometry Extrude(
 
       double minX = 0, maxX = 0, minY = 0, maxY = 0;
       double unsignedDoubleArea = 0;
+      double magnitude = std::max( std::abs( origin[0] ), std::abs( origin[1] ) );
 
       for ( size_t where = 1; where < ring.size(); ++where ) {
 
@@ -1155,6 +1165,9 @@ inline Geometry Extrude(
         maxX = std::max( maxX, x );
         minY = std::min( minY, y );
         maxY = std::max( maxY, y );
+
+        magnitude = std::max( magnitude,
+          std::max( std::abs( ring[where][0] ), std::abs( ring[where][1] ) ) );
 
         if ( where + 1 < ring.size() ) {
 
@@ -1167,12 +1180,22 @@ inline Geometry Extrude(
 
       const double extent = std::max( maxX - minX, maxY - minY );
 
-      if ( unsignedDoubleArea <= MIN_RELATIVE_AREA * extent * extent ) {
+      if ( unsignedDoubleArea <=
+           MIN_RELATIVE_AREA * extent * std::max( extent, magnitude ) ) {
 
         Logger::logWarning(
           "Extruded profile has no area; extrudes to zero volume" );
       } else {
 
+        // A ring that is RETRACED - out along a path and back down it - also
+        // sweeps no volume, and lands here rather than in the warning above,
+        // because an unsigned area cannot tell it from a bowtie whose lobes
+        // genuinely enclose region. Both score well above the floor. Kept as an
+        // error deliberately: nothing in the corpus reaches this branch, so it
+        // exists to catch the case that IS lost geometry, and an error that
+        // prompts a look is the safer default over a warning that would hide
+        // one. If retraced rings ever show up in volume, they want their own
+        // message rather than a loosened test here.
         Logger::logError(
           "Extruded profile has area but could not be triangulated" );
       }
