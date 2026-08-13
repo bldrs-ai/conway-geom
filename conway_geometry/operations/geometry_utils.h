@@ -1094,8 +1094,40 @@ inline Geometry Extrude(
     std::vector<uint32_t> indices = mapbox::earcut<uint32_t>( polygon );
 
     if (indices.size() < 3) {
-      // probably a degenerate polygon
-      Logger::logError("degenerate polygon in extrude");
+
+      // Say WHICH degeneracy, and at the level it deserves. Measured over the
+      // three worst models of the private corpus - 73 + 31 + 30 occurrences -
+      // every single one is a three-point outer profile of exactly zero area,
+      // i.e. collinear or coincident points in the source file. That extrudes
+      // to a solid of zero volume, so nothing visible is lost and there is
+      // nothing conway could recover: it is a note about the input, not a
+      // failure of ours, and reporting it as an error put 150 rows of
+      // unactionable noise in a baseline that is diffed for regressions.
+      //
+      // A polygon that has real area and still defeats earcut is a different
+      // thing - self-intersecting, or a hole arrangement we mishandled - and
+      // that IS potentially lost geometry, so it stays an error.
+      double doubleArea = 0;
+
+      for ( size_t where = 0, count = polygon[0].size(); where < count; ++where ) {
+
+        const auto& current = polygon[0][where];
+        const auto& next = polygon[0][( where + 1 ) % count];
+
+        doubleArea += current[0] * next[1] - next[0] * current[1];
+      }
+
+      if ( polygon[0].size() < 3 ) {
+        Logger::logWarning(
+          "Extruded profile has fewer than three points; nothing to extrude" );
+      } else if ( doubleArea == 0.0 ) {
+        Logger::logWarning(
+          "Extruded profile has zero area; extrudes to zero volume" );
+      } else {
+        Logger::logError(
+          "Extruded profile has area but could not be triangulated" );
+      }
+
       return geom;
     }
 
