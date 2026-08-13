@@ -847,19 +847,38 @@ inline void TriangulateBounds(Geometry &geometry,
       // which is the outer bound alone whenever one was typed, so a message
       // about "no bound of this face" would be a false claim about the holes
       // on exactly the faces where they were never looked at.
-      bool anyLongEnough = false;
+      bool anyTooShort = false;
+      bool anyCollinear = false;
 
       for ( size_t where = 0; where < searchEnd; ++where ) {
-        anyLongEnough |= bounds[where].curve.points.size() >= 3;
+
+        if ( bounds[where].curve.points.size() < 3 ) {
+          anyTooShort = true;
+        } else {
+          anyCollinear = true;
+        }
       }
 
-      Logger::logError( outerBoundKnown ?
-        ( anyLongEnough ?
+      // Both when the examined bounds are a mix, rather than one message
+      // chosen by an OR. Picking one would be a false statement about the
+      // other half, and since errors.csv dedups on message text it would fold
+      // the two families back together - undoing the split this block exists
+      // for. Only reachable with more than one bound examined, i.e. when no
+      // outer bound was typed.
+      if ( anyTooShort ) {
+
+        Logger::logError( outerBoundKnown ?
+          "Outer bound of this face has too few points to form it" :
+          "This face has a bound with too few points to form it" );
+      }
+
+      if ( anyCollinear ) {
+
+        Logger::logError( outerBoundKnown ?
           "Outer bound of this face is collinear, cannot form a basis" :
-          "Outer bound of this face has too few points to form it" ) :
-        ( anyLongEnough ?
-          "No bound of this face can form a basis, all are collinear" :
-          "No bound of this face has enough points to form it" ) );
+          "This face has a bound that is collinear, cannot form a basis" );
+      }
+
       return;
     }
 
