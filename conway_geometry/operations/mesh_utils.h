@@ -1039,7 +1039,26 @@ inline void TriangulateRevolution(Geometry &geometry,
     std::vector< double > thetaSamples;
     std::vector< double > tSamples;
 
+    // A bound that WINDS the axis - an equator circle - covers the full turn
+    // by topology, and the gap measure below cannot say so on its own: N
+    // samples on a full circle always leave a largest gap of about 2*pi/N, so
+    // trusting the gap alone would sweep (N-1)/N of a turn and leave an open
+    // pie-slice wedge.
+    //
+    // The measure is the EXCURSION of the cumulative winding along each bound,
+    // not its net: a torus face's single loop walks one equator forward and
+    // the other back, so the net cancels to zero while the excursion reaches a
+    // full turn on the way - and a partial sweep's excursion is exactly its
+    // swept angle, so the same number serves both.
+    bool windsFullTurn = false;
+
     for ( const IfcBound3D& bound : bounds ) {
+
+      double winding       = 0.0;
+      double windingLow    = 0.0;
+      double windingHigh   = 0.0;
+      bool   havePrevious  = false;
+      double previousTheta = 0.0;
 
       for ( const glm::dvec3& point : bound.curve.points ) {
 
@@ -1060,12 +1079,29 @@ inline void TriangulateRevolution(Geometry &geometry,
           continue;
         }
 
-        thetaSamples.push_back( positiveMod2Pi( std::atan2( dx, dy ) ) );
+        double theta = std::atan2( dx, dy );
+
+        thetaSamples.push_back( positiveMod2Pi( theta ) );
+
+        if ( havePrevious ) {
+          winding    += wrapDeltaPi( theta - previousTheta );
+          windingLow  = std::min( windingLow, winding );
+          windingHigh = std::max( windingHigh, winding );
+        }
+
+        previousTheta = theta;
+        havePrevious  = true;
 
         if ( profileLength > 0 ) {
           tSamples.push_back( positiveMod2Pi(
             closestOnProfile( glm::dvec2( dd, dz ) ).second * kTwoPi ) );
         }
+      }
+
+      // One sample short of closing still counts: the loop's last point is
+      // its first, so an excursion within one segment of a full turn is one.
+      if ( windingHigh - windingLow > kTwoPi * ( 63.0 / 64.0 ) ) {
+        windsFullTurn = true;
       }
     }
 
@@ -1075,19 +1111,23 @@ inline void TriangulateRevolution(Geometry &geometry,
 
       double coveredSpan = kTwoPi - thetaGap;
 
-      if ( coveredSpan > MINIMUM_RECOVERED_SPAN ) {
-        startRad = positiveMod2Pi( thetaMid + thetaGap * 0.5 );
-        radSpan  = coveredSpan;
-      } else {
+      if ( windsFullTurn || coveredSpan <= MINIMUM_RECOVERED_SPAN ) {
+
+        // Winding is full coverage by topology. No spread at all is the
+        // degenerate-bound convention - the bound is the seam or the profile
+        // itself, which ISO 10303-42 reads as covering the whole surface;
+        // the sphere's VERTEX_LOOP (#160) is the same convention one
+        // dimension down. A genuine sliver sweep whose boundary spread is
+        // below MINIMUM_RECOVERED_SPAN is indistinguishable from the seam
+        // case from theta alone and sweeps the full turn too - the
+        // convention is real and observed, the tolerance-sliver artifact is
+        // not, so the tie breaks toward the convention.
         startRad = 0.0;
         radSpan  = kTwoPi;
+      } else {
+        startRad = positiveMod2Pi( thetaMid + thetaGap * 0.5 );
+        radSpan  = coveredSpan;
       }
-
-      endRad = startRad + radSpan;
-
-      bool profileClosedHere =
-        profileRZ.size() > 2 &&
-        glm::distance( profileRZ.front(), profileRZ.back() ) < profileLength * 1e-9;
 
       // An uncovered stretch of the tube smaller than this is sampling
       // granularity, not a trim: boundary samples land on the profile about
@@ -1095,11 +1135,19 @@ inline void TriangulateRevolution(Geometry &geometry,
       // arc) dwarfs it while full coverage never reaches it.
       constexpr double MINIMUM_PROFILE_TRIM_GAP = kTwoPi / 8.0;
 
-      if ( profileClosedHere && tSamples.size() >= 2 ) {
+      if ( profileClosed && tSamples.size() >= 2 ) {
 
         auto [ tGap, tMid ] = largestCircularGap( tSamples );
 
-        if ( tGap > MINIMUM_PROFILE_TRIM_GAP ) {
+        // Bounded on both ends. A gap below the floor is sampling
+        // granularity, not a trim. A gap near the whole circle means the
+        // bounds sit at ONE tube location - a single equator circle as the
+        // closed surface's seam - which is "no trim information", not "the
+        // face covers nothing": restricting to it would sweep a zero-width
+        // ribbon and vanish the face all over again.
+        const double maximumTrimGap = kTwoPi - MINIMUM_PROFILE_TRIM_GAP;
+
+        if ( tGap > MINIMUM_PROFILE_TRIM_GAP && tGap < maximumTrimGap ) {
 
           // Covered arc of the profile, as arclengths along profileRZ. The
           // closing duplicate point is skipped so it cannot appear twice.
