@@ -1006,6 +1006,208 @@ inline void TriangulateRevolution(Geometry &geometry,
   double endRad   = endDegrees / 180 * (double)CONST_PI;
   double radSpan  = endRad - startRad;
 
+  // The span above is measured over one CENTROID per edge, and a centroid
+  // carries no angular information exactly when the edge does: a full circle
+  // around the axis - a torus's equator, the natural boundary of any closed
+  // profile revolved a full turn - has its centroid ON the axis, where the
+  // angle is undefined. Every such face measured a span of zero here, swept a
+  // grid of coincident rings, and was welded away to nothing at reification,
+  // with warnFaceAddedNothing suppressed because 414 (zero-area) triangles had
+  // been appended (conway#461: the torus's revolution half).
+  //
+  // Recover from the BOUNDARY POINTS instead, and only when the centroid span
+  // collapsed - every face that produced output before produces byte-identical
+  // output still, the same no-regression shape as the sphere fix (#160).
+  // The covered arc is the complement of the largest angular gap between
+  // boundary samples; a boundary whose points also carry no spread is the
+  // degenerate-bound convention (the bound is the seam/profile itself), which
+  // ISO 10303-42 reads as covering the full surface - so both cases sweep on,
+  // the first over its measured arc, the second over the whole turn.
+  //
+  // A closed profile revolved is torus-like, and its bounds usually trim the
+  // TUBE rather than the sweep: the same boundary points, mapped through
+  // closestOnProfile, say which arc of the profile the face actually covers.
+  // Restrict the swept rows to that arc - without it the recovery would sweep
+  // the whole tube and double-cover the area the face's sibling already owns.
+  const std::vector< glm::dvec2 >* sweepProfile = &profileRZ;
+  std::vector< glm::dvec2 > restrictedProfile;
+
+  constexpr double MINIMUM_RECOVERED_SPAN = 1e-6;
+
+  if ( radSpan < MINIMUM_RECOVERED_SPAN ) {
+
+    std::vector< double > thetaSamples;
+    std::vector< double > tSamples;
+
+    // A bound that WINDS the axis - an equator circle - covers the full turn
+    // by topology, and the gap measure below cannot say so on its own: N
+    // samples on a full circle always leave a largest gap of about 2*pi/N, so
+    // trusting the gap alone would sweep (N-1)/N of a turn and leave an open
+    // pie-slice wedge.
+    //
+    // The measure is the EXCURSION of the cumulative winding along each bound,
+    // not its net: a torus face's single loop walks one equator forward and
+    // the other back, so the net cancels to zero while the excursion reaches a
+    // full turn on the way - and a partial sweep's excursion is exactly its
+    // swept angle, so the same number serves both.
+    bool windsFullTurn = false;
+
+    for ( const IfcBound3D& bound : bounds ) {
+
+      double winding       = 0.0;
+      double windingLow    = 0.0;
+      double windingHigh   = 0.0;
+      bool   havePrevious  = false;
+      double previousTheta = 0.0;
+
+      for ( const glm::dvec3& point : bound.curve.points ) {
+
+        glm::dvec3 delta = point - cent;
+
+        double dx = glm::dot( vecX, delta );
+        double dy = glm::dot( vecY, delta );
+        double dz = glm::dot( vecZ, delta );
+
+        if ( !std::isfinite( dx ) || !std::isfinite( dy ) || !std::isfinite( dz ) ) {
+          continue;
+        }
+
+        double dd = std::sqrt( dx * dx + dy * dy );
+
+        // On-axis sample - the angle is undefined, drop it.
+        if ( dd < 1e-12 ) {
+          continue;
+        }
+
+        double theta = std::atan2( dx, dy );
+
+        thetaSamples.push_back( positiveMod2Pi( theta ) );
+
+        if ( havePrevious ) {
+          winding    += wrapDeltaPi( theta - previousTheta );
+          windingLow  = std::min( windingLow, winding );
+          windingHigh = std::max( windingHigh, winding );
+        }
+
+        previousTheta = theta;
+        havePrevious  = true;
+
+        if ( profileLength > 0 ) {
+          tSamples.push_back( positiveMod2Pi(
+            closestOnProfile( glm::dvec2( dd, dz ) ).second * kTwoPi ) );
+        }
+      }
+
+      // One sample short of closing still counts: the loop's last point is
+      // its first, so an excursion within one segment of a full turn is one.
+      if ( windingHigh - windingLow > kTwoPi * ( 63.0 / 64.0 ) ) {
+        windsFullTurn = true;
+      }
+    }
+
+    if ( !thetaSamples.empty() ) {
+
+      auto [ thetaGap, thetaMid ] = largestCircularGap( thetaSamples );
+
+      double coveredSpan = kTwoPi - thetaGap;
+
+      if ( windsFullTurn || coveredSpan <= MINIMUM_RECOVERED_SPAN ) {
+
+        // Winding is full coverage by topology. No spread at all is the
+        // degenerate-bound convention - the bound is the seam or the profile
+        // itself, which ISO 10303-42 reads as covering the whole surface;
+        // the sphere's VERTEX_LOOP (#160) is the same convention one
+        // dimension down. A genuine sliver sweep whose boundary spread is
+        // below MINIMUM_RECOVERED_SPAN is indistinguishable from the seam
+        // case from theta alone and sweeps the full turn too - the
+        // convention is real and observed, the tolerance-sliver artifact is
+        // not, so the tie breaks toward the convention.
+        startRad = 0.0;
+        radSpan  = kTwoPi;
+      } else {
+        startRad = positiveMod2Pi( thetaMid + thetaGap * 0.5 );
+        radSpan  = coveredSpan;
+      }
+
+      // An uncovered stretch of the tube smaller than this is sampling
+      // granularity, not a trim: boundary samples land on the profile about
+      // one profile-segment apart, so a genuine trim's gap (the whole missing
+      // arc) dwarfs it while full coverage never reaches it.
+      constexpr double MINIMUM_PROFILE_TRIM_GAP = kTwoPi / 8.0;
+
+      if ( profileClosed && tSamples.size() >= 2 ) {
+
+        auto [ tGap, tMid ] = largestCircularGap( tSamples );
+
+        // Bounded on both ends. A gap below the floor is sampling
+        // granularity, not a trim. A gap near the whole circle means the
+        // bounds sit at ONE tube location - a single equator circle as the
+        // closed surface's seam - which is "no trim information", not "the
+        // face covers nothing": restricting to it would sweep a zero-width
+        // ribbon and vanish the face all over again.
+        const double maximumTrimGap = kTwoPi - MINIMUM_PROFILE_TRIM_GAP;
+
+        if ( tGap > MINIMUM_PROFILE_TRIM_GAP && tGap < maximumTrimGap ) {
+
+          // Covered arc of the profile, as arclengths along profileRZ. The
+          // closing duplicate point is skipped so it cannot appear twice.
+          double coveredStart =
+            positiveMod2Pi( tMid + tGap * 0.5 ) / kTwoPi * profileLength;
+          double coveredLength =
+            ( kTwoPi - tGap ) / kTwoPi * profileLength;
+
+          auto pointAtArc = [&]( double arc ) -> glm::dvec2 {
+
+            arc = std::fmod( arc, profileLength );
+
+            if ( arc < 0 ) {
+              arc += profileLength;
+            }
+
+            size_t high = 1;
+
+            while ( high + 1 < profileArc.size() && profileArc[ high ] < arc ) {
+              ++high;
+            }
+
+            size_t low     = high - 1;
+            double segment = profileArc[ high ] - profileArc[ low ];
+            double blend   = segment > 0 ? ( arc - profileArc[ low ] ) / segment : 0;
+
+            return glm::mix( profileRZ[ low ], profileRZ[ high ], blend );
+          };
+
+          restrictedProfile.push_back( pointAtArc( coveredStart ) );
+
+          std::vector< std::pair< double, size_t > > interior;
+
+          for ( size_t where = 0; where + 1 < profileRZ.size(); ++where ) {
+
+            double lifted = profileArc[ where ] < coveredStart ?
+              profileArc[ where ] + profileLength : profileArc[ where ];
+
+            if ( lifted > coveredStart + profileLength * 1e-9 &&
+                 lifted < coveredStart + coveredLength - profileLength * 1e-9 ) {
+              interior.emplace_back( lifted, where );
+            }
+          }
+
+          std::sort( interior.begin(), interior.end() );
+
+          for ( const auto& [ lifted, where ] : interior ) {
+            restrictedProfile.push_back( profileRZ[ where ] );
+          }
+
+          restrictedProfile.push_back( pointAtArc( coveredStart + coveredLength ) );
+
+          if ( restrictedProfile.size() >= 2 ) {
+            sweepProfile = &restrictedProfile;
+          }
+        }
+      }
+    }
+  }
+
   // Ring count adapts to the swept span: 64 segments per full turn (sagitta
   // ~0.12% of radius) instead of the old fixed 10 rings, whose ~40-degree
   // facets read as a polygonal shaft on the Jetenginestep turbine (#149).
@@ -1028,7 +1230,7 @@ inline void TriangulateRevolution(Geometry &geometry,
 
   double radStep  = radSpan / (numRots - 1);
 
-  for ( const glm::dvec2 &rz : profileRZ ) {
+  for ( const glm::dvec2 &rz : *sweepProfile ) {
     for (int r = 0; r < numRots; r++) {
       double angle = startRad + r * radStep;
       double dtempX = sin(angle) * rz.x;
