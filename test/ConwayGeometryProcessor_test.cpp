@@ -224,6 +224,81 @@ void testReadIndexedPolygonalFace() {
       paramsReadIndexedPolygonalFace);
 }
 
+void assertGeometriesEqual(
+    const conway::geometry::Geometry& unpacked,
+    const conway::geometry::Geometry& packed ) {
+
+  ASSERT_EQ( unpacked.GetVertexCount(), packed.GetVertexCount() );
+  ASSERT_EQ( unpacked.GetTriangleCount(), packed.GetTriangleCount() );
+
+  for ( uint32_t where = 0; where < unpacked.GetVertexCount(); ++where ) {
+
+    const glm::dvec3& left  = unpacked.GetPoint( where );
+    const glm::dvec3& right = packed.GetPoint( where );
+
+    ASSERT_EQ( left.x, right.x );
+    ASSERT_EQ( left.y, right.y );
+    ASSERT_EQ( left.z, right.z );
+  }
+
+  for ( uint32_t where = 0; where < unpacked.GetTriangleCount(); ++where ) {
+
+    ASSERT_EQ(
+        unpacked.triangles[ where ].vertices[ 0 ],
+        packed.triangles[ where ].vertices[ 0 ] );
+    ASSERT_EQ(
+        unpacked.triangles[ where ].vertices[ 1 ],
+        packed.triangles[ where ].vertices[ 1 ] );
+    ASSERT_EQ(
+        unpacked.triangles[ where ].vertices[ 2 ],
+        packed.triangles[ where ].vertices[ 2 ] );
+  }
+}
+
+void testPackedFacesetMatchesUnpacked() {
+  conway::geometry::ConwayGeometryProcessor processor;
+
+  std::vector< glm::dvec3 > points = {
+      { 0, 0, 0 }, { 4, 0, 0 }, { 4, 4, 0 }, { 0, 4, 0 },
+      { 1, 1, 0 }, { 3, 1, 0 }, { 3, 3, 0 }, { 1, 3, 0 },
+  };
+
+  conway::geometry::ConwayGeometryProcessor::ParamsGetPolygonalFaceSetGeometry
+      unpacked;
+  unpacked.points = points;
+  unpacked.faces.resize( 2 );
+
+  // Plain quad: one ring, face_starts = [0].
+  unpacked.faces[ 0 ].indices     = { 1, 2, 3, 4 };
+  unpacked.faces[ 0 ].face_starts = { 0 };
+
+  // Voided quad: outer then hole, face_starts = [0, 4].
+  unpacked.faces[ 1 ].indices     = { 1, 2, 3, 4, 5, 6, 7, 8 };
+  unpacked.faces[ 1 ].face_starts = { 0, 4 };
+
+  const uint32_t indices[] = {
+      1, 2, 3, 4,
+      1, 2, 3, 4, 5, 6, 7, 8,
+  };
+  const uint32_t faceOffsets[]  = { 0, 4, 12 };
+  const uint32_t startIndices[] = { 0, 0, 4 };
+  const uint32_t startOffsets[] = { 0, 1, 3 };
+
+  const conway::geometry::Geometry fromUnpacked =
+      processor.getPolygonalFaceSetGeometry( unpacked );
+  const conway::geometry::Geometry fromPacked =
+      processor.getPolygonalFaceSetGeometryPacked(
+          points,
+          indices,
+          faceOffsets,
+          3,
+          startIndices,
+          startOffsets );
+
+  ASSERT_EQ( fromUnpacked.IsEmpty(), false );
+  assertGeometriesEqual( fromUnpacked, fromPacked );
+}
+
 TEST(AddFaceToGeometryFunctionalTest) { testAddFaceToGeometry(); }
 
 TEST(BoolSubtractFunctionalTest) { testBoolSubtract(); }
@@ -269,3 +344,5 @@ TEST(GetPolygonalFaceSetGeometryFunctionalTest) {
 TEST(GetSurfaceFunctionalTest) { testGetIfcSurface(); }
 
 TEST(ReadIndexedPolygonalFaceFunctionalTest) { testReadIndexedPolygonalFace(); }
+
+TEST(PackedFacesetMatchesUnpackedTest) { testPackedFacesetMatchesUnpacked(); }

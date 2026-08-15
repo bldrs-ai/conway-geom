@@ -98,7 +98,7 @@ conway::geometry::Geometry GetPolygonalFaceSetGeometryPacked(
     const std::vector< glm::dvec3 >& points,
     uintptr_t indices,
     uintptr_t faceOffsets,
-    uint32_t faceCount,
+    uint32_t faceOffsetsLength,
     uintptr_t startIndices,
     uintptr_t startOffsets ) {
 
@@ -107,7 +107,7 @@ conway::geometry::Geometry GetPolygonalFaceSetGeometryPacked(
         points,
         reinterpret_cast< const uint32_t* >( indices ),
         reinterpret_cast< const uint32_t* >( faceOffsets ),
-        faceCount,
+        faceOffsetsLength,
         reinterpret_cast< const uint32_t* >( startIndices ),
         reinterpret_cast< const uint32_t* >( startOffsets ) );
   }
