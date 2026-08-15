@@ -2140,6 +2140,71 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometry(
   return geom;
 }
 
+Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
+    const std::vector< glm::dvec3 >& points,
+    const uint32_t* indices,
+    const uint32_t* faceOffsets,
+    uint32_t faceCount,
+    const uint32_t* startIndices,
+    const uint32_t* startOffsets ) {
+
+  Geometry geom;
+  std::vector< IfcBound3D > bounds;
+
+  for ( uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex ) {
+
+    const uint32_t indicesBegin = faceOffsets[ faceIndex ];
+    const uint32_t indicesEnd   = faceOffsets[ faceIndex + 1 ];
+    const uint32_t startsBegin  = startOffsets[ faceIndex ];
+    const uint32_t startsEnd    = startOffsets[ faceIndex + 1 ];
+    const uint32_t startCount   = startsEnd - startsBegin;
+
+    bounds.clear();
+
+    // Same layout ReadIndexedPolygonalFace walks: face_starts[0] is 0
+    // for a plain face (the whole index slice), and extra starts mark
+    // void rings. Indices are 1-based into `points`.
+    const uint32_t outerEnd = startCount > 1 ?
+        startIndices[ startsBegin + 1 ] : ( indicesEnd - indicesBegin );
+
+    bounds.emplace_back();
+
+    for ( uint32_t where = 0; where < outerEnd; ++where ) {
+
+      const uint32_t index = indices[ indicesBegin + where ];
+
+      bounds.back().curve.points.push_back( points[ index - 1 ] );
+    }
+
+    for ( uint32_t ring = 1; ring < startCount; ++ring ) {
+
+      bounds.emplace_back();
+
+      const uint32_t ringBegin = startIndices[ startsBegin + ring ];
+      const uint32_t ringEnd   = ring + 1 < startCount ?
+          startIndices[ startsBegin + ring + 1 ] : ( indicesEnd - indicesBegin );
+
+      for ( uint32_t where = ringBegin; where < ringEnd; ++where ) {
+
+        const uint32_t index = indices[ indicesBegin + where ];
+
+        bounds.back().curve.points.push_back( points[ index - 1 ] );
+      }
+    }
+
+    try {
+
+      TriangulateBounds( geom, bounds );
+
+    } catch ( const std::exception& e ) {
+
+      Logger::logError( "Skipping polygonal face in face set: %s", e.what() );
+    }
+  }
+
+  return geom;
+}
+
 conway::geometry::Geometry ConwayGeometryProcessor::getSweptDiskSolid(
   const ParamsGetSweptDiskSolid &parameters) {
 
