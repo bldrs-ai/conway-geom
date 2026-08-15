@@ -569,11 +569,14 @@ class ConwayGeometryProcessor {
   // std::vector allocations — that unpack was the rest of the PSB pump
   // after #448, and is why feeding the ThreadPool lost (the pool was
   // paying to copy those vectors).
+  // faceOffsetsLength is the offset array's length (N+1), matching
+  // buildIndexedPolygonalFaceVector. Face count is derived as length - 1
+  // so passing the JS .length cannot walk one past the malloc'd block.
   Geometry getPolygonalFaceSetGeometryPacked(
       const std::vector< glm::dvec3 >& points,
       const uint32_t* indices,
       const uint32_t* faceOffsets,
-      uint32_t faceCount,
+      uint32_t faceOffsetsLength,
       const uint32_t* startIndices,
       const uint32_t* startOffsets );
 

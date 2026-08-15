@@ -572,7 +572,9 @@ export class ConwayGeometry {
    * @param points Native point vector.
    * @param indicesPtr Packed face indices.
    * @param faceOffsetsPtr Per-face offsets into indices (N+1).
-   * @param faceCount Number of faces (offsets length minus one).
+   * @param faceOffsetsLength Offset array length (N+1). Face count is
+   *   derived inside C++ as length - 1, same as
+   *   buildIndexedPolygonalFaceVector.
    * @param startIndicesPtr Packed ring-start indices.
    * @param startOffsetsPtr Per-face offsets into start indices (N+1).
    * @return {GeometryObject} Native geometry.
@@ -581,14 +583,14 @@ export class ConwayGeometry {
       points: StdVector< { x: number, y: number, z: number } >,
       indicesPtr: number,
       faceOffsetsPtr: number,
-      faceCount: number,
+      faceOffsetsLength: number,
       startIndicesPtr: number,
       startOffsetsPtr: number ): GeometryObject {
     return this.wasmModule.getPolygonalFaceSetGeometryPacked(
         points,
         indicesPtr,
         faceOffsetsPtr,
-        faceCount,
+        faceOffsetsLength,
         startIndicesPtr,
         startOffsetsPtr )
   }

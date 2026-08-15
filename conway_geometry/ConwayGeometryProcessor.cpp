@@ -2144,12 +2144,23 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
     const std::vector< glm::dvec3 >& points,
     const uint32_t* indices,
     const uint32_t* faceOffsets,
-    uint32_t faceCount,
+    uint32_t faceOffsetsLength,
     const uint32_t* startIndices,
     const uint32_t* startOffsets ) {
 
   Geometry geom;
   std::vector< IfcBound3D > bounds;
+  bool loggedBadIndex = false;
+
+  if ( faceOffsetsLength == 0 ) {
+    return geom;
+  }
+
+  // Same contract as buildIndexedPolygonalFaceVector: the caller hands
+  // the offset array's length (N+1). Deriving N here makes passing the
+  // JS .length the only representable choice.
+  const uint32_t faceCount = faceOffsetsLength - 1;
+  const uint32_t pointCount = static_cast< uint32_t >( points.size() );
 
   for ( uint32_t faceIndex = 0; faceIndex < faceCount; ++faceIndex ) {
 
@@ -2159,7 +2170,22 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
     const uint32_t startsEnd    = startOffsets[ faceIndex + 1 ];
     const uint32_t startCount   = startsEnd - startsBegin;
 
-    bounds.clear();
+    if ( startCount == 0 ) {
+      continue;
+    }
+
+    // Keep the IfcBound3D objects (and their points-vector capacity)
+    // across faces. bounds.clear() would ~IfcBound3D each face and
+    // force a fresh allocation chain on the next — on PSB that's ~9.1M
+    // point-vector allocations, the same order the packed path exists
+    // to retire. resize() down after a rare voided face drops the extra
+    // slots; the 1-bound case that dominates is a no-op + points.clear().
+    // TriangulateBounds may swap slots, so reuse is capacity-only.
+    bounds.resize( startCount );
+
+    for ( uint32_t ring = 0; ring < startCount; ++ring ) {
+      bounds[ ring ].curve.points.clear();
+    }
 
     // Same layout ReadIndexedPolygonalFace walks: face_starts[0] is 0
     // for a plain face (the whole index slice), and extra starts mark
@@ -2167,18 +2193,37 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
     const uint32_t outerEnd = startCount > 1 ?
         startIndices[ startsBegin + 1 ] : ( indicesEnd - indicesBegin );
 
-    bounds.emplace_back();
+    bool faceOk = true;
+
+    auto appendIndex = [ & ]( uint32_t index, uint32_t ring ) -> bool {
+
+      if ( index == 0 || index > pointCount ) {
+
+        if ( !loggedBadIndex ) {
+
+          Logger::logWarning(
+              "Skipping polygonal face with CoordIndex %u outside 1..%u",
+              index,
+              pointCount );
+          loggedBadIndex = true;
+        }
+
+        return false;
+      }
+
+      bounds[ ring ].curve.points.push_back( points[ index - 1 ] );
+      return true;
+    };
 
     for ( uint32_t where = 0; where < outerEnd; ++where ) {
 
-      const uint32_t index = indices[ indicesBegin + where ];
-
-      bounds.back().curve.points.push_back( points[ index - 1 ] );
+      if ( !appendIndex( indices[ indicesBegin + where ], 0 ) ) {
+        faceOk = false;
+        break;
+      }
     }
 
-    for ( uint32_t ring = 1; ring < startCount; ++ring ) {
-
-      bounds.emplace_back();
+    for ( uint32_t ring = 1; faceOk && ring < startCount; ++ring ) {
 
       const uint32_t ringBegin = startIndices[ startsBegin + ring ];
       const uint32_t ringEnd   = ring + 1 < startCount ?
@@ -2186,10 +2231,15 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
 
       for ( uint32_t where = ringBegin; where < ringEnd; ++where ) {
 
-        const uint32_t index = indices[ indicesBegin + where ];
-
-        bounds.back().curve.points.push_back( points[ index - 1 ] );
+        if ( !appendIndex( indices[ indicesBegin + where ], ring ) ) {
+          faceOk = false;
+          break;
+        }
       }
+    }
+
+    if ( !faceOk ) {
+      continue;
     }
 
     try {
