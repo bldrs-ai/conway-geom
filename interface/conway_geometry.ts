@@ -566,6 +566,34 @@ export class ConwayGeometry {
   }
 
   /**
+   * Triangulate a faceset from the packed index sinks, skipping the
+   * per-face C++ vector unpack.
+   *
+   * @param points Native point vector.
+   * @param indicesPtr Packed face indices.
+   * @param faceOffsetsPtr Per-face offsets into indices (N+1).
+   * @param faceCount Number of faces (offsets length minus one).
+   * @param startIndicesPtr Packed ring-start indices.
+   * @param startOffsetsPtr Per-face offsets into start indices (N+1).
+   * @return {GeometryObject} Native geometry.
+   */
+  getPolygonalFaceSetGeometryPacked(
+      points: StdVector< { x: number, y: number, z: number } >,
+      indicesPtr: number,
+      faceOffsetsPtr: number,
+      faceCount: number,
+      startIndicesPtr: number,
+      startOffsetsPtr: number ): GeometryObject {
+    return this.wasmModule.getPolygonalFaceSetGeometryPacked(
+        points,
+        indicesPtr,
+        faceOffsetsPtr,
+        faceCount,
+        startIndicesPtr,
+        startOffsetsPtr )
+  }
+
+  /**
    *
    * @param parameters ParamsGetPolygonalFaceSetGeometry parsed from data model
    * @return {GeometryObject} - Native Geometry Object

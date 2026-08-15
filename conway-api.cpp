@@ -94,6 +94,29 @@ conway::geometry::Geometry GetPolygonalFaceSetGeometry(
   return geom;
 }
 
+conway::geometry::Geometry GetPolygonalFaceSetGeometryPacked(
+    const std::vector< glm::dvec3 >& points,
+    uintptr_t indices,
+    uintptr_t faceOffsets,
+    uint32_t faceCount,
+    uintptr_t startIndices,
+    uintptr_t startOffsets ) {
+
+  if ( processor ) {
+    return processor->getPolygonalFaceSetGeometryPacked(
+        points,
+        reinterpret_cast< const uint32_t* >( indices ),
+        reinterpret_cast< const uint32_t* >( faceOffsets ),
+        faceCount,
+        reinterpret_cast< const uint32_t* >( startIndices ),
+        reinterpret_cast< const uint32_t* >( startOffsets ) );
+  }
+
+  return conway::geometry::Geometry();
+}
+
+
+
 conway::geometry::IfcCurve GetIndexedPolyCurve(
     const conway::geometry::ConwayGeometryProcessor::ParamsGetIfcIndexedPolyCurve&
         parameters) {
@@ -1961,6 +1984,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                        emscripten::allow_raw_pointers());                          
   emscripten::function("getPolygonalFaceSetGeometry",
                        &GetPolygonalFaceSetGeometry);
+  emscripten::function("getPolygonalFaceSetGeometryPacked",
+                       &GetPolygonalFaceSetGeometryPacked);
   emscripten::function("getTriangulatedFaceSetGeometry",
                        &GetTriangulatedFaceSetGeometry,
                        emscripten::allow_raw_pointers());

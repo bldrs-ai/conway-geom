@@ -564,6 +564,19 @@ class ConwayGeometryProcessor {
   Geometry getPolygonalFaceSetGeometry(
       const ParamsGetPolygonalFaceSetGeometry& parameters);
 
+  // Triangulate from the packed index sinks the JS extractor already
+  // built. Skips buildIndexedPolygonalFaceVector's 9.1M per-face
+  // std::vector allocations — that unpack was the rest of the PSB pump
+  // after #448, and is why feeding the ThreadPool lost (the pool was
+  // paying to copy those vectors).
+  Geometry getPolygonalFaceSetGeometryPacked(
+      const std::vector< glm::dvec3 >& points,
+      const uint32_t* indices,
+      const uint32_t* faceOffsets,
+      uint32_t faceCount,
+      const uint32_t* startIndices,
+      const uint32_t* startOffsets );
+
   struct Segment {
     bool isArcType = false;
     std::vector<uint32_t> indices;
