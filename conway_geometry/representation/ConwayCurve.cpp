@@ -115,6 +115,27 @@ bool IfcCurve::Add3d( const glm::dvec3& pt) {
 
   glm::dvec3 point = pt;
 
+  // Snap to an absolute 2^-24 grid in model units before storing.
+  //
+  // This is what makes the exact `!=` against points.back() below a usable
+  // duplicate test: consecutive samples that agree to within a grid cell
+  // land on the same double and collapse, where raw doubles from two
+  // different evaluation routes essentially never compare equal.
+  //
+  // The cost is that every curve point carries this as a precision floor -
+  // it is what conway-geom#176 measured as "~float32 precision through the
+  // JS boundary". It is not that: storage is dvec3, and the embind bindings
+  // are value_object< glm::dvec3 > with double fields, so nothing on that
+  // path is float. The signature that tells the two apart is that the error
+  // is ABSOLUTE, not relative - 1e-9 comes back as exactly 0, while
+  // 1234567.891234567 round-trips to 8e-15 relative. Every reported value
+  // reproduces exactly as round( x * 2^24 ) * 2^-24.
+  //
+  // Two consequences worth knowing before changing the quantum: the floor is
+  // in MODEL units, so it scales with whatever the file is authored in; and
+  // MIN_INVERSE_ERROR (operations/mesh_utils.h) is deliberately pinned to
+  // this same 0x1p-24 as the noise floor under the NURBS inverse solve.
+  // Widening or removing it moves every curve point in the corpus.
   point *= exp2( 24 );
   point = glm::round( point );
   point *= exp2( -24 );

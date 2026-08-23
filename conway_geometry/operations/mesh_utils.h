@@ -3641,16 +3641,16 @@ struct RationalNurbsInverseMethod {
       }
     }
 
-    // Scaled off the grid, which spans the WHOLE surface, rather than off the
-    // trimmed face: the solve is constructed before any bound is projected.
-    // That over-estimates a face that is an island on a larger surface, and
-    // over-estimating is NOT automatically safe - too loose is its own failure
-    // mode. Two thresholds bound it, both in terms of surfaceDiagonal /
-    // trimDiagonal:
+    // Seeded off the grid, which spans the WHOLE surface, rather than off the
+    // trimmed face: the solve is constructed before any bound is projected,
+    // so the face's extent is not known yet. That over-estimates a face that
+    // is an island on a larger surface, and over-estimating is NOT
+    // automatically safe - too loose is its own failure mode. Two thresholds
+    // bound it, both in terms of surfaceDiagonal / trimDiagonal:
     //
     //   >= 1e3  the residual reaches the tessellation deflection target
     //           (RELATIVE_INVERSE_ERROR / RELATIVE_DEFLECTION_FACTOR), i.e.
-    //           the bug this whole change fixes, returning at a bigger ratio;
+    //           conway-geom#178's own bug returning at a bigger ratio;
     //   >= 1e6  the tolerance reaches the trim's own diameter, so every
     //           boundary point starts within one tolerance of the same grid
     //           sample, operator() iterates zero times, returns one uv for the
@@ -3659,17 +3659,12 @@ struct RationalNurbsInverseMethod {
     // Measured over every b-spline face in the locally materialised corpus -
     // 10,422 faces across Arty_Z7, Right_Hand, nist_ctc_02 and
     // FM_ARC_DigitalHub - the maximum surfaceDiagonal / trimDiagonal is
-    // 2.273. Zero faces reach either threshold, zero collapse their uv
-    // boundary, zero produce an empty seed mesh: these exporters fit the
-    // surface to the face.
-    //
-    // The nearest approach to the first threshold is 0.121 of it, on a 0.49mm
-    // face in metre-unit Right_Hand - and it comes from MIN_INVERSE_ERROR
-    // below, not from any surface/trim mismatch (that face's ratio is 0.9996).
-    // If a file ever does need this capped, cap it on the trim rather than
-    // loosening the floor: bounds[].curve.points are 3D and already in hand
-    // before the projection loop, so their bounding box costs one pass over
-    // points the next loop walks anyway, and no extra inversion.
+    // 2.273: three to six decades of margin, so no corpus model reaches
+    // either threshold. That is corpus absence, not safety, and a valid
+    // unseen file can sit anywhere on that ratio - which is why
+    // TriangulateBspline calls boundConvergenceToTrim() below before it
+    // projects anything, capping this seed on the face actually being
+    // tessellated.
     glm::dvec3 gridMin( std::numeric_limits< double >::max() );
     glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
 
@@ -3685,6 +3680,44 @@ struct RationalNurbsInverseMethod {
       std::max(
         MIN_INVERSE_ERROR,
         glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
+  }
+
+  /**
+   * Cap the convergence target on the trimmed face rather than the whole
+   * support surface.
+   *
+   * Called by TriangulateBspline once the face's 3D bounds are known and
+   * before the first inversion, so every call to operator() on this face
+   * sees the capped target. The cap only ever tightens: a face larger than
+   * its own support surface is not a thing, and loosening would reintroduce
+   * exactly what conway-geom#178 fixed.
+   *
+   * Capping rather than raising MIN_INVERSE_ERROR is deliberate. The floor
+   * is a noise floor - the 2^-24 quantisation grid of IfcCurve::Add3d - and
+   * raising it would loosen the solve on every face at every scale, whereas
+   * this narrows it only on the faces whose support surface over-states
+   * them. `trimDiagonal` costs one bbox pass over the same bound points the
+   * projection loop walks next, and no extra inversion.
+   *
+   * Worth keeping from #178's measurement, because it says this cap is not
+   * the whole story: the nearest any corpus face came to the >= 1e3
+   * threshold was 0.121 of it, a 0.49mm face in metre-unit Right_Hand - and
+   * that came from MIN_INVERSE_ERROR, not from a surface/trim mismatch (that
+   * face's ratio is 0.9996). This cap does nothing for that case. If the
+   * floor ever needs revisiting, that is the face to revisit it against.
+   *
+   * @param trimDiagonal 3D diagonal of the bounding box of the face's bound
+   *                     curve points, in the same (post-`scaling`) units the
+   *                     points are inverted in. Zero or non-finite leaves the
+   *                     target at the MIN_INVERSE_ERROR floor, which is what
+   *                     a zero-extent face gets from the grid path too.
+   */
+  void boundConvergenceToTrim( double trimDiagonal ) {
+
+    convergence_error =
+      std::max(
+        MIN_INVERSE_ERROR,
+        std::min( convergence_error, trimDiagonal * RELATIVE_INVERSE_ERROR ) );
   }
 
   glm::dvec2 operator()( const glm::dvec3& point ) const {
@@ -3968,6 +4001,35 @@ inline void TriangulateBspline(Geometry &geometry,
     // control grid and samples the inverse-evaluation seed grid, all of
     // which would be wasted on the invalid-surface path below.
     RationalNurbsInverseMethod bSplineInverseEvaluation( srf );
+
+    // Cap the solve's convergence target on this face before inverting
+    // anything - see boundConvergenceToTrim. The bounds are already 3D and in
+    // hand, so this is one pass over the same points the projection loop
+    // below walks, and it must run first: operator() reads convergence_error
+    // on every call.
+    {
+      glm::dvec3 trimMin( std::numeric_limits< double >::max() );
+      glm::dvec3 trimMax( std::numeric_limits< double >::lowest() );
+
+      for ( const IfcBound3D& bound : bounds ) {
+        for ( const glm::dvec3& point : bound.curve.points ) {
+
+          // Same `scaling` the projection loop applies; the target has to be
+          // in the units the points are inverted in.
+          const glm::dvec3 scaled = point * scaling;
+
+          trimMin = glm::min( trimMin, scaled );
+          trimMax = glm::max( trimMax, scaled );
+        }
+      }
+
+      // trimMin > trimMax when no bound carried a point, which leaves the
+      // distance non-finite; boundConvergenceToTrim floors that case.
+      bSplineInverseEvaluation.boundConvergenceToTrim(
+        glm::all( glm::lessThanEqual( trimMin, trimMax ) )
+          ? glm::distance( trimMin, trimMax )
+          : 0.0 );
+    }
 
     // Find projected boundary using NURBS inverse evaluation
 
