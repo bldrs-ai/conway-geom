@@ -3511,6 +3511,20 @@ constexpr double ARMIJO_COEFFICIENT  = 0.001;
 constexpr double ALPHA_ERROR         = 1e-6;
 constexpr double MIN_STEP            = 1e-9;
 
+/**
+ * Iteration ceiling for the solve.
+ *
+ * Worth knowing what it now means: against the old absolute target every call
+ * converged (382,831 of 382,919 on Arty_Z7, mean 8.8 iterations). Against a
+ * target scaled to the surface, 72.8% of calls reach this ceiling still
+ * improving - they land around 5% of the tessellation deflection target,
+ * which is all the refinement needs, but three decades under the surface is
+ * more than 50 Gauss-Newton steps will reach. That is 15.3M iterations where
+ * there were 3.4M, and it is why the net win on Arty_Z7 is 16% rather than
+ * more. Raising this ceiling would cost time and buy nothing;
+ * RELATIVE_INVERSE_ERROR is the dial worth measuring if the solve ever
+ * needs to be cheaper.
+ */
 constexpr size_t MAX_ITERATION       = 50;
 
 struct RationalNurbsInverseMethod {
@@ -3581,10 +3595,35 @@ struct RationalNurbsInverseMethod {
       }
     }
 
-    // Scaled off the grid rather than the trimmed face: the solve is
-    // constructed before any bound is projected, and the grid spans the whole
-    // surface, so it is an over-estimate of the face extent and therefore a
-    // conservative (never-too-tight) target.
+    // Scaled off the grid, which spans the WHOLE surface, rather than off the
+    // trimmed face: the solve is constructed before any bound is projected.
+    // That over-estimates a face that is an island on a larger surface, and
+    // over-estimating is NOT automatically safe - too loose is its own failure
+    // mode. Two thresholds bound it, both in terms of surfaceDiagonal /
+    // trimDiagonal:
+    //
+    //   >= 1e3  the residual reaches the tessellation deflection target
+    //           (RELATIVE_INVERSE_ERROR / RELATIVE_DEFLECTION_FACTOR), i.e.
+    //           the bug this whole change fixes, returning at a bigger ratio;
+    //   >= 1e6  the tolerance reaches the trim's own diameter, so every
+    //           boundary point starts within one tolerance of the same grid
+    //           sample, operator() iterates zero times, returns one uv for the
+    //           entire loop, and the uv earcut degenerates.
+    //
+    // Measured over every b-spline face in the locally materialised corpus -
+    // 10,422 faces across Arty_Z7, Right_Hand, nist_ctc_02 and
+    // FM_ARC_DigitalHub - the maximum surfaceDiagonal / trimDiagonal is
+    // 2.273. Zero faces reach either threshold, zero collapse their uv
+    // boundary, zero produce an empty seed mesh: these exporters fit the
+    // surface to the face.
+    //
+    // The nearest approach to the first threshold is 0.121 of it, on a 0.49mm
+    // face in metre-unit Right_Hand - and it comes from MIN_INVERSE_ERROR
+    // below, not from any surface/trim mismatch (that face's ratio is 0.9996).
+    // If a file ever does need this capped, cap it on the trim rather than
+    // loosening the floor: bounds[].curve.points are 3D and already in hand
+    // before the projection loop, so their bounding box costs one pass over
+    // points the next loop walks anyway, and no extra inversion.
     glm::dvec3 gridMin( std::numeric_limits< double >::max() );
     glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
 
@@ -3694,13 +3733,32 @@ struct RationalNurbsInverseMethod {
         alpha *= 0.5;
       }
 
+      // Tested BEFORE the failure path, not after it. `damping *= 10.0`
+      // shrinks the next deltaUV monotonically, so a step already under
+      // MIN_STEP can only get smaller: no later iteration can move the guess,
+      // and Armijo's strict decrease has nothing left to accept. Downstream
+      // of that `continue` the test was unreachable on exactly the calls that
+      // need it - a stationary point, or a guess whose step clamps back to
+      // the same uv - and each one ran out the whole MAX_ITERATION budget
+      // failing the same way. Rare, and a termination guard rather than a
+      // speed win: 293 of 382,919 solves on Arty_Z7 (0.08%) end this way, and
+      // fixing it moves total solve iterations by under 0.1%. The population
+      // exists at all only because the target above is now tight enough that
+      // some points cannot reach it.
+      //
+      // Bounded, and measured as such: the steps it skips are under MIN_STEP
+      // (1e-9 in uv), so the uv it returns differs by at most ~1e-9 - three
+      // decades under the convergence target itself. Corpus effect is 6 rows
+      // of 178,273, all of them rows the tolerance change had already moved,
+      // and 9 pixels of 1,440,000 on Right_Hand with Arty's silkscreen and
+      // nist_ctc_02 byte-identical.
+      if ( glm::dot( deltaUV, deltaUV ) < MIN_STEP * MIN_STEP ) {
+        break;
+      }
+
       if ( !success ) {
         damping *= 10.0;
         continue;
-      }
-
-      if ( glm::dot( deltaUV, deltaUV ) < MIN_STEP * MIN_STEP ) {
-        break;
       }
     }
 
