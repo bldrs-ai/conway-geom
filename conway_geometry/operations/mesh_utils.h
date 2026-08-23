@@ -3465,10 +3465,66 @@ inline void TriangulateExtrusion(Geometry &geometry,
 constexpr size_t INVERSE_GRID_SIDE   = 8.0; 
 constexpr double INVERSE_GRID_SIZE_D = static_cast< double >( INVERSE_GRID_SIDE );
 constexpr double INVERSE_GRID_FACTOR = 1.0 / ( INVERSE_GRID_SIZE_D - 1.0 );
-constexpr double MAX_ERROR           = 0.001;
+/**
+ * How close, relative to the surface's own extent, the NURBS inverse solve
+ * has to land before it calls a uv converged.
+ *
+ * This used to be an absolute 0.001 model units, the last of the absolute
+ * tolerances the relative-deflection work replaced elsewhere (see
+ * relativeCurveDeflectionSquared and relativeDeflectionSquared, both of
+ * which are 0.1% of the entity's own extent). Absolute is wrong here for
+ * the same reason it was wrong there, but the failure is louder, because
+ * the number this one feeds is a NOISE FLOOR under a target that IS
+ * relative: `tesselate` refines an edge while
+ *
+ *     | surface( uvMid ) - chordMid |  >  0.001 * faceDiagonal
+ *
+ * and the seed vertices carry uv from this solve, so that difference can
+ * never fall below the solve's own residual. On a face smaller than
+ * MAX_ERROR / 0.001 - i.e. anything under a metre in millimetre units -
+ * the residual is the larger of the two and the criterion is unsatisfiable:
+ * the loop refines until the 32x MAX_TRIANGLE_AMPLIFACTION budget runs out,
+ * then stops, having spent all of it chasing noise.
+ *
+ * Arty_Z7.stp is the case that surfaced it (bldrs-ai/conway#564). Its
+ * silkscreen is modelled as 1,189 extruded-glyph solids whose stroke
+ * sidewalls are 10,224 degree-(3,1) b-spline faces with a MEDIAN DIAGONAL
+ * OF 0.126 mm. Target 0.126 um, residual ~1 um: the residual runs 7.7x the
+ * target at p50 and 62x at worst, every one of those faces amplifies
+ * exactly 32x, and 345,645 seed triangles become 10,902,597 - 96% of the
+ * model's geometry payload and 89% of its geometry time. The bilinear
+ * (degree 1,1) faces in the same file are the control: same code path,
+ * residual 4e-5 of the target, amplification 1.0.
+ *
+ * 1e-6 puts the residual three decades under the 1e-3 deflection target, so
+ * the target is reachable at every scale and the refinement stops on real
+ * curvature. The floor is the 2^-24 quantisation grid of IfcCurve::Add3d,
+ * matching the deflection helpers, and also guards a degenerate
+ * zero-extent surface.
+ */
+constexpr double RELATIVE_INVERSE_ERROR = 1e-6;
+constexpr double MIN_INVERSE_ERROR      = 0x1p-24;
+
+/** Armijo sufficient-decrease coefficient for the solve's line search. */
+constexpr double ARMIJO_COEFFICIENT  = 0.001;
+
 constexpr double ALPHA_ERROR         = 1e-6;
 constexpr double MIN_STEP            = 1e-9;
 
+/**
+ * Iteration ceiling for the solve.
+ *
+ * Worth knowing what it now means: against the old absolute target every call
+ * converged (382,831 of 382,919 on Arty_Z7, mean 8.8 iterations). Against a
+ * target scaled to the surface, 72.8% of calls reach this ceiling still
+ * improving - they land around 5% of the tessellation deflection target,
+ * which is all the refinement needs, but three decades under the surface is
+ * more than 50 Gauss-Newton steps will reach. That is 15.3M iterations where
+ * there were 3.4M, and it is why the net win on Arty_Z7 is 16% rather than
+ * more. Raising this ceiling would cost time and buy nothing;
+ * RELATIVE_INVERSE_ERROR is the dial worth measuring if the solve ever
+ * needs to be cheaper.
+ */
 constexpr size_t MAX_ITERATION       = 50;
 
 struct RationalNurbsInverseMethod {
@@ -3481,6 +3537,9 @@ struct RationalNurbsInverseMethod {
 
   glm::dvec2 min_extent;
   glm::dvec2 max_extent;
+
+  /** Convergence target for the solve, scaled to this surface's extent. */
+  double convergence_error;
 
   RationalNurbsInverseMethod( const tinynurbs::RationalSurface3d& srf )
     : surface( srf ), evaluator( srf ) {
@@ -3535,6 +3594,51 @@ struct RationalNurbsInverseMethod {
         grid[ i ][ j ] = evaluator.point( uv.x, uv.y );
       }
     }
+
+    // Scaled off the grid, which spans the WHOLE surface, rather than off the
+    // trimmed face: the solve is constructed before any bound is projected.
+    // That over-estimates a face that is an island on a larger surface, and
+    // over-estimating is NOT automatically safe - too loose is its own failure
+    // mode. Two thresholds bound it, both in terms of surfaceDiagonal /
+    // trimDiagonal:
+    //
+    //   >= 1e3  the residual reaches the tessellation deflection target
+    //           (RELATIVE_INVERSE_ERROR / RELATIVE_DEFLECTION_FACTOR), i.e.
+    //           the bug this whole change fixes, returning at a bigger ratio;
+    //   >= 1e6  the tolerance reaches the trim's own diameter, so every
+    //           boundary point starts within one tolerance of the same grid
+    //           sample, operator() iterates zero times, returns one uv for the
+    //           entire loop, and the uv earcut degenerates.
+    //
+    // Measured over every b-spline face in the locally materialised corpus -
+    // 10,422 faces across Arty_Z7, Right_Hand, nist_ctc_02 and
+    // FM_ARC_DigitalHub - the maximum surfaceDiagonal / trimDiagonal is
+    // 2.273. Zero faces reach either threshold, zero collapse their uv
+    // boundary, zero produce an empty seed mesh: these exporters fit the
+    // surface to the face.
+    //
+    // The nearest approach to the first threshold is 0.121 of it, on a 0.49mm
+    // face in metre-unit Right_Hand - and it comes from MIN_INVERSE_ERROR
+    // below, not from any surface/trim mismatch (that face's ratio is 0.9996).
+    // If a file ever does need this capped, cap it on the trim rather than
+    // loosening the floor: bounds[].curve.points are 3D and already in hand
+    // before the projection loop, so their bounding box costs one pass over
+    // points the next loop walks anyway, and no extra inversion.
+    glm::dvec3 gridMin( std::numeric_limits< double >::max() );
+    glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
+
+    for ( size_t i = 0; i < INVERSE_GRID_SIDE; ++i ) {
+      for ( size_t j = 0; j < INVERSE_GRID_SIDE; ++j ) {
+
+        gridMin = glm::min( gridMin, grid[ i ][ j ] );
+        gridMax = glm::max( gridMax, grid[ i ][ j ] );
+      }
+    }
+
+    convergence_error =
+      std::max(
+        MIN_INVERSE_ERROR,
+        glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
   }
 
   glm::dvec2 operator()( const glm::dvec3& point ) const {
@@ -3573,11 +3677,13 @@ struct RationalNurbsInverseMethod {
     // glm::dvec2 alphaUV    = max_extent - min_extent;
     // double     startAlpha = 1.0 / std::max( alphaUV.x, alphaUV.y );
 
-    while ( minDistance2 > MAX_ERROR * MAX_ERROR && iteration++ < MAX_ITERATION ) {
+    const double convergenceError2 = convergence_error * convergence_error;
+
+    while ( minDistance2 > convergenceError2 && iteration++ < MAX_ITERATION ) {
 
       glm::dvec3 deltaP = bestPoint - point;
 
-      if ( minDistance2 <= MAX_ERROR * MAX_ERROR ) {
+      if ( minDistance2 <= convergenceError2 ) {
         break;
       }
 
@@ -3612,7 +3718,8 @@ struct RationalNurbsInverseMethod {
 
         double newDistance2 = glm::dot( newDeltaP, newDeltaP );
 
-        if ( newDistance2 < minDistance2 - MAX_ERROR * alpha * glm::dot( deltaUV, jte ) ) {
+        if ( newDistance2 <
+             minDistance2 - ARMIJO_COEFFICIENT * alpha * glm::dot( deltaUV, jte ) ) {
 
           bestPoint = newPoint;
           bestGuess = newGuessUV;
@@ -3626,13 +3733,32 @@ struct RationalNurbsInverseMethod {
         alpha *= 0.5;
       }
 
+      // Tested BEFORE the failure path, not after it. `damping *= 10.0`
+      // shrinks the next deltaUV monotonically, so a step already under
+      // MIN_STEP can only get smaller: no later iteration can move the guess,
+      // and Armijo's strict decrease has nothing left to accept. Downstream
+      // of that `continue` the test was unreachable on exactly the calls that
+      // need it - a stationary point, or a guess whose step clamps back to
+      // the same uv - and each one ran out the whole MAX_ITERATION budget
+      // failing the same way. Rare, and a termination guard rather than a
+      // speed win: 293 of 382,919 solves on Arty_Z7 (0.08%) end this way, and
+      // fixing it moves total solve iterations by under 0.1%. The population
+      // exists at all only because the target above is now tight enough that
+      // some points cannot reach it.
+      //
+      // Bounded, and measured as such: the steps it skips are under MIN_STEP
+      // (1e-9 in uv), so the uv it returns differs by at most ~1e-9 - three
+      // decades under the convergence target itself. Corpus effect is 6 rows
+      // of 178,273, all of them rows the tolerance change had already moved,
+      // and 9 pixels of 1,440,000 on Right_Hand with Arty's silkscreen and
+      // nist_ctc_02 byte-identical.
+      if ( glm::dot( deltaUV, deltaUV ) < MIN_STEP * MIN_STEP ) {
+        break;
+      }
+
       if ( !success ) {
         damping *= 10.0;
         continue;
-      }
-
-      if ( glm::dot( deltaUV, deltaUV ) < MIN_STEP * MIN_STEP ) {
-        break;
       }
     }
 
