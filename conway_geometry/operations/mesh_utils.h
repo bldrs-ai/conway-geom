@@ -1274,6 +1274,52 @@ inline void TriangulateRevolution(Geometry &geometry,
   refineAndAppend( mesh );
 }
 
+/**
+ * The two halves of the sphere's dual parameterization, with the
+ * projection centre filled in.
+ *
+ * Each half is `direction(xy) * radius`, and the radius factor vanishes at
+ * the half's own centre - the point the chart projects FROM the opposite
+ * pole onto the origin. That makes the centre a removable singularity: the
+ * limit is the origin from every approach direction. `glm::normalize` of a
+ * zero-length vector is NaN, though, so the value has to be written down
+ * rather than computed.
+ *
+ * Without this, any spherical face with a boundary VERTEX exactly on the
+ * surface's own axis produced NaN parameter coordinates and was dropped
+ * whole by the non-finite CDT guard in manifold_utils.h - "conway:
+ * non-finite dual-parameterization (projection pole); dropping face". Every
+ * corner blend of a filleted box is such a face: an eighth-sphere whose
+ * three bounding arcs meet at the three axis points, one of which is the
+ * pole (conway-geom#171).
+ *
+ * Note the caller's `2.0 - z < DBL_EPSILON` test handles the OTHER pole -
+ * the true singularity of the chart, sent to a far sentinel - and must stay
+ * ahead of this, which is why this takes the already-computed radius rather
+ * than recomputing it.
+ *
+ * @param normalFormVertex point on the unit sphere in the surface's frame.
+ * @param radius the half's radius factor, 1 +/- normalFormVertex.z.
+ * @return the planar parameter coordinate.
+ */
+inline glm::dvec2 poleSafeStereographic(
+  const glm::dvec3& normalFormVertex,
+  double radius ) {
+
+  const glm::dvec2 planar( normalFormVertex );
+
+  // Exactly zero, not a tolerance: any non-zero planar component gives
+  // normalize() a finite direction, and the result is already continuous
+  // into the origin because `radius` is vanishing alongside it. Widening
+  // this to an epsilon would move points that are currently correct.
+  if ( planar.x == 0.0 && planar.y == 0.0 ) {
+
+    return glm::dvec2( 0.0 );
+  }
+
+  return glm::normalize( planar ) * radius;
+}
+
 inline void TriangulateSphericalSurface(Geometry &geometry,
                                         const std::vector<IfcBound3D> &bounds,
                                         IfcSurface &surface) {
@@ -1462,7 +1508,7 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
         return glm::dvec2( 4, 4 );
       }
 
-      return glm::normalize( glm::dvec2( normalFormVertex ) ) * z;
+      return poleSafeStereographic( normalFormVertex, z );
     },
     [&]( const glm::dvec3& normalFormVertex ) {
 
@@ -1472,7 +1518,7 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
         return glm::dvec2( 4, 4 );
       }
 
-      return glm::normalize( glm::dvec2( normalFormVertex ) ) * z;
+      return poleSafeStereographic( normalFormVertex, z );
     },
     []( const glm::dvec3& normalFormVertex ) {
 
