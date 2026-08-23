@@ -405,6 +405,25 @@ namespace conway::geometry {
       // copy edge because it mutates later
       // as may the references as the vector re-allocates.
       Edge                     edge         = mesh.edges[ candidate.edge ];
+
+      // A queued candidate can go stale. addCandidate() rejects border edges
+      // at queue time, but every subdivision below deletes two triangles and
+      // deleteTriangle() clears both slots of each of their edges, so an edge
+      // that was interior when queued can be a border - or, as here, fully
+      // detached with EMPTY_INDEX in both slots - by the time it is popped.
+      // Without this the next two lines index triangles[ 0xFFFFFFFF ] and the
+      // wasm heap traps: "memory access out of bounds" on eight spherical
+      // faces of Orbiter_v1.1_Gear_7.5.step, deterministically
+      // (conway-geom#172). Skipping is not a loss of refinement - a border
+      // edge is never subdividable in this scheme, and the triangles that
+      // replaced this one were re-queued by the addCandidate() calls at the
+      // end of the loop.
+      if ( edge.border() ) {
+
+        candidates.pop();
+        continue;
+      }
+
       const ConnectedTriangle& t0           = mesh.triangles[ edge.triangles[ 0 ] ];
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t                 otherVertex0 = t0.otherVertex( edge );
@@ -498,6 +517,24 @@ namespace conway::geometry {
       // copy edge because it mutates later
       // as may the references as the vector re-allocates.
       Edge                     edge         = mesh.edges[ candidate.edge ];
+
+      // A queued candidate can go stale. addCandidate() rejects border edges
+      // at queue time, but every subdivision below deletes two triangles and
+      // deleteTriangle() clears both slots of each of their edges, so an edge
+      // that was interior when queued can be a border - or, as here, fully
+      // detached with EMPTY_INDEX in both slots - by the time it is popped.
+      // Without this the next two lines index triangles[ 0xFFFFFFFF ] and the
+      // wasm heap traps: "memory access out of bounds" on eight spherical
+      // faces of Orbiter_v1.1_Gear_7.5.step, deterministically
+      // (conway-geom#172). Skipping is not a loss of refinement - a border
+      // edge is never subdividable in this scheme, and the triangles that
+      // replaced this one were re-queued by the addCandidate() calls at the
+      // end of the loop.
+      if ( edge.border() ) {
+
+        candidates.pop();
+        continue;
+      }
 
       const ConnectedTriangle& t0           = mesh.triangles[ edge.triangles[ 0 ] ];
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
