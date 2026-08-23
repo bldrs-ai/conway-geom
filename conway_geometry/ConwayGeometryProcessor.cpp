@@ -1,5 +1,6 @@
 #include "ConwayGeometryProcessor.h"
 
+#include <utility>
 #include <cmath>
 
 #include <glm/glm.hpp>
@@ -2579,102 +2580,83 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
 conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcLine(
   const ParamsGetIfcLine &parameters) {
-    conway::geometry::IfcCurve curve;
 
-  bool condition = parameters.paramsGetIfcTrimmedCurve.senseAgreement;
+  conway::geometry::IfcCurve curve;
 
+  const ParamsGetIfcTrimmedCurve& trim = parameters.paramsGetIfcTrimmedCurve;
 
-  if (parameters.dimensions == 2 && parameters.paramsGetIfcTrimmedCurve.trimExists)
-  {
-    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
-      IfcTrimmingPreference::CARTESIAN) 
-    {
-        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D);
-        curve.Add2d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D);
+  const bool twoDimensional = parameters.dimensions == 2;
+
+  const glm::dvec3 placement =
+    twoDimensional ? glm::dvec3( parameters.cartesianPoint2D, 0 )
+                   : parameters.cartesianPoint3D;
+
+  const glm::dvec3 vector =
+    parameters.vectorOrientation * parameters.vectorMagnitude;
+
+  glm::dvec3 p1;
+  glm::dvec3 p2;
+
+  if ( !trim.trimExists ) {
+
+    // A bare, untrimmed LINE: the whole IFCVECTOR laid off from the point.
+    // This arm used to sit *inside* the trimExists block (conway-geom#177),
+    // where it could never run - with a trim the branches above took it,
+    // without one control never entered the block - so an untrimmed line
+    // silently produced a zero-point curve in both 2D and 3D.
+    p1 = placement;
+    p2 = placement + vector;
+
+    if ( !trim.senseAgreement ) {
+      std::swap( p1, p2 );
     }
-    else if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
-      IfcTrimmingPreference::PARAMETER)
-    {
 
-      glm::dvec3 placement = glm::dvec3( parameters.cartesianPoint2D, 0);
-      glm::dvec3 vector;
+  } else if ( trim.masterRepresentation == IfcTrimmingPreference::PARAMETER ) {
 
-      vector = parameters.vectorOrientation * parameters.vectorMagnitude;
+    p1 = placement + vector * trim.trim1Double;
+    p2 = placement + vector * trim.trim2Double;
 
-      if (condition)
-      {
-        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
-        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
-        curve.Add2d(p1);
-        curve.Add2d(p2);
-      }
-      else
-      {
-        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
-        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
-        curve.Add2d(p1);
-        curve.Add2d(p2);
-      }
+    if ( !trim.senseAgreement ) {
+      std::swap( p1, p2 );
     }
-    else
-    {
-      
-      Logger::logError("[ComputeCurve()] Unsupported trimmingselect 2D IFCLINE {}");
-    }
+
+  } else {
+
+    // CARTESIAN *and* UNSPECIFIED. UNSPECIFIED is not "no trim given": IFC
+    // defines it as "either representation may be used", so the reader picks
+    // one. Conway's extractors already pick Cartesian - ifc_geometry_extraction
+    // .ts fills trim1/trim2Cartesian* for CARTESIAN and UNSPECIFIED alike, and
+    // the AP214 extractor only ever emits CARTESIAN or PARAMETER - so the
+    // Cartesian trim points are populated by the time we get here.
+    //
+    // Every sibling curve in this file already reads the select this way
+    // (getBSplineCurve, getIfcCircle, getIfcEllipse: `if PARAMETER ... else
+    // <cartesian>`). Only the line enumerated CARTESIAN explicitly and fell
+    // through to an error branch, which added no points: a legal trimmed
+    // IFCLINE with MasterRepresentation = UNSPECIFIED came back empty in 2D
+    // and, worse, came back as the *untrimmed* line in 3D, because the dead
+    // untrimmed arm caught it (conway-geom#170).
+    //
+    // Sense is deliberately NOT applied here. The Cartesian arm has never
+    // swapped on senseAgreement while the parameter arm always has; STEP
+    // reaches this arm for nearly every trimmed line, so "fixing" the
+    // asymmetry would move geometry across the corpus on no evidence. Left
+    // as-is on purpose.
+    p1 = twoDimensional ? glm::dvec3( trim.trim1Cartesian2D, 0 )
+                        : trim.trim1Cartesian3D;
+    p2 = twoDimensional ? glm::dvec3( trim.trim2Cartesian2D, 0 )
+                        : trim.trim2Cartesian3D;
   }
-  else if (parameters.dimensions == 3 &&  parameters.paramsGetIfcTrimmedCurve.trimExists)
-  {
-    if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
-      IfcTrimmingPreference::CARTESIAN)
-    {
-      curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian3D);
-      curve.Add3d(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian3D);
-    }
-    else if (parameters.paramsGetIfcTrimmedCurve.masterRepresentation ==
-      IfcTrimmingPreference::PARAMETER)
-    {
-      glm::dvec3 placement = parameters.cartesianPoint3D;
-      glm::dvec3 vector;
 
-      vector = parameters.vectorOrientation * parameters.vectorMagnitude;
+  if ( twoDimensional ) {
 
-      if (condition)
-      {
-        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
-        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
-        curve.Add3d(p1);
-        curve.Add3d(p2);
-      }
-      else
-      {
-        glm::dvec3 p2 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim1Double;
-        glm::dvec3 p1 = placement + vector * parameters.paramsGetIfcTrimmedCurve.trim2Double;
-        curve.Add3d(p1);
-        curve.Add3d(p2);
-      }
-    }
-    else if (parameters.dimensions == 3)
-    {
-      glm::dvec3 placement = parameters.cartesianPoint3D;
-      glm::dvec3 vector;
+    curve.Add2d( glm::dvec2( p1 ) );
+    curve.Add2d( glm::dvec2( p2 ) );
 
-      vector = parameters.vectorOrientation * parameters.vectorMagnitude;
+  } else {
 
-      if (condition)
-      {
-        glm::dvec3 p1 = placement;
-        glm::dvec3 p2 = placement + vector;
-        curve.Add3d(p1);
-        curve.Add3d(p2);
-      }
-      else
-      {
-        glm::dvec3 p2 = placement;
-        glm::dvec3 p1 = placement + vector;
-        curve.Add3d(p1);
-        curve.Add3d(p2);
-      }
-    }
+    curve.Add3d( p1 );
+    curve.Add3d( p2 );
   }
 
   return curve;
