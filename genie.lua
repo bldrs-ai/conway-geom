@@ -190,10 +190,19 @@ project "conway_geom_native"
                 )"
         }
 
+    -- DEAD FILTER: genie does not parse "and"/"not" inside a single term
+    -- (only "or" is, e.g. "linux or macosx or ios or gmake" above), so this
+    -- block matches no configuration and emits nothing at all - verified by
+    -- regenerating with the term reduced to "gmake", which makes all four
+    -- --bind occurrences appear in gmake/*.make where there are currently
+    -- zero. Nothing below reaches a link line today. Do not "revive" it by
+    -- fixing the term alone: these are ConsoleApp targets whose release64
+    -- config links with plain $(CXX), and this block is emscripten-only
+    -- (--bind, MODULARIZE, EXPORT_NAME, -lworkerfs.js). See conway-geom#137.
     configuration {"gmake and not macosx and not windows"}
         linkoptions {
             "--bind",
-            "-03",
+            "-O3",
             "-flto",
             '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -sGROWABLE_ARRAYBUFFERS=0 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native -s MODULARIZE=1 ' .. exportedRuntimeMethods .. ' -lworkerfs.js'
         }
@@ -354,10 +363,19 @@ project "conway_geom_native_tests"
                 )"
         }
 
+    -- DEAD FILTER: genie does not parse "and"/"not" inside a single term
+    -- (only "or" is, e.g. "linux or macosx or ios or gmake" above), so this
+    -- block matches no configuration and emits nothing at all - verified by
+    -- regenerating with the term reduced to "gmake", which makes all four
+    -- --bind occurrences appear in gmake/*.make where there are currently
+    -- zero. Nothing below reaches a link line today. Do not "revive" it by
+    -- fixing the term alone: these are ConsoleApp targets whose release64
+    -- config links with plain $(CXX), and this block is emscripten-only
+    -- (--bind, MODULARIZE, EXPORT_NAME, -lworkerfs.js). See conway-geom#137.
     configuration {"gmake and not macosx and not windows"}
         linkoptions {
             "--bind",
-            "-03",
+            "-O3",
             "-flto",
             '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -sGROWABLE_ARRAYBUFFERS=0 -s MAXIMUM_MEMORY=4GB -sSTACK_SIZE=5MB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=conway_geom_native_tests -s MODULARIZE=1 ' .. exportedRuntimeMethods .. ' -lworkerfs.js'
         }
@@ -518,10 +536,19 @@ project "webifc_native"
                 )"
         }
 
+    -- DEAD FILTER: genie does not parse "and"/"not" inside a single term
+    -- (only "or" is, e.g. "linux or macosx or ios or gmake" above), so this
+    -- block matches no configuration and emits nothing at all - verified by
+    -- regenerating with the term reduced to "gmake", which makes all four
+    -- --bind occurrences appear in gmake/*.make where there are currently
+    -- zero. Nothing below reaches a link line today. Do not "revive" it by
+    -- fixing the term alone: these are ConsoleApp targets whose release64
+    -- config links with plain $(CXX), and this block is emscripten-only
+    -- (--bind, MODULARIZE, EXPORT_NAME, -lworkerfs.js). See conway-geom#137.
     configuration {"gmake and not macosx and not windows"}
         linkoptions {
             "--bind",
-            "-03",
+            "-O3",
             "-flto",
             '--define-macro=REAL_T_IS_DOUBLE -s ALLOW_MEMORY_GROWTH=1 -sGROWABLE_ARRAYBUFFERS=0 -s MAXIMUM_MEMORY=4GB -s FORCE_FILESYSTEM=1 -s EXPORT_NAME=webifc_native -s MODULARIZE=1 ' .. exportedRuntimeMethods .. ' -lworkerfs.js'
         }
@@ -688,7 +715,6 @@ project "webifc_native"
             "-O3",
             "--bind",
             "--dts",
-            "-03",
             "-flto",
             "--define-macro=REAL_T_IS_DOUBLE",
             "-s ALLOW_MEMORY_GROWTH=1",
@@ -924,7 +950,6 @@ linkoptions {
     "-O3",
     "--bind",
     "--dts",
-    "-03",
     "-flto",
     "-pthread",
     "-sSHARED_MEMORY",
@@ -1170,7 +1195,6 @@ else
         "-O3",
         "--bind",
         "--dts",
-        "-03",
         "-flto",
         "--define-macro=REAL_T_IS_DOUBLE",
         "-s PRECISE_F32=1",
