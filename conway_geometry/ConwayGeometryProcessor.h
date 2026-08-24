@@ -200,16 +200,28 @@ class ConwayGeometryProcessor {
   // case ifc::IFCCLOSEDSHELL:
   // case ifc::IFCOPENSHELL:
   // These cases are handled by getBrep()
+  /**
+   * `modelExtent` on both of these is the diagonal of the WHOLE model's
+   * extent, in the same units the face's bound points arrive in, pinned once
+   * per load by the extractor that owns the parsed file (never accumulated
+   * from geometry already built - see bldrs-ai/conway#564). It floors the
+   * per-face deflection target at MODEL_DEFLECTION_FLOOR_FACTOR of itself,
+   * so a face that is a tile of a much larger object is not refined a
+   * thousand times finer than a pixel. Zero means "no model extent for this
+   * load" and leaves the per-face target exactly as it was.
+   */
   struct ParamsAddFaceToGeometry {
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
     double scaling;
+    double modelExtent = 0.0;
   };
 
   struct ParamsAddFaceToGeometrySimple {
     std::vector<IfcBound3D> boundsArray;
     double scaling;
+    double modelExtent = 0.0;
   };
 
   void AddFaceToGeometrySimple(ParamsAddFaceToGeometrySimple& parameters,

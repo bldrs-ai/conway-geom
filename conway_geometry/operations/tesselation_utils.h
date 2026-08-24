@@ -52,9 +52,39 @@ namespace conway::geometry {
   }
 
   /**
+   * How fine a deflection target the MODEL's own extent permits, as a
+   * fraction of it. Read it as a display bound: at a camera that frames the
+   * whole model on a ~1000px viewport, one pixel is 1e-3 of the model, so
+   * 1e-5 of the model is a hundredth of a pixel — a hundred-fold zoom of
+   * headroom past the point where refinement can still be seen.
+   *
+   * It exists because the per-face convention below, right for a part, is
+   * wrong for a mosaic. `Arty_Z7.stp`'s silkscreen is 1,189 extruded-glyph
+   * solids whose stroke sidewalls are 10,224 b-spline faces with a MEDIAN
+   * DIAGONAL OF 0.126mm, on a 419mm board; 0.1% of such a face is a target
+   * of 0.126um, roughly a thousandth of a pixel at any zoom a user reaches,
+   * and chasing it costs 96% of that model's geometry payload and 89% of
+   * its geometry time (bldrs-ai/conway#564). The ten thousand tiles are one
+   * visual object — the printed legend — and the object, not the tile, is
+   * what sets how finely it is worth resolving.
+   *
+   * The floor bites only a face smaller than
+   * MODEL_DEFLECTION_FLOOR_FACTOR / RELATIVE_DEFLECTION_FACTOR = 1% of the
+   * model, and it coarsens such a face by exactly the ratio by which it
+   * falls short of that 1%. Every face at or above it — which is every face
+   * a mechanical part is mostly made of — keeps the target it has today.
+   * That containment is the whole point: a globally coarser
+   * RELATIVE_DEFLECTION_FACTOR buys the same time on Arty_Z7 but facets
+   * `create-a-tube` across 29.8% of its pixels, which is precisely what
+   * the 0.1% factor exists to prevent.
+   */
+  constexpr double MODEL_DEFLECTION_FLOOR_FACTOR = 1e-5;
+
+  /**
    * Squared deflection threshold for `tesselate`, relative to the seed
    * mesh's own extent — 0.1% of its bounding-box diagonal, squared to match
-   * the squared-deflection comparison in the refinement loop.
+   * the squared-deflection comparison in the refinement loop — floored at
+   * MODEL_DEFLECTION_FLOOR_FACTOR of the model's own extent.
    *
    * Unit-independence is the point. The shared absolute MAX_DEFLECTION
    * (1e-6, i.e. 1mm linear deflection) silently assumed millimetre-ish
@@ -71,11 +101,18 @@ namespace conway::geometry {
    * only guards degenerate zero-extent seeds against refine-to-zero churn.
    *
    * @param mesh The seed mesh about to be refined.
+   * @param modelExtent The diagonal of the whole model's extent, in the same
+   *                    units as the mesh's vertices, pinned once per load by
+   *                    the extractor that owns the parsed file. Zero means
+   *                    "not known for this load" and leaves the per-face
+   *                    target unfloored, which is the pre-#564 behaviour;
+   *                    the IFC front end passes zero.
    * @return The squared deflection threshold to pass to `tesselate`.
    */
   template< typename VertexType >
   inline double relativeDeflectionSquared(
-      const WingedEdgeMesh< VertexType >& mesh ) {
+      const WingedEdgeMesh< VertexType >& mesh,
+      double modelExtent ) {
 
     glm::dvec3 boxMin( std::numeric_limits< double >::max() );
     glm::dvec3 boxMax( std::numeric_limits< double >::lowest() );
@@ -95,6 +132,16 @@ namespace conway::geometry {
       mesh.vertices.empty() ?
         0.0 :
         glm::distance( boxMin, boxMax ) * RELATIVE_DEFLECTION_FACTOR;
+
+    // A non-finite or negative extent is treated as "not known" rather than
+    // propagated: std::max would carry a NaN straight into the refinement
+    // comparison, where every `>` is false and the loop stops on the first
+    // edge, silently under-tessellating the whole model.
+    if ( std::isfinite( modelExtent ) && modelExtent > 0.0 ) {
+
+      deflection =
+        std::max( deflection, modelExtent * MODEL_DEFLECTION_FLOOR_FACTOR );
+    }
 
     return std::max( MIN_DEFLECTION * MIN_DEFLECTION, deflection * deflection );
   }
