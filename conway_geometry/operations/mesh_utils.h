@@ -379,7 +379,8 @@ inline bool triangulateUnwrappedLoops(
 
 inline void TriangulateRevolution(Geometry &geometry,
                                   std::vector<IfcBound3D> &bounds,
-                                  IfcSurface &surface) {
+                                  IfcSurface &surface,
+                                  double representationExtent) {
 
   using namespace unwrap_detail;
 
@@ -491,7 +492,7 @@ inline void TriangulateRevolution(Geometry &geometry,
       mesh,
       surfaceProjection,
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      relativeDeflectionSquared( mesh ) );
+      relativeDeflectionSquared( mesh, representationExtent ) );
 
     appendMeshToGeometry( mesh, geometry );
   };
@@ -1322,7 +1323,8 @@ inline glm::dvec2 poleSafeStereographic(
 
 inline void TriangulateSphericalSurface(Geometry &geometry,
                                         const std::vector<IfcBound3D> &bounds,
-                                        IfcSurface &surface) {
+                                        IfcSurface &surface,
+                                        double representationExtent) {
   if ( bounds.empty() ) {
     return;
   }
@@ -1562,7 +1564,7 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
       return glm::normalize( point - cent ) * radius + cent;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    relativeDeflectionSquared( mesh ) );
+    relativeDeflectionSquared( mesh, representationExtent ) );
 
   appendMeshToGeometry( mesh, geometry );
 }
@@ -1605,7 +1607,8 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
 inline void TriangulateToroidalSurface(
     Geometry &geometry,
     const std::vector<IfcBound3D> &bounds,
-    IfcSurface &surface) {
+    IfcSurface &surface,
+    double representationExtent) {
 
   using namespace unwrap_detail;
 
@@ -2283,7 +2286,7 @@ inline void TriangulateToroidalSurface(
         vecZ * pointOnIdentityRing.z + cent;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    relativeDeflectionSquared( mesh ) );
+    relativeDeflectionSquared( mesh, representationExtent ) );
 
   appendMeshToGeometry( mesh, geometry );
 }
@@ -2293,7 +2296,8 @@ inline void TriangulateToroidalSurface(
 inline void TriangulateConicalSurface(
   Geometry &geometry,
   const std::vector<IfcBound3D> &bounds,
-  IfcSurface &surface) {
+  IfcSurface &surface,
+  double representationExtent) {
   // First we get the cylinder data
 
   if ( bounds.empty() ) {
@@ -2489,7 +2493,7 @@ inline void TriangulateConicalSurface(
               vecZ * dz;
           },
           mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-          relativeDeflectionSquared( mesh ) );
+          relativeDeflectionSquared( mesh, representationExtent ) );
 
         // Same idea as the cylinder, tilted by the cone's taper: the
         // radius model this unwrap tesselates against is
@@ -2705,7 +2709,7 @@ inline void TriangulateConicalSurface(
       return cent + coneSpacePoint.x * vecX + coneSpacePoint.y * vecY + coneSpacePoint.z * vecZ;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    relativeDeflectionSquared( mesh ) );
+    relativeDeflectionSquared( mesh, representationExtent ) );
 
   appendMeshToGeometry( mesh, geometry, sameSense );
 }
@@ -2713,7 +2717,8 @@ inline void TriangulateConicalSurface(
 // TODO: review and simplify
 inline void TriangulateCylindricalSurface(Geometry &geometry,
                                           const std::vector<IfcBound3D> &bounds,
-                                          IfcSurface &surface) {
+                                          IfcSurface &surface,
+                                          double representationExtent) {
   // First we get the cylinder data
 
   if ( bounds.empty() ) {
@@ -2862,7 +2867,7 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
               vecZ * dz;
           },
           unwrapMesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-          relativeDeflectionSquared( unwrapMesh ) );
+          relativeDeflectionSquared( unwrapMesh, representationExtent ) );
 
         // A cylinder's outward normal is the radial component of the
         // offset from the axis; the axial part carries no orientation.
@@ -3092,7 +3097,7 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
       return cent + newInPlane.x * vecX + newInPlane.y * vecY + vecZ * dz;
     },
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-    relativeDeflectionSquared( mesh ) );
+    relativeDeflectionSquared( mesh, representationExtent ) );
 
   appendMeshToGeometry( mesh, geometry, sameSense );
 }
@@ -3115,7 +3120,8 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
 inline void TriangulateExtrusion(Geometry &geometry,
                                  std::vector<IfcBound3D> &bounds,
-                                 IfcSurface &surface) {
+                                 IfcSurface &surface,
+                                 double representationExtent) {
 
   using namespace unwrap_detail;
 
@@ -3222,7 +3228,7 @@ inline void TriangulateExtrusion(Geometry &geometry,
       mesh,
       surfaceProjection,
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      relativeDeflectionSquared( mesh ) );
+      relativeDeflectionSquared( mesh, representationExtent ) );
 
     appendMeshToGeometry( mesh, geometry );
   };
@@ -3933,7 +3939,8 @@ struct RationalNurbsInverseMethod {
 // TODO: review and simplify
 inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
-                               IfcSurface &surface, double scaling) {
+                               IfcSurface &surface, double scaling,
+                               double representationExtent) {
 
 //  printf( "Triangulating BSpline Surface\n" );
 
@@ -4096,7 +4103,21 @@ inline void TriangulateBspline(Geometry &geometry,
         return bSplineInverseEvaluation.evaluator.point( from.x, from.y );
       },
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      relativeDeflectionSquared( mesh ) );
+      // `representationExtent * scaling`, not the raw extent. This is the ONE
+      // triangulator that does not tessellate in the units its bound points
+      // arrive in: the projection loop above multiplies every point by
+      // `scaling` before seeding the mesh, so the mesh's own bounding box -
+      // the other half of the comparison relativeDeflectionSquared makes -
+      // is in post-`scaling` units too. Handing it a raw extent would put a
+      // millimetre-to-metre load's floor 1000x too coarse and a
+      // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
+      // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
+      //
+      // Both front ends pass scaling = 1 today, so this multiply is a no-op
+      // in every shipping path; it is here so the invariant on
+      // ParamsAddFaceToGeometry::representationExtent ("in the units the
+      // bound points arrive in") stays true if that ever changes.
+      relativeDeflectionSquared( mesh, representationExtent * scaling ) );
 
     appendMeshToGeometry( mesh, geometry, !surface.sameSense );
 

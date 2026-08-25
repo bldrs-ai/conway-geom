@@ -717,28 +717,31 @@ void ConwayGeometryProcessor::AddFaceToGeometry(
         if (surface.BSplineSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriBspline );
           TriangulateBspline(geometry, parameters.boundsArray, surface,
-                             parameters.scaling);
+                             parameters.scaling, parameters.representationExtent);
         } else if (surface.CylinderSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriCylinder );
           TriangulateCylindricalSurface(geometry, parameters.boundsArray,
-                                        surface);
+                                        surface, parameters.representationExtent);
         } else if (surface.SphericalSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriSphere );
           TriangulateSphericalSurface(geometry, parameters.boundsArray,
-                                      surface);
+                                      surface, parameters.representationExtent);
         } else if (surface.ToroidalSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriToroidal );
           TriangulateToroidalSurface(geometry, parameters.boundsArray,
-                                     surface);
+                                     surface, parameters.representationExtent);
         } else if (surface.ConicalSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriConical );
-          TriangulateConicalSurface(geometry, parameters.boundsArray, surface);
+          TriangulateConicalSurface(geometry, parameters.boundsArray, surface,
+                                    parameters.representationExtent);
         } else if (surface.RevolutionSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriRevolution );
-          TriangulateRevolution(geometry, parameters.boundsArray, surface);
+          TriangulateRevolution(geometry, parameters.boundsArray, surface,
+                                parameters.representationExtent);
         } else if (surface.ExtrusionSurface.Active) {
           conway::AllocTagScope tag( conway::AllocSite::TriExtrusion );
-          TriangulateExtrusion(geometry, parameters.boundsArray, surface);
+          TriangulateExtrusion(geometry, parameters.boundsArray, surface,
+                               parameters.representationExtent);
         } else {
           conway::AllocTagScope tag( conway::AllocSite::TriBounds );
           TriangulateBounds(geometry, parameters.boundsArray);
@@ -808,6 +811,7 @@ void ConwayGeometryProcessor::StageFaceToGeometrySimple(
   promoted.boundsArray  = std::move( parameters.boundsArray );
   promoted.advancedBrep = false;
   promoted.scaling      = parameters.scaling;
+  promoted.representationExtent = parameters.representationExtent;
 
   // Delegate so the queue append and flush policy live in one place.
   StageFaceToGeometry( promoted, geometry );

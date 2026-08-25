@@ -200,16 +200,47 @@ class ConwayGeometryProcessor {
   // case ifc::IFCCLOSEDSHELL:
   // case ifc::IFCOPENSHELL:
   // These cases are handled by getBrep()
+  /**
+   * `representationExtent` on both of these is the diagonal of the extent of
+   * the REPRESENTATION that defines this face, in the same units the face's
+   * bound points arrive in, pinned once per representation by the extractor
+   * that owns the parsed file (never accumulated from geometry already built
+   * - see bldrs-ai/conway#564). It floors the per-face deflection target at
+   * OBJECT_DEFLECTION_FLOOR_FACTOR of itself, so a face that is one tile of
+   * a much larger object is not refined a thousand times finer than a pixel.
+   * Zero means "not known" and leaves the per-face target exactly as it was.
+   *
+   * The DEFINING representation, not the model, and the distinction is
+   * load-bearing rather than pedantic. Tessellation is memoized per
+   * representation item, so one tessellation serves every reference to it,
+   * and anything it depends on must therefore be a function of the
+   * representation too. A model-wide extent is a function of the whole file
+   * and has no single correct value once a memoized tessellation is reached
+   * from two references - most sharply when those references sit in
+   * different unit contexts, which STEP permits per shape_representation.
+   * A parameter named for the model is how that confusion gets
+   * reintroduced, so it is named for what it actually is.
+   *
+   * "In the units the bound points arrive in" is the other load-bearing
+   * half, and it is a contract with `scaling`, not an aside: a triangulator
+   * that rescales its points before seeding a mesh has to rescale this the
+   * same way, because relativeDeflectionSquared compares it against that
+   * mesh's own bounding box. TriangulateBspline is the only one that does,
+   * and it does (see the note at its tesselate call). Anything that starts
+   * scaling points must do the same or the floor silently lands decades off.
+   */
   struct ParamsAddFaceToGeometry {
     std::vector<IfcBound3D> boundsArray;
     bool advancedBrep = false;
     IfcSurface surface;
     double scaling;
+    double representationExtent = 0.0;
   };
 
   struct ParamsAddFaceToGeometrySimple {
     std::vector<IfcBound3D> boundsArray;
     double scaling;
+    double representationExtent = 0.0;
   };
 
   void AddFaceToGeometrySimple(ParamsAddFaceToGeometrySimple& parameters,
