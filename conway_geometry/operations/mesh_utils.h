@@ -4103,7 +4103,21 @@ inline void TriangulateBspline(Geometry &geometry,
         return bSplineInverseEvaluation.evaluator.point( from.x, from.y );
       },
       mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      relativeDeflectionSquared( mesh, modelExtent ) );
+      // `modelExtent * scaling`, not `modelExtent`. This is the ONE
+      // triangulator that does not tessellate in the units its bound points
+      // arrive in: the projection loop above multiplies every point by
+      // `scaling` before seeding the mesh, so the mesh's own bounding box -
+      // the other half of the comparison relativeDeflectionSquared makes -
+      // is in post-`scaling` units too. Handing it a raw extent would put a
+      // millimetre-to-metre load's floor 1000x too coarse and a
+      // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
+      // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
+      //
+      // Both front ends pass scaling = 1 today, so this multiply is a no-op
+      // in every shipping path; it is here so the invariant on
+      // ParamsAddFaceToGeometry::modelExtent ("in the units the bound points
+      // arrive in") stays true if that ever changes.
+      relativeDeflectionSquared( mesh, modelExtent * scaling ) );
 
     appendMeshToGeometry( mesh, geometry, !surface.sameSense );
 

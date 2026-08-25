@@ -209,6 +209,14 @@ class ConwayGeometryProcessor {
    * so a face that is a tile of a much larger object is not refined a
    * thousand times finer than a pixel. Zero means "no model extent for this
    * load" and leaves the per-face target exactly as it was.
+   *
+   * "In the units the bound points arrive in" is the load-bearing half of
+   * that, and it is a contract with `scaling`, not an aside: a triangulator
+   * that rescales its points before seeding a mesh has to rescale this the
+   * same way, because relativeDeflectionSquared compares it against that
+   * mesh's own bounding box. TriangulateBspline is the only one that does,
+   * and it does (see the note at its tesselate call). Anything that starts
+   * scaling points must do the same or the floor silently lands decades off.
    */
   struct ParamsAddFaceToGeometry {
     std::vector<IfcBound3D> boundsArray;
