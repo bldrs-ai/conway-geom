@@ -1719,8 +1719,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                             ParamsAddFaceToGeometry::surface)
       .field("scaling", &conway::geometry::ConwayGeometryProcessor::
                             ParamsAddFaceToGeometry::scaling)
-      .field("modelExtent", &conway::geometry::ConwayGeometryProcessor::
-                                ParamsAddFaceToGeometry::modelExtent);
+      .field("representationExtent", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsAddFaceToGeometry::representationExtent);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
   emscripten::value_object<
@@ -1730,8 +1730,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
                                 ParamsAddFaceToGeometrySimple::boundsArray)
       .field("scaling", &conway::geometry::ConwayGeometryProcessor::
                             ParamsAddFaceToGeometrySimple::scaling)
-      .field("modelExtent", &conway::geometry::ConwayGeometryProcessor::
-                                ParamsAddFaceToGeometrySimple::modelExtent);
+      .field("representationExtent", &conway::geometry::ConwayGeometryProcessor::
+                                ParamsAddFaceToGeometrySimple::representationExtent);
 
   // ifc::IFCRECTANGLEPROFILEDEF
   // ifc::IFCROUNDEDRECTANGLEPROFILEDEF

@@ -9,6 +9,6 @@ export interface ParamsAddFaceToGeometrySimple {
   boundsArray: StdVector<Bound3DObject> // std::vector<IfcBound3D>
   scaling: number
 
-  /** See ParamsAddFaceToGeometry.modelExtent. */
-  modelExtent: number
+  /** See ParamsAddFaceToGeometry.representationExtent. */
+  representationExtent: number
 }
