@@ -3593,6 +3593,17 @@ struct RationalNurbsInverseMethod {
   /** Convergence target for the solve, scaled to this surface's extent. */
   double convergence_error;
 
+  /**
+   * The uv returned by the last operator() call, offered as a seed candidate
+   * to the next one - see the continuity-seed comment in operator().
+   *
+   * Per-face state on a per-face object: TriangulateBspline constructs one
+   * of these per face and inverts that face's boundary on one thread, so
+   * there is no sharing to guard.
+   */
+  glm::dvec2 previousSolution_    = glm::dvec2( 0.0 );
+  bool       hasPreviousSolution_ = false;
+
   RationalNurbsInverseMethod( const tinynurbs::RationalSurface3d& srf )
     : surface( srf ), evaluator( srf ) {
 
@@ -3726,7 +3737,7 @@ struct RationalNurbsInverseMethod {
         std::min( convergence_error, trimDiagonal * RELATIVE_INVERSE_ERROR ) );
   }
 
-  glm::dvec2 operator()( const glm::dvec3& point ) const {
+  glm::dvec2 operator()( const glm::dvec3& point ) {
 
     glm::dvec2 bestGuess;
     glm::dvec3 bestPoint;
@@ -3752,6 +3763,59 @@ struct RationalNurbsInverseMethod {
           bestPoint    = grid[ i ][ j ];
           minDistance2 = distance2;
         }
+      }
+    }
+
+    // Continuity seed: the uv this method returned for the PREVIOUS query,
+    // offered as one more seed candidate and kept only when it is nearer in
+    // 3D than every grid sample.
+    //
+    // The callers invert an ORDERED boundary polyline, so consecutive
+    // queries are a chord apart - 0.116 model units on the Orbiter thread
+    // ribbons - while the 8x8 grid spans the whole support surface, whose
+    // own diagonal is 20. A seed three orders of magnitude closer is not a
+    // speed optimisation; on a swept surface it is the difference between
+    // converging and not.
+    //
+    // Why the grid alone fails there (bldrs-ai/conway#594). A thread
+    // modelled as a swept NURBS ribbon runs ~7 turns down v, so an 8x8 grid
+    // places barely one sample per turn and the nearest one routinely
+    // belongs to a NEIGHBOURING turn - which passes within 0.118 of the
+    // query. Gauss-Newton then descends in that turn's basin, and 50
+    // iterations of a basin that does not contain the answer end at
+    // MAX_ITERATION with a residual of ~0.9 rather than the 2e-5 target.
+    // Measured on face #51059 of solid 971: median residual 0.880, only
+    // 18.1% of 5,089 boundary points reaching the target, 238 single-turn
+    // jumps and 137 v-direction reversals in what should be a ribbon
+    // boundary with two. Model-wide, 71% of 53,981 solves failed to
+    // converge. With this seed the same face reaches median 1.3e-5, 100%
+    // converged, and ONE reversal.
+    //
+    // Kept as a candidate rather than used unconditionally, and this is the
+    // load-bearing half: a bare previous-point chain has no way back once
+    // one query lands badly, and measured worse tails than the grid on two
+    // of twelve faces. Taking the nearest of {grid best, previous} can only
+    // lower the seed distance, so the grid stays as the escape hatch for a
+    // query the chain cannot reach.
+    //
+    // Deliberately NOT reset between bounds. A fresh loop's first query is
+    // unrelated to the previous loop's last, but an unrelated candidate is
+    // simply further away and loses the comparison; adding a reset would be
+    // untested state for no measured gain.
+    if ( hasPreviousSolution_ ) {
+
+      glm::dvec3 previousPoint =
+        evaluator.point( previousSolution_.x, previousSolution_.y );
+
+      glm::dvec3 deltaP = previousPoint - point;
+
+      double distance2 = glm::dot( deltaP, deltaP );
+
+      if ( distance2 < minDistance2 ) {
+
+        bestGuess    = previousSolution_;
+        bestPoint    = previousPoint;
+        minDistance2 = distance2;
       }
     }
 
@@ -3846,6 +3910,9 @@ struct RationalNurbsInverseMethod {
         continue;
       }
     }
+
+    previousSolution_    = bestGuess;
+    hasPreviousSolution_ = true;
 
     return bestGuess;
   }
