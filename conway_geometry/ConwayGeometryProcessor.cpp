@@ -2560,9 +2560,21 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
         }, tMin, tMax );
 
+        // dvec3, not dvec2. This is the 3D branch: the interpolation is over
+        // points3 and the target is trim2Cartesian3D, so declaring the
+        // difference as a dvec2 silently dropped z through GLM's implicit
+        // vec2(vec3) conversion and minimised XY distance alone. The tStart
+        // lambda above always had this right; only tEnd was truncated.
+        //
+        // It was dormant while this branch clamped tMin/tMax onto a single
+        // point - the bisection had nothing to search. Searching [0, 1] makes
+        // it decide the trim, and it decides it worst on exactly the geometry
+        // this fix is for: the XY projection of a helix is a circle walked
+        // once per turn, so every turn scores ~0 and the solve returns an
+        // arbitrary one. See bldrs-ai/conway#594.
         tEnd = best_fit_param_bisection( [&]( double value ) {
 
-          glm::dvec2 pointOnCurve = InterpolateRationalBSplineCurveWithKnots( 
+          glm::dvec3 pointOnCurve = InterpolateRationalBSplineCurveWithKnots( 
             value,
             degree,
             parameters.points3,
