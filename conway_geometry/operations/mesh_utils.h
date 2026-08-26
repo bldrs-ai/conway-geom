@@ -3739,10 +3739,10 @@ struct RationalNurbsInverseMethod {
 
   glm::dvec2 operator()( const glm::dvec3& point ) {
 
-    glm::dvec2 bestGuess;
-    glm::dvec3 bestPoint;
-    double     minDistance2 = DBL_MAX;
-    
+    glm::dvec2 gridGuess;
+    glm::dvec3 gridPoint;
+    double     gridDistance2 = DBL_MAX;
+
     // Take initial guess from the grid.
     for ( size_t i = 0; i < INVERSE_GRID_SIDE; ++i ) {
       for ( size_t j = 0; j < INVERSE_GRID_SIDE; ++j ) {
@@ -3751,20 +3751,26 @@ struct RationalNurbsInverseMethod {
 
         double distance2 = glm::dot( deltaP, deltaP );
 
-        if ( distance2 < minDistance2 ) {
+        if ( distance2 < gridDistance2 ) {
 
-          bestGuess =
+          gridGuess =
             min_extent + 
             ( max_extent - min_extent ) * 
             glm::dvec2( 
               static_cast< double >( i ) * INVERSE_GRID_FACTOR,
               static_cast< double >( j ) * INVERSE_GRID_FACTOR );
 
-          bestPoint    = grid[ i ][ j ];
-          minDistance2 = distance2;
+          gridPoint     = grid[ i ][ j ];
+          gridDistance2 = distance2;
         }
       }
     }
+
+    glm::dvec2 bestGuess    = gridGuess;
+    glm::dvec3 bestPoint    = gridPoint;
+    double     minDistance2 = gridDistance2;
+
+    bool usedContinuitySeed = false;
 
     // Continuity seed: the uv this method returned for the PREVIOUS query,
     // offered as one more seed candidate and kept only when it is nearer in
@@ -3791,12 +3797,14 @@ struct RationalNurbsInverseMethod {
     // converge. With this seed the same face reaches median 1.3e-5, 100%
     // converged, and ONE reversal.
     //
-    // Kept as a candidate rather than used unconditionally, and this is the
-    // load-bearing half: a bare previous-point chain has no way back once
-    // one query lands badly, and measured worse tails than the grid on two
-    // of twelve faces. Taking the nearest of {grid best, previous} can only
-    // lower the seed distance, so the grid stays as the escape hatch for a
-    // query the chain cannot reach.
+    // Kept as a candidate rather than used unconditionally: a bare
+    // previous-point chain has no way back once one query lands badly, and
+    // measured worse tails than the grid on two of twelve faces.
+    //
+    // Note what this comparison does and does NOT establish. It picks the
+    // nearer SEED, which is not the same as the nearer answer - see the
+    // retry below, which is where the grid actually becomes an escape hatch
+    // rather than a discarded alternative.
     //
     // Deliberately NOT reset between bounds. A fresh loop's first query is
     // unrelated to the previous loop's last, but an unrelated candidate is
@@ -3813,11 +3821,82 @@ struct RationalNurbsInverseMethod {
 
       if ( distance2 < minDistance2 ) {
 
-        bestGuess    = previousSolution_;
-        bestPoint    = previousPoint;
-        minDistance2 = distance2;
+        bestGuess          = previousSolution_;
+        bestPoint          = previousPoint;
+        minDistance2       = distance2;
+        usedContinuitySeed = true;
       }
     }
+
+    double     solvedDistance2 = 0.0;
+    glm::dvec2 solution        =
+      solveFromSeed( point, bestGuess, bestPoint, minDistance2, solvedDistance2 );
+
+    // Retry from the grid seed when the continuity seed did not get there,
+    // and keep whichever solve ended NEARER - by final residual, not by seed
+    // distance.
+    //
+    // This is what makes "the grid is still the escape hatch" a mechanism
+    // rather than a claim, and it is a correctness fix rather than a
+    // refinement (codex on conway-geom#186). A nearer seed does not imply a
+    // nearer answer: Armijo guarantees decrease only from the seed actually
+    // chosen, so a previous solution that is closer in 3D but sits in a
+    // poorer basin displaces a grid seed whose outcome is never computed and
+    // therefore never compared. Choosing on seed distance alone made that
+    // trade blind, and on an unseen model nothing bounds how bad the
+    // discarded alternative was.
+    //
+    // Measured before this retry existed: 178 of 721 b-spline faces on
+    // Orbiter ended at a HIGHER residual than the grid-only solve. That
+    // population is exactly this failure, and comparing final residuals
+    // retires it.
+    //
+    // Cost is bounded to the calls that need it - only a non-converged solve
+    // that took the continuity seed retries, and it retries once.
+    if ( usedContinuitySeed &&
+         solvedDistance2 > convergence_error * convergence_error ) {
+
+      double     gridSolvedDistance2 = 0.0;
+      glm::dvec2 gridSolution        =
+        solveFromSeed(
+          point, gridGuess, gridPoint, gridDistance2, gridSolvedDistance2 );
+
+      if ( gridSolvedDistance2 < solvedDistance2 ) {
+
+        solution        = gridSolution;
+        solvedDistance2 = gridSolvedDistance2;
+      }
+    }
+
+    previousSolution_    = solution;
+    hasPreviousSolution_ = true;
+
+    return solution;
+  }
+
+ private:
+
+  /**
+   * Damped Gauss-Newton descent from a caller-supplied seed.
+   *
+   * Split out of operator() so the same descent can be run twice from
+   * different seeds and the results compared on their FINAL residual - see
+   * the retry in operator().
+   *
+   * @param point          The 3D point being inverted.
+   * @param bestGuess      Seed uv, taken by value and refined in place.
+   * @param bestPoint      surface( bestGuess ), so the caller's existing
+   *                       evaluation is not repeated.
+   * @param minDistance2   | bestPoint - point |^2, likewise.
+   * @param solvedDistance2 Out: the squared residual the descent ended at.
+   * @return The uv it ended at.
+   */
+  glm::dvec2 solveFromSeed(
+      const glm::dvec3& point,
+      glm::dvec2        bestGuess,
+      glm::dvec3        bestPoint,
+      double            minDistance2,
+      double&           solvedDistance2 ) const {
 
     size_t iteration = 0;
 
@@ -3911,11 +3990,12 @@ struct RationalNurbsInverseMethod {
       }
     }
 
-    previousSolution_    = bestGuess;
-    hasPreviousSolution_ = true;
+    solvedDistance2 = minDistance2;
 
     return bestGuess;
   }
+
+ public:
 
 };
 
