@@ -3604,6 +3604,36 @@ struct RationalNurbsInverseMethod {
   glm::dvec2 previousSolution_    = glm::dvec2( 0.0 );
   bool       hasPreviousSolution_ = false;
 
+  /**
+   * Drop the continuity memo, so the next query is seeded from the grid
+   * alone.
+   *
+   * Call this at every boundary-loop transition. The continuity seed's whole
+   * justification is that consecutive queries are a CHORD apart on one
+   * ordered polyline; across two different trim loops of the same face there
+   * is no such relationship, and the last point of one loop can still be
+   * near enough in 3D to beat every grid sample and win the seed for the
+   * first point of the next.
+   *
+   * That is not merely a worse seed, and it is the one failure the retry in
+   * operator() cannot catch (codex, second pass on conway-geom#186). On a
+   * folded, self-near or multiply-covered support surface the cross-loop
+   * seed can converge cleanly onto a DIFFERENT sheet or preimage - and since
+   * the retry is gated on non-convergence, a successful-but-wrong result
+   * never triggers it. The bad uv then seeds the rest of that loop, and
+   * earcut receives a misplaced hole, which on an inner trim loop is exactly
+   * the defect conway#594 is about, relocated rather than removed.
+   *
+   * Measured on the locally materialised corpus, the cross-loop seed never
+   * actually won: see the count in conway-geom#186. So this is a latent bug
+   * being closed, not an observed one - but nothing about an unseen model
+   * bounds it, and the invariant is cheap to enforce and was previously only
+   * asserted.
+   */
+  void resetContinuity() {
+    hasPreviousSolution_ = false;
+  }
+
   RationalNurbsInverseMethod( const tinynurbs::RationalSurface3d& srf )
     : surface( srf ), evaluator( srf ) {
 
@@ -3806,10 +3836,12 @@ struct RationalNurbsInverseMethod {
     // retry below, which is where the grid actually becomes an escape hatch
     // rather than a discarded alternative.
     //
-    // Deliberately NOT reset between bounds. A fresh loop's first query is
-    // unrelated to the previous loop's last, but an unrelated candidate is
-    // simply further away and loses the comparison; adding a reset would be
-    // untested state for no measured gain.
+    // Scoped to ONE ordered polyline: callers must call resetContinuity()
+    // at every boundary-loop transition, and TriangulateBspline does. The
+    // first commit left the memo running across loops, reasoning that an
+    // unrelated candidate is simply further away and loses the comparison.
+    // That reasoning is wrong, and it is wrong in the one way the retry
+    // below cannot cover - see resetContinuity().
     if ( hasPreviousSolution_ ) {
 
       glm::dvec3 previousPoint =
@@ -4199,6 +4231,10 @@ inline void TriangulateBspline(Geometry &geometry,
     for ( size_t i = 0; i < bounds.size(); ++i ) {
 
       std::vector<Point> points;
+
+      // Each bound is its own ordered polyline; the continuity seed is only
+      // meaningful within one. See RationalNurbsInverseMethod::resetContinuity.
+      bSplineInverseEvaluation.resetContinuity();
 
       for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
         glm::dvec3 pt = bounds[i].curve.points[j];
