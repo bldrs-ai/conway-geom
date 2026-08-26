@@ -434,7 +434,13 @@ inline std::vector<glm::dvec3> GetRationalBSplineCurveWithKnots(
 
   double maxDeflection2 = relativeCurveDeflectionSquared( points );
 
-  double acceptedT = 0;
+  // acceptedT tracks the parameter of result.back(), so it starts where the
+  // sampling starts. Initialising it to 0 regardless made every deltaT — and
+  // therefore every interior sample — a parameter measured from the start of
+  // the whole curve rather than from the start of the trim. Harmless for an
+  // untrimmed extraction (tStart is 0 there, which is why it survived), wrong
+  // for every trimmed one. See bldrs-ai/conway#594.
+  double acceptedT = tStart;
 
   result.push_back(InterpolateRationalBSplineCurveWithKnots(tStart, degree, points,
                                                             knots, weights));
@@ -481,12 +487,21 @@ inline std::vector<glm::dvec2> GetRationalBSplineCurveWithKnots(
 
   double maxDeflection2 = relativeCurveDeflectionSquared( points );
 
-  double acceptedT = 0;
+  // acceptedT tracks the parameter of result.back(), so it starts where the
+  // sampling starts. Initialising it to 0 regardless made every deltaT — and
+  // therefore every interior sample — a parameter measured from the start of
+  // the whole curve rather than from the start of the trim. Harmless for an
+  // untrimmed extraction (tStart is 0 there, which is why it survived), wrong
+  // for every trimmed one. See bldrs-ai/conway#594.
+  double acceptedT = tStart;
 
   result.push_back(InterpolateRationalBSplineCurveWithKnots( tStart, degree, points,
                                                             knots, weights));
 
-  spanStack.emplace_back(1, InterpolateRationalBSplineCurveWithKnots(
+  // tEnd, not a hardcoded 1: the stacked parameter has to match the point
+  // stacked beside it, or the subdivision walks a different interval from the
+  // one it is sampling. The 3D overload above always had this right.
+  spanStack.emplace_back(tEnd, InterpolateRationalBSplineCurveWithKnots(
                                 tEnd, degree, points, knots, weights));
 
   while (!spanStack.empty()) {

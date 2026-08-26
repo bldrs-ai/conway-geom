@@ -2453,9 +2453,26 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
       } else {
 
-        double tMin = parameters.knots[ degree ];
-        double tMax = parameters.knots[ parameters.knots.size() - ( degree + 1 ) ];
-            
+        // InterpolateRationalBSplineCurveWithKnots takes a NORMALISED
+        // parameter: its first act is tPrime = t * (high - low) + low, where
+        // low/high are the ends of the curve's own knot domain. So the
+        // interval to search for a cartesian trim is [0, 1], always — and
+        // never the raw knot values, which is what this used to read.
+        //
+        // Reading the knot array here was correct only for an exporter that
+        // happened to normalise its knots to [0, 1]; anything else searched a
+        // wrong sub-interval, and a domain lying entirely outside [0, 1]
+        // collapsed to a point. The clamp on the 3D branch turned that
+        // collapse into a silent one rather than an out-of-range bisection —
+        // it arrived with the trimming feature itself (d5ecd77) and was never
+        // a fix for a specific model. On Orbiter_v1.1_Gear_7.5.step the thread
+        // helices carry domains like [-1.418, -0.473] and [59.691, 65.974], so
+        // tMin and tMax both clamped to 0 (or both to 1) and the edge came back
+        // as its two endpoints — a chord where a helical arc belongs, and the
+        // cause of both failure modes in bldrs-ai/conway#594.
+        constexpr double tMin = 0.0;
+        constexpr double tMax = 1.0;
+
         tStart = best_fit_param_bisection( [&]( double value ) {
 
           glm::dvec2 pointOnCurve = InterpolateRationalBSplineCurveWithKnots( 
@@ -2522,11 +2539,13 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
       } else {
 
-        double tMin = parameters.knots[ degree ];
-        double tMax = parameters.knots[ parameters.knots.size() - ( degree + 1 ) ];
-        
-        tMin = std::clamp( tMin, 0., 1.0 );
-        tMax = std::clamp( tMax, 0., 1.0 );
+        // The normalised trim-search interval — see the 2D branch above for
+        // why it is [0, 1] and not the curve's knot values. This branch also
+        // used to clamp those values into [0, 1], which is what turned an
+        // out-of-domain knot vector into a silently collapsed edge rather than
+        // an out-of-range bisection (bldrs-ai/conway#594).
+        constexpr double tMin = 0.0;
+        constexpr double tMax = 1.0;
 
         tStart = best_fit_param_bisection( [&]( double value ) {
 
@@ -2541,9 +2560,21 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getBSplineCurve(
 
         }, tMin, tMax );
 
+        // dvec3, not dvec2. This is the 3D branch: the interpolation is over
+        // points3 and the target is trim2Cartesian3D, so declaring the
+        // difference as a dvec2 silently dropped z through GLM's implicit
+        // vec2(vec3) conversion and minimised XY distance alone. The tStart
+        // lambda above always had this right; only tEnd was truncated.
+        //
+        // It was dormant while this branch clamped tMin/tMax onto a single
+        // point - the bisection had nothing to search. Searching [0, 1] makes
+        // it decide the trim, and it decides it worst on exactly the geometry
+        // this fix is for: the XY projection of a helix is a circle walked
+        // once per turn, so every turn scores ~0 and the solve returns an
+        // arbitrary one. See bldrs-ai/conway#594.
         tEnd = best_fit_param_bisection( [&]( double value ) {
 
-          glm::dvec2 pointOnCurve = InterpolateRationalBSplineCurveWithKnots( 
+          glm::dvec3 pointOnCurve = InterpolateRationalBSplineCurveWithKnots( 
             value,
             degree,
             parameters.points3,
