@@ -3593,6 +3593,47 @@ struct RationalNurbsInverseMethod {
   /** Convergence target for the solve, scaled to this surface's extent. */
   double convergence_error;
 
+  /**
+   * The uv returned by the last operator() call, offered as a seed candidate
+   * to the next one - see the continuity-seed comment in operator().
+   *
+   * Per-face state on a per-face object: TriangulateBspline constructs one
+   * of these per face and inverts that face's boundary on one thread, so
+   * there is no sharing to guard.
+   */
+  glm::dvec2 previousSolution_    = glm::dvec2( 0.0 );
+  bool       hasPreviousSolution_ = false;
+
+  /**
+   * Drop the continuity memo, so the next query is seeded from the grid
+   * alone.
+   *
+   * Call this at every boundary-loop transition. The continuity seed's whole
+   * justification is that consecutive queries are a CHORD apart on one
+   * ordered polyline; across two different trim loops of the same face there
+   * is no such relationship, and the last point of one loop can still be
+   * near enough in 3D to beat every grid sample and win the seed for the
+   * first point of the next.
+   *
+   * That is not merely a worse seed, and it is the one failure the retry in
+   * operator() cannot catch (codex, second pass on conway-geom#186). On a
+   * folded, self-near or multiply-covered support surface the cross-loop
+   * seed can converge cleanly onto a DIFFERENT sheet or preimage - and since
+   * the retry is gated on non-convergence, a successful-but-wrong result
+   * never triggers it. The bad uv then seeds the rest of that loop, and
+   * earcut receives a misplaced hole, which on an inner trim loop is exactly
+   * the defect conway#594 is about, relocated rather than removed.
+   *
+   * Measured on the locally materialised corpus, the cross-loop seed never
+   * actually won: see the count in conway-geom#186. So this is a latent bug
+   * being closed, not an observed one - but nothing about an unseen model
+   * bounds it, and the invariant is cheap to enforce and was previously only
+   * asserted.
+   */
+  void resetContinuity() {
+    hasPreviousSolution_ = false;
+  }
+
   RationalNurbsInverseMethod( const tinynurbs::RationalSurface3d& srf )
     : surface( srf ), evaluator( srf ) {
 
@@ -3726,12 +3767,12 @@ struct RationalNurbsInverseMethod {
         std::min( convergence_error, trimDiagonal * RELATIVE_INVERSE_ERROR ) );
   }
 
-  glm::dvec2 operator()( const glm::dvec3& point ) const {
+  glm::dvec2 operator()( const glm::dvec3& point ) {
 
-    glm::dvec2 bestGuess;
-    glm::dvec3 bestPoint;
-    double     minDistance2 = DBL_MAX;
-    
+    glm::dvec2 gridGuess;
+    glm::dvec3 gridPoint;
+    double     gridDistance2 = DBL_MAX;
+
     // Take initial guess from the grid.
     for ( size_t i = 0; i < INVERSE_GRID_SIDE; ++i ) {
       for ( size_t j = 0; j < INVERSE_GRID_SIDE; ++j ) {
@@ -3740,20 +3781,154 @@ struct RationalNurbsInverseMethod {
 
         double distance2 = glm::dot( deltaP, deltaP );
 
-        if ( distance2 < minDistance2 ) {
+        if ( distance2 < gridDistance2 ) {
 
-          bestGuess =
+          gridGuess =
             min_extent + 
             ( max_extent - min_extent ) * 
             glm::dvec2( 
               static_cast< double >( i ) * INVERSE_GRID_FACTOR,
               static_cast< double >( j ) * INVERSE_GRID_FACTOR );
 
-          bestPoint    = grid[ i ][ j ];
-          minDistance2 = distance2;
+          gridPoint     = grid[ i ][ j ];
+          gridDistance2 = distance2;
         }
       }
     }
+
+    glm::dvec2 bestGuess    = gridGuess;
+    glm::dvec3 bestPoint    = gridPoint;
+    double     minDistance2 = gridDistance2;
+
+    bool usedContinuitySeed = false;
+
+    // Continuity seed: the uv this method returned for the PREVIOUS query,
+    // offered as one more seed candidate and kept only when it is nearer in
+    // 3D than every grid sample.
+    //
+    // The callers invert an ORDERED boundary polyline, so consecutive
+    // queries are a chord apart - 0.116 model units on the Orbiter thread
+    // ribbons - while the 8x8 grid spans the whole support surface, whose
+    // own diagonal is 20. A seed three orders of magnitude closer is not a
+    // speed optimisation; on a swept surface it is the difference between
+    // converging and not.
+    //
+    // Why the grid alone fails there (bldrs-ai/conway#594). A thread
+    // modelled as a swept NURBS ribbon runs ~7 turns down v, so an 8x8 grid
+    // places barely one sample per turn and the nearest one routinely
+    // belongs to a NEIGHBOURING turn - which passes within 0.118 of the
+    // query. Gauss-Newton then descends in that turn's basin, and 50
+    // iterations of a basin that does not contain the answer end at
+    // MAX_ITERATION with a residual of ~0.9 rather than the 2e-5 target.
+    // Measured on face #51059 of solid 971: median residual 0.880, only
+    // 18.1% of 5,089 boundary points reaching the target, 238 single-turn
+    // jumps and 137 v-direction reversals in what should be a ribbon
+    // boundary with two. Model-wide, 71% of 53,981 solves failed to
+    // converge. With this seed the same face reaches median 1.3e-5, 100%
+    // converged, and ONE reversal.
+    //
+    // Kept as a candidate rather than used unconditionally: a bare
+    // previous-point chain has no way back once one query lands badly, and
+    // measured worse tails than the grid on two of twelve faces.
+    //
+    // Note what this comparison does and does NOT establish. It picks the
+    // nearer SEED, which is not the same as the nearer answer - see the
+    // retry below, which is where the grid actually becomes an escape hatch
+    // rather than a discarded alternative.
+    //
+    // Scoped to ONE ordered polyline: callers must call resetContinuity()
+    // at every boundary-loop transition, and TriangulateBspline does. The
+    // first commit left the memo running across loops, reasoning that an
+    // unrelated candidate is simply further away and loses the comparison.
+    // That reasoning is wrong, and it is wrong in the one way the retry
+    // below cannot cover - see resetContinuity().
+    if ( hasPreviousSolution_ ) {
+
+      glm::dvec3 previousPoint =
+        evaluator.point( previousSolution_.x, previousSolution_.y );
+
+      glm::dvec3 deltaP = previousPoint - point;
+
+      double distance2 = glm::dot( deltaP, deltaP );
+
+      if ( distance2 < minDistance2 ) {
+
+        bestGuess          = previousSolution_;
+        bestPoint          = previousPoint;
+        minDistance2       = distance2;
+        usedContinuitySeed = true;
+      }
+    }
+
+    double     solvedDistance2 = 0.0;
+    glm::dvec2 solution        =
+      solveFromSeed( point, bestGuess, bestPoint, minDistance2, solvedDistance2 );
+
+    // Retry from the grid seed when the continuity seed did not get there,
+    // and keep whichever solve ended NEARER - by final residual, not by seed
+    // distance.
+    //
+    // This is what makes "the grid is still the escape hatch" a mechanism
+    // rather than a claim, and it is a correctness fix rather than a
+    // refinement (codex on conway-geom#186). A nearer seed does not imply a
+    // nearer answer: Armijo guarantees decrease only from the seed actually
+    // chosen, so a previous solution that is closer in 3D but sits in a
+    // poorer basin displaces a grid seed whose outcome is never computed and
+    // therefore never compared. Choosing on seed distance alone made that
+    // trade blind, and on an unseen model nothing bounds how bad the
+    // discarded alternative was.
+    //
+    // Measured before this retry existed: 178 of 721 b-spline faces on
+    // Orbiter ended at a HIGHER residual than the grid-only solve. That
+    // population is exactly this failure, and comparing final residuals
+    // retires it.
+    //
+    // Cost is bounded to the calls that need it - only a non-converged solve
+    // that took the continuity seed retries, and it retries once.
+    if ( usedContinuitySeed &&
+         solvedDistance2 > convergence_error * convergence_error ) {
+
+      double     gridSolvedDistance2 = 0.0;
+      glm::dvec2 gridSolution        =
+        solveFromSeed(
+          point, gridGuess, gridPoint, gridDistance2, gridSolvedDistance2 );
+
+      if ( gridSolvedDistance2 < solvedDistance2 ) {
+
+        solution        = gridSolution;
+        solvedDistance2 = gridSolvedDistance2;
+      }
+    }
+
+    previousSolution_    = solution;
+    hasPreviousSolution_ = true;
+
+    return solution;
+  }
+
+ private:
+
+  /**
+   * Damped Gauss-Newton descent from a caller-supplied seed.
+   *
+   * Split out of operator() so the same descent can be run twice from
+   * different seeds and the results compared on their FINAL residual - see
+   * the retry in operator().
+   *
+   * @param point          The 3D point being inverted.
+   * @param bestGuess      Seed uv, taken by value and refined in place.
+   * @param bestPoint      surface( bestGuess ), so the caller's existing
+   *                       evaluation is not repeated.
+   * @param minDistance2   | bestPoint - point |^2, likewise.
+   * @param solvedDistance2 Out: the squared residual the descent ended at.
+   * @return The uv it ended at.
+   */
+  glm::dvec2 solveFromSeed(
+      const glm::dvec3& point,
+      glm::dvec2        bestGuess,
+      glm::dvec3        bestPoint,
+      double            minDistance2,
+      double&           solvedDistance2 ) const {
 
     size_t iteration = 0;
 
@@ -3847,8 +4022,12 @@ struct RationalNurbsInverseMethod {
       }
     }
 
+    solvedDistance2 = minDistance2;
+
     return bestGuess;
   }
+
+ public:
 
 };
 
@@ -4052,6 +4231,10 @@ inline void TriangulateBspline(Geometry &geometry,
     for ( size_t i = 0; i < bounds.size(); ++i ) {
 
       std::vector<Point> points;
+
+      // Each bound is its own ordered polyline; the continuity seed is only
+      // meaningful within one. See RationalNurbsInverseMethod::resetContinuity.
+      bSplineInverseEvaluation.resetContinuity();
 
       for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
         glm::dvec3 pt = bounds[i].curve.points[j];
