@@ -4137,6 +4137,59 @@ struct RationalNurbsInverseMethod {
   }
 
   /**
+   * Bring a uv back into the parameter domain: by WRAPPING on an axis the
+   * surface is closed in, by clamping on one it is not.
+   *
+   * The descent below has to leave the domain to reach some answers. Where a
+   * surface is closed in u, uMin and uMax name the same 3D curve, so stepping
+   * off one end is stepping onto the other and the step is not leaving the
+   * surface at all - it is crossing the seam. Clamping treats that crossing
+   * as a wall: the step is truncated to zero length, the Armijo trial
+   * measures no movement, every alpha is rejected, damping grows, and the
+   * solve returns its own seed.
+   *
+   * Measured on `ADVANCED_FACE #50977` of `MANIFOLD_SOLID_BREP #970` ("Spring
+   * v1", step/conor/Orbiter_v1.1_Gear_7.5.step): boundary point 88 of 174 is
+   * seeded at ( -pi, 43.982297 ) - the domain corner, which is where the
+   * preceding seam point sits - and its Gauss-Newton direction points to
+   * u < -pi. All 21 Armijo trials evaluate the seed unchanged, and the solve
+   * reports ( -pi, 43.982297 ) at a residual of 0.1226 against a target of
+   * 1.19e-05. The answer is at u ~ 2.8687, one seam crossing away, and the
+   * surface is smooth all the way there: sampling u down from pi walks the
+   * residual 0.1226 -> 0.0104 with the minimum in between. Nothing about the
+   * geometry stops the descent; only the clamp does.
+   *
+   * Closure is the same fact seamContinuousSolution uses, read from the
+   * control grid rather than measured, so this introduces no tolerance and no
+   * constant. On a surface closed in neither parameter every call is the
+   * previous glm::clamp, unchanged.
+   *
+   * @param uv A uv that may lie outside the domain.
+   * @return The equivalent uv inside it.
+   */
+  glm::dvec2 domainRepresentative( glm::dvec2 uv ) const {
+
+    for ( int axis = 0; axis < 2; ++axis ) {
+
+      const double period = max_extent[ axis ] - min_extent[ axis ];
+
+      if ( ( axis == 0 ? closedU_ : closedV_ ) && period > 0.0 ) {
+
+        const double offset = uv[ axis ] - min_extent[ axis ];
+
+        uv[ axis ] =
+          min_extent[ axis ] + ( offset - ( period * std::floor( offset / period ) ) );
+
+      } else {
+
+        uv[ axis ] = glm::clamp( uv[ axis ], min_extent[ axis ], max_extent[ axis ] );
+      }
+    }
+
+    return uv;
+  }
+
+  /**
    * Damped Gauss-Newton descent from a caller-supplied seed.
    *
    * Split out of operator() so the same descent can be run twice from
@@ -4195,9 +4248,24 @@ struct RationalNurbsInverseMethod {
 
       while ( alpha > ALPHA_ERROR ) {
 
-        glm::dvec2 newGuessUV = bestGuess - deltaUV * alpha;
+        glm::dvec2 newGuessUV = domainRepresentative( bestGuess - deltaUV * alpha );
 
-        newGuessUV = glm::clamp( newGuessUV, min_extent, max_extent );
+        // The displacement actually made, which is what Armijo's predicted
+        // decrease has to be measured against. It is `deltaUV * alpha` except
+        // where the domain intervened: clamped short on an open axis, or
+        // carried a whole period on a closed one, where the shortest
+        // representative is the real movement and the period is bookkeeping.
+        glm::dvec2 taken = bestGuess - newGuessUV;
+
+        for ( int axis = 0; axis < 2; ++axis ) {
+
+          const double period = max_extent[ axis ] - min_extent[ axis ];
+
+          if ( ( axis == 0 ? closedU_ : closedV_ ) && period > 0.0 ) {
+
+            taken[ axis ] -= period * std::round( taken[ axis ] / period );
+          }
+        }
 
         glm::dvec3 newPoint =
           evaluator.point( newGuessUV.x, newGuessUV.y );
@@ -4207,7 +4275,7 @@ struct RationalNurbsInverseMethod {
         double newDistance2 = glm::dot( newDeltaP, newDeltaP );
 
         if ( newDistance2 <
-             minDistance2 - ARMIJO_COEFFICIENT * alpha * glm::dot( deltaUV, jte ) ) {
+             minDistance2 - ARMIJO_COEFFICIENT * glm::dot( taken, jte ) ) {
 
           bestPoint = newPoint;
           bestGuess = newGuessUV;
@@ -4750,27 +4818,18 @@ inline bool tryFullCoverageSeamGrid(
       // either four distinct boundary vertices or freshly made ones - so this
       // is defensive, and on `#50977` it never fires.
       //
-      // What it deliberately does NOT catch, because index identity cannot
-      // see it, is a cell whose corners are distinct VERTICES sharing a
-      // PARAMETER. That happens here: boundary point 88 of 174 - the first
-      // ring point after the seam at v = vMax - inverts to the seam's own
-      // u = pi rather than to its true u ~ 2.8687, because the descent in
-      // solveFromSeed cannot step across a closed surface's seam (its
-      // Gauss-Newton direction leaves the u domain and glm::clamp pins it, so
-      // every Armijo trial takes a zero-length step and the solve returns its
-      // seed at a residual of 0.1226 against a 1.19e-05 target). Columns 0
-      // and 1 then carry the same u, every interior row evaluates them to the
-      // same point, and Geometry::Reify's weld merges them - which leaves 249
-      // duplicated half-edges along the seam generatrix out of 34,047, and
-      // two zero-area triangles.
-      //
-      // Not repaired here, and deliberately not: the column parameters are
-      // the model's own inverse solve, and synthesising a replacement for one
-      // of them would be inventing the geometry this path exists to read. The
-      // artifact is topological rather than visible - the columns coincide in
-      // 3D, so the tube still closes and no hole appears - and the fix belongs
-      // in the descent's domain handling, which is a corpus-wide change and
-      // is filed separately. See bldrs-ai/conway#611.
+      // Note what index identity CANNOT see: a cell whose corners are
+      // distinct VERTICES sharing a PARAMETER. Two grid columns at the same u
+      // evaluate to the same point on every interior row, Geometry::Reify's
+      // weld merges them, and the cells between them vanish - leaving
+      // duplicated half-edges along a whole generatrix that no test here
+      // would catch. That is not hypothetical: it is what this face did until
+      // domainRepresentative() taught the descent to cross a closed surface's
+      // seam, and it cost 249 duplicated half-edges of 34,047 plus two
+      // zero-area triangles. A parametric duplicate is a defect in the
+      // inverse solve, and it has to be fixed there - synthesising a
+      // replacement parameter here would invent the geometry this path exists
+      // to read. See bldrs-ai/conway#611.
       if ( a != b && b != c && c != a ) {
         mesh.makeTriangle( a, b, c );
       }
