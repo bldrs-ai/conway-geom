@@ -259,6 +259,20 @@ struct IfcBound3D {
   IfcBoundType type;
   bool orientation;
   IfcCurve curve;
+
+  /**
+   * This bound's loop retraces itself - every edge traversed exactly twice,
+   * once in each direction - so it encloses no area and cannot trim.
+   *
+   * A topological fact, decided by the front end where the ORIENTED_EDGEs are
+   * still visible, not re-derived from the point list here. Per ISO 10303-42
+   * it means the face covers the WHOLE surface, the same as a VERTEX_LOOP.
+   * See TriangulateSphericalSurface and bldrs-ai/conway#595.
+   *
+   * Defaults false: a front end that does not set it gets exactly today's
+   * behaviour.
+   */
+  bool seam = false;
 };
 
 struct Cone {

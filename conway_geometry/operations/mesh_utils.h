@@ -1387,7 +1387,56 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
   const size_t boundaryPointCount =
     bounds.size() == 1 ? bounds[ 0 ].curve.points.size() : MINIMUM_TRIM_POINTS;
 
-  if ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) {
+  // The OTHER spelling of "this face is the whole surface": a SEAM loop.
+  //
+  // The VERTEX_LOOP case above is how OCCT writes a plain sphere. ISO
+  // 10303-42 also permits the seam form, and this file uses it - a single
+  // EDGE_LOOP walking ONE great circle forward and then reversed:
+  //
+  //   #50626 = ADVANCED_FACE( '', ( #6222 ), #238, .T. )   <- SPHERICAL_SURFACE r=0.9
+  //     EDGE_LOOP #9128:  ORIENTED_EDGE #41053 .T.  EDGE_CURVE #28750
+  //                       ORIENTED_EDGE #41054 .F.  EDGE_CURVE #28750
+  //
+  // That loop retraces itself, so it encloses no area and cannot trim
+  // anything; like the VERTEX_LOOP it means full coverage. But it arrives as
+  // 47 points rather than 1, so the point-count test above does not see it,
+  // and it fell through to the dual-hemisphere unwrap. There the failure is
+  // total and silent: the retraced curve is a MERIDIAN, running pole to pole
+  // (measured: the boundary's local z spans -1.0 to +1.0, the only spherical
+  // face in the corpus that does), so the hemisphere classifier splits it
+  // into two pole-to-pole arcs, neither of which encloses area in its chart,
+  // and both CDTs return nothing. `_MR148ZZ Ball` on
+  // step/conor/Orbiter_v1.1_Gear_7.5.step - solid 960, the bearing ball -
+  // came out as 24 vertices and 0 triangles, i.e. absent
+  // (bldrs-ai/conway#595, bldrs-ai/test-models-private#93).
+  //
+  // `bound.seam` is decided by the front end, where the ORIENTED_EDGEs are
+  // still visible, and is a TOPOLOGICAL fact: every edge of the loop
+  // traversed exactly twice, once in each direction.
+  //
+  // It deliberately replaces a geometric predicate. The first version of this
+  // fix tested the loop's own vector area normalised by perimeter squared,
+  // which separated the corpus by fourteen orders of magnitude - and was
+  // still wrong, because it identifies LOW ENCLOSED AREA rather than
+  // retracing. A thin spherical lune's area/perimeter^2 falls continuously
+  // toward zero as its angular width shrinks (for width w it is about
+  // w / (2*pi^2)), so below some width a GENUINE narrow trim would have been
+  // silently replaced by the entire sphere - inflated bounds, spurious
+  // volume, occlusion, and no warning, because emitting triangles suppresses
+  // the contributed-no-geometry message. That the corpus never came within
+  // five decades of the threshold was a fact about the corpus, not about the
+  // code. Found by codex on bldrs-ai/conway-geom#187.
+  //
+  // The topological test cannot fail that way at any width: a lune is bounded
+  // by two DIFFERENT edge curves, so no width makes it a retrace. It also
+  // needs no tolerance, which the area test did.
+  const bool retracingSeam =
+    bounds.size() == 1 &&
+    bounds[ 0 ].seam &&
+    boundaryPointCount >= MINIMUM_TRIM_POINTS;
+
+  if ( ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) ||
+       retracingSeam ) {
 
     // Longitude x latitude divisions. Matched to the torus grid's angular
     // density; the sphere is closed in theta but not in phi, so the poles
