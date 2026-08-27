@@ -3654,6 +3654,17 @@ struct RationalNurbsInverseMethod {
   bool       hasPreviousSolution_ = false;
 
   /**
+   * Is the support surface CLOSED in u / in v - does the first row (column)
+   * of control points coincide with the last?
+   *
+   * When it is, the two ends of that parameter's domain name the SAME 3D
+   * curve, so a point on the seam has two exact preimages and no residual can
+   * tell them apart. See seamContinuousSolution().
+   */
+  bool closedU_ = false;
+  bool closedV_ = false;
+
+  /**
    * Drop the continuity memo, so the next query is seeded from the grid
    * alone.
    *
@@ -3776,6 +3787,57 @@ struct RationalNurbsInverseMethod {
       std::max(
         MIN_INVERSE_ERROR,
         glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
+
+    // Closure, from the control grid rather than by sampling: a b-spline
+    // surface is closed in a parameter exactly when the first and last rows
+    // (columns) of control points coincide, and that is a property of the
+    // definition rather than a measurement of it.
+    //
+    // "Coincide" is judged at the same tolerance the solve uses to call two
+    // points the same point, so no new constant is introduced. On the surface
+    // this was written for the rows are bitwise equal - the seam of
+    // `B_SPLINE_SURFACE_WITH_KNOTS #1553` matches to 0.0 across all 84
+    // columns - but an exporter that round-trips through floats needs the
+    // slack, and a surface that is merely NEAR closed is one where the
+    // wrap below would be rejected by its own residual test anyway.
+    const double closureTolerance =
+      std::max( MIN_INVERSE_ERROR,
+                glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
+
+    const size_t rows = surface.control_points.rows();
+    const size_t cols = surface.control_points.cols();
+
+    if ( rows > 1 && cols > 0 ) {
+
+      closedU_ = true;
+
+      for ( size_t col = 0; col < cols; ++col ) {
+
+        if ( glm::distance( surface.control_points( 0, col ),
+                            surface.control_points( rows - 1, col ) ) >
+             closureTolerance ) {
+
+          closedU_ = false;
+          break;
+        }
+      }
+    }
+
+    if ( cols > 1 && rows > 0 ) {
+
+      closedV_ = true;
+
+      for ( size_t row = 0; row < rows; ++row ) {
+
+        if ( glm::distance( surface.control_points( row, 0 ),
+                            surface.control_points( row, cols - 1 ) ) >
+             closureTolerance ) {
+
+          closedV_ = false;
+          break;
+        }
+      }
+    }
   }
 
   /**
@@ -3949,6 +4011,8 @@ struct RationalNurbsInverseMethod {
       }
     }
 
+    solution = seamContinuousSolution( point, solution );
+
     previousSolution_    = solution;
     hasPreviousSolution_ = true;
 
@@ -3956,6 +4020,121 @@ struct RationalNurbsInverseMethod {
   }
 
  private:
+
+  /**
+   * On a surface closed in u or v, re-express a solved uv on the branch that
+   * is CONTINUOUS with the previous boundary point.
+   *
+   * Why a converged solve can still be the wrong answer. Where a surface is
+   * closed, the two ends of that parameter's domain are the same 3D curve:
+   * S( uMin, v ) is identically S( uMax, v ). Every point on that seam
+   * therefore has TWO exact preimages, and both have the same residual - zero
+   * - so the retry in operator() cannot see the difference. Its gate asks
+   * "did this converge?", and the wrong answer converges perfectly. That is
+   * the failure resetContinuity()'s comment names as the one the retry cannot
+   * catch, met here in its own right rather than across loops.
+   *
+   * It matters because the consumer is EARCUT, which reads the uv polyline as
+   * a polygon. A trimmed face on a closed surface is bounded by the seam
+   * TWICE - once at each end of the domain - and in this file that is not an
+   * inference: `ADVANCED_FACE #50977` of `MANIFOLD_SOLID_BREP #970` ("Spring
+   * v1") on `step/conor/Orbiter_v1.1_Gear_7.5.step` has an EDGE_LOOP of four
+   * edges of which two are the SAME `EDGE_CURVE #29690`, once forward and
+   * once reversed. Those two legs are identical in 3D and can only be told
+   * apart by which side of the seam they are on. Solved independently they
+   * both land on whichever side the seed happened to favour, the rectangle
+   * earcut should have received collapses onto its own edge, and the
+   * triangulation that comes back joins opposite sides of the coil: 404 edges
+   * longer than 3.0 on a spring whose outer diameter is 6.9, and 54 zero-area
+   * triangles out of 287 (bldrs-ai/conway#611).
+   *
+   * The correction is a branch choice, not a tolerance. A jump of more than
+   * HALF the parameter's own period between consecutive points on one ordered
+   * polyline cannot be a chord; the shorter way round is the continuous one,
+   * so the solution is re-expressed there. Half a period is the standard
+   * branch-continuity criterion and is read from the surface's own knot
+   * domain, so nothing here is scaled to a model.
+   *
+   * Two things keep it from inventing geometry:
+   *
+   * - It runs only where the control grid says the surface is CLOSED, so the
+   *   two representatives really are the same point.
+   * - It is accepted only if the re-expressed uv is itself a CONVERGED fit -
+   *   within the same convergence_error the solve uses to call a uv solved,
+   *   or no worse than the solved uv, whichever is the weaker demand. So this
+   *   can move a uv onto a different branch, but never onto one that does not
+   *   answer the query.
+   *
+   * That last test is deliberately not "at least as good as the solved uv".
+   * The descent CLAMPS into the domain and stops at a local optimum, so a
+   * seam point typically converges a whisker INSIDE the bound - u =
+   * -3.141592633 against a domain end of -3.141592654 - and the wrapped
+   * representative, which lands exactly ON the far bound, is then worse by
+   * about 1e-8. Demanding "no worse" rejected the wrap on precisely the
+   * points it exists for: measured on `#50977`, the strict form left one
+   * uncorrected flip at boundary point 32 of 175, and one is enough, because
+   * every later point on that leg takes its branch from it.
+   *
+   * Scoped to one ordered polyline by the same hasPreviousSolution_ memo the
+   * continuity seed uses, and cleared by the same resetContinuity().
+   *
+   * @param point    The 3D point being inverted.
+   * @param solution The uv the descent returned.
+   * @return The same point's uv, on the branch continuous with the previous
+   *   boundary point, or `solution` unchanged when there is nothing to fix.
+   */
+  glm::dvec2 seamContinuousSolution(
+      const glm::dvec3& point,
+      glm::dvec2        solution ) const {
+
+    if ( !hasPreviousSolution_ || ( !closedU_ && !closedV_ ) ) {
+
+      return solution;
+    }
+
+    const glm::dvec2 period = max_extent - min_extent;
+
+    glm::dvec2 candidate = solution;
+
+    for ( int axis = 0; axis < 2; ++axis ) {
+
+      if ( ( axis == 0 && !closedU_ ) || ( axis == 1 && !closedV_ ) ) {
+        continue;
+      }
+
+      if ( !( period[ axis ] > 0.0 ) ) {
+        continue;
+      }
+
+      const double delta = solution[ axis ] - previousSolution_[ axis ];
+
+      if ( std::abs( delta ) <= period[ axis ] * 0.5 ) {
+        continue;
+      }
+
+      // Toward the previous point by exactly one period, then back into the
+      // domain. On a closed surface the clamp lands on the opposite bound,
+      // which names the identical 3D point - that is what makes this exact
+      // rather than approximate.
+      candidate[ axis ] =
+        glm::clamp(
+          solution[ axis ] - std::copysign( period[ axis ], delta ),
+          min_extent[ axis ],
+          max_extent[ axis ] );
+    }
+
+    if ( candidate == solution ) {
+
+      return solution;
+    }
+
+    const glm::dvec3 solvedPoint    = evaluator.point( solution.x, solution.y );
+    const glm::dvec3 candidatePoint = evaluator.point( candidate.x, candidate.y );
+
+    return glm::distance( candidatePoint, point ) <=
+           std::max( glm::distance( solvedPoint, point ), convergence_error ) ?
+             candidate : solution;
+  }
 
   /**
    * Damped Gauss-Newton descent from a caller-supplied seed.
@@ -4164,6 +4343,426 @@ struct RationalNurbsInverseMethod {
 //   return glm::dvec2(fU, fV);
 // }
 
+
+/**
+ * Triangulate a b-spline face that wraps its surface's seam as a structured
+ * grid over the whole parametric chart, instead of ear-clipping the chart.
+ *
+ * WHY EARCUT CANNOT DO THIS FACE. When a face wraps a closed parameter, its
+ * uv chart is a rectangle whose two long edges are THE SAME 3D CURVE - the
+ * seam, walked down one side and back up the other. earcut is an ear-clipping
+ * triangulator: it has only the boundary vertices to work with and cannot
+ * introduce interior ones, so it fills that rectangle with chords that join
+ * far-apart boundary points. Measured on `ADVANCED_FACE #50977`, the coil
+ * spring of solid 970 in `step/conor/Orbiter_v1.1_Gear_7.5.step`, against a
+ * chart that was by then provably correct (enclosed area 276.3487 of a
+ * 276.3489 chart, coverage 1.0000):
+ *
+ *   earcut        171 tri, max 3D edge 9.7199, 128 of 171 with an edge > 3.0
+ *   tesselated   5473 tri, max 3D edge 9.7199, 5232 near-zero-area
+ *   shipped       299 tri  (the weld in Geometry::Reify discards the rest)
+ *
+ * 9.72 on a spring whose outer diameter is 6.9. Every chord joining u = uMin
+ * to u = uMax is degenerate in 3D, because those are the same point, and
+ * `tesselate` cannot repair it: it only SPLITS edges, and splitting a
+ * degenerate triangle leaves it degenerate. This is the seed-triangulation
+ * half of bldrs-ai/conway#608, which lists this face at 103x its deflection
+ * target.
+ *
+ * WHAT REPLACES IT. Every other surface kind in this file already has a
+ * full-coverage path - TriangulateSphericalSurface's parametric grid, reached
+ * for a degenerate loop, is the direct precedent (conway-geom#187). This is
+ * that path for b-splines, and it is a grid over the chart with the trim
+ * curve's own points on its borders.
+ *
+ * HOW COVERAGE IS DECIDED. Not here, and not from the geometry: the caller
+ * passes `seamPair`, which the AP214 front end read off the ORIENTED_EDGEs
+ * (see hasSeamEdgePair). The file STATES that two of loop `#9507`'s four
+ * edges are `EDGE_CURVE #29690` with opposite senses; a face only needs that
+ * spelling when it wraps the closed parameter completely. The alternative -
+ * testing whether the projected uv boundary encloses the whole chart - was
+ * rejected: it infers topology from a measurement and needs a tolerance, and
+ * a tolerance tuned until one model passes is how this defect family got
+ * here.
+ *
+ * HOW THE GRID IS BUILT, also without a tolerance. The boundary polyline is
+ * read structurally, by EXACT point identity. The two seam legs are the same
+ * curve evaluated twice, so their points are bitwise equal - verified on
+ * `#50977`: 63 of 63 with a maximum coordinate difference of exactly 0. So:
+ *
+ *   - a point that occurs more than once in the loop is ON the seam;
+ *   - circularly, those flags form exactly four alternating runs,
+ *     seam / ring / seam / ring;
+ *   - the two seam runs must be equal in length and exact reverses;
+ *   - the two ring runs must be equal in length.
+ *
+ * Anything else returns false and the caller ear-clips exactly as before, so
+ * an unfamiliar spelling degrades to today's behaviour rather than to a
+ * guess. On `#50977` this yields 2 seam runs of 65 and 2 ring runs of 22,
+ * 174 points in all.
+ *
+ * The grid's rows are the seam run's own v values and its columns the end
+ * ring's own u values, so the RESOLUTION IS THE MODEL'S OWN: whatever the
+ * adaptive curve tessellator decided those trim curves needed. Nothing is
+ * chosen here. The two border rows are the ring points THEMSELVES rather
+ * than re-evaluations, which is what keeps this watertight against the two
+ * PLANE cap faces that share those circles, and the seam column is likewise
+ * the seam curve's own points. Interior points are evaluated on the surface.
+ * The grid wraps in u, so the seam is interior to the mesh and only the two
+ * end rings are borders - which is correct, since those are exactly the
+ * edges that must not move.
+ *
+ * @param mesh          The face mesh, already holding the projected boundary
+ *                      vertices as its first `boundaryCount` entries.
+ * @param solve         The face's inverse solve, for surface evaluation and
+ *                      for its closure flags.
+ * @param boundaryCount Number of boundary vertices in `mesh`.
+ * @return True when the grid was built and the caller must not ear-clip.
+ */
+inline bool tryFullCoverageSeamGrid(
+    WingedEdgeMesh< ParameterVertex >& mesh,
+    const RationalNurbsInverseMethod&  solve,
+    size_t                             boundaryCount,
+    double                             deflectionSquared ) {
+
+  // The chart is only a cylinder if the surface actually closes. `seamPair`
+  // says the TOPOLOGY wraps a seam; this says the GEOMETRY has one.
+  if ( !solve.closedU_ ) {
+    return false;
+  }
+
+  size_t count = boundaryCount;
+
+  // A loop that repeats its first point at the end would make that point look
+  // seam-like for the wrong reason. Drop it before counting occurrences.
+  if ( count > 1 && mesh.vertices[ count - 1 ].point == mesh.vertices[ 0 ].point ) {
+    --count;
+  }
+
+  // Four runs of at least two points each is the smallest thing this can be.
+  if ( count < 8 ) {
+    return false;
+  }
+
+  std::unordered_map< glm::dvec3, uint32_t > occurrences;
+
+  for ( size_t at = 0; at < count; ++at ) {
+    ++occurrences[ mesh.vertices[ at ].point ];
+  }
+
+  std::vector< bool > onSeam( count );
+
+  for ( size_t at = 0; at < count; ++at ) {
+    onSeam[ at ] = occurrences[ mesh.vertices[ at ].point ] > 1;
+  }
+
+  // Circular runs: rotate to a point where the flag changes, so a run that
+  // straddles index 0 - which the seam leg does on this face - is one run
+  // rather than two.
+  size_t rotation = 0;
+
+  while ( rotation < count &&
+          onSeam[ rotation ] == onSeam[ ( rotation + count - 1 ) % count ] ) {
+    ++rotation;
+  }
+
+  if ( rotation == count ) {
+    // Every point has the same flag: no alternation, so no seam structure.
+    return false;
+  }
+
+  std::vector< std::vector< uint32_t > > runs;
+
+  for ( size_t step = 0; step < count; ++step ) {
+
+    const size_t at = ( rotation + step ) % count;
+
+    if ( step == 0 ||
+         onSeam[ at ] != onSeam[ ( rotation + step - 1 ) % count ] ) {
+
+      runs.emplace_back();
+    }
+
+    runs.back().push_back( static_cast< uint32_t >( at ) );
+  }
+
+  if ( runs.size() != 4 ) {
+    return false;
+  }
+
+  // Runs alternate by construction, so the seam pair is either {0,2} or
+  // {1,3}; `rotation` lands on a run start, whose flag says which.
+  const bool seamFirst = onSeam[ runs[ 0 ][ 0 ] ];
+
+  const std::vector< uint32_t >& seamA = seamFirst ? runs[ 0 ] : runs[ 1 ];
+  const std::vector< uint32_t >& ringA = seamFirst ? runs[ 1 ] : runs[ 2 ];
+  const std::vector< uint32_t >& seamB = seamFirst ? runs[ 2 ] : runs[ 3 ];
+  const std::vector< uint32_t >& ringB = seamFirst ? runs[ 3 ] : runs[ 0 ];
+
+  const size_t rows = seamA.size();
+
+  if ( rows < 2 || seamB.size() != rows ||
+       ringA.size() != ringB.size() || ringA.empty() ) {
+    return false;
+  }
+
+  // The two legs must be the same curve walked both ways. Exact, because they
+  // ARE the same evaluation; a near-match would mean this is not a seam.
+  for ( size_t at = 0; at < rows; ++at ) {
+
+    if ( !( mesh.vertices[ seamA[ at ] ].point ==
+            mesh.vertices[ seamB[ rows - 1 - at ] ].point ) ) {
+
+      return false;
+    }
+  }
+
+  // A ring row is the boundary from one seam leg's end to the next leg's
+  // start, INCLUSIVE of those two seam points - they are the row's ends, at
+  // u = uMin and u = uMax. Walking the loop in order, ringA follows seamA, so
+  // seamA's last point opens it and seamB's first point closes it.
+  const auto ringRow =
+    [ & ]( const std::vector< uint32_t >& ring,
+           uint32_t                       opening,
+           uint32_t                       closing ) {
+
+      std::vector< uint32_t > row;
+
+      row.reserve( ring.size() + 2 );
+      row.push_back( opening );
+      row.insert( row.end(), ring.begin(), ring.end() );
+      row.push_back( closing );
+
+      return row;
+    };
+
+  // seamA runs one way in v and seamB the other; orient both so index 0 is
+  // the end that ringA sits at.
+  const std::vector< uint32_t > rowFirst =
+    ringRow( ringA, seamA.back(), seamB.front() );
+  const std::vector< uint32_t > rowLast =
+    ringRow( ringB, seamB.back(), seamA.front() );
+
+  if ( rowFirst.size() != rowLast.size() ) {
+    return false;
+  }
+
+  // Both ends of a ring row are the same 3D point - the seam - and BOTH are
+  // kept as columns rather than wrapping the grid around.
+  //
+  // Wrapping is the obvious thing and it is wrong, because `tesselate` refines
+  // by averaging the uv of an edge's two endpoints. Across a wrap that average
+  // is meaningless: on this face the last column sits at u = -2.868745 and the
+  // first at u = +3.141593, which are neighbours in 3D but 0.136 - the far side
+  // of the wire - when averaged in parameter. Refinement then inserts vertices
+  // diametrically opposite where they belong and folds the mesh over itself.
+  // Measured: a wrapped grid gave 453.668 of surface area against a true
+  // 373.434, with single edges shared by up to 66 triangles.
+  //
+  // Keeping both seam columns makes u monotone across the whole chart, so every
+  // midpoint is meaningful and the fold cannot arise. The two columns carry the
+  // same 3D points, so the mesh is seam-duplicated exactly as a cylinder chart
+  // normally is, and Geometry::Reify's weld merges them.
+  const size_t columns = rowFirst.size();
+
+  // Both ends of each ring row must be the SAME 3D point: that is what makes
+  // them the seam, and it is the structural check that this really is a chart
+  // that closes rather than a loop that happens to have a repeated edge.
+  if ( columns < 4 ||
+       !( mesh.vertices[ rowFirst.front() ].point ==
+          mesh.vertices[ rowFirst.back() ].point ) ||
+       !( mesh.vertices[ rowLast.front() ].point ==
+          mesh.vertices[ rowLast.back() ].point ) ) {
+
+    return false;
+  }
+
+  // rowFirst is ordered along u from the seam; rowLast is the far ring and
+  // runs the other way round the tube, so reverse it to share the ordering.
+  std::vector< uint32_t > rowLastAligned( rowLast.rbegin(), rowLast.rend() );
+
+  // seamA carries v from rowFirst's end to rowLast's end. Its last point is
+  // rowFirst's opening column, so index it from the back.
+  const auto seamAt =
+    [ & ]( size_t row ) {
+      return seamA[ rows - 1 - row ];
+    };
+
+  // Column parameters from the near ring - the model's own adaptive sampling
+  // of the curve that BOUNDS this face, which is also what the two PLANE cap
+  // faces are built from, so keeping it is what keeps the solid closed.
+  std::vector< double > columnU( columns );
+
+  for ( size_t column = 0; column < columns; ++column ) {
+    columnU[ column ] = mesh.vertices[ rowFirst[ column ] ].uv.x;
+  }
+
+  // Rows start as the seam curve's own v samples, then are refined IN
+  // PARAMETER SPACE until they meet the same deflection target `tesselate`
+  // would have used.
+  //
+  // Refining here rather than handing the grid to `tesselate` is the point.
+  // `tesselate` refines topologically, by splitting the edge with the largest
+  // deflection and re-projecting its midpoint, and on this mesh that does not
+  // converge: measured, it ran to the full 32x amplification cap - 2,944
+  // triangles to 94,208 - and took the surface area to 396.89 against a true
+  // 373.6, i.e. it folded the mesh over itself, after which Geometry::Reify's
+  // weld discarded 90% of what it built. That is the same non-convergence
+  // conway#608 reports on this face.
+  //
+  // Subdividing the v partition cannot fold, because the parameterisation
+  // stays monotone: every row is a distinct v, every column a distinct u, and
+  // the grid remains a bijection onto the chart no matter how fine it gets.
+  // The criterion is the deflection target itself, so the resolution is still
+  // derived rather than chosen.
+  //
+  // Only v is refined. The columns are the trim curve's own points and must
+  // not move - see above - and on this face they already meet the target,
+  // which is what one would expect of a curve the exporter tessellated to its
+  // own deflection tolerance.
+  std::vector< double >   rowV;
+  std::vector< uint32_t > rowSeam;
+
+  rowV.reserve( rows );
+  rowSeam.reserve( rows );
+
+  for ( size_t row = 0; row < rows; ++row ) {
+
+    rowV.push_back( mesh.vertices[ seamAt( row ) ].uv.y );
+    rowSeam.push_back( static_cast< uint32_t >( row ) );
+  }
+
+  // Bounded by the same budget the topological refinement had, so this cannot
+  // cost more than the path it replaces.
+  const size_t maximumRows =
+    rows * static_cast< size_t >( MAX_TRIANGLE_AMPLIFACTION );
+
+  for ( bool refined = true; refined && rowV.size() < maximumRows; ) {
+
+    refined = false;
+
+    std::vector< double >   nextV;
+    std::vector< uint32_t > nextSeam;
+
+    nextV.reserve( rowV.size() * 2 );
+    nextSeam.reserve( rowV.size() * 2 );
+
+    for ( size_t row = 0; row + 1 < rowV.size(); ++row ) {
+
+      nextV.push_back( rowV[ row ] );
+      nextSeam.push_back( rowSeam[ row ] );
+
+      if ( nextV.size() + ( rowV.size() - row ) >= maximumRows ) {
+        continue;
+      }
+
+      const double middle = ( rowV[ row ] + rowV[ row + 1 ] ) * 0.5;
+
+      // Worst column decides, so a row is only kept coarse where the whole
+      // row is within target.
+      double worst = 0.0;
+
+      for ( size_t column = 0; column < columns; ++column ) {
+
+        const glm::dvec3 chord =
+          ( solve.evaluator.point( columnU[ column ], rowV[ row ] ) +
+            solve.evaluator.point( columnU[ column ], rowV[ row + 1 ] ) ) * 0.5;
+
+        const glm::dvec3 onSurface =
+          solve.evaluator.point( columnU[ column ], middle );
+
+        const glm::dvec3 delta = onSurface - chord;
+
+        worst = std::max( worst, glm::dot( delta, delta ) );
+      }
+
+      if ( worst > deflectionSquared ) {
+
+        nextV.push_back( middle );
+        nextSeam.push_back( EMPTY_INDEX );
+        refined = true;
+      }
+    }
+
+    nextV.push_back( rowV.back() );
+    nextSeam.push_back( rowSeam.back() );
+
+    rowV.swap( nextV );
+    rowSeam.swap( nextSeam );
+  }
+
+  const size_t gridRows = rowV.size();
+
+  std::vector< uint32_t > grid( gridRows * columns );
+
+  for ( size_t row = 0; row < gridRows; ++row ) {
+
+    const uint32_t seamRow = rowSeam[ row ];
+    const bool     onSeam  = seamRow != EMPTY_INDEX;
+
+    for ( size_t column = 0; column < columns; ++column ) {
+
+      uint32_t vertex;
+
+      if ( onSeam && seamRow == 0 ) {
+
+        vertex = rowFirst[ column ];
+
+      } else if ( onSeam && seamRow == rows - 1 ) {
+
+        vertex = rowLastAligned[ column ];
+
+      } else if ( onSeam && column == 0 ) {
+
+        // Both seam columns take the seam curve's own points rather than
+        // re-evaluations. seamB is seamA reversed, so the point matching
+        // seam row `seamRow` on the far side is seamB[ seamRow ].
+        vertex = seamAt( seamRow );
+
+      } else if ( onSeam && column == columns - 1 ) {
+
+        vertex = seamB[ seamRow ];
+
+      } else {
+
+        const glm::dvec2 uv( columnU[ column ], rowV[ row ] );
+
+        vertex = mesh.makeVertex(
+          ParameterVertex{ solve.evaluator.point( uv.x, uv.y ), uv } );
+      }
+
+      grid[ ( row * columns ) + column ] = vertex;
+    }
+  }
+
+  for ( size_t row = 0; row + 1 < gridRows; ++row ) {
+    for ( size_t column = 0; column + 1 < columns; ++column ) {
+
+      const size_t nextColumn = column + 1;
+
+      const uint32_t a = grid[ ( row * columns ) + column ];
+      const uint32_t b = grid[ ( row * columns ) + nextColumn ];
+      const uint32_t c = grid[ ( ( row + 1 ) * columns ) + nextColumn ];
+      const uint32_t d = grid[ ( ( row + 1 ) * columns ) + column ];
+
+      // A cell is degenerate wherever the chart's own sampling repeats a
+      // parameter - the ring on this face carries two points at u = pi - so
+      // skip the halves that carry no area rather than emitting zero-area
+      // triangles for Geometry::Reify to strip later.
+      if ( a != b && b != c && c != a ) {
+        mesh.makeTriangle( a, b, c );
+      }
+
+      if ( a != c && c != d && d != a ) {
+        mesh.makeTriangle( a, c, d );
+      }
+    }
+  }
+
+  return true;
+}
+
+
 // TODO: review and simplify
 inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
@@ -4313,7 +4912,30 @@ inline void TriangulateBspline(Geometry &geometry,
     // r indicates the level of subdivision, currently 3 you can increase it to
     // 5
 
+    // A face that wraps the surface's seam covers the whole chart, and
+    // ear-clipping that chart produces chords across the solid rather than a
+    // tessellation of it - see tryFullCoverageSeamGrid, which builds the grid
+    // instead. `seamPair` is a topological fact from the front end, so this
+    // costs one bool test on every other face and changes none of them.
+    //
+    // Single-bound only: an inner trim loop is a hole, and a grid over the
+    // whole chart would pave straight over it.
+    //
+    // The target is computed here, from the boundary vertices alone, because
+    // the grid builder refines against it and `tesselate` below is handed the
+    // same expression - the two paths must aim at the same tolerance.
+    const double seamGridDeflection2 =
+      relativeDeflectionSquared( mesh, representationExtent * scaling );
+
+    const bool builtSeamGrid =
+      bounds.size() == 1 &&
+      bounds[ 0 ].seamPair &&
+      tryFullCoverageSeamGrid(
+        mesh, bSplineInverseEvaluation, mesh.vertices.size(), seamGridDeflection2 );
+
     std::vector<uint32_t> indices;
+
+    if ( !builtSeamGrid ) {
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
     indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
@@ -4326,9 +4948,15 @@ inline void TriangulateBspline(Geometry &geometry,
         indices[ i  + 1 ], 
         indices[ i  + 2 ] );
     }
+    }
     
   //  printf( "Tesselating BSpline Surface\n" );
 
+    // Skipped for the seam grid, which arrives already refined to this same
+    // target in parameter space. Running the topological refiner over it does
+    // not converge - it spends the whole 32x budget and folds the mesh - see
+    // tryFullCoverageSeamGrid.
+    if ( !builtSeamGrid )
     tesselate(
       mesh,
       [&bSplineInverseEvaluation]( [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {

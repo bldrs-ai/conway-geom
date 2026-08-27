@@ -1,4 +1,5 @@
 #pragma once
+#include <limits>
 
 #include <glm/glm.hpp>
 #include <stdint.h>
@@ -262,6 +263,63 @@ namespace conway {
       std::vector< std::tuple< double, double, double > >,
       std::greater< std::tuple< double, double, double > > > best; 
 
+    // The lowest value this search has evaluated ANYWHERE, and where.
+    //
+    // The queue below is ordered by `max( f( a ), f( b ) )`, which is a
+    // heuristic and not an admissible bound: it is neither an upper nor a
+    // lower bound on an interval's minimum, so ordering by it prefers an
+    // interval that is UNIFORMLY low over one that CONTAINS a low point. An
+    // interval bracketing a sharp global minimum at one of its own endpoints
+    // is exactly the case it deprioritises, because the key is taken from the
+    // endpoint that is NOT the answer. The search can then descend into a
+    // shallower local basin, converge there to `tolerance`, and return -
+    // never re-expanding the interval that held the real answer, because its
+    // key stays above every descendant of the basin it chose.
+    //
+    // bldrs-ai/conway#611 is that case, and it is not a corner: the seam edge
+    // of `MANIFOLD_SOLID_BREP #970` ("Spring v1") on
+    // `step/conor/Orbiter_v1.1_Gear_7.5.step` is a 7-turn helix trimmed at its
+    // own endpoints, so f( 0 ) is exactly 0. A helix passes near its own start
+    // once per turn, one pitch away, so the objective has eight minima:
+    //
+    //   t = 0.00000  dist 0.000000   <- the exact answer, an interval ENDPOINT
+    //   t = 0.14286  dist 1.571430   <- one turn along, one pitch away
+    //   t = 0.28571  dist 3.142857
+    //   ... six more, one per turn
+    //
+    // Seeded at 32 intervals, interval 4 brackets the one-turn minimum and
+    // keys 7.53; interval 0 brackets the EXACT ZERO and keys 16.55, because
+    // its key comes from f( 1/32 ). Interval 4 is popped first, its
+    // descendants' keys fall toward 1.571^2 = 2.47, and interval 0 is
+    // therefore never expanded at all. The search returned t = 0.142126 -
+    // 1.567 model units from a trim vertex that sits exactly on the curve -
+    // and the spring's boundary lost its first and last turn.
+    //
+    // Fixed by making the function's own contract true rather than by
+    // changing the search: every evaluation is a candidate, and the parameter
+    // returned is the best one seen. Ordering, seed count and termination are
+    // untouched, so no case that converges correctly today takes a different
+    // path. The returned parameter's objective value can only fall, and it
+    // can only differ at all when the search terminated on a NON-global local
+    // minimum - which is the defect and nothing else. That also means no
+    // tolerance and no tuned constant enters here: the comparison is against
+    // the objective itself.
+    double bestValue = std::numeric_limits< double >::infinity();
+    double bestParam = start;
+
+    const auto sample = [ & ]( double where ) {
+
+      const double value = function( where );
+
+      if ( value < bestValue ) {
+
+        bestValue = value;
+        bestParam = where;
+      }
+
+      return value;
+    };
+
     // Start with a decent number of samples as simple bisection
     // will not work will for functions that aren't unimodal.
     for ( double where = 0; where < 32.0; ++where ) {
@@ -271,27 +329,29 @@ namespace conway {
 
       // We use the maximum of two values because it allows a bisection to be
       // worse than the original values, which handles the concave case.
-      best.push( std::make_tuple( std::max( function( a ), function( b ) ), a, b ) );
+      best.push( std::make_tuple( std::max( sample( a ), sample( b ) ), a, b ) );
     }
 
     while ( true ) {
 
       auto [ distance, a, b ] = best.top();
 
-      double aF = function( a );
-      double bF = function( b );
+      double aF = sample( a );
+      double bF = sample( b );
 
       if ( fabs( a - b ) < tolerance ) {
 
-        return aF < bF ? a : b; // Return the best fit parameter
-
+        // `bestParam` is `a` or `b` whenever the search converged on the
+        // global minimum, so this returns exactly what it used to in that
+        // case; it differs only when something strictly better was seen.
+        return bestValue < std::min( aF, bF ) ? bestParam : ( aF < bF ? a : b );
       }
 
       best.pop();
      
       double mid = ( a + b ) / 2.0;
 
-      double midF = function( mid );
+      double midF = sample( mid );
 
       best.push( std::make_tuple( std::max( midF, aF ), a, mid ) );
       best.push( std::make_tuple( std::max( midF, bF ), mid, b ) );

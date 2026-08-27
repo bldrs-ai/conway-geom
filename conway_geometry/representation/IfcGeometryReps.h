@@ -273,6 +273,26 @@ struct IfcBound3D {
    * behaviour.
    */
   bool seam = false;
+
+  /**
+   * This bound's loop CONTAINS a retraced edge pair - one edge traversed
+   * once in each direction - while still enclosing area with its other
+   * edges.
+   *
+   * That pair is the two sides of a seam on a surface closed in one
+   * parameter, so the face wraps that parameter completely and its trim
+   * covers the whole parametric chart. TriangulateBspline uses it to take a
+   * full-coverage grid instead of ear-clipping a chart whose two long edges
+   * are the same 3D curve. See bldrs-ai/conway#611.
+   *
+   * Independent of `seam`: a fully retracing loop encloses nothing, this one
+   * encloses everything. A topological fact from the front end, not
+   * re-derived from the point list here.
+   *
+   * Defaults false: a front end that does not set it gets exactly today's
+   * behaviour.
+   */
+  bool seamPair = false;
 };
 
 struct Cone {
