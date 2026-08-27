@@ -367,6 +367,7 @@ struct ParamsCreateBound3D {
   bool orientation;
   uint32_t type;
   bool seam;
+  bool seamPair;
 };
 
 conway::geometry::IfcBound3D createBound3D(const ParamsCreateBound3D& parameters) {
@@ -374,6 +375,7 @@ conway::geometry::IfcBound3D createBound3D(const ParamsCreateBound3D& parameters
   bounds3D.curve = parameters.curve;
   bounds3D.orientation = parameters.orientation;
   bounds3D.seam = parameters.seam;
+  bounds3D.seamPair = parameters.seamPair;
 
   if (!bounds3D.orientation) {
     std::reverse(bounds3D.curve.points.begin(), bounds3D.curve.points.end());
@@ -1708,7 +1710,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .field("curve", &ParamsCreateBound3D::curve)
       .field("orientation", &ParamsCreateBound3D::orientation)
       .field("type", &ParamsCreateBound3D::type)
-      .field("seam", &ParamsCreateBound3D::seam);
+      .field("seam", &ParamsCreateBound3D::seam)
+      .field("seamPair", &ParamsCreateBound3D::seamPair);
 
   // conway::geometry::ConwayGeometryProcessor::ParamsAddFaceToGeometry
   emscripten::value_object<
