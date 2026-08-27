@@ -3790,22 +3790,66 @@ struct RationalNurbsInverseMethod {
 
     // Closure, from the control grid rather than by sampling: a b-spline
     // surface is closed in a parameter exactly when the first and last rows
-    // (columns) of control points coincide, and that is a property of the
-    // definition rather than a measurement of it.
+    // (columns) of control points define the SAME curve, and that is a
+    // property of the definition rather than a measurement of it.
+    //
+    // On a RATIONAL surface the Cartesian control points alone do not settle
+    // that. The endpoint curves share this surface's knot vector and degree,
+    // so with control points P and weights w they are
+    //
+    //   C( t ) = sum_j N_j( t ) w_j P_j / sum_j N_j( t ) w_j
+    //
+    // and two rows of coincident P with DIFFERENT w are different rational
+    // curves - they agree only where the basis is interpolating, i.e. at the
+    // ends. Comparing P alone therefore asserts more than it checks, and
+    // getting it wrong is not cosmetic: closedU_/closedV_ now gate two
+    // separate paths - the seam crossing in solveFromSeed and the
+    // full-coverage grid in tryFullCoverageSeamGrid - so a false positive
+    // makes the descent wrap across a genuine geometric discontinuity and
+    // return the wrong branch. Weights are compared as well.
+    //
+    // The weight test is RELATIVE, against the same RELATIVE_INVERSE_ERROR
+    // the distance tolerance below is built from, because a weight is
+    // dimensionless and cannot be judged against a length. No new constant
+    // enters.
+    //
+    // Equal ( P, w ) is sufficient for the curves to coincide; it is not
+    // necessary, because scaling a whole row of weights by a common factor
+    // leaves the rational curve unchanged. That direction is deliberately not
+    // chased: the test errs toward "not closed", which costs a face nothing
+    // more than the behaviour it had before either path existed.
     //
     // "Coincide" is judged at the same tolerance the solve uses to call two
-    // points the same point, so no new constant is introduced. On the surface
-    // this was written for the rows are bitwise equal - the seam of
-    // `B_SPLINE_SURFACE_WITH_KNOTS #1553` matches to 0.0 across all 84
-    // columns - but an exporter that round-trips through floats needs the
-    // slack, and a surface that is merely NEAR closed is one where the
-    // wrap below would be rejected by its own residual test anyway.
+    // points the same point, so no new constant is introduced there either.
+    // On the surface this was written for the rows are bitwise equal - the
+    // seam of `B_SPLINE_SURFACE_WITH_KNOTS #1553` matches to 0.0 across all
+    // 84 columns, and its weights match to 0.0 as well - but an exporter that
+    // round-trips through floats needs the slack, and a surface that is
+    // merely NEAR closed is one where the wrap below would be rejected by its
+    // own residual test anyway.
     const double closureTolerance =
       std::max( MIN_INVERSE_ERROR,
                 glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
 
     const size_t rows = surface.control_points.rows();
     const size_t cols = surface.control_points.cols();
+
+    // Absent or mis-sized weights mean the surface is evaluated as
+    // polynomial, so every weight is 1 and the weight test is vacuous.
+    const bool haveWeights =
+      surface.weights.rows() == rows && surface.weights.cols() == cols;
+
+    const auto sameWeight =
+      [ & ]( double left, double right ) {
+
+        if ( !haveWeights ) {
+          return true;
+        }
+
+        return std::abs( left - right ) <=
+               std::max( std::abs( left ), std::abs( right ) ) *
+                 RELATIVE_INVERSE_ERROR;
+      };
 
     if ( rows > 1 && cols > 0 ) {
 
@@ -3815,7 +3859,9 @@ struct RationalNurbsInverseMethod {
 
         if ( glm::distance( surface.control_points( 0, col ),
                             surface.control_points( rows - 1, col ) ) >
-             closureTolerance ) {
+               closureTolerance ||
+             !sameWeight( haveWeights ? surface.weights( 0, col ) : 1.0,
+                          haveWeights ? surface.weights( rows - 1, col ) : 1.0 ) ) {
 
           closedU_ = false;
           break;
@@ -3831,13 +3877,16 @@ struct RationalNurbsInverseMethod {
 
         if ( glm::distance( surface.control_points( row, 0 ),
                             surface.control_points( row, cols - 1 ) ) >
-             closureTolerance ) {
+               closureTolerance ||
+             !sameWeight( haveWeights ? surface.weights( row, 0 ) : 1.0,
+                          haveWeights ? surface.weights( row, cols - 1 ) : 1.0 ) ) {
 
           closedV_ = false;
           break;
         }
       }
     }
+
   }
 
   /**
@@ -4136,6 +4185,64 @@ struct RationalNurbsInverseMethod {
              candidate : solution;
   }
 
+ public:
+
+  /**
+   * The displacement a trial step actually made, per axis.
+   *
+   * Armijo compares a MEASURED decrease against a PREDICTED one, and the two
+   * have to describe the same step. The two axis kinds differ:
+   *
+   * - On an OPEN axis the domain edge truncates the step, so the movement is
+   *   whatever the clamp left. Crediting the full request there is what made
+   *   the descent stall at a domain corner and report its own seed as the
+   *   answer.
+   * - On a CLOSED axis nothing is truncated. S( u + period, v ) IS S( u, v ),
+   *   so evaluating at the wrapped representative evaluates the requested
+   *   point exactly, and the movement is the whole request.
+   *
+   * Reducing a closed axis to its shortest representative instead - taking
+   * `from - to` and subtracting whole periods - is wrong for a step wider than
+   * half a period, and `deltaUV` is uncapped so those steps are reachable. The
+   * reduction hands back a component pointing the OTHER WAY from the one
+   * requested, `dot( displacement, jte )` goes negative, the Armijo threshold
+   * rises ABOVE the current residual, and the trial that gets accepted is one
+   * that INCREASES it. Returning the request removes that case rather than
+   * guarding it, because on a closed axis the request is what happened.
+   *
+   * Public, and split out of the line search, so it can be tested directly.
+   * Good seeding keeps `deltaUV` small enough that the wide-step case is hard
+   * to reach through operator() - a residual bounded by the grid seed gives a
+   * step of |e| / |dS/du|, which on a uniformly parameterised closed axis
+   * cannot exceed 2r / r - so an end-to-end test does not reliably discriminate
+   * it. See test/nurbs_seam_test.cpp.
+   *
+   * @param from      The uv the trial started from.
+   * @param to        The uv it landed on, already brought into the domain.
+   * @param requested The unclamped, unwrapped step that was asked for.
+   * @return The displacement to measure the predicted decrease over.
+   */
+  glm::dvec2 trialDisplacement(
+      const glm::dvec2& from,
+      const glm::dvec2& to,
+      const glm::dvec2& requested ) const {
+
+    glm::dvec2 displacement = from - to;
+
+    for ( int axis = 0; axis < 2; ++axis ) {
+
+      if ( ( axis == 0 ? closedU_ : closedV_ ) &&
+           ( max_extent[ axis ] - min_extent[ axis ] ) > 0.0 ) {
+
+        displacement[ axis ] = requested[ axis ];
+      }
+    }
+
+    return displacement;
+  }
+
+ private:
+
   /**
    * Bring a uv back into the parameter domain: by WRAPPING on an axis the
    * surface is closed in, by clamping on one it is not.
@@ -4248,24 +4355,32 @@ struct RationalNurbsInverseMethod {
 
       while ( alpha > ALPHA_ERROR ) {
 
-        glm::dvec2 newGuessUV = domainRepresentative( bestGuess - deltaUV * alpha );
+        const glm::dvec2 requested = deltaUV * alpha;
+
+        glm::dvec2 newGuessUV = domainRepresentative( bestGuess - requested );
 
         // The displacement actually made, which is what Armijo's predicted
-        // decrease has to be measured against. It is `deltaUV * alpha` except
-        // where the domain intervened: clamped short on an open axis, or
-        // carried a whole period on a closed one, where the shortest
-        // representative is the real movement and the period is bookkeeping.
-        glm::dvec2 taken = bestGuess - newGuessUV;
-
-        for ( int axis = 0; axis < 2; ++axis ) {
-
-          const double period = max_extent[ axis ] - min_extent[ axis ];
-
-          if ( ( axis == 0 ? closedU_ : closedV_ ) && period > 0.0 ) {
-
-            taken[ axis ] -= period * std::round( taken[ axis ] / period );
-          }
-        }
+        // decrease has to be measured against.
+        //
+        // The two axis kinds differ, and the difference is not cosmetic. On an
+        // OPEN axis the domain edge truncates the step, so the movement is
+        // what the clamp left: crediting the full request there is what made
+        // the descent stall at a corner. On a CLOSED axis nothing is
+        // truncated - S( u + period, v ) IS S( u, v ), so evaluating at the
+        // wrapped representative evaluates the requested point exactly, and
+        // the movement is the full request.
+        //
+        // Reducing a closed axis to its shortest representative instead - as
+        // the first version of this did - is wrong for a step wider than half
+        // a period. `deltaUV` is uncapped, so those steps are reachable, and
+        // the reduction can hand back a component pointing the OTHER WAY from
+        // the one requested. `glm::dot( ..., jte )` then goes negative, the
+        // threshold below rises ABOVE minDistance2, and the trial that gets
+        // accepted is one that INCREASES the residual. Using the request
+        // removes that case rather than guarding it, because on a closed axis
+        // the request is what happened.
+        const glm::dvec2 displacement =
+          trialDisplacement( bestGuess, newGuessUV, requested );
 
         glm::dvec3 newPoint =
           evaluator.point( newGuessUV.x, newGuessUV.y );
@@ -4274,8 +4389,21 @@ struct RationalNurbsInverseMethod {
 
         double newDistance2 = glm::dot( newDeltaP, newDeltaP );
 
-        if ( newDistance2 <
-             minDistance2 - ARMIJO_COEFFICIENT * glm::dot( taken, jte ) ) {
+        // Floored at zero so the threshold can never exceed minDistance2, and
+        // an accepted trial therefore always strictly decreases the residual.
+        //
+        // Before this file wrapped or truncated anything, that was free:
+        // `deltaUV` solves an SPD system, so dot( deltaUV, jte ) =
+        // jte^T (J^T J + damping I)^-1 jte is positive by construction and the
+        // predicted decrease could not come out negative. Truncating a
+        // component on an open axis breaks that guarantee - the surviving
+        // components are no longer the SPD solution - so the property is
+        // asserted here rather than assumed. Where the predicted decrease is
+        // positive this changes nothing at all.
+        const double predictedDecrease =
+          ARMIJO_COEFFICIENT * std::max( 0.0, glm::dot( displacement, jte ) );
+
+        if ( newDistance2 < minDistance2 - predictedDecrease ) {
 
           bestPoint = newPoint;
           bestGuess = newGuessUV;
@@ -4493,9 +4621,28 @@ inline bool tryFullCoverageSeamGrid(
     size_t                             boundaryCount,
     double                             deflectionSquared ) {
 
-  // The chart is only a cylinder if the surface actually closes. `seamPair`
-  // says the TOPOLOGY wraps a seam; this says the GEOMETRY has one.
-  if ( !solve.closedU_ ) {
+  // `seamPair` says the TOPOLOGY wraps a seam, but not WHICH parameter it
+  // wraps - the predicate is true for either - and everything below reads the
+  // repeated legs as the u seam: columns come from the ring and rows from the
+  // leg. So this has to establish that the only seam available is the u one.
+  //
+  // Closed in u and NOT in v does that. A surface closed in neither cannot
+  // have produced a retraced pair, and is rejected. A surface closed in v only
+  // has a v seam, which this grid would read as a u seam - pulling nearly
+  // constant u from the ring and nearly constant v from the leg, and paving
+  // the chart with collapsed geometry. A surface closed in BOTH is ambiguous
+  // from here and equally unsafe, so it is rejected too rather than guessed
+  // at: handling a v seam properly means carrying which parameter wrapped
+  // through IfcBound3D and generalising this grid to either axis, which is
+  // real scope and not something to infer at this line.
+  //
+  // Rejecting is cheap and cannot regress anything. The caller ear-clips,
+  // which is exactly what every one of these faces got before this function
+  // existed. Measured across the STEP corpus reachable here - Orbiter,
+  // Right_Hand, nist_ctc_01/02, create-a-tube, supercap, driver board - there
+  // is not one surface closed in v at all, with or without u, so this costs
+  // nothing today and is a guard against a file that has one.
+  if ( !solve.closedU_ || solve.closedV_ ) {
     return false;
   }
 
@@ -4728,20 +4875,54 @@ inline bool tryFullCoverageSeamGrid(
 
       // Worst column decides, so a row is only kept coarse where the whole
       // row is within target.
+      //
+      // Both the v EDGE and the cell DIAGONAL are tested, because the diagonal
+      // is a real edge of the mesh - makeTriangle below splits every cell
+      // along it - and it is the longer chord, so testing only the v edge
+      // understates the cell. Measured on `#50977` before the diagonal was
+      // included: the v edges converged to 0.89x the target while the
+      // diagonals sat at 1.16x, i.e. the grid missed the tolerance it claims
+      // to aim at on the very edges it emits.
+      //
+      // Refining v answers both, and terminates: as the v spacing shrinks,
+      // the diagonal's deflection falls toward the u-direction deflection at
+      // that column, which on this face is 0.29x the target. That floor is
+      // also the honest limit of this loop - it can only subdivide v. The
+      // columns are the trim curve's own points and cannot be subdivided
+      // here, because the two PLANE cap faces are built from those same
+      // points and a column inserted between them would put a vertex on the
+      // end rings that the caps do not have. So a surface whose u direction
+      // ALONE misses the target needs the caps refined with it, which is
+      // cross-face coordination this architecture does not have. Nothing in
+      // the corpus is in that state, and the u term is measured here so the
+      // criterion is at least aware of it rather than silently ignoring it.
       double worst = 0.0;
 
       for ( size_t column = 0; column < columns; ++column ) {
 
-        const glm::dvec3 chord =
-          ( solve.evaluator.point( columnU[ column ], rowV[ row ] ) +
-            solve.evaluator.point( columnU[ column ], rowV[ row + 1 ] ) ) * 0.5;
+        const glm::dvec3 lower = solve.evaluator.point( columnU[ column ], rowV[ row ] );
+        const glm::dvec3 upper =
+          solve.evaluator.point( columnU[ column ], rowV[ row + 1 ] );
 
-        const glm::dvec3 onSurface =
-          solve.evaluator.point( columnU[ column ], middle );
+        const glm::dvec3 edgeDelta =
+          solve.evaluator.point( columnU[ column ], middle ) - ( ( lower + upper ) * 0.5 );
 
-        const glm::dvec3 delta = onSurface - chord;
+        worst = std::max( worst, glm::dot( edgeDelta, edgeDelta ) );
 
-        worst = std::max( worst, glm::dot( delta, delta ) );
+        if ( column + 1 >= columns ) {
+          continue;
+        }
+
+        // The diagonal makeTriangle uses runs ( row, column ) to
+        // ( row + 1, column + 1 ).
+        const glm::dvec3 far =
+          solve.evaluator.point( columnU[ column + 1 ], rowV[ row + 1 ] );
+
+        const glm::dvec3 diagonalDelta =
+          solve.evaluator.point( ( columnU[ column ] + columnU[ column + 1 ] ) * 0.5,
+                                 middle ) - ( ( lower + far ) * 0.5 );
+
+        worst = std::max( worst, glm::dot( diagonalDelta, diagonalDelta ) );
       }
 
       if ( worst > deflectionSquared ) {
@@ -4760,6 +4941,7 @@ inline bool tryFullCoverageSeamGrid(
   }
 
   const size_t gridRows = rowV.size();
+
 
   std::vector< uint32_t > grid( gridRows * columns );
 
