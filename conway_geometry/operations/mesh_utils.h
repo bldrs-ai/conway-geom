@@ -4812,6 +4812,165 @@ inline bool tryFullCoverageSeamGrid(
     columnU[ column ] = mesh.vertices[ rowFirst[ column ] ].uv.x;
   }
 
+  // -------------------------------------------------------------------------
+  // THE CHART CONTRACT.
+  //
+  // Everything below builds the tensor product columnU x rowV and evaluates
+  // interior vertices at ( columnU[ column ], rowV[ row ] ). That is correct
+  // on a RECTANGULAR ISOPARAMETRIC PATCH and on nothing else. The precondition
+  // is therefore stated here in full and asserted, rather than inferred from
+  // proxies that happen to correlate with it.
+  //
+  // It is written this way because it had to be. Three review rounds each
+  // found a DIFFERENT proxy standing in for the same missing assertion - the
+  // seam axis, then constant-v rings, then two rings with equal point counts
+  // but unrelated u partitions - and each time the run analysis above was
+  // satisfied, because it only counts runs, checks they alternate, checks they
+  // are pairwise equal in length, and compares seam points. None of that says
+  // anything about where the trim actually lies in parameter space.
+  // (bldrs-ai/conway#611.)
+  //
+  // The face must satisfy all of:
+  //
+  //   1. the support surface is closed in u and NOT in v, so that "the seam"
+  //      names one axis unambiguously        [asserted at the top of this
+  //                                           function]
+  //   2. the loop is four alternating runs - seam, ring, seam, ring - whose
+  //      seam legs are exact reverses of one another and whose rings are equal
+  //      in length                           [asserted above, run analysis]
+  //   3. the columns are a STRICTLY MONOTONE u partition
+  //   4. the rows are a STRICTLY MONOTONE v partition
+  //   5. the columns span the surface's ENTIRE u period - what makes this full
+  //      coverage rather than a strip that merely touches the seam twice
+  //   6. both ring runs lie on their constant-v lines, sampled AT THE COLUMNS
+  //      the grid will use - which also forces the two rings' u partitions to
+  //      correspond, rather than merely to have equal counts
+  //   7. both seam legs lie on their constant-u lines, at the first and last
+  //      columns
+  //
+  // What that guarantees to the code below, so a reader does not have to
+  // reconstruct it: columnU is an ordered partition of the full
+  // [ min_extent.x, max_extent.x ]; rowV is an ordered partition of the face's
+  // v range; and every boundary vertex the grid reuses verbatim already sits
+  // within `deflectionSquared` of where the tensor product would put it. So
+  // substituting S( columnU[ c ], rowV[ r ] ) for the real trim is a
+  // substitution the tessellation tolerance already covers.
+  //
+  // Failing any of it returns false and the caller ear-clips, which is exactly
+  // what these faces got before this function existed - so the gate is free to
+  // be strict, and is. Narrow and provably correct beats broad and hopeful.
+  //
+  // TOLERANCE. Only 6 and 7 need one, and it is `deflectionSquared`, the
+  // tessellation target already passed in, in the units it already has.
+  // Measured on `#50977`, the alternatives are wrong rather than merely
+  // stricter:
+  //
+  //   ring deviation from its isocurve   8.29e-04
+  //   seam deviation from its isocurve   1.41e-05
+  //   solve->convergence_error           1.19e-05
+  //   sqrt( deflectionSquared )          1.54e-02
+  //
+  // The rings miss constant v by 8.29e-04 while their v values span only
+  // 2.2e-05 - a thousandth of that - so the deviation is not the face being
+  // non-rectangular. It is the inverse solve's own residual: those ring points
+  // converge to ~8e-04, seventy times its target, because they hit
+  // MAX_ITERATION. Testing against convergence_error would reject this face
+  // for the SOLVER's accuracy rather than for its own shape, which measures
+  // the wrong thing - and would take the coil spring with it. Deflection is
+  // the honest bound: a boundary lying on its isocurve to within the tolerance
+  // the mesh is being built to is one the tessellation already cannot
+  // distinguish from the rectangle. It is also what the refinement below aims
+  // at, so both halves of this function are judged against a single target.
+  //
+  // Checks 3, 4 and 5 need no tolerance at all - they are exact comparisons on
+  // ordering and on the domain bounds, which the descent assigns exactly
+  // because it clamps to them.
+  // -------------------------------------------------------------------------
+  {
+    const double vFirst = mesh.vertices[ seamAt( 0 ) ].uv.y;
+    const double vLast  = mesh.vertices[ seamAt( rows - 1 ) ].uv.y;
+
+    // 3. Strictly monotone columns, in either direction. Without this the
+    //    chart is not a bijection and cells fold back over one another.
+    bool ascending = true, descending = true;
+
+    for ( size_t column = 0; column + 1 < columns; ++column ) {
+      ascending  = ascending  && columnU[ column ] < columnU[ column + 1 ];
+      descending = descending && columnU[ column ] > columnU[ column + 1 ];
+    }
+
+    if ( !ascending && !descending ) {
+      return false;
+    }
+
+    // 4. Likewise the rows, which the refinement below bisects: a non-monotone
+    //    v partition makes those midpoints meaningless. This also makes
+    //    vFirst != vLast, so the v range cannot be degenerate.
+    bool risingV = true, fallingV = true;
+
+    for ( size_t row = 0; row + 1 < rows; ++row ) {
+
+      const double lower = mesh.vertices[ seamAt( row ) ].uv.y;
+      const double upper = mesh.vertices[ seamAt( row + 1 ) ].uv.y;
+
+      risingV  = risingV  && lower < upper;
+      fallingV = fallingV && lower > upper;
+    }
+
+    if ( !risingV && !fallingV ) {
+      return false;
+    }
+
+    // 5. The columns must run bound to bound. Monotonicity already rules out
+    //    the two ends coinciding, but not a partition that covers only PART of
+    //    the period - a strip whose ends happen to be the same 3D point
+    //    because the surface passes through it twice. Full coverage is the
+    //    entire claim this function makes, so it is asserted rather than
+    //    assumed. Exact: the descent clamps onto the bounds, so a seam leg
+    //    that genuinely sits on one lands on it exactly.
+    const double lowColumn  = ascending ? columnU[ 0 ] : columnU[ columns - 1 ];
+    const double highColumn = ascending ? columnU[ columns - 1 ] : columnU[ 0 ];
+
+    if ( lowColumn != solve.min_extent.x || highColumn != solve.max_extent.x ) {
+      return false;
+    }
+
+    const auto onIsoLine =
+      [ & ]( uint32_t vertex, double u, double v ) {
+
+        const glm::dvec3 delta =
+          solve.evaluator.point( u, v ) - mesh.vertices[ vertex ].point;
+
+        return glm::dot( delta, delta ) <= deflectionSquared;
+      };
+
+    // 6. Both ring rows lie on their constant-v lines, sampled at the columns
+    //    the grid will actually use. Testing the FAR ring at columnU - rather
+    //    than at its own u values - is what makes this catch two rings that
+    //    share a point count but not a partition.
+    for ( size_t column = 0; column < columns; ++column ) {
+
+      if ( !onIsoLine( rowFirst[ column ], columnU[ column ], vFirst ) ||
+           !onIsoLine( rowLastAligned[ column ], columnU[ column ], vLast ) ) {
+
+        return false;
+      }
+    }
+
+    // 7. And both seam legs on their constant-u lines, which are the first and
+    //    last columns.
+    for ( size_t row = 0; row < rows; ++row ) {
+
+      if ( !onIsoLine( seamAt( row ), columnU[ 0 ],
+                       mesh.vertices[ seamAt( row ) ].uv.y ) ||
+           !onIsoLine( seamB[ row ], columnU[ columns - 1 ],
+                       mesh.vertices[ seamB[ row ] ].uv.y ) ) {
+
+        return false;
+      }
+    }
+  }
+
   // Rows start as the seam curve's own v samples, then are refined IN
   // PARAMETER SPACE until they meet the same deflection target `tesselate`
   // would have used.

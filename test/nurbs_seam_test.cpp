@@ -111,14 +111,60 @@ tinynurbs::RationalSurface3d makeSkewedClosedTube( double radius, double height 
   return surface;
 }
 
-/** The same tube, but also closed in v by making the two v ends coincide. */
-tinynurbs::RationalSurface3d makeDoublyClosedTube( double radius ) {
+/**
+ * A torus: the same rational circle swept around a second one, so it is
+ * genuinely closed in BOTH u and v.
+ *
+ * A degenerate stand-in - a tube of zero height, whose v ends coincide - sets
+ * both closure flags too, but it is rejected by the chart contract for its
+ * degeneracy rather than for its ambiguity, so it cannot show that the
+ * seam-axis clause is doing anything. This surface is well formed in every
+ * other respect, which is what makes it a test of that clause alone.
+ */
+tinynurbs::RationalSurface3d makeTorus( double tubeRadius, double ringRadius ) {
 
-  tinynurbs::RationalSurface3d surface = makeClosedTube( radius, 0.0 );
+  tinynurbs::RationalSurface3d surface;
 
-  // height 0 already makes column 0 and column 1 identical, so the surface is
-  // closed in v as well as u - degenerate as geometry, but it is the CLOSURE
-  // FLAGS the gate reads, and this sets both.
+  surface.degree_u = 2;
+  surface.degree_v = 2;
+
+  const double diagonal = std::sqrt( 2.0 ) / 2.0;
+
+  // The nine-point rational circle polygon, as offsets and weights.
+  const std::vector< glm::dvec2 > circle = {
+    {  1.0,  0.0 }, {  1.0,  1.0 }, {  0.0,  1.0 }, { -1.0,  1.0 }, { -1.0, 0.0 },
+    { -1.0, -1.0 }, {  0.0, -1.0 }, {  1.0, -1.0 }, {  1.0,  0.0 } };
+
+  const std::vector< double > circleWeights = {
+    1.0, diagonal, 1.0, diagonal, 1.0, diagonal, 1.0, diagonal, 1.0 };
+
+  const size_t side = circle.size();
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( size_t row = 0; row < side; ++row ) {
+    for ( size_t col = 0; col < side; ++col ) {
+
+      const double radial = ringRadius + ( tubeRadius * circle[ row ].x );
+
+      points.push_back( glm::dvec3( radial * circle[ col ].x,
+                                    radial * circle[ col ].y,
+                                    tubeRadius * circle[ row ].y ) );
+
+      weights.push_back( circleWeights[ row ] * circleWeights[ col ] );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( side, side, points );
+  surface.weights        = tinynurbs::array2( side, side, weights );
+
+  const std::vector< double > knots = {
+    -PI, -PI, -PI, -PI / 2, -PI / 2, 0.0, 0.0, PI / 2, PI / 2, PI, PI, PI };
+
+  surface.knots_u = knots;
+  surface.knots_v = knots;
+
   return surface;
 }
 
@@ -324,54 +370,259 @@ void testClosureRequiresMatchingWeights() {
  * The two seam legs carry IDENTICAL 3D points and DIFFERENT uv - u = uMax on
  * one side, u = uMin on the other - which is what makes them one seam rather
  * than two curves.
+ *
+ * Points come from EVALUATING the surface, not from trigonometry. The u
+ * parameter of a rational quadratic circle is not the geometric angle - it is
+ * a rational reparameterisation of it - so placing points by cos/sin puts them
+ * on the right circle at the wrong parameter, and the chart assertion would
+ * correctly reject them.
+ *
+ * `ringVWander` displaces the INTERIOR ring points along v. At zero the rings
+ * are isoparametric, which is the shape the grid requires. Non-zero makes them
+ * wander off constant v while staying exactly ON the surface and leaving every
+ * run count, seam-point equality and column ordering untouched - which is
+ * precisely the face the structural checks alone cannot tell apart.
  */
+struct SeamLoopShape {
+
+  double height      = 4.0;
+  size_t seamCount   = 6;
+  size_t ringCount   = 5;
+
+  /** Displace interior ring points along v, off their constant-v line. */
+  double ringVWander = 0.0;
+
+  /** Transpose two interior columns, so columnU stops being monotone. */
+  bool scrambleColumns = false;
+
+  /** Transpose two interior seam rows, so the v partition stops being monotone. */
+  bool scrambleRows = false;
+
+  /**
+   * Give the FAR ring a different u partition from the near one, at the same
+   * point count. Two differently shaped trim rings tessellated adaptively land
+   * on the same count all the time; it does not make their partitions
+   * correspond.
+   */
+  double farRingUSkew = 0.0;
+
+  /**
+   * Nudge the far seam leg off the u domain bound, keeping its POINTS bitwise
+   * equal to the near leg's. The columns then span slightly less than the full
+   * period while every point-equality check still passes.
+   */
+  double seamBUOffset = 0.0;
+
+  /**
+   * Displace INTERIOR seam points off the u domain bound, leaving the leg's
+   * two endpoints - which become the first and last columns - where they were.
+   */
+  double seamUWander = 0.0;
+};
+
 size_t buildSeamLoop(
     conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex >& mesh,
-    double radius,
-    double height,
-    size_t seamCount,
-    size_t ringCount ) {
+    const conway::geometry::RationalNurbsInverseMethod& solve,
+    const SeamLoopShape& shape ) {
 
-  const auto onSurface =
-    [ & ]( double angle, double along ) {
-      return glm::dvec3(
-        radius * std::cos( angle ), radius * std::sin( angle ), along );
+  const auto place =
+    [ & ]( double u, double v ) {
+      mesh.makeVertex( { solve.evaluator.point( u, v ), glm::dvec2( u, v ) } );
     };
 
-  // seamA: u = +pi, v ascending.
-  for ( size_t at = 0; at < seamCount; ++at ) {
+  // The v samples the seam is walked at, and the u samples the rings are.
+  // Held as sequences so a transposition applies CONSISTENTLY to both legs and
+  // both rings - otherwise the legs stop being exact reverses, or the far
+  // ring stops aligning with the columns, and the loop would be rejected by an
+  // earlier check instead of the one under test.
+  std::vector< double > seamV;
+  std::vector< double > ringU;
 
-    const double along = ( height * at ) / double( seamCount - 1 );
-
-    mesh.makeVertex( { onSurface( PI, along ), glm::dvec2( PI, along ) } );
+  for ( size_t at = 0; at < shape.seamCount; ++at ) {
+    seamV.push_back( ( shape.height * at ) / double( shape.seamCount - 1 ) );
   }
 
-  // ringA: the far ring, interior points only, u descending from +pi to -pi.
-  for ( size_t at = 1; at <= ringCount; ++at ) {
-
-    const double angle = PI - ( ( 2.0 * PI * at ) / double( ringCount + 1 ) );
-
-    mesh.makeVertex( { onSurface( angle, height ), glm::dvec2( angle, height ) } );
+  for ( size_t at = 1; at <= shape.ringCount; ++at ) {
+    ringU.push_back( PI - ( ( 2.0 * PI * at ) / double( shape.ringCount + 1 ) ) );
   }
 
-  // seamB: u = -pi, the SAME points as seamA in reverse.
-  for ( size_t at = 0; at < seamCount; ++at ) {
-
-    const double along =
-      ( height * ( seamCount - 1 - at ) ) / double( seamCount - 1 );
-
-    mesh.makeVertex( { onSurface( PI, along ), glm::dvec2( -PI, along ) } );
+  if ( shape.scrambleRows && seamV.size() >= 4 ) {
+    std::swap( seamV[ 1 ], seamV[ 2 ] );
   }
 
-  // ringB: the near ring, interior points only.
-  for ( size_t at = 1; at <= ringCount; ++at ) {
+  if ( shape.scrambleColumns && ringU.size() >= 3 ) {
+    std::swap( ringU[ 0 ], ringU[ 1 ] );
+  }
 
-    const double angle = -PI + ( ( 2.0 * PI * at ) / double( ringCount + 1 ) );
+  // seamA: u = +pi, except where the interior is deliberately pulled off it.
+  for ( size_t at = 0; at < seamV.size(); ++at ) {
 
-    mesh.makeVertex( { onSurface( angle, 0.0 ), glm::dvec2( angle, 0.0 ) } );
+    const bool endpoint = at == 0 || at + 1 == seamV.size();
+
+    place( endpoint ? PI : PI - shape.seamUWander, seamV[ at ] );
+  }
+
+  // ringA: the far ring, interior points only.
+  for ( size_t at = 0; at < ringU.size(); ++at ) {
+
+    place( ringU[ at ],
+           shape.height -
+             ( shape.ringVWander * ( double( at + 1 ) / double( ringU.size() ) ) ) );
+  }
+
+  // seamB: u = -pi, the SAME points as seamA in reverse. Placed from seamA's
+  // own evaluation so the two legs are bitwise equal, which is what the run
+  // analysis keys on.
+  for ( size_t at = 0; at < shape.seamCount; ++at ) {
+
+    const size_t mirror = shape.seamCount - 1 - at;
+
+    mesh.makeVertex(
+      { mesh.vertices[ mirror ].point,
+        glm::dvec2( -PI + shape.seamBUOffset, seamV[ mirror ] ) } );
+  }
+
+  // ringB: the near ring. Walked in the opposite sense, so reversing it
+  // reproduces ringA's column order - which is what lets the grid take its
+  // columns from one ring and use them for the other.
+  for ( size_t at = 0; at < ringU.size(); ++at ) {
+
+    // Reversed, not negated: reverse( ringB ) has to reproduce ringA's column
+    // order, because the grid takes its columns from the near ring and applies
+    // them to the far one.
+    const size_t mirror = ringU.size() - 1 - at;
+
+    // Skew pulls the far ring's samples toward one side while keeping their
+    // count, their order and their v identical.
+    const double fraction = double( mirror + 1 ) / double( ringU.size() + 1 );
+    const double skewed =
+      ringU[ mirror ] + ( shape.farRingUSkew * std::sin( PI * fraction ) );
+
+    place( skewed,
+           shape.ringVWander * ( double( mirror + 1 ) / double( ringU.size() ) ) );
   }
 
   return mesh.vertices.size();
+}
+
+/**
+ * The grid builds the tensor product columnU x rowV, which is a RECTANGULAR
+ * ISOPARAMETRIC chart. The run analysis cannot establish the face is one: it
+ * counts runs, checks they alternate and are pairwise equal in length, and
+ * compares seam points. A loop whose other two runs wander in v satisfies all
+ * of that and is not a rectangle, so paving one over it replaces the real trim
+ * with constant-v boundaries that can leave the face entirely.
+ *
+ * Same surface, same run structure, same column ordering; the only difference
+ * is whether the rings follow constant v.
+ */
+void testGridRequiresIsoparametricChart() {
+
+  printf( "grid gate requires a rectangular isoparametric chart\n" );
+
+  const double height = 4.0;
+
+  tinynurbs::RationalSurface3d surface = makeClosedTube( 1.0, height );
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  // sqrt( deflection ) = 0.01; |dS/dv| is height, so a v wander of 0.2 puts
+  // the ring roughly 0.8 off its isocurve - decisively outside, not marginal.
+  const double deflection = 1e-4;
+
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop( mesh, solve, SeamLoopShape{} );
+
+    check( conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "accepted when the rings are isoparametric" );
+  }
+
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .ringVWander = 0.2 } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when the rings wander off constant v - same run structure" );
+  }
+
+  // The grid indexes columns by a u partition and rows by a v partition, and
+  // both have to be ORDERED for that to be a bijection onto the chart. A
+  // transposed pair leaves every point exactly on the surface and exactly on
+  // its own isoparametric line, so the checks above all pass; what it breaks
+  // is the partition, and cells then fold back over one another.
+  // Two end rings tessellated to the same NUMBER of points, at different u
+  // positions. `ringA.size() == ringB.size()` passes; the partitions do not
+  // correspond, so every interior column would come from the near ring while
+  // the far ring's vertices were inserted unmatched, and the refinement would
+  // test the far side at the wrong u.
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .farRingUSkew = 0.35 } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when the far ring's u partition differs at equal count" );
+  }
+
+  // Columns that stop short of the u period. The offset is small enough that
+  // the leg still lies on its constant-u line within the deflection tolerance,
+  // so check 7 passes and only the domain-bound check can catch it - the chart
+  // would be a strip, not the whole surface, while the function claims full
+  // coverage.
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .seamBUOffset = 0.005 } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when the columns stop short of the full u period" );
+  }
+
+  // Seam legs that leave their constant-u line while the columns, the rows and
+  // both rings stay correct. Only the endpoints of the leg become columns, so
+  // wandering its interior is invisible to every other clause.
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .seamUWander = 0.2 } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when the seam legs wander off constant u" );
+  }
+
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .scrambleColumns = true } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when two columns are transposed - u partition not monotone" );
+  }
+
+  {
+    conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
+
+    const size_t boundaryCount = buildSeamLoop(
+        mesh, solve, SeamLoopShape{ .scrambleRows = true } );
+
+    check( !conway::geometry::tryFullCoverageSeamGrid(
+             mesh, solve, boundaryCount, deflection ),
+           "REJECTED when two rows are transposed - v partition not monotone" );
+  }
 }
 
 /**
@@ -392,7 +643,7 @@ void testGridRejectsAmbiguousSeamAxis() {
   const double height = 4.0;
 
   tinynurbs::RationalSurface3d uOnly  = makeClosedTube( radius, height );
-  tinynurbs::RationalSurface3d both   = makeDoublyClosedTube( radius );
+  tinynurbs::RationalSurface3d both   = makeTorus( radius, 4.0 );
 
   conway::geometry::RationalNurbsInverseMethod uOnlySolve( uOnly );
   conway::geometry::RationalNurbsInverseMethod bothSolve( both );
@@ -407,7 +658,8 @@ void testGridRejectsAmbiguousSeamAxis() {
   {
     conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
 
-    const size_t boundaryCount = buildSeamLoop( mesh, radius, height, 6, 5 );
+    const size_t boundaryCount =
+      buildSeamLoop( mesh, uOnlySolve, SeamLoopShape{} );
 
     check( conway::geometry::tryFullCoverageSeamGrid(
              mesh, uOnlySolve, boundaryCount, deflection ),
@@ -417,7 +669,8 @@ void testGridRejectsAmbiguousSeamAxis() {
   {
     conway::geometry::WingedEdgeMesh< conway::geometry::ParameterVertex > mesh;
 
-    const size_t boundaryCount = buildSeamLoop( mesh, radius, height, 6, 5 );
+    const size_t boundaryCount =
+      buildSeamLoop( mesh, bothSolve, SeamLoopShape{ .height = 2.0 } );
 
     check( !conway::geometry::tryFullCoverageSeamGrid(
              mesh, bothSolve, boundaryCount, deflection ),
@@ -433,6 +686,7 @@ int main() {
   testClosureRequiresMatchingWeights();
   testDescentNeverWorsensFromItsSeed();
   testGridRejectsAmbiguousSeamAxis();
+  testGridRequiresIsoparametricChart();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
