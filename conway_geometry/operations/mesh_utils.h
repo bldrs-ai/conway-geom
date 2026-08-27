@@ -1410,51 +1410,30 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
   // came out as 24 vertices and 0 triangles, i.e. absent
   // (bldrs-ai/conway#595, bldrs-ai/test-models-private#93).
   //
-  // Detected by the loop's own VECTOR AREA rather than by its topology,
-  // because the extractor hands this function points, not oriented edges,
-  // and a retracing loop cancels term for term whatever index it starts at -
-  // a palindrome test would not, since it assumes the seam sits at the
-  // midpoint. Normalised by perimeter squared, so the test is free of both
-  // the sphere's radius and the loop's own size: a genuine trim loop cannot
-  // reach zero however small it is, and 2*area/perimeter^2 is 1/(4*pi) for a
-  // circle whatever its radius.
+  // `bound.seam` is decided by the front end, where the ORIENTED_EDGEs are
+  // still visible, and is a TOPOLOGICAL fact: every edge of the loop
+  // traversed exactly twice, once in each direction.
   //
-  // Measured over every spherical face in the locally materialised corpus -
-  // 109 single-bound faces across Orbiter, Arty_Z7, nist_ctc_02 and
-  // Right_Hand:
+  // It deliberately replaces a geometric predicate. The first version of this
+  // fix tested the loop's own vector area normalised by perimeter squared,
+  // which separated the corpus by fourteen orders of magnitude - and was
+  // still wrong, because it identifies LOW ENCLOSED AREA rather than
+  // retracing. A thin spherical lune's area/perimeter^2 falls continuously
+  // toward zero as its angular width shrinks (for width w it is about
+  // w / (2*pi^2)), so below some width a GENUINE narrow trim would have been
+  // silently replaced by the entire sphere - inflated bounds, spurious
+  // volume, occlusion, and no warning, because emitting triangles suppresses
+  // the contributed-no-geometry message. That the corpus never came within
+  // five decades of the threshold was a fact about the corpus, not about the
+  // code. Found by codex on bldrs-ai/conway-geom#187.
   //
-  //   retracing seam (1 face)   4.35e-19
-  //   genuine trim loops (108)  >= 1.92e-4, median 6.12e-2
-  //
-  // Fourteen orders of magnitude apart, so 1e-9 sits five decades clear on
-  // both sides. Note what that is and is not: the genuine-loop side is a
-  // real population, the degenerate side is a sample of one. The threshold
-  // is bounded by the 108, not by the 1.
-  constexpr double DEGENERATE_LOOP_SHAPE = 1e-9;
-
-  bool retracingSeam = false;
-
-  if ( bounds.size() == 1 && boundaryPointCount >= MINIMUM_TRIM_POINTS ) {
-
-    const std::vector< glm::dvec3 >& points = bounds[ 0 ].curve.points;
-
-    glm::dvec3 vectorArea( 0.0 );
-    double     perimeter = 0.0;
-
-    for ( size_t i = 0, end = points.size(); i < end; ++i ) {
-
-      const glm::dvec3 here = points[ i ] - cent;
-      const glm::dvec3 next = points[ ( i + 1 ) % end ] - cent;
-
-      vectorArea += glm::cross( here, next );
-      perimeter  += glm::distance( here, next );
-    }
-
-    retracingSeam =
-      perimeter > 0.0 &&
-      ( glm::length( vectorArea ) * 0.5 ) <
-        ( DEGENERATE_LOOP_SHAPE * perimeter * perimeter );
-  }
+  // The topological test cannot fail that way at any width: a lune is bounded
+  // by two DIFFERENT edge curves, so no width makes it a retrace. It also
+  // needs no tolerance, which the area test did.
+  const bool retracingSeam =
+    bounds.size() == 1 &&
+    bounds[ 0 ].seam &&
+    boundaryPointCount >= MINIMUM_TRIM_POINTS;
 
   if ( ( boundaryPointCount > 0 && boundaryPointCount < MINIMUM_TRIM_POINTS ) ||
        retracingSeam ) {
