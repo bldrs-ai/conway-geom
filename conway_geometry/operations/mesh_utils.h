@@ -4745,10 +4745,32 @@ inline bool tryFullCoverageSeamGrid(
       const uint32_t c = grid[ ( ( row + 1 ) * columns ) + nextColumn ];
       const uint32_t d = grid[ ( ( row + 1 ) * columns ) + column ];
 
-      // A cell is degenerate wherever the chart's own sampling repeats a
-      // parameter - the ring on this face carries two points at u = pi - so
-      // skip the halves that carry no area rather than emitting zero-area
-      // triangles for Geometry::Reify to strip later.
+      // Guard against a cell that collapses onto a shared vertex. The grid's
+      // construction should preclude it - every cell's four corners are
+      // either four distinct boundary vertices or freshly made ones - so this
+      // is defensive, and on `#50977` it never fires.
+      //
+      // What it deliberately does NOT catch, because index identity cannot
+      // see it, is a cell whose corners are distinct VERTICES sharing a
+      // PARAMETER. That happens here: boundary point 88 of 174 - the first
+      // ring point after the seam at v = vMax - inverts to the seam's own
+      // u = pi rather than to its true u ~ 2.8687, because the descent in
+      // solveFromSeed cannot step across a closed surface's seam (its
+      // Gauss-Newton direction leaves the u domain and glm::clamp pins it, so
+      // every Armijo trial takes a zero-length step and the solve returns its
+      // seed at a residual of 0.1226 against a 1.19e-05 target). Columns 0
+      // and 1 then carry the same u, every interior row evaluates them to the
+      // same point, and Geometry::Reify's weld merges them - which leaves 249
+      // duplicated half-edges along the seam generatrix out of 34,047, and
+      // two zero-area triangles.
+      //
+      // Not repaired here, and deliberately not: the column parameters are
+      // the model's own inverse solve, and synthesising a replacement for one
+      // of them would be inventing the geometry this path exists to read. The
+      // artifact is topological rather than visible - the columns coincide in
+      // 3D, so the tube still closes and no hole appears - and the fix belongs
+      // in the descent's domain handling, which is a corpus-wide change and
+      // is filed separately. See bldrs-ai/conway#611.
       if ( a != b && b != c && c != a ) {
         mesh.makeTriangle( a, b, c );
       }
