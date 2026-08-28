@@ -7,8 +7,10 @@
 #include "structures/winged_edge.h"
 #include "structures/scratch_arena.h"
 #include "structures/alloc_telemetry.h"
+#include <cstring>
 #include <memory_resource>
 #include <queue>
+#include <unordered_set>
 #include "representation/Geometry.h"
 #include "representation/IfcGeometryReps.h"
 #include "operations/math_utils.h"
@@ -81,6 +83,78 @@ namespace conway::geometry {
    * the 0.1% factor exists to prevent.
    */
   constexpr double OBJECT_DEFLECTION_FLOOR_FACTOR = 1e-5;
+
+  /**
+   * A mesh position, keyed for exact lookup.
+   *
+   * Exact, not tolerant: this is used to answer "does the mesh already have
+   * this point, bitwise", which is a question about arithmetic rather than
+   * about proximity. See PositionSet.
+   */
+  struct PositionKey {
+
+    double x;
+    double y;
+    double z;
+
+    explicit PositionKey( const glm::dvec3& point ) :
+      // Normalising -0.0 keeps the two spellings of zero one key, so a
+      // position cannot hide from the set behind a sign bit. Every other
+      // value is stored as it arrived.
+      x( point.x == 0.0 ? 0.0 : point.x ),
+      y( point.y == 0.0 ? 0.0 : point.y ),
+      z( point.z == 0.0 ? 0.0 : point.z ) {}
+
+    bool operator==( const PositionKey& other ) const {
+
+      return x == other.x && y == other.y && z == other.z;
+    }
+  };
+
+  /** Hash over the bit patterns of a PositionKey's three coordinates. */
+  struct PositionKeyHash {
+
+    size_t operator()( const PositionKey& key ) const {
+
+      uint64_t bits[ 3 ];
+
+      std::memcpy( bits, &key, sizeof( bits ) );
+
+      uint64_t hash = 0xcbf29ce484222325ull;
+
+      for ( uint64_t value : bits ) {
+
+        hash = ( hash ^ value ) * 0x100000001b3ull;
+      }
+
+      return static_cast< size_t >( hash );
+    }
+  };
+
+  using PositionSet =
+    std::pmr::unordered_set< PositionKey, PositionKeyHash >;
+
+  /**
+   * Every position a mesh currently holds, for `tesselate`'s duplicate guard.
+   *
+   * @param mesh The mesh to read.
+   * @param resource Memory resource to build the set in.
+   * @return The set of the mesh's vertex positions.
+   */
+  template< typename VertexType >
+  inline PositionSet positionsOf(
+    const WingedEdgeMesh< VertexType >& mesh,
+    std::pmr::memory_resource*          resource ) {
+
+    PositionSet result( mesh.vertices.size() * 2, resource );
+
+    for ( const VertexType& vertex : mesh.vertices ) {
+
+      result.emplace( refinementPoint( vertex ) );
+    }
+
+    return result;
+  }
 
   /**
    * Squared deflection threshold for `tesselate`, relative to the seed
@@ -451,6 +525,18 @@ namespace conway::geometry {
       addCandidate( edgeIndex );
     }
 
+    // Nothing above the deflection target, so nothing below can run. Taken
+    // before the position set is built, so a face that needs no refinement -
+    // most of them - does not pay for one.
+    if ( candidates.empty() ) {
+      return;
+    }
+
+    // Every position the mesh already holds, for the duplicate guard in the
+    // loop below. Arena-backed for the same reason the candidate heap is: it
+    // lives exactly as long as the per-face ScratchArenaScope around this.
+    PositionSet positions = positionsOf( mesh, conway::ThreadScratchResource() );
+
     maximumTriangles -= mesh.triangles.size();
 
     while ( !candidates.empty() && maximumTriangles > 0 ) {
@@ -483,6 +569,46 @@ namespace conway::geometry {
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t                 otherVertex0 = t0.otherVertex( edge );
       uint32_t                 otherVertex1 = t1.otherVertex( edge );
+
+      // Drop a split that would not add a position the mesh does not already
+      // have. `tesselate` splits at the midpoint of the edge's two
+      // PARAMETERS, and on a trim that lands on an exactly-representable uv
+      // lattice that midpoint is a FIXED POINT: newUV comes out bitwise equal
+      // to the uv of a vertex already in the mesh, the surface returns that
+      // vertex's point bitwise, and the "new" vertex is a copy of an old one.
+      // The split then spends two triangles of budget, emits triangles that
+      // are exactly degenerate for Reify's weld to discard (two of the four,
+      // where the duplicate is one triangle's apex), and hands the queue a
+      // sibling edge carrying the deflection the parent had - so the queue
+      // never drains and the budget goes nowhere. On face `#51059` of
+      // Orbiter_v1.1_Gear_7.5.step that is 78,610 of 78,833 splits; across
+      // the 164 faces of that model that split more than 200 times, 658,807
+      // of 718,749 (bldrs-ai/conway#625, which also records what the
+      // reclaimed budget then goes on - this guard does not make a face
+      // refine less, it makes what it already spends land on the surface).
+      //
+      // Bitwise, deliberately, and NOT "the deflection did not go down".
+      // The arithmetic test sounds like the principled one and does not work:
+      // measured over the same run it accepts 709,705 of those 718,749
+      // splits, because each split really does hand its own children a
+      // smaller deflection - it is the sibling edge it creates that comes
+      // back with the parent's, which no test on the parent can see. Exact
+      // equality needs no tolerance, cannot under-refine a surface that is
+      // still converging, and is precisely the condition under which the
+      // split provably adds nothing.
+      //
+      // Dropped, not re-queued. The candidate is a pure function of the
+      // edge's two endpoints and the surface, and neither changes afterwards
+      // (vertices are appended, never moved; an edge is destroyed by its own
+      // split), so re-queuing could only pop the same rejected candidate
+      // again. The vertex it duplicates also stays in the mesh, so the
+      // rejection cannot go stale in the other direction either.
+      if ( !positions.emplace( candidate.vertex.point ).second ) {
+
+        candidates.pop();
+        continue;
+      }
+
       uint32_t                 newVertex    = mesh.makeVertex( candidate.vertex );
 
       candidates.pop();
@@ -564,6 +690,17 @@ namespace conway::geometry {
       addCandidate( edgeIndex );
     }
 
+    // As above.
+    if ( candidates.empty() ) {
+      return;
+    }
+
+    // As above. This overload runs outside the parameterized tessellators'
+    // scratch scope, so its set goes on the default resource, like its
+    // candidate heap.
+    PositionSet positions =
+      positionsOf( mesh, std::pmr::get_default_resource() );
+
     maximumTriangles -= mesh.triangles.size();
 
     while ( !candidates.empty() && maximumTriangles > 0 ) {
@@ -595,6 +732,18 @@ namespace conway::geometry {
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t                 otherVertex0 = t0.otherVertex( edge );
       uint32_t                 otherVertex1 = t1.otherVertex( edge );
+
+      // The same fixed-point guard as the ParameterVertex overload above,
+      // which carries the reasoning. This overload re-projects the midpoint
+      // rather than re-evaluating a parameter, but it is the same map onto
+      // the same lattice and it duplicates the same way - 93 of the 164
+      // faces that refine on Orbiter_v1.1_Gear_7.5.step take this path.
+      if ( !positions.emplace( candidate.vertex ).second ) {
+
+        candidates.pop();
+        continue;
+      }
+
       uint32_t                 newVertex    = mesh.makeVertex( candidate.vertex );
 
       candidates.pop();
