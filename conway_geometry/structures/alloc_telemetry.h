@@ -13,14 +13,33 @@
  * (genie.lua adds both when the CONWAY_ALLOC_TELEMETRY env var is set at
  * project generation time). Release builds are untouched.
  *
- * What it measures: for every face tessellation (an AllocTelemetryScope
- * around AddFaceToGeometry / AddFaceToGeometrySimple), the number of
- * system-allocator calls and the peak live bytes allocated inside the scope.
- * This is exactly the per-face transient footprint a per-thread bump arena
- * must hold, so the aggregate histogram picks the arena size and predicts the
- * spill rate. Counters are thread-local during collection and merged into
- * process-wide atomics on scope exit, so the instrument works identically on
- * the MT build.
+ * What it measures: for every instrumented unit of geometry work (an
+ * AllocTelemetryScope), the number of system-allocator calls, the peak live
+ * bytes allocated inside the scope, and the bytes still live when it closes.
+ * This is exactly the transient footprint a per-thread bump arena must hold,
+ * so the aggregate histogram picks the arena size and predicts the spill rate.
+ * Counters are thread-local during collection and merged into process-wide
+ * atomics on scope exit, so the instrument works identically on the MT build.
+ *
+ * Two independent axes, and confusing them is the trap this instrument fell
+ * into once already (conway#637):
+ *
+ *   - The SCOPE KIND is which call graph opened the unit -- an advanced-BREP
+ *     face, one solid extrusion, one swept solid, one boolean composition.
+ *     Every aggregate (scopes, alloc calls, peak, retained, histogram) is
+ *     bucketed by it, so paths with different natural units do not blend into
+ *     one meaningless average.
+ *   - The SITE is which sub-step inside the unit made a given allocation
+ *     (AllocTagScope). Sites are attributed within their enclosing scope kind.
+ *
+ * An allocation is only ever seen when it happens inside an
+ * AllocTelemetryScope: the wrappers are inert otherwise. So a call graph with
+ * no scope on it reports nothing at all, which reads identically to a call
+ * graph that allocates nothing. Until conway#639 audited it, Extrude() and the
+ * CSG/boolean path had no scope, and the resulting "zero scoped faces on
+ * extrusion models" was read as a measurement of those paths when it was only
+ * a statement about where the instrument was. Before believing any null from
+ * this instrument, check that a scope actually wraps the path in question.
  */
 
 #include <cstddef>
@@ -28,20 +47,6 @@
 namespace conway {
 
 #ifdef CONWAY_ALLOC_TELEMETRY
-
-/** RAII scope marking one face tessellation; nesting is ignored (outermost
- *  scope wins) so helper paths that recurse don't double-count. */
-class AllocTelemetryScope {
- public:
-  AllocTelemetryScope();
-  ~AllocTelemetryScope();
-
-  AllocTelemetryScope(const AllocTelemetryScope&) = delete;
-  AllocTelemetryScope& operator=(const AllocTelemetryScope&) = delete;
-
- private:
-  bool outermost_ = false;
-};
 
 /** Coarse callsite buckets for attributing where in-scope allocations happen.
  *  Extend as needed; keep Count last. */
@@ -58,8 +63,36 @@ enum class AllocSite {
   TriToroidal,
   TriConical,
   TriRevolution,
+  // The advanced-BREP SURFACE tessellator for a surface_of_linear_extrusion
+  // face (mesh_utils.h). Not the solid sweep -- that is ExtrudeSolid below.
+  // Same word, disjoint call graphs; see geometry-memory-coverage.md.
   TriExtrusion,
+  // --- scope kinds: one per instrumented unit of geometry work -------------
+  AdvancedFace,
+  ExtrudeSolid,
+  SweepSolid,
+  CsgBoolean,
+  // --- sites inside those scopes -------------------------------------------
+  ExtrudeCap,
+  CsgOperandPrep,
+  CsgKernel,
   Count
+};
+
+/** RAII scope marking one unit of instrumented geometry work, bucketed by
+ *  `kind` (see the scope-kind block in AllocSite). Nesting is ignored
+ *  (outermost scope wins) so helper paths that recurse don't double-count --
+ *  which also means a nested scope's kind is discarded, not merged. */
+class AllocTelemetryScope {
+ public:
+  explicit AllocTelemetryScope(AllocSite kind);
+  ~AllocTelemetryScope();
+
+  AllocTelemetryScope(const AllocTelemetryScope&) = delete;
+  AllocTelemetryScope& operator=(const AllocTelemetryScope&) = delete;
+
+ private:
+  bool outermost_ = false;
 };
 
 /** RAII: set the active allocation-attribution site for the current thread,
@@ -86,11 +119,6 @@ void ResetAllocTelemetry();
 
 #else  // !CONWAY_ALLOC_TELEMETRY — zero-cost stubs
 
-class AllocTelemetryScope {
- public:
-  AllocTelemetryScope() {}
-};
-
 enum class AllocSite {
   Other = 0,
   Earcut,
@@ -104,8 +132,25 @@ enum class AllocSite {
   TriToroidal,
   TriConical,
   TriRevolution,
+  // The advanced-BREP SURFACE tessellator for a surface_of_linear_extrusion
+  // face (mesh_utils.h). Not the solid sweep -- that is ExtrudeSolid below.
+  // Same word, disjoint call graphs; see geometry-memory-coverage.md.
   TriExtrusion,
+  // --- scope kinds: one per instrumented unit of geometry work -------------
+  AdvancedFace,
+  ExtrudeSolid,
+  SweepSolid,
+  CsgBoolean,
+  // --- sites inside those scopes -------------------------------------------
+  ExtrudeCap,
+  CsgOperandPrep,
+  CsgKernel,
   Count
+};
+
+class AllocTelemetryScope {
+ public:
+  explicit AllocTelemetryScope(AllocSite) {}
 };
 
 class AllocTagScope {
