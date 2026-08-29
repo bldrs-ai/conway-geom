@@ -1533,6 +1533,190 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
     return;
   }
 
+  // --- Trimmed unwrap (bldrs-ai/conway#644): lay the boundary loops out in a
+  // single injective (theta, phi) chart and CDT them once, the same treatment
+  // the cylinder and cone already use via triangulateUnwrappedLoops. The
+  // legacy dual-hemisphere stereographic path below stays as the fallback, so
+  // any degeneracy here lands on exactly today's behaviour.
+  //
+  // WHY THE HEMISPHERE SPLIT FAILS, since it is not obvious from reading it.
+  // That path cuts the boundary at the placement equator (normalFormVertex.z
+  // <= 0), stereographically projects each half, and CDTs each separately.
+  // A SPHERICAL_SURFACE's placement axis is ARBITRARY in the file, and it is
+  // routinely unrelated to the part: on Orbiter's button-head dome
+  // (ADVANCED_FACE #50714, express solid #964) it lands roughly perpendicular
+  // to the screw, so a band 1.4 units deep on a 3.17 sphere has a boundary
+  // whose normalized z spans [-0.8985, +0.8901] and is bisected LENGTHWISE by
+  // an equator the geometry has no reason to respect.
+  //
+  // What that produces is not a clean loss of one half. Both half-CDTs run and
+  // both return triangles; what differs is `edgeDiscarded`, which selects the
+  // erase mode, whether the per-triangle equator filter runs, and whether
+  // equator edges are collected - three things at once. On #50714 side 0
+  // discards one edge of 46 and keeps 31 of 71 triangles; side 1 discards
+  // NOTHING, so it takes eraseOuterTrianglesAndHoles() with no equator filter
+  // and emits all 46, including triangles spanning the other hemisphere. The
+  // face ships 244 triangles carrying 25.196 of a 27.95 analytic zone area
+  // inside 5 of 24 azimuth sectors - about 90% of the right area in about 21%
+  // of the right footprint. Past roughly 0.95 normalized z the same mechanism
+  // stops emitting anything at all. Both regimes are pinned in
+  // test/spherical_trim_test.cpp.
+  //
+  // Forcing both sides into the filtered branch was measured and makes it
+  // strictly worse: the face then emits ZERO geometry. The predicate is load
+  // bearing three ways, which is why this is a new chart rather than a repair
+  // inside it.
+  //
+  // The branch cut here is placed by largestCircularGap in an empty angular
+  // gap of THIS face's own boundary, or the annulus layout is used when the
+  // boundary winds theta and there is no gap to place one in - which is the
+  // property the fixed equator lacks. Hole nesting is exact, so an inner trim
+  // (the dome's hex socket) stays a hole; #595's full-coverage grid could
+  // never be widened to cover this case for exactly that reason - it would
+  // pave the socket over.
+  {
+    using namespace unwrap_detail;
+
+    // phi is latitude, non-periodic, normalized to [0, 1] over the face's own
+    // span - the same contract the cylinder's axial coordinate satisfies.
+    double loPhi = std::numeric_limits< double >::max();
+    double hiPhi = std::numeric_limits< double >::lowest();
+
+    // A boundary sample at the placement pole has no defined theta. The chart
+    // cannot represent it, so the face falls through to the legacy path rather
+    // than being laid out on a guess.
+    bool sawPolePoint = false;
+
+    std::vector< std::vector< BoundaryPoint > > loops;
+
+    loops.reserve( bounds.size() );
+
+    for ( const IfcBound3D &bound : bounds ) {
+
+      std::vector< BoundaryPoint > loop;
+
+      loop.reserve( bound.curve.points.size() );
+
+      for ( const glm::dvec3 &point : bound.curve.points ) {
+
+        glm::dvec3 delta = point - cent;
+
+        double dx = glm::dot( vecX, delta );
+        double dy = glm::dot( vecY, delta );
+        double dz = glm::dot( vecZ, delta );
+
+        if ( !std::isfinite( dx ) || !std::isfinite( dy ) ||
+             !std::isfinite( dz ) ) {
+          continue;
+        }
+
+        double ring = std::sqrt( dx * dx + dy * dy );
+
+        if ( ring < radius * 1e-9 ) {
+          sawPolePoint = true;
+          continue;
+        }
+
+        // Latitude from the ring radius and the axial height, rather than
+        // asin(dz / radius): the boundary points come off a trim and need not
+        // sit exactly on the nominal radius, and atan2 stays conditioned where
+        // the asin form loses precision near the poles.
+        double phi = std::atan2( dz, ring );
+
+        loPhi = std::min( loPhi, phi );
+        hiPhi = std::max( hiPhi, phi );
+
+        loop.push_back( BoundaryPoint{ point, std::atan2( dy, dx ), phi } );
+      }
+
+      if ( loop.size() >= 3 ) {
+        loops.push_back( std::move( loop ) );
+      }
+    }
+
+    double spanPhi = hiPhi - loPhi;
+
+    if ( !sawPolePoint && !loops.empty() && spanPhi > 1e-12 ) {
+
+      auto parameterDuplicate = []( const BoundaryPoint &a,
+                                    const BoundaryPoint &b ) {
+
+        return
+          std::abs( wrapDeltaPi( b.theta - a.theta ) ) < 1e-12 &&
+          std::abs( b.phi - a.phi ) < 1e-12;
+      };
+
+      for ( std::vector< BoundaryPoint > &loop : loops ) {
+
+        for ( BoundaryPoint &point : loop ) {
+          point.phi = ( point.phi - loPhi ) / spanPhi;
+        }
+
+        std::vector< BoundaryPoint > cleaned;
+
+        cleaned.reserve( loop.size() );
+
+        for ( const BoundaryPoint &point : loop ) {
+          if ( cleaned.empty() || !parameterDuplicate( cleaned.back(), point ) ) {
+            cleaned.push_back( point );
+          }
+        }
+
+        while ( cleaned.size() > 1 &&
+                parameterDuplicate( cleaned.front(), cleaned.back() ) ) {
+          cleaned.pop_back();
+        }
+
+        loop = std::move( cleaned );
+      }
+
+      std::erase_if( loops, []( const std::vector< BoundaryPoint > &loop ) {
+        return loop.size() < 3;
+      } );
+
+      WingedEdgeMesh< glm::dvec3 > unwrapMesh;
+
+      if ( !loops.empty() &&
+           triangulateUnwrappedLoops( loops, unwrapMesh, "sphere" ) ) {
+
+        tesselate(
+          unwrapMesh,
+          [&]( const glm::dvec3 &point ) {
+
+            return glm::normalize( point - cent ) * radius + cent;
+          },
+          unwrapMesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
+          relativeDeflectionSquared( unwrapMesh, representationExtent ) );
+
+        // A sphere's outward normal is the offset from the centre, so unlike
+        // the cylinder there is no degenerate direction to guard: a triangle
+        // centroid can only land on the centre if the triangle spans the whole
+        // sphere, which a trimmed loop cannot produce. Sense handling matches
+        // the cylinder path - only orient against the surface normal when the
+        // extractor actually populated the flag (IfcSurface::sameSenseKnown),
+        // and use surface.sameSense rather than the local copy, which carries
+        // a uv-space handedness correction that would be applied twice here.
+        if ( surface.sameSenseKnown ) {
+
+          appendMeshToGeometry(
+            unwrapMesh,
+            geometry,
+            surface.sameSense,
+            [&]( const glm::dvec3& point ) {
+
+              return point - cent;
+            } );
+
+        } else {
+
+          appendMeshToGeometry( unwrapMesh, geometry );
+        }
+
+        return;
+      }
+    }
+  }
+
   WingedEdgeMesh< glm::dvec3 > mesh;
 
   tesselateDualParametrization(
