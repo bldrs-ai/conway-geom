@@ -592,6 +592,68 @@ void testPoleReachingLuneTriangulatesCleanly() {
          "the lune carries its analytic area" );
 }
 
+/**
+ * Test 6 - a collapsed inner loop fails the unwrap to the legacy path.
+ *
+ * If dedup takes a supplied loop below three points, erasing it and
+ * triangulating the survivors pavesover the hole and adds volume silently -
+ * the exact failure that ruled #595's full-coverage grid out of this job. The
+ * unwrap must decline the whole face instead, so the "can never make output
+ * worse" contract is literally true rather than true-except-here.
+ *
+ * WHAT THIS PINS, precisely, because the obvious reading is wrong: it pins
+ * that the FALLBACK ENGAGED, not that the hole survives. Measured, the legacy
+ * dual-hemisphere path paves this hole too (area 2.8708 against a 1.2578 band
+ * and a 2.8884 band-plus-hole). So a collapsed inner trim produces bad
+ * geometry either way; what this change buys is that the new chart does not
+ * own that failure and the face behaves exactly as it did before this path
+ * existed. Paving on a collapsed trim is a pre-existing defect and is tracked
+ * separately.
+ *
+ * The triangle count is the pin because it is the only thing that separates
+ * the two paths here (704 for the chart, 865 for legacy) - the areas agree to
+ * four decimals. It is a golden: if legacy's refinement changes, update it.
+ *
+ * Red-proven: without the collapse check this reports 704.
+ */
+void testCollapsedInnerLoopFallsBackToLegacy() {
+
+  printf( "=== collapsed inner loop falls back to legacy ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+  constexpr double INNER  = 0.737;
+  constexpr size_t LEGACY_TRIANGLE_COUNT = 865;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  IfcSurface surface = makeSphere( RADIUS );
+  Geometry   geometry;
+
+  std::vector< IfcBound3D > bounds;
+
+  bounds.push_back( makeBound(
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+    IfcBoundType::OUTERBOUND ) );
+
+  // A real inner trim that has degenerated: three points that all collapse to
+  // one under the unwrap's 1e-12 parameter dedup.
+  const glm::dvec3 seed =
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, INNER, 24, true )[ 0 ];
+
+  bounds.push_back( makeBound(
+    { seed, seed + glm::dvec3( 1e-15, 0, 0 ), seed + glm::dvec3( 0, 1e-15, 0 ) },
+    IfcBoundType::BOUND ) );
+
+  TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+
+  printf( "      triangles=%zu legacyExpected=%zu\n",
+          geometry.triangles.size(), LEGACY_TRIANGLE_COUNT );
+
+  check( geometry.triangles.size() == LEGACY_TRIANGLE_COUNT,
+         "the face took the legacy path, not the unwrap" );
+}
+
 }  // namespace
 
 int main() {
@@ -601,6 +663,7 @@ int main() {
   testAreaStaysBoundedByAnalyticZone();
   testInnerLoopIsNotPavedOver();
   testPoleReachingLuneTriangulatesCleanly();
+  testCollapsedInnerLoopFallsBackToLegacy();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

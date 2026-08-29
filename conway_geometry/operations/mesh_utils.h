@@ -1670,13 +1670,31 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
         loop = std::move( cleaned );
       }
 
-      std::erase_if( loops, []( const std::vector< BoundaryPoint > &loop ) {
-        return loop.size() < 3;
-      } );
+      // A loop that dedup has taken below three points has COLLAPSED, and
+      // erasing it here would triangulate the survivors - which for an inner
+      // trim means paving the hole over and adding volume silently. That is
+      // precisely the failure this path was chosen to avoid: the reason #595's
+      // full-coverage grid could not be widened to reach the dome is that it
+      // would have replaced the hex socket with surface.
+      //
+      // So a collapse fails the WHOLE unwrap rather than being erased from it,
+      // and the face takes the legacy path exactly as if this code were not
+      // here. That keeps the "can never make output worse" contract literally
+      // true instead of true-except-here. Note the legacy path paves this case
+      // too, so what the check buys is that the new chart does not OWN the
+      // failure - not that the hole survives. Found by review on
+      // bldrs-ai/conway-geom#191.
+      const bool anyLoopCollapsed =
+        std::any_of(
+          loops.begin(),
+          loops.end(),
+          []( const std::vector< BoundaryPoint > &loop ) {
+            return loop.size() < 3;
+          } );
 
       WingedEdgeMesh< glm::dvec3 > unwrapMesh;
 
-      if ( !loops.empty() &&
+      if ( !anyLoopCollapsed && !loops.empty() &&
            triangulateUnwrappedLoops( loops, unwrapMesh, "sphere" ) ) {
 
         tesselate(
