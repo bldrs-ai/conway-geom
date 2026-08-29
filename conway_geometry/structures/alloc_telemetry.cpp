@@ -33,6 +33,20 @@ struct ThreadFaceStats {
   uint64_t allocCalls = 0;
   uint64_t liveBytes = 0;
   uint64_t peakBytes = 0;
+  // Every byte handed out inside the unit, whether or not it was freed again
+  // before the unit closed. This -- not peakBytes -- is what a bump arena has
+  // to hold, because a bump arena's deallocation is a no-op until the scope
+  // rewinds. See the arena-sizing note in DumpScopeKind.
+  uint64_t cumulativeBytes = 0;
+  uint64_t freeCalls = 0;
+  uint64_t freedBytes = 0;
+  // Frees whose size exceeded the in-scope live counter, i.e. where the clamp
+  // in onFree fired. Direct evidence that pre-scope memory was freed inside
+  // the unit, which is the condition under which liveBytes -- and so peak and
+  // retained -- are wrong. Counted so the report can say so instead of the
+  // reader having to guess.
+  uint64_t clampedFrees = 0;
+  uint64_t clampedBytes = 0;
 };
 
 thread_local ThreadFaceStats tls;
@@ -53,6 +67,7 @@ inline void onAlloc(void* ptr) {
   }
   const uint64_t size = malloc_usable_size(ptr);
   tls.allocCalls += 1;
+  tls.cumulativeBytes += size;
   tls.liveBytes += size;
   if (tls.liveBytes > tls.peakBytes) {
     tls.peakBytes = tls.liveBytes;
@@ -67,10 +82,31 @@ inline void onFree(void* ptr) {
     return;
   }
   uint64_t size = malloc_usable_size(ptr);
-  // Frees of memory allocated before the scope began can underflow the
-  // in-scope live counter; clamp - we are sizing the scratch arena, and
-  // pre-scope memory would not live in it.
-  tls.liveBytes = (size > tls.liveBytes) ? 0 : tls.liveBytes - size;
+  tls.freeCalls += 1;
+  tls.freedBytes += size;
+  // KNOWN DEFECT, measured rather than hidden. This instrument does not track
+  // which pointers it handed out, so a free of memory allocated BEFORE the
+  // scope began is indistinguishable from a free of in-scope memory and is
+  // subtracted from the in-scope live counter all the same. That corrupts
+  // liveBytes, and with it peakBytes and the retained figure at scope exit.
+  // The clamp below only stops the counter going negative; it does not stop
+  // the corruption, and where it fires it is erasing bytes that really were
+  // live in scope.
+  //
+  // It bites hardest on the CSG path, where Cleanup() and the kernel free
+  // operand buffers allocated before the composition began. The two clamp
+  // counters exist so the report can quantify the exposure per scope kind
+  // instead of leaving every byte column silently suspect. The real fix is
+  // pointer-ownership tracking (only subtract a free whose pointer this scope
+  // allocated); until that exists, treat the peak and retained columns as
+  // unreliable on any kind reporting nonzero clamped frees.
+  if (size > tls.liveBytes) {
+    tls.clampedFrees += 1;
+    tls.clampedBytes += size - tls.liveBytes;
+    tls.liveBytes = 0;
+  } else {
+    tls.liveBytes -= size;
+  }
 }
 
 // ---- process-wide aggregates, merged on scope exit -------------------------
@@ -97,6 +133,17 @@ std::atomic<uint64_t> g_peakHistogram[kSiteCount][kBuckets] = {};
 // number conway#637 asks for on each path.
 std::atomic<uint64_t> g_totalEscapedBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_maxEscapedBytes[kSiteCount] = {};
+// Cumulative (not live-peak) bytes per unit, and its own histogram. A bump
+// arena never reuses freed space until rewind, so this is the distribution
+// that sizes one, and it can be orders of magnitude above the live peak.
+std::atomic<uint64_t> g_totalCumulativeBytes[kSiteCount] = {};
+std::atomic<uint64_t> g_maxCumulativeBytes[kSiteCount] = {};
+std::atomic<uint64_t> g_cumulativeHistogram[kSiteCount][kBuckets] = {};
+// Exposure of the byte columns to the onFree ownership defect.
+std::atomic<uint64_t> g_totalFreeCalls[kSiteCount] = {};
+std::atomic<uint64_t> g_totalFreedBytes[kSiteCount] = {};
+std::atomic<uint64_t> g_totalClampedFrees[kSiteCount] = {};
+std::atomic<uint64_t> g_totalClampedBytes[kSiteCount] = {};
 
 inline int bucketFor(uint64_t bytes) {
   int b = 0;
@@ -170,6 +217,11 @@ AllocTelemetryScope::AllocTelemetryScope(AllocSite kind) {
     tls.allocCalls = 0;
     tls.liveBytes = 0;
     tls.peakBytes = 0;
+    tls.cumulativeBytes = 0;
+    tls.freeCalls = 0;
+    tls.freedBytes = 0;
+    tls.clampedFrees = 0;
+    tls.clampedBytes = 0;
   }
 }
 
@@ -188,6 +240,17 @@ AllocTelemetryScope::~AllocTelemetryScope() {
       1, std::memory_order_relaxed);
   g_totalEscapedBytes[kind].fetch_add(tls.liveBytes, std::memory_order_relaxed);
   atomicMax(g_maxEscapedBytes[kind], tls.liveBytes);
+  g_totalCumulativeBytes[kind].fetch_add(
+      tls.cumulativeBytes, std::memory_order_relaxed);
+  atomicMax(g_maxCumulativeBytes[kind], tls.cumulativeBytes);
+  g_cumulativeHistogram[kind][bucketFor(tls.cumulativeBytes)].fetch_add(
+      1, std::memory_order_relaxed);
+  g_totalFreeCalls[kind].fetch_add(tls.freeCalls, std::memory_order_relaxed);
+  g_totalFreedBytes[kind].fetch_add(tls.freedBytes, std::memory_order_relaxed);
+  g_totalClampedFrees[kind].fetch_add(
+      tls.clampedFrees, std::memory_order_relaxed);
+  g_totalClampedBytes[kind].fetch_add(
+      tls.clampedBytes, std::memory_order_relaxed);
 }
 
 namespace {
@@ -233,6 +296,35 @@ void DumpScopeKind(int kind) {
                 static_cast<double>(escapedTotal));
   }
 
+  // Arena sizing. A bump arena's free is a no-op until rewind, so what it must
+  // hold for one unit is every byte the unit allocated, not the most it held at
+  // once. On a path that recycles heavily the two differ by orders of
+  // magnitude, and quoting the live-peak histogram as arena sizing evidence
+  // would understate the arena by exactly that factor.
+  fprintf(stderr,
+          "[alloc-telemetry]     cumulativeBytes(avg=%" PRIu64 " max=%" PRIu64
+          " total=%" PRIu64 ") -- what a bump arena must hold per unit\n",
+          g_totalCumulativeBytes[kind].load() / scopes,
+          g_maxCumulativeBytes[kind].load(),
+          g_totalCumulativeBytes[kind].load());
+
+  // Exposure of the byte columns above to the ownership defect documented in
+  // onFree. Nonzero clamped frees mean pre-scope memory was freed inside these
+  // units, so peak and retained are provably wrong for this kind -- and the
+  // clamp count is a lower bound on the occurrences, since a pre-scope free
+  // that happens to be smaller than the live counter corrupts it silently
+  // without clamping.
+  const uint64_t clampedFrees = g_totalClampedFrees[kind].load();
+
+  fprintf(stderr,
+          "[alloc-telemetry]     frees(calls=%" PRIu64 " bytes=%" PRIu64
+          ") clamped(frees=%" PRIu64 " bytes=%" PRIu64 ")%s\n",
+          g_totalFreeCalls[kind].load(), g_totalFreedBytes[kind].load(),
+          clampedFrees, g_totalClampedBytes[kind].load(),
+          clampedFrees == 0
+            ? ""
+            : "  <-- peak/retained UNRELIABLE for this kind");
+
   for (int site = 0; site < kSiteCount; ++site) {
     const uint64_t count = g_siteCounts[kind][site].load();
 
@@ -251,7 +343,9 @@ void DumpScopeKind(int kind) {
             g_siteBytes[kind][site].load());
   }
 
-  // Cumulative histogram: what fraction of units fit an arena of 2^(i+1)?
+  // Two distributions, and conflating them is how an arena gets undersized.
+  // `peak<` is the most bytes live at once in a unit -- what a heap needs.
+  // `alloc<` is every byte the unit allocated -- what a bump arena needs.
   uint64_t running = 0;
 
   for (int i = 0; i < kBuckets; ++i) {
@@ -263,8 +357,26 @@ void DumpScopeKind(int kind) {
 
     running += count;
     fprintf(stderr,
-            "[alloc-telemetry]     peak<%8" PRIu64 "KiB: %10" PRIu64
+            "[alloc-telemetry]     peak <%8" PRIu64 "KiB: %10" PRIu64
             " units (%6.2f%% cumulative)\n",
+            (uint64_t(1) << (i + 1)) / 1024, count,
+            100.0 * static_cast<double>(running) /
+                static_cast<double>(scopes));
+  }
+
+  running = 0;
+
+  for (int i = 0; i < kBuckets; ++i) {
+    const uint64_t count = g_cumulativeHistogram[kind][i].load();
+
+    if (count == 0) {
+      continue;
+    }
+
+    running += count;
+    fprintf(stderr,
+            "[alloc-telemetry]     alloc<%8" PRIu64 "KiB: %10" PRIu64
+            " units (%6.2f%% cumulative) -- arena sizing\n",
             (uint64_t(1) << (i + 1)) / 1024, count,
             100.0 * static_cast<double>(running) /
                 static_cast<double>(scopes));
@@ -309,9 +421,16 @@ void ResetAllocTelemetry() {
     g_maxPeakBytes[kind].store(0);
     g_totalEscapedBytes[kind].store(0);
     g_maxEscapedBytes[kind].store(0);
+    g_totalCumulativeBytes[kind].store(0);
+    g_maxCumulativeBytes[kind].store(0);
+    g_totalFreeCalls[kind].store(0);
+    g_totalFreedBytes[kind].store(0);
+    g_totalClampedFrees[kind].store(0);
+    g_totalClampedBytes[kind].store(0);
 
     for (int i = 0; i < kBuckets; ++i) {
       g_peakHistogram[kind][i].store(0);
+      g_cumulativeHistogram[kind][i].store(0);
     }
 
     for (int site = 0; site < kSiteCount; ++site) {
