@@ -6252,13 +6252,25 @@ inline void TriangulateBspline(Geometry &geometry,
       // meaningful within one. See RationalNurbsInverseMethod::resetContinuity.
       bSplineInverseEvaluation.resetContinuity();
 
-      for (size_t j = 0; j < bounds[i].curve.points.size(); j++) {
-        glm::dvec3 pt = bounds[i].curve.points[j];
+      const uint32_t firstVertex =
+        static_cast< uint32_t >( mesh.vertices.size() );
+
+      const size_t boundPointCount = bounds[ i ].curve.points.size();
+
+      auto scaledPoint = [ & ]( size_t j ) {
+
+        glm::dvec3 pt = bounds[ i ].curve.points[ j ];
 
         //hack 
         pt.x *= scaling;
         pt.y *= scaling;
         pt.z *= scaling;
+
+        return pt;
+      };
+
+      for (size_t j = 0; j < boundPointCount; j++) {
+        glm::dvec3 pt = scaledPoint( j );
 
         glm::dvec2 pInv;
         {
@@ -6268,6 +6280,49 @@ inline void TriangulateBspline(Geometry &geometry,
 
         points.push_back({pInv.x, pInv.y});
         mesh.makeVertex( { pt, pInv } );
+      }
+
+      // SECOND PASS OVER THE HEAD OF THE LOOP.
+      //
+      // resetContinuity() above leaves the FIRST point of every bound with no
+      // continuity seed, so it cold-starts from the seed grid. On a surface
+      // that passes near itself - a multi-turn thread flank, the conway#594
+      // configuration - that grid can land in the wrong basin, and the bad uv
+      // then seeds the points after it until the descent claws its way back.
+      //
+      // Measured across three models, 10 of 848 b-spline faces cold-start into
+      // a residual more than 100x their own loop median and above 0.1% of the
+      // face extent; the worst lands 26% of the face away from the surface,
+      // and one returns the domain corner (0,0) outright. Downstream that
+      // shows as a spurious v-monotone reversal where the good run meets the
+      // bad head, which is what pushes conway#647's thread flank from two
+      // monotone runs to four and out of the ribbon gate.
+      //
+      // The loop is CLOSED, so its first point is adjacent to its last, and
+      // after the pass above the solver's continuity seed holds exactly that
+      // last point's solution. Re-solving the head from there is therefore
+      // seeded by a genuine neighbour rather than by a grid guess. Stop at the
+      // first point whose answer does not change: from there on the original
+      // pass was already running on a continuity seed of its own.
+      //
+      // This does NOT weaken resetContinuity's guarantee. That reset exists to
+      // stop one bound's solution seeding a DIFFERENT bound, where an
+      // unrelated preimage can be converged onto silently; the seed used here
+      // comes from this same bound.
+      for ( size_t j = 0; j < boundPointCount; j++ ) {
+
+        glm::dvec2 reInv;
+        {
+          conway::AllocTagScope inverseTag( conway::AllocSite::NurbsInverse );
+          reInv = bSplineInverseEvaluation( scaledPoint( j ) );
+        }
+
+        if ( reInv == mesh.vertices[ firstVertex + j ].uv ) {
+          break;
+        }
+
+        mesh.vertices[ firstVertex + j ].uv = reInv;
+        points[ j ] = { reInv.x, reInv.y };
       }
 
       uvBoundaryValues.push_back(points);

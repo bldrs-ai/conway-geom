@@ -15,6 +15,7 @@
  */
 #include "conway_geometry/operations/mesh_utils.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -678,9 +679,183 @@ void testGridRejectsAmbiguousSeamAxis() {
   }
 }
 
+
+/**
+ * A multi-turn helical ribbon: v runs along the coil, u across its narrow
+ * width. Consecutive turns pass close to each other in 3D, which is what gives
+ * the inverse solve several near-equal basins for one query - the conway#594
+ * configuration, and the one every cold-start failure in the corpus sits on.
+ */
+tinynurbs::RationalSurface3d makeHelicalRibbon(
+    double coilRadius, double pitch, double turns, double width,
+    int samples ) {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 3;
+
+  const int alongCount  = samples;
+  const int acrossCount = 2;
+
+  surface.knots_u = { 0, 0, 1, 1 };
+
+  surface.knots_v.clear();
+
+  for ( int i = 0; i < surface.degree_v + 1; ++i ) {
+    surface.knots_v.push_back( 0.0 );
+  }
+
+  for ( int i = 1; i < alongCount - surface.degree_v; ++i ) {
+    surface.knots_v.push_back(
+      static_cast< double >( i ) / ( alongCount - surface.degree_v ) );
+  }
+
+  for ( int i = 0; i < surface.degree_v + 1; ++i ) {
+    surface.knots_v.push_back( 1.0 );
+  }
+
+  surface.control_points.resize( acrossCount, alongCount );
+  surface.weights.resize( acrossCount, alongCount );
+
+  for ( int j = 0; j < alongCount; ++j ) {
+
+    const double t = turns * 2.0 * PI * j / ( alongCount - 1 );
+
+    const glm::dvec3 centre(
+      coilRadius * std::cos( t ),
+      coilRadius * std::sin( t ),
+      pitch * t / ( 2.0 * PI ) );
+
+    const glm::dvec3 outward( std::cos( t ), std::sin( t ), 0.0 );
+
+    for ( int i = 0; i < acrossCount; ++i ) {
+      surface.control_points( i, j ) = centre + outward * ( width * ( i - 0.5 ) );
+      surface.weights( i, j )        = 1.0;
+    }
+  }
+
+  return surface;
+}
+
+
+/**
+ * The first point of a closed trim must not cold-start into the wrong basin.
+ *
+ * resetContinuity() scopes the continuity seed to one bound, which is correct
+ * and deliberate - see its own comment on why a cross-loop seed can converge
+ * silently onto a different sheet. But it leaves the FIRST point of every
+ * bound with no seed at all, cold-starting from the grid. On a surface that
+ * passes near itself the grid can pick the wrong basin, and the bad uv then
+ * seeds its successors until the descent recovers.
+ *
+ * Measured across Orbiter, Right_Hand and nist_ctc_02: 10 of 848 b-spline
+ * faces cold-start into a residual more than 100x their own loop median and
+ * above 0.1% of the face extent, the worst 26% of the face away from the
+ * surface. Downstream it shows as a spurious v-monotone reversal where the
+ * good run meets the bad head - the defect behind conway#647.
+ *
+ * The loop is closed, so its first point neighbours its last; re-solving the
+ * head seeded from that last solution removes the cold start. This pins the
+ * property directly on the solver rather than through triangulation, because
+ * the triangulated consequence depends on the ribbon gate as well.
+ *
+ * Red-proven: with the second pass removed the first point's residual here is
+ * 1.2e+00 against a loop median of 1.3e-03.
+ */
+void testClosedTrimHeadIsNotColdStarted() {
+
+  printf( "=== closed trim head is not cold-started ===\n" );
+
+  constexpr double COIL_RADIUS = 3.0;
+  constexpr double PITCH       = 0.60;
+  constexpr double TURNS       = 8.0;
+  constexpr double WIDTH       = 0.30;
+  constexpr int    SAMPLES     = 200;
+  constexpr int    ALONG       = 400;
+
+  // Start the loop 500 points in. A real STEP edge loop begins wherever the
+  // file put it; starting at a domain corner is the case the seed grid always
+  // gets right, so it would prove nothing.
+  constexpr int    ROTATION    = 500;
+
+  const tinynurbs::RationalSurface3d surface =
+    makeHelicalRibbon( COIL_RADIUS, PITCH, TURNS, WIDTH, SAMPLES );
+
+  conway::geometry::RationalSurfaceEvaluator evaluator( surface );
+
+  std::vector< glm::dvec3 > loop;
+
+  for ( int i = 0; i < ALONG; ++i ) {
+    loop.push_back( evaluator.point( 0.02, static_cast< double >( i ) / ALONG ) );
+  }
+
+  for ( int i = ALONG; i > 0; --i ) {
+    loop.push_back( evaluator.point( 0.98, static_cast< double >( i ) / ALONG ) );
+  }
+
+  std::vector< glm::dvec3 > rotated;
+
+  for ( size_t i = 0; i < loop.size(); ++i ) {
+    rotated.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
+  }
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  solve.resetContinuity();
+
+  std::vector< glm::dvec2 > solved;
+
+  for ( const glm::dvec3& query : rotated ) {
+    solved.push_back( solve( query ) );
+  }
+
+  // The production path's second pass: re-solve the head seeded by the last
+  // point's solution, which the solver still holds, stopping at the first
+  // point whose answer does not change.
+  for ( size_t i = 0; i < rotated.size(); ++i ) {
+
+    const glm::dvec2 again = solve( rotated[ i ] );
+
+    if ( again == solved[ i ] ) {
+      break;
+    }
+
+    solved[ i ] = again;
+  }
+
+  auto residual = [ & ]( size_t i ) {
+
+    return glm::distance(
+      solve.evaluator.point( solved[ i ].x, solved[ i ].y ), rotated[ i ] );
+  };
+
+  std::vector< double > rest;
+
+  for ( size_t i = 1; i < rotated.size(); ++i ) {
+    rest.push_back( residual( i ) );
+  }
+
+  std::sort( rest.begin(), rest.end() );
+
+  const double head   = residual( 0 );
+  const double median = rest[ rest.size() / 2 ];
+
+  printf( "      headResidual=%.4e loopMedian=%.4e ratio=%.2e\n",
+          head, median, head / median );
+
+  // The head must be in the same league as the rest of its own loop. A
+  // cold-start failure here is four to five orders out, so the bar does not
+  // need to be tight to be decisive.
+  check( head < median * 100.0,
+         "the loop head solves to within 100x its own loop median" );
+}
+
 }  // namespace
 
 int main() {
+
+  testClosedTrimHeadIsNotColdStarted();
 
   testWideStepAcrossSeamKeepsArmijoSound();
   testClosureRequiresMatchingWeights();
