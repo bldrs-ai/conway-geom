@@ -46,7 +46,9 @@
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 #include <map>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -654,6 +656,121 @@ void testCollapsedInnerLoopFallsBackToLegacy() {
          "the face took the legacy path, not the unwrap" );
 }
 
+/**
+ * Tests 7 and 8 - a bound lost anywhere before the CDT fails the unwrap.
+ *
+ * Test 6 covers a loop collapsing under the unwrap's own 1e-12 dedup. Review
+ * on bldrs-ai/conway-geom#191 found two more places a supplied bound can go
+ * missing while the survivors still triangulate, both of which paved the hole:
+ *
+ *   7. AT COLLECTION - a non-finite sample is skipped, leaving the loop under
+ *      three points, so it is never collected at all. Counting collapses among
+ *      the loops that survived cannot see this; the casualty is already gone.
+ *
+ *   8. AT THE CONSTRAINT WELD - triangulateUnwrappedLoops welds at 1e-9 while
+ *      the dedup runs at 1e-12, so points that legitimately survive collection
+ *      can merge inside the helper. A loop merged onto one vertex emits no
+ *      edges and vanishes from the constraints while `cdtEdges.size() < 3`
+ *      still passes on the outer loop alone.
+ *
+ * Unlike test 6, the legacy path does NOT pave either of these - it drops the
+ * face - so here the assertion can be the property itself rather than a
+ * triangle-count golden. Measured before the fix: 704 triangles at area 2.8703
+ * for test 7, 768 at 2.8688 for test 8, both of which are band-plus-hole.
+ */
+void testNonFiniteSampleInInnerLoopDoesNotPave() {
+
+  printf( "=== non-finite sample in inner loop does not pave ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+  constexpr double INNER  = 0.737;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  IfcSurface surface = makeSphere( RADIUS );
+  Geometry   geometry;
+
+  std::vector< IfcBound3D > bounds;
+
+  bounds.push_back( makeBound(
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+    IfcBoundType::OUTERBOUND ) );
+
+  const std::vector< glm::dvec3 > innerRing =
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, INNER, 24, true );
+
+  bounds.push_back( makeBound(
+    { innerRing[ 0 ], innerRing[ 8 ],
+      glm::dvec3( std::numeric_limits< double >::quiet_NaN(), 0.0, 0.0 ) },
+    IfcBoundType::BOUND ) );
+
+  // The legacy path throws its own non-finite guard on this input, which
+  // AddFaceToGeometry catches per face in production. Either outcome is fine
+  // here; what must not happen is a paved hole.
+  try {
+    TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+  } catch ( const std::exception& ) {
+  }
+
+  const Coverage coverage = measure( geometry, glm::dvec3( 0 ), bandAxis );
+
+  const double band          = zoneArea( RADIUS, OUTER, INNER );
+  const double capInsideHole = zoneArea( RADIUS, INNER, 0.0 );
+
+  printf( "      triangles=%zu area=%.4f band=%.4f band+hole=%.4f\n",
+          coverage.triangles, coverage.area, band, band + capInsideHole );
+
+  check( coverage.area < band + ( capInsideHole * 0.5 ),
+         "the hole is not paved over when a sample is non-finite" );
+}
+
+void testWeldMergedInnerLoopDoesNotPave() {
+
+  printf( "=== weld-merged inner loop does not pave ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+  constexpr double INNER  = 0.737;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  IfcSurface surface = makeSphere( RADIUS );
+  Geometry   geometry;
+
+  std::vector< IfcBound3D > bounds;
+
+  bounds.push_back( makeBound(
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+    IfcBoundType::OUTERBOUND ) );
+
+  // Six points 1e-10 apart: above the 1e-12 dedup, below the helper's 1e-9
+  // weld. They survive collection and then merge inside the CDT setup.
+  const glm::dvec3 seed =
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, INNER, 24, true )[ 0 ];
+
+  std::vector< glm::dvec3 > inner;
+
+  for ( int step = 0; step < 6; ++step ) {
+    inner.push_back( seed + glm::dvec3( 1e-10 * step, 1e-10 * step, 0.0 ) );
+  }
+
+  bounds.push_back( makeBound( inner, IfcBoundType::BOUND ) );
+
+  TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+
+  const Coverage coverage = measure( geometry, glm::dvec3( 0 ), bandAxis );
+
+  const double band          = zoneArea( RADIUS, OUTER, INNER );
+  const double capInsideHole = zoneArea( RADIUS, INNER, 0.0 );
+
+  printf( "      triangles=%zu area=%.4f band=%.4f band+hole=%.4f\n",
+          coverage.triangles, coverage.area, band, band + capInsideHole );
+
+  check( coverage.area < band + ( capInsideHole * 0.5 ),
+         "the hole is not paved over when a loop merges in the weld" );
+}
+
 }  // namespace
 
 int main() {
@@ -664,6 +781,8 @@ int main() {
   testInnerLoopIsNotPavedOver();
   testPoleReachingLuneTriangulatesCleanly();
   testCollapsedInnerLoopFallsBackToLegacy();
+  testNonFiniteSampleInInnerLoopDoesNotPave();
+  testWeldMergedInnerLoopDoesNotPave();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

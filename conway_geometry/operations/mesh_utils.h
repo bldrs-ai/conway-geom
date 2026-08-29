@@ -131,7 +131,8 @@ inline std::pair< double, double > largestCircularGap( std::vector< double > &an
 inline bool triangulateUnwrappedLoops(
     const std::vector< std::vector< BoundaryPoint > > &loops,
     WingedEdgeMesh< glm::dvec3 > &mesh,
-    const char *label ) {
+    const char *label,
+    size_t *loopsReachingCdt = nullptr ) {
 
   if ( loops.empty() ) {
     return false;
@@ -292,10 +293,21 @@ inline bool triangulateUnwrappedLoops(
     return found->second;
   };
 
+  // Tallied per loop rather than globally: the 1e-9 weld above can merge a
+  // whole loop onto one vertex, which emits no edges and drops that loop from
+  // the constraints WITHOUT failing anything - `cdtEdges.size() < 3` still
+  // passes on the surviving loops, so a caller that supplied an inner trim
+  // gets its hole paved over. Reported out so a caller can require that every
+  // loop it supplied actually reached the CDT; callers that do not ask
+  // (cylinder, cone) keep exactly their previous behaviour.
+  size_t loopsWithConstraints = 0;
+
   for ( size_t which = 0; which < loops.size(); ++which ) {
 
     const std::vector< BoundaryPoint > &loop   = loops[ which ];
     const std::vector< glm::dvec2 >    &loop2D = loops2D[ which ];
+
+    bool loopContributed = false;
 
     for ( size_t where = 0, count = loop.size(); where < count; ++where ) {
 
@@ -308,6 +320,10 @@ inline bool triangulateUnwrappedLoops(
         continue;
       }
 
+      // Set before the dedup below: an edge this loop shares with one already
+      // inserted still means the loop reached the triangulation.
+      loopContributed = true;
+
       std::pair< uint32_t, uint32_t > ordered(
         std::min( v1, v2 ), std::max( v1, v2 ) );
 
@@ -315,6 +331,14 @@ inline bool triangulateUnwrappedLoops(
         cdtEdges.emplace_back( v1, v2 );
       }
     }
+
+    if ( loopContributed ) {
+      ++loopsWithConstraints;
+    }
+  }
+
+  if ( loopsReachingCdt != nullptr ) {
+    *loopsReachingCdt = loopsWithConstraints;
   }
 
   if ( !inputFinite || cdtEdges.size() < 3 ) {
@@ -1670,32 +1694,44 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
         loop = std::move( cleaned );
       }
 
-      // A loop that dedup has taken below three points has COLLAPSED, and
-      // erasing it here would triangulate the survivors - which for an inner
-      // trim means paving the hole over and adding volume silently. That is
-      // precisely the failure this path was chosen to avoid: the reason #595's
-      // full-coverage grid could not be widened to reach the dome is that it
-      // would have replaced the hex socket with surface.
+      // ONE invariant, checked twice because a loop can be lost in two
+      // different places: EVERY BOUND SUPPLIED MUST REACH THE TRIANGULATION.
+      // Losing one and triangulating the survivors paves an inner trim's hole
+      // over and adds volume silently - the failure that ruled #595's
+      // full-coverage grid out of this job in the first place, since it would
+      // have replaced the dome's hex socket with surface.
       //
-      // So a collapse fails the WHOLE unwrap rather than being erased from it,
-      // and the face takes the legacy path exactly as if this code were not
-      // here. That keeps the "can never make output worse" contract literally
-      // true instead of true-except-here. Note the legacy path paves this case
-      // too, so what the check buys is that the new chart does not OWN the
-      // failure - not that the hole survives. Found by review on
-      // bldrs-ai/conway-geom#191.
-      const bool anyLoopCollapsed =
-        std::any_of(
-          loops.begin(),
-          loops.end(),
-          []( const std::vector< BoundaryPoint > &loop ) {
-            return loop.size() < 3;
-          } );
+      // Where a loop can vanish:
+      //
+      //   1. AT COLLECTION. A non-finite sample is skipped, and a loop left
+      //      under three points is never pushed into `loops` at all. Counting
+      //      collapses among the loops that survived cannot see this, because
+      //      the casualty is already gone - so compare against bounds.size().
+      //
+      //   2. AT THE CONSTRAINT WELD, inside triangulateUnwrappedLoops. It
+      //      welds at 1e-9 while the dedup above works at 1e-12, so points
+      //      that legitimately survive here can merge there; a loop merged
+      //      onto one vertex emits no edges and disappears from the
+      //      constraints while `cdtEdges.size() < 3` still passes on the outer
+      //      loop alone. Only the helper can see that, so it reports the count
+      //      back and the equality is checked after it returns.
+      //
+      // Failing either way sends the face down the legacy path exactly as if
+      // this code were not here, which is what keeps the "can never make
+      // output worse" contract literally true rather than true-except-here.
+      // The legacy path paves these cases too, so what this buys is that the
+      // new chart does not OWN the failure - not that the hole survives.
+      // Both sub-cases found by review on bldrs-ai/conway-geom#191.
+      const bool everyBoundSurvivedCollection = loops.size() == bounds.size();
 
       WingedEdgeMesh< glm::dvec3 > unwrapMesh;
 
-      if ( !anyLoopCollapsed && !loops.empty() &&
-           triangulateUnwrappedLoops( loops, unwrapMesh, "sphere" ) ) {
+      size_t loopsReachingCdt = 0;
+
+      if ( everyBoundSurvivedCollection && !loops.empty() &&
+           triangulateUnwrappedLoops(
+             loops, unwrapMesh, "sphere", &loopsReachingCdt ) &&
+           loopsReachingCdt == loops.size() ) {
 
         tesselate(
           unwrapMesh,
