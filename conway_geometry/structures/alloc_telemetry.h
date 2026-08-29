@@ -76,6 +76,12 @@ enum class AllocSite {
   ExtrudeCap,
   CsgOperandPrep,
   CsgKernel,
+  // The global VertexWelder (Geometry.cpp). Tagged because its containers are
+  // clear()/reserve()d and never shrink_to_fit-ed, so capacity it grows inside
+  // a scope is still live at scope close and is booked as retained OUTPUT when
+  // it is reusable scratch. Which scope kinds that actually reaches is a
+  // question this tag answers directly; see geometry-memory-coverage.md.
+  VertexWeld,
   Count
 };
 
@@ -145,6 +151,12 @@ enum class AllocSite {
   ExtrudeCap,
   CsgOperandPrep,
   CsgKernel,
+  // The global VertexWelder (Geometry.cpp). Tagged because its containers are
+  // clear()/reserve()d and never shrink_to_fit-ed, so capacity it grows inside
+  // a scope is still live at scope close and is booked as retained OUTPUT when
+  // it is reusable scratch. Which scope kinds that actually reaches is a
+  // question this tag answers directly; see geometry-memory-coverage.md.
+  VertexWeld,
   Count
 };
 

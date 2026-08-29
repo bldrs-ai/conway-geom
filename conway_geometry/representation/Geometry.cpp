@@ -16,6 +16,7 @@
 #include "csg/csg_utils.h"
 #include "csg/csg.h"
 #include "structures/vertex_welder.h"
+#include "structures/alloc_telemetry.h"
 #include "structures/parse_buffer.h"
 #include "utilities/buffer_parse.h"
 
@@ -99,6 +100,8 @@ void Geometry::Reify( const glm::dvec3& offset ) {
   indexData_.clear();
 
   if ( !cleanedUp_ ) {
+
+    conway::AllocTagScope weldTag( conway::AllocSite::VertexWeld );
 
     welder.weld( *this, DBL_EPSILON );
   
@@ -397,7 +400,11 @@ void Geometry::AppendWithScalingTransform(
 void Geometry::Cleanup( bool forSubtract ) {
 
 
-  welder.weld( *this, exp2( TOLERANCE ), forSubtract );
+  {
+    conway::AllocTagScope weldTag( conway::AllocSite::VertexWeld );
+
+    welder.weld( *this, exp2( TOLERANCE ), forSubtract );
+  }
 
   EnableConnectivity();
 

@@ -170,7 +170,7 @@ const char* const kSiteNames[] = {
     "tri_toroidal",  "tri_conical",    "tri_revolution",
     "tri_extrusion", "advanced_face",  "extrude_solid",
     "sweep_solid",   "csg_boolean",    "extrude_cap",
-    "csg_operand_prep", "csg_kernel"};
+    "csg_operand_prep", "csg_kernel", "vertex_weld"};
 
 static_assert(sizeof(kSiteNames) / sizeof(kSiteNames[0]) == kSiteCount,
               "kSiteNames must have exactly one entry per AllocSite");
@@ -279,22 +279,21 @@ void DumpScopeKind(int kind) {
           static_cast<double>(allocCalls) / static_cast<double>(scopes),
           g_maxAllocCallsPerScope[kind].load(), peakTotal / scopes,
           g_maxPeakBytes[kind].load());
-  // peak:retained is the ratio conway#635/#637 reason about. Summed over units
-  // rather than per unit, so it is comparable to the whole-load figures in the
-  // ledger; escapedTotal == 0 would divide by zero, so it is reported as such.
+  // Deliberately printed WITHOUT a peak:retained ratio. Both inputs are
+  // derived from tls.liveBytes, which onFree corrupts whenever memory
+  // allocated before the scope is freed inside it -- and that happens with no
+  // clamp and no other signal whenever the freed block is smaller than what is
+  // currently live. An earlier revision printed the ratio and graded it
+  // per scope kind by clamp count; that grading was wrong, because zero clamps
+  // is not an ownership all-clear. Until pointer ownership is tracked these
+  // are raw diagnostics, not results, and the report says so on every kind
+  // rather than inviting the reader to divide them.
   fprintf(stderr,
-          "[alloc-telemetry]     retainedBytes(avg=%" PRIu64 " max=%" PRIu64
-          " total=%" PRIu64 ") peakTotal=%" PRIu64 " peak:retained=",
-          escapedTotal / scopes, g_maxEscapedBytes[kind].load(), escapedTotal,
-          peakTotal);
-
-  if (escapedTotal == 0) {
-    fprintf(stderr, "n/a (nothing retained)\n");
-  } else {
-    fprintf(stderr, "%.1fx\n",
-            static_cast<double>(peakTotal) /
-                static_cast<double>(escapedTotal));
-  }
+          "[alloc-telemetry]     peakBytesTotal=%" PRIu64
+          " retainedBytes(avg=%" PRIu64 " max=%" PRIu64 " total=%" PRIu64
+          ")  [NOT ownership-tracked -- do not derive ratios]\n",
+          peakTotal, escapedTotal / scopes, g_maxEscapedBytes[kind].load(),
+          escapedTotal);
 
   // Arena sizing. A bump arena's free is a no-op until rewind, so what it must
   // hold for one unit is every byte the unit allocated, not the most it held at
@@ -308,12 +307,15 @@ void DumpScopeKind(int kind) {
           g_maxCumulativeBytes[kind].load(),
           g_totalCumulativeBytes[kind].load());
 
-  // Exposure of the byte columns above to the ownership defect documented in
-  // onFree. Nonzero clamped frees mean pre-scope memory was freed inside these
-  // units, so peak and retained are provably wrong for this kind -- and the
-  // clamp count is a lower bound on the occurrences, since a pre-scope free
-  // that happens to be smaller than the live counter corrupts it silently
-  // without clamping.
+  // Exposure of the peak/retained figures to the ownership defect documented in
+  // onFree. Nonzero clamped frees are PROOF the defect fired here. Zero is not
+  // proof of the opposite: a pre-scope free smaller than what is currently live
+  // is subtracted silently, no clamp, no signal. Concrete cases exist on paths
+  // that report zero -- Extrude() copies its IfcProfile argument before the
+  // scope opens and profile.curve.Add2d() can then reallocate that copy inside
+  // it; a face scope grows caller-owned Geometry vectors the same way. So this
+  // line quantifies a lower bound on the damage, and no scope kind's peak or
+  // retained figure is trustworthy until ownership is tracked.
   const uint64_t clampedFrees = g_totalClampedFrees[kind].load();
 
   fprintf(stderr,
@@ -322,8 +324,8 @@ void DumpScopeKind(int kind) {
           g_totalFreeCalls[kind].load(), g_totalFreedBytes[kind].load(),
           clampedFrees, g_totalClampedBytes[kind].load(),
           clampedFrees == 0
-            ? ""
-            : "  <-- peak/retained UNRELIABLE for this kind");
+            ? "  (zero clamps is NOT an ownership all-clear)"
+            : "  <-- ownership defect observed firing");
 
   for (int site = 0; site < kSiteCount; ++site) {
     const uint64_t count = g_siteCounts[kind][site].load();
@@ -398,7 +400,15 @@ void DumpAllocTelemetry(const char* label) {
     return;
   }
 
-  fprintf(stderr, "[alloc-telemetry] %s: units=%" PRIu64 "\n",
+  // Every figure below counts ONLY allocations made inside an
+  // AllocTelemetryScope -- onAlloc returns immediately when !tls.active. There
+  // is no load-wide denominator here, so these are absolute counts for the
+  // instrumented paths and shares OF EACH OTHER, never shares of the load.
+  // Reading them as "path X is N% of allocator traffic" is the same mistake,
+  // one level up, as reading an unscoped path's silence as a measurement.
+  fprintf(stderr,
+          "[alloc-telemetry] %s: units=%" PRIu64
+          " (in-scope allocations only; no load-wide denominator)\n",
           label != nullptr ? label : "", scopes);
 
   for (int kind = 0; kind < kSiteCount; ++kind) {
