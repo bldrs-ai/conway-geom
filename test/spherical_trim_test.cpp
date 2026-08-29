@@ -771,6 +771,76 @@ void testWeldMergedInnerLoopDoesNotPave() {
          "the hole is not paved over when a loop merges in the weld" );
 }
 
+/**
+ * Test 9 - an inner loop that welds to only TWO distinct vertices is a slit,
+ * not a boundary, and must not be triangulated across.
+ *
+ * The fourth and last member of the loop-guard family, and the only one that
+ * was a genuine REGRESSION rather than a defect shared with the legacy path.
+ * The earlier guards asked whether a loop reached the CDT at all, which a
+ * two-vertex loop does: it emits one open edge. The CDT then triangulates
+ * straight across that slit and fills the hole.
+ *
+ * Measured before the fix: 832 triangles at area 2.8692 against a 1.2578 band
+ * and a 2.8884 band-plus-hole - the hole filled. The pre-#191 legacy path
+ * emits 0 triangles for the same input, so unlike tests 6 to 8 this one was
+ * strictly worse than doing nothing.
+ *
+ * Both spellings are pinned because they enter the guard by different routes:
+ * `A,A,B,B` has four collected points and dedups to two, while `A,B,B` has the
+ * bare minimum three and dedups to two. An implementation that only counted
+ * collected points would pass the first and fail the second.
+ */
+void testTwoVertexInnerLoopIsNotTriangulatedAcross() {
+
+  printf( "=== two-vertex inner loop is not triangulated across ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+  constexpr double INNER  = 0.737;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  const std::vector< glm::dvec3 > innerRing =
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, INNER, 24, true );
+
+  const glm::dvec3 pointA = innerRing[ 0 ];
+  const glm::dvec3 pointB = innerRing[ 12 ];
+
+  const double band          = zoneArea( RADIUS, OUTER, INNER );
+  const double capInsideHole = zoneArea( RADIUS, INNER, 0.0 );
+
+  auto runCase =
+    [ & ]( const char* what, const std::vector< glm::dvec3 >& inner ) {
+
+      IfcSurface surface = makeSphere( RADIUS );
+      Geometry   geometry;
+
+      std::vector< IfcBound3D > bounds;
+
+      bounds.push_back( makeBound(
+        latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+        IfcBoundType::OUTERBOUND ) );
+
+      bounds.push_back( makeBound( inner, IfcBoundType::BOUND ) );
+
+      TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+
+      const Coverage coverage = measure( geometry, glm::dvec3( 0 ), bandAxis );
+
+      printf( "      %-12s triangles=%zu area=%.4f band=%.4f band+hole=%.4f\n",
+              what, coverage.triangles, coverage.area, band,
+              band + capInsideHole );
+
+      check( coverage.area < band + ( capInsideHole * 0.5 ),
+             std::string( "the hole is not filled across a two-vertex loop (" ) +
+               what + ")" );
+    };
+
+  runCase( "A,A,B,B", { pointA, pointA, pointB, pointB } );
+  runCase( "A,B,B",   { pointA, pointB, pointB } );
+}
+
 }  // namespace
 
 int main() {
@@ -783,6 +853,7 @@ int main() {
   testCollapsedInnerLoopFallsBackToLegacy();
   testNonFiniteSampleInInnerLoopDoesNotPave();
   testWeldMergedInnerLoopDoesNotPave();
+  testTwoVertexInnerLoopIsNotTriangulatedAcross();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

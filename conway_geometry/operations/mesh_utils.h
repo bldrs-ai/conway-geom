@@ -132,7 +132,7 @@ inline bool triangulateUnwrappedLoops(
     const std::vector< std::vector< BoundaryPoint > > &loops,
     WingedEdgeMesh< glm::dvec3 > &mesh,
     const char *label,
-    size_t *loopsReachingCdt = nullptr ) {
+    size_t *closedLoopsReachingCdt = nullptr ) {
 
   if ( loops.empty() ) {
     return false;
@@ -293,21 +293,33 @@ inline bool triangulateUnwrappedLoops(
     return found->second;
   };
 
-  // Tallied per loop rather than globally: the 1e-9 weld above can merge a
-  // whole loop onto one vertex, which emits no edges and drops that loop from
-  // the constraints WITHOUT failing anything - `cdtEdges.size() < 3` still
-  // passes on the surviving loops, so a caller that supplied an inner trim
-  // gets its hole paved over. Reported out so a caller can require that every
-  // loop it supplied actually reached the CDT; callers that do not ask
-  // (cylinder, cone) keep exactly their previous behaviour.
-  size_t loopsWithConstraints = 0;
+  // Tallied per loop rather than globally, and counted as DISTINCT WELDED
+  // VERTICES rather than as edges emitted.
+  //
+  // The weld above runs at 1e-9 while callers dedup at their own tolerance, so
+  // a loop can arrive here intact and still lose vertices. Two ways that ends
+  // badly, and only the stronger test catches both:
+  //
+  //   - all vertices merge to one: no edges at all, the loop vanishes from the
+  //     constraints, and `cdtEdges.size() < 3` still passes on the survivors;
+  //   - vertices merge to exactly TWO: the loop emits a single open edge, which
+  //     is a slit rather than a boundary. The CDT triangulates straight across
+  //     it, so an inner trim's hole is filled with surface.
+  //
+  // An edge-emitted test sees the first and misses the second - measured, that
+  // second case filled a hole with 832 triangles where the caller's fallback
+  // emitted none. Three distinct vertices is the least that can enclose area,
+  // so that is the bar. Reported out so a caller can require every loop it
+  // supplied to have cleared it; callers that do not ask (cylinder, cone) keep
+  // exactly their previous behaviour.
+  size_t closedLoops = 0;
 
   for ( size_t which = 0; which < loops.size(); ++which ) {
 
     const std::vector< BoundaryPoint > &loop   = loops[ which ];
     const std::vector< glm::dvec2 >    &loop2D = loops2D[ which ];
 
-    bool loopContributed = false;
+    std::set< uint32_t > distinctWelded;
 
     for ( size_t where = 0, count = loop.size(); where < count; ++where ) {
 
@@ -320,9 +332,11 @@ inline bool triangulateUnwrappedLoops(
         continue;
       }
 
-      // Set before the dedup below: an edge this loop shares with one already
-      // inserted still means the loop reached the triangulation.
-      loopContributed = true;
+      // Recorded before the edgeSet dedup below: a vertex this loop shares
+      // with one already inserted is still a vertex this loop reached the
+      // triangulation with.
+      distinctWelded.insert( v1 );
+      distinctWelded.insert( v2 );
 
       std::pair< uint32_t, uint32_t > ordered(
         std::min( v1, v2 ), std::max( v1, v2 ) );
@@ -332,13 +346,13 @@ inline bool triangulateUnwrappedLoops(
       }
     }
 
-    if ( loopContributed ) {
-      ++loopsWithConstraints;
+    if ( distinctWelded.size() >= 3 ) {
+      ++closedLoops;
     }
   }
 
-  if ( loopsReachingCdt != nullptr ) {
-    *loopsReachingCdt = loopsWithConstraints;
+  if ( closedLoopsReachingCdt != nullptr ) {
+    *closedLoopsReachingCdt = closedLoops;
   }
 
   if ( !inputFinite || cdtEdges.size() < 3 ) {
@@ -1710,28 +1724,38 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
       //
       //   2. AT THE CONSTRAINT WELD, inside triangulateUnwrappedLoops. It
       //      welds at 1e-9 while the dedup above works at 1e-12, so points
-      //      that legitimately survive here can merge there; a loop merged
-      //      onto one vertex emits no edges and disappears from the
-      //      constraints while `cdtEdges.size() < 3` still passes on the outer
-      //      loop alone. Only the helper can see that, so it reports the count
-      //      back and the equality is checked after it returns.
+      //      that legitimately survive here can merge there. A loop merged
+      //      onto ONE vertex emits no edges and disappears from the
+      //      constraints; a loop merged onto TWO emits a single open edge,
+      //      which is a slit rather than a boundary and gets triangulated
+      //      straight across. Either way `cdtEdges.size() < 3` still passes on
+      //      the outer loop alone. Only the helper can see this, so it reports
+      //      how many loops survived as CLOSED constraints - three distinct
+      //      welded vertices, the least that can enclose area - and the
+      //      equality is checked after it returns.
       //
-      // Failing either way sends the face down the legacy path exactly as if
+      // Failing any of these sends the face down the legacy path exactly as if
       // this code were not here, which is what keeps the "can never make
       // output worse" contract literally true rather than true-except-here.
-      // The legacy path paves these cases too, so what this buys is that the
-      // new chart does not OWN the failure - not that the hole survives.
-      // Both sub-cases found by review on bldrs-ai/conway-geom#191.
+      //
+      // Worth being precise about what that buys, because it differs by case:
+      // for a loop collapsing under this function's own dedup the legacy path
+      // paves too, so the check only stops this chart OWNING the failure; but
+      // for the two-vertex case the legacy path DECLINES, emitting nothing
+      // where this chart filled a hole with 832 triangles. That one was a
+      // genuine regression, not a shared defect.
+      //
+      // All found by review on bldrs-ai/conway-geom#191 and #192.
       const bool everyBoundSurvivedCollection = loops.size() == bounds.size();
 
       WingedEdgeMesh< glm::dvec3 > unwrapMesh;
 
-      size_t loopsReachingCdt = 0;
+      size_t closedLoopsReachingCdt = 0;
 
       if ( everyBoundSurvivedCollection && !loops.empty() &&
            triangulateUnwrappedLoops(
-             loops, unwrapMesh, "sphere", &loopsReachingCdt ) &&
-           loopsReachingCdt == loops.size() ) {
+             loops, unwrapMesh, "sphere", &closedLoopsReachingCdt ) &&
+           closedLoopsReachingCdt == loops.size() ) {
 
         tesselate(
           unwrapMesh,
