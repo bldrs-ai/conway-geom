@@ -321,6 +321,10 @@ inline bool triangulateUnwrappedLoops(
 
     std::set< uint32_t > distinctWelded;
 
+    // The welded vertex sequence, so the loop's enclosed area can be taken on
+    // what the CDT will actually see rather than on the points as supplied.
+    std::vector< uint32_t > weldedSequence;
+
     for ( size_t where = 0, count = loop.size(); where < count; ++where ) {
 
       size_t next = ( where + 1 ) % count;
@@ -338,6 +342,12 @@ inline bool triangulateUnwrappedLoops(
       distinctWelded.insert( v1 );
       distinctWelded.insert( v2 );
 
+      if ( weldedSequence.empty() ) {
+        weldedSequence.push_back( v1 );
+      }
+
+      weldedSequence.push_back( v2 );
+
       std::pair< uint32_t, uint32_t > ordered(
         std::min( v1, v2 ), std::max( v1, v2 ) );
 
@@ -346,7 +356,50 @@ inline bool triangulateUnwrappedLoops(
       }
     }
 
-    if ( distinctWelded.size() >= 3 ) {
+    // AREA, not cardinality, is the closing test. Three distinct vertices are
+    // necessary but NOT sufficient: three points strung along one meridian are
+    // distinct, survive the weld, and still enclose nothing - a slit with an
+    // extra point on it, which the CDT triangulates straight across exactly as
+    // it does a two-point one. Measured, a collinear inner bound filled the
+    // hole at 896 triangles where the intended band is 1.2578.
+    //
+    // The cardinality test is kept as the cheap precondition: it is O(1)
+    // against a set that has to be built anyway, and it short-circuits the
+    // shoelace for the common degenerate cases.
+    //
+    // This is a "does it enclose literally nothing" test, deliberately NOT a
+    // thinness test. #595's comment block records why: a shape ratio such as
+    // area/perimeter^2 falls continuously toward zero as a genuine lune
+    // narrows, so any threshold on it silently rejects real trims at some
+    // width. An absolute floor at the noise level rejects only what is
+    // degenerate to floating point.
+    //
+    // Shoelace taken relative to the loop's own first vertex, for the
+    // cancellation reason recorded on conway-geom#190: on a chart offset far
+    // from the origin the raw sums lose the answer to rounding.
+    bool enclosesArea = false;
+
+    if ( distinctWelded.size() >= 3 && weldedSequence.size() >= 3 ) {
+
+      const CDT::V2d< double >& reference = cdtVertices[ weldedSequence[ 0 ] ];
+
+      double twiceArea = 0.0;
+
+      for ( size_t where = 0, n = weldedSequence.size(); where < n; ++where ) {
+
+        const CDT::V2d< double >& a =
+          cdtVertices[ weldedSequence[ where ] ];
+        const CDT::V2d< double >& b =
+          cdtVertices[ weldedSequence[ ( where + 1 ) % n ] ];
+
+        twiceArea += ( a.x - reference.x ) * ( b.y - reference.y ) -
+                     ( b.x - reference.x ) * ( a.y - reference.y );
+      }
+
+      enclosesArea = std::abs( twiceArea ) > 1e-12;
+    }
+
+    if ( enclosesArea ) {
       ++closedLoops;
     }
   }
