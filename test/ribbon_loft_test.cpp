@@ -76,6 +76,27 @@ ParameterVertex ribbonVertex( double u, double v ) {
   return ParameterVertex{ ribbonPoint( u, v ), glm::dvec2( u, v ) };
 }
 
+/** The degree-1 surface the ribbon lies on, for the inverse solve. */
+tinynurbs::RationalSurface3d flatSurface() {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+  surface.knots_u  = { 0.0, 0.0, 1.0, 1.0 };
+  surface.knots_v  = { 0.0, 0.0, 1.0, 1.0 };
+
+  std::vector< glm::dvec3 > controlPoints = {
+    ribbonPoint( 0.0, 0.0 ), ribbonPoint( 0.0, 1.0 ),
+    ribbonPoint( 1.0, 0.0 ), ribbonPoint( 1.0, 1.0 ) };
+
+  surface.control_points = tinynurbs::array2( 2, 2, controlPoints );
+  surface.weights        = tinynurbs::array2( 2, 2,
+    std::vector< double >{ 1.0, 1.0, 1.0, 1.0 } );
+
+  return surface;
+}
+
 /**
  * A closed ribbon boundary: up one long edge at u = 0, across, back down the
  * other at u = uWidth, and across again.
@@ -91,12 +112,14 @@ WingedEdgeMesh< ParameterVertex > buildRibbon(
 
   WingedEdgeMesh< ParameterVertex > mesh;
 
-  // Index 0 sits at the TOP turning point, so the wrap is where the plateau
-  // goes - exactly the arrangement measured on the Orbiter faces.
+  // Index 0 is the TOP turning point, so the wrap is where a plateau would
+  // sit - the arrangement measured on the Orbiter faces. `plateauAtWrap`
+  // duplicates that apex, which is enough to defeat the strict reversal test.
   if ( plateauAtWrap ) {
     mesh.makeVertex( ribbonVertex( 0.0, 1.0 ) );
   }
 
+  // Down one side, v strictly decreasing, ending ON the bottom turning point.
   for ( size_t at = 0; at <= steps; ++at ) {
 
     const double v =
@@ -105,9 +128,19 @@ WingedEdgeMesh< ParameterVertex > buildRibbon(
     mesh.makeVertex( ribbonVertex( 0.0, v ) );
   }
 
-  for ( size_t at = 1; at <= steps; ++at ) {
+  // Back up the other side, STRICTLY BETWEEN the two turning points: the
+  // apexes are single vertices shared by both legs. Repeating them here would
+  // put a plateau INSIDE a leg, where it means the leg runs flat and the
+  // region is no longer an interval - which the loft rejects, by design.
+  // Offset by half a step so the two legs' v samples INTERLEAVE rather than
+  // coincide. That is the realistic case - the two trim curves are tessellated
+  // independently - and it is what makes the rung count approach the boundary
+  // count, which is the regime where a constant column cap overruns the
+  // amplification budget.
+  for ( size_t at = 1; at < steps; ++at ) {
 
-    const double v = static_cast< double >( at ) / static_cast< double >( steps );
+    const double v =
+      ( static_cast< double >( at ) - 0.5 ) / static_cast< double >( steps );
 
     mesh.makeVertex( ribbonVertex( uWidth, v ) );
   }
@@ -185,7 +218,7 @@ void testLoftCoversAndReusesTheBoundary() {
 
   printf( "\n== coverage and verbatim boundary ==\n" );
 
-  WingedEdgeMesh< ParameterVertex > mesh = buildRibbon( 24, 1.0, true );
+  WingedEdgeMesh< ParameterVertex > mesh = buildRibbon( 24, 1.0, false );
 
   const size_t boundaryCount = mesh.vertices.size();
 
@@ -321,6 +354,141 @@ void testNotchedBoundaryIsRejected() {
          "and the mesh is left untouched for the ear-clipper" );
 }
 
+/**
+ * A CONCAVE two-leg monotone ribbon still tiles its chart exactly once.
+ *
+ * Two v-direction sign changes prove each leg is a graph over v and nothing
+ * more - the legs may wander arbitrarily in u between their samples. The first
+ * implementation paired legA[i] with legB[j] at DIFFERENT v, and such a
+ * slanted rung can leave the trim while consecutive slanted rungs cross, so
+ * the quads between them overlap. Measured on the corpus at the time: 7 of 284
+ * lofted faces covered part of their chart up to 1.045x over, and a planar
+ * face reports zero deflection so nothing downstream rejected them.
+ *
+ * The oracle is uv area: for a tiling of a simple polygon the sum of the
+ * triangles' |area| equals the boundary's shoelace area. Anything above it is
+ * overlap. Deflection cannot see this - every vertex is on the surface.
+ *
+ * Rejecting concave legs was measured to be the wrong fix: all seven of the
+ * large thread faces the path exists for are concave in u (up to 702 direction
+ * changes on one leg), while 5 of 84 u-monotone faces overlapped anyway.
+ */
+void testConcaveRibbonTilesExactlyOnce() {
+
+  printf( "\n== concave ribbon tiles exactly once ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  // Leg A is just the two turning points, so the staircase has nothing to
+  // advance on that side and fans from one vertex across the whole face. Leg B
+  // wanders hard in u - out to 3.0, back to 0.1, repeatedly - while staying
+  // strictly monotone in v. A fan tiles a polygon only if it is star-shaped
+  // from the fan's apex, and this one is not: the triangle spanning from the
+  // bottom apex to a far-out leg-B vertex crosses the narrow waist where the
+  // face is only 0.1 wide, so it lies far outside the trim.
+  mesh.makeVertex( ribbonVertex( 0.0, 0.0 ) );
+  mesh.makeVertex( ribbonVertex( 0.0, 1.0 ) );
+
+  const double legBU[] = { 3.0, 0.1, 3.0, 0.1, 3.0, 0.1 };
+  const double legBV[] = { 0.85, 0.7, 0.55, 0.4, 0.25, 0.1 };
+
+  for ( size_t at = 0; at < sizeof( legBU ) / sizeof( legBU[ 0 ] ); ++at ) {
+    mesh.makeVertex( ribbonVertex( legBU[ at ], legBV[ at ] ) );
+  }
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, boundaryCount );
+
+  printf( "  boundary %zu, breaks %zu\n", boundaryCount, breaks.size() );
+
+  check( breaks.size() == 2,
+         "the concave ribbon is still v-monotone with two breaks" );
+
+  // Shoelace of the uv boundary, before the loft appends anything.
+  double shoelace = 0.0;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+    const glm::dvec2& p = mesh.vertices[ at ].uv;
+    const glm::dvec2& q = mesh.vertices[ ( at + 1 ) % boundaryCount ].uv;
+
+    shoelace += ( p.x * q.y ) - ( q.x * p.y );
+  }
+
+  shoelace = std::fabs( shoelace ) * 0.5;
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, 1e-6 );
+
+  check( built, "the concave ribbon lofts" );
+
+  if ( !built ) {
+    return;
+  }
+
+  double absolute = 0.0;
+
+  for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+
+    const glm::dvec2& a = mesh.vertices[ triangle.vertices[ 0 ] ].uv;
+    const glm::dvec2& b = mesh.vertices[ triangle.vertices[ 1 ] ].uv;
+    const glm::dvec2& c = mesh.vertices[ triangle.vertices[ 2 ] ].uv;
+
+    absolute += std::fabs(
+      0.5 * ( ( ( b.x - a.x ) * ( c.y - a.y ) ) -
+              ( ( c.x - a.x ) * ( b.y - a.y ) ) ) );
+  }
+
+  printf( "  shoelace %.9f, emitted |area| %.9f, coverage %.9f\n",
+          shoelace, absolute, absolute / shoelace );
+
+  check( std::fabs( ( absolute / shoelace ) - 1.0 ) < 1e-9,
+         "the emitted triangles cover the chart exactly once - no overlap" );
+}
+
+/**
+ * A small ribbon at its column ceiling stays inside the amplification budget.
+ *
+ * The ceiling started as the constant 1 + MAX_TRIANGLE_AMPLIFACTION / 2, which
+ * assumed rungs ~ boundary. That holds for a large ribbon and fails for a
+ * small one, so the cap meant to DERIVE from MAX_TRIANGLE_AMPLIFACTION quietly
+ * exceeded it (codex on conway-geom#190).
+ */
+void testSmallRibbonStaysInBudget() {
+
+  printf( "\n== small ribbon stays in budget ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh = buildRibbon( 4, 1.0, false );
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  // A target of zero is unreachable, so the column search runs to its ceiling
+  // - which is exactly the case the constant cap got wrong.
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, 0.0 );
+
+  check( built, "the small ribbon lofts" );
+
+  if ( !built ) {
+    return;
+  }
+
+  const size_t budget =
+    static_cast< size_t >( conway::geometry::MAX_TRIANGLE_AMPLIFACTION ) *
+    ( boundaryCount - 2 );
+
+  printf( "  boundary %zu, emitted %zu triangles, budget %zu\n",
+          boundaryCount, mesh.triangles.size(), budget );
+
+  check( mesh.triangles.size() <= budget,
+         "emission stays within MAX_TRIANGLE_AMPLIFACTION x the earcut seed" );
+}
+
 }  // namespace
 
 int main() {
@@ -329,6 +497,8 @@ int main() {
   testPlainRibbonDecomposes();
   testLoftCoversAndReusesTheBoundary();
   testNotchedBoundaryIsRejected();
+  testConcaveRibbonTilesExactlyOnce();
+  testSmallRibbonStaysInBudget();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

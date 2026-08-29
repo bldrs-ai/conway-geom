@@ -5268,17 +5268,42 @@ inline std::vector< size_t > uvMonotoneBreaks(
 }
 
 /**
- * Largest column count a ribbon of `rungs` rungs may use without exceeding the
- * amplification budget the ear-clipped path would have had.
+ * Largest column count a ribbon may use without exceeding the amplification
+ * budget the ear-clipped path would have had.
  *
- * A loft of R rungs and C columns emits 2(R-1)(C-1) triangles against an
- * ear-clipped seed of about R, so C - 1 <= MAX_TRIANGLE_AMPLIFACTION / 2 keeps
- * the two comparable. MAX_TRIANGLE_AMPLIFACTION is not touched by this work
- * and stays at 32 - it was falsified twice as the constraint on quality here
- * (conway#641) - so this is a derived bound, not a new dial.
+ * A loft of R rungs and C columns emits 2(R-1)(C-1) triangles, while earcut
+ * would have started from `boundary - 2`. So the budget
+ * MAX_TRIANGLE_AMPLIFACTION * (boundary - 2) gives
+ *
+ *     C <= 1 + ( MAX_TRIANGLE_AMPLIFACTION * ( boundary - 2 ) ) / ( 2(R - 1) )
+ *
+ * This has to be count-dependent rather than the constant
+ * 1 + MAX_TRIANGLE_AMPLIFACTION / 2 it started as. That constant assumed
+ * R - 1 ~ boundary, which holds for a large ribbon and fails for a small one:
+ * at the smallest accepted boundary of 8 it allowed 17 columns and 2 * 8 * 16
+ * = 256 triangles against a budget of 32 * 6 = 192, so the cap that exists to
+ * derive from MAX_TRIANGLE_AMPLIFACTION quietly exceeded it (codex on
+ * conway-geom#190). Measured, a 68-point face emitted 2,176 against a 2,112
+ * budget.
+ *
+ * MAX_TRIANGLE_AMPLIFACTION itself is untouched and stays at 32; it was
+ * falsified twice as the constraint on quality here (conway#641).
+ *
+ * @param boundary Number of boundary vertices the face arrived with.
+ * @param rungs    Number of rungs the loft will emit.
+ * @return Column ceiling, at least 3.
  */
-constexpr size_t MAX_RIBBON_COLUMNS =
-  1 + ( static_cast< size_t >( MAX_TRIANGLE_AMPLIFACTION ) / 2 );
+inline size_t maximumRibbonColumns( size_t boundary, size_t rungs ) {
+
+  if ( rungs < 2 || boundary < 3 ) {
+    return 3;
+  }
+
+  const size_t budget =
+    static_cast< size_t >( MAX_TRIANGLE_AMPLIFACTION ) * ( boundary - 2 );
+
+  return std::max< size_t >( 3, 1 + ( budget / ( 2 * ( rungs - 1 ) ) ) );
+}
 
 /**
  * Triangulate a trimmed b-spline face that is a RIBBON - a boundary of two
@@ -5424,45 +5449,115 @@ inline bool tryRibbonLoft(
     return false;
   }
 
-  const double vLow  =
-    std::min( vertexOf( legA.front() ).uv.y, vertexOf( legB.front() ).uv.y );
-  const double vHigh =
-    std::max( vertexOf( legA.back() ).uv.y, vertexOf( legB.back() ).uv.y );
-  const double vSpan = ( vHigh - vLow ) > 0.0 ? ( vHigh - vLow ) : 1.0;
+  // Neither leg may pause in v anywhere but at the two shared turning points.
+  // An interior plateau means the leg runs FLAT for a stretch, so at that v it
+  // spans a u-range rather than a single u and the region is no longer the
+  // interval between the two legs - which is the property the rungs below rely
+  // on. Rejecting is cheap and the face ear-clips as before.
+  const auto hasInteriorPlateau =
+    [ & ]( const std::vector< uint32_t >& leg ) {
 
-  // The staircase: advance whichever leg has fallen behind in normalised v, so
-  // rungs stay roughly perpendicular to the ribbon. Every leg vertex is
-  // visited, which is what makes the coverage assertion above hold of the
-  // emitted mesh and not merely of the decomposition.
-  std::vector< std::pair< size_t, size_t > > rungs;
+      for ( size_t k = 0; ( k + 1 ) < leg.size(); ++k ) {
 
-  rungs.reserve( legA.size() + legB.size() );
+        if ( vertexOf( leg[ k ] ).uv.y == vertexOf( leg[ k + 1 ] ).uv.y ) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+  if ( hasInteriorPlateau( legA ) || hasInteriorPlateau( legB ) ) {
+    return false;
+  }
+
+  // RUNGS ARE HORIZONTAL: every rung joins the two legs AT ONE v.
+  //
+  // This is the whole correctness argument, and it is why the rungs are not a
+  // staircase pairing legA[i] with legB[j] at different v, which is what this
+  // function did first. Two sign changes prove each leg is a GRAPH over v and
+  // nothing more; the legs may wander arbitrarily in u between their samples.
+  // A slanted rung spanning two different v values can therefore leave the
+  // trim, and consecutive slanted rungs can cross, so the quads between them
+  // overlap. Measured on the shipped corpus: 7 of 284 lofted faces covered
+  // part of their chart up to 1.045x over, and a planar face reports zero
+  // deflection so nothing downstream rejected them - appendMeshToGeometry just
+  // flips the inverted triangles (codex on conway-geom#190).
+  //
+  // Rejecting concave legs instead does not work, and that is measured too:
+  // all seven of the large thread faces this path exists for are concave in u
+  // (up to 702 direction changes on one leg), while 5 of the 84 u-monotone
+  // faces overlapped anyway. Concavity is neither necessary nor sufficient.
+  //
+  // At a single v, a v-monotone region IS exactly the interval between
+  // uA(v) and uB(v), so a horizontal rung lies inside by construction - for
+  // any monotone polygon, concave or not, with no tolerance and no test. And
+  // because consecutive rung v values are adjacent in the union of both legs'
+  // own v samples, no leg vertex falls strictly between them: each leg is a
+  // single straight segment across the strip, the strip is exactly a
+  // trapezoid, and the quads tile it exactly.
+  std::vector< double > rungV;
+
+  rungV.reserve( legA.size() + legB.size() );
+
+  for ( uint32_t index : legA ) { rungV.push_back( vertexOf( index ).uv.y ); }
+  for ( uint32_t index : legB ) { rungV.push_back( vertexOf( index ).uv.y ); }
+
+  std::sort( rungV.begin(), rungV.end() );
+  rungV.erase( std::unique( rungV.begin(), rungV.end() ), rungV.end() );
+
+  if ( rungV.size() < 2 ) {
+    return false;
+  }
+
+  // Where a leg has no vertex at a rung's v, the endpoint is interpolated ALONG
+  // THE LEG'S OWN CHORD - both the parameter and the POINT. Interpolating the
+  // parameter alone and re-evaluating the surface would put the vertex off the
+  // straight segment its neighbours build, which is a real crack; interpolating
+  // the point puts it exactly ON that segment, so the boundary polyline is
+  // unchanged as a curve and the only artefact is a collinear T-vertex, which
+  // leaves no gap. Where a leg does have a vertex at that v - which is every
+  // rung for at least one of the two legs - it is used verbatim, unmoved.
+  const auto sampleLeg =
+    [ & ]( const std::vector< uint32_t >& leg, size_t& cursor, double v ) {
+
+      while ( ( cursor + 2 ) < leg.size() &&
+              vertexOf( leg[ cursor + 1 ] ).uv.y <= v ) {
+        ++cursor;
+      }
+
+      if ( vertexOf( leg[ cursor ] ).uv.y == v ) {
+        return leg[ cursor ];
+      }
+
+      const uint32_t next = leg[ cursor + 1 ];
+
+      if ( vertexOf( next ).uv.y == v ) {
+        return next;
+      }
+
+      const ParameterVertex& low  = vertexOf( leg[ cursor ] );
+      const ParameterVertex& high = vertexOf( next );
+
+      const double span = high.uv.y - low.uv.y;
+      const double at   = span != 0.0 ? ( v - low.uv.y ) / span : 0.0;
+
+      return mesh.makeVertex(
+        ParameterVertex{ low.point + ( high.point - low.point ) * at,
+                         low.uv    + ( high.uv    - low.uv    ) * at } );
+    };
+
+  std::vector< std::pair< uint32_t, uint32_t > > rungs;
+
+  rungs.reserve( rungV.size() );
 
   {
-    size_t onA = 0;
-    size_t onB = 0;
+    size_t cursorA = 0;
+    size_t cursorB = 0;
 
-    rungs.emplace_back( onA, onB );
-
-    while ( ( onA + 1 ) < legA.size() || ( onB + 1 ) < legB.size() ) {
-
-      const bool canAdvanceA = ( onA + 1 ) < legA.size();
-      const bool canAdvanceB = ( onB + 1 ) < legB.size();
-
-      bool advanceA = canAdvanceA;
-
-      if ( canAdvanceA && canAdvanceB ) {
-
-        advanceA =
-          ( ( vertexOf( legA[ onA + 1 ] ).uv.y - vLow ) / vSpan ) <=
-          ( ( vertexOf( legB[ onB + 1 ] ).uv.y - vLow ) / vSpan );
-      }
-
-      if ( advanceA ) {
-        ++onA;
-      } else {
-        ++onB;
-      }
+    for ( double v : rungV ) {
+      const uint32_t onA = sampleLeg( legA, cursorA, v );
+      const uint32_t onB = sampleLeg( legB, cursorB, v );
 
       rungs.emplace_back( onA, onB );
     }
@@ -5474,8 +5569,8 @@ inline bool tryRibbonLoft(
   const auto columnVertex =
     [ & ]( size_t rung, size_t column, size_t columns ) {
 
-      const ParameterVertex& onLegA = vertexOf( legA[ rungs[ rung ].first ] );
-      const ParameterVertex& onLegB = vertexOf( legB[ rungs[ rung ].second ] );
+      const ParameterVertex& onLegA = vertexOf( rungs[ rung ].first );
+      const ParameterVertex& onLegB = vertexOf( rungs[ rung ].second );
 
       if ( column == 0 ) {
         return onLegA;
@@ -5513,7 +5608,9 @@ inline bool tryRibbonLoft(
   {
     const double target = sqrt( deflectionSquared );
 
-    for ( ; columns < MAX_RIBBON_COLUMNS; columns = ( columns * 2 ) - 1 ) {
+    const size_t columnCeiling = maximumRibbonColumns( count, rungs.size() );
+
+    for ( ; columns < columnCeiling; columns = ( columns * 2 ) - 1 ) {
 
       std::vector< double > deviations;
 
@@ -5569,7 +5666,7 @@ inline bool tryRibbonLoft(
       }
     }
 
-    columns = std::min( columns, MAX_RIBBON_COLUMNS );
+    columns = std::min( columns, columnCeiling );
   }
 
   // Emit. Boundary vertices are reused by INDEX, so the two trim polylines are
@@ -5584,11 +5681,11 @@ inline bool tryRibbonLoft(
 
       if ( column == 0 ) {
 
-        currentRow[ column ] = legA[ rungs[ rung ].first ];
+        currentRow[ column ] = rungs[ rung ].first;
 
       } else if ( column + 1 == columns ) {
 
-        currentRow[ column ] = legB[ rungs[ rung ].second ];
+        currentRow[ column ] = rungs[ rung ].second;
 
       } else {
 
