@@ -44,7 +44,7 @@ for source in test/*_test.cpp; do
 
   # Only the self-contained ones; the GENie-target tests need linking.
   case "${source}" in
-    test/nurbs_seam_test.cpp ) ;;
+    test/nurbs_seam_test.cpp | test/ribbon_loft_test.cpp ) ;;
     * ) continue ;;
   esac
 
