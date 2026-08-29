@@ -6173,9 +6173,10 @@ inline bool tryRibbonLoft(
  * @return the number of head points rewritten; 0 if the gate declined.
  */
 inline size_t reSolveClosedTrimHead(
-    RationalNurbsInverseMethod    &solve,
+    RationalNurbsInverseMethod      &solve,
     const std::vector< glm::dvec3 > &scaledPoints,
-    std::vector< glm::dvec2 >       &solved ) {
+    std::vector< glm::dvec2 >       &solved,
+    bool                             closedByConstruction ) {
 
   const size_t count = scaledPoints.size();
 
@@ -6220,19 +6221,40 @@ inline size_t reSolveClosedTrimHead(
   // multiplied by the same `scaling` and so stay bit-identical through it, but
   // a few ULP of the coordinate magnitude costs nothing to allow and keeps the
   // test from depending on that staying true.
-  double maxMagnitude = 0.0;
+  // Two ways a bound can be known to close, and BOTH are facts rather than
+  // measurements:
+  //
+  //   - the producer says so. A point-list loop is a closed polygon that does
+  //     not repeat its head (IfcCurve::closedByConstruction, set in GetLoop
+  //     where the entity type makes it certain). Without this the whole
+  //     poly-loop producer class - every IFCPOLYLOOP face bound - would be
+  //     declined and silently keep the cold-start error. Found by review on
+  //     bldrs-ai/conway-geom#195; it is the negative answer to "is there a
+  //     front-end closure signal", namely that the producer knows and simply
+  //     was not encoding it.
+  //
+  //   - the points say so, by repeating the head as the tail. This is how every
+  //     one of the 859 edge-loop trim bounds in the regression corpus arrives.
+  //
+  // The tolerance below is float noise, not a proximity budget: head and tail
+  // take the same `scaling` multiplication and stay bit-identical through it,
+  // but a few ULP costs nothing to allow and keeps this from depending on that.
+  if ( !closedByConstruction ) {
 
-  for ( const glm::dvec3& point : scaledPoints ) {
-    maxMagnitude = std::max( maxMagnitude,
-      std::max( std::abs( point.x ),
-                std::max( std::abs( point.y ), std::abs( point.z ) ) ) );
-  }
+    double maxMagnitude = 0.0;
 
-  const double closingGap =
-    glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
+    for ( const glm::dvec3& point : scaledPoints ) {
+      maxMagnitude = std::max( maxMagnitude,
+        std::max( std::abs( point.x ),
+                  std::max( std::abs( point.y ), std::abs( point.z ) ) ) );
+    }
 
-  if ( closingGap > 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) {
-    return 0;
+    const double closingGap =
+      glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
+
+    if ( closingGap > 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) {
+      return 0;
+    }
   }
 
   size_t rewritten = 0;
@@ -6412,7 +6434,8 @@ inline void TriangulateBspline(Geometry &geometry,
       // reSolveClosedTrimHead, which also carries the closure gate that keeps
       // an OPEN bound on its cold start rather than seeding it cross-sheet.
       const size_t rewritten =
-        reSolveClosedTrimHead( bSplineInverseEvaluation, scaledPoints, solvedUv );
+        reSolveClosedTrimHead( bSplineInverseEvaluation, scaledPoints, solvedUv,
+                               bounds[ i ].curve.closedByConstruction );
 
       for ( size_t j = 0; j < rewritten; ++j ) {
         mesh.vertices[ firstVertex + j ].uv = solvedUv[ j ];

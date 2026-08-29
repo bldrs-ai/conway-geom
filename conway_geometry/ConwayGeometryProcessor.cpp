@@ -1247,6 +1247,22 @@ IfcCurve ConwayGeometryProcessor::GetLoop(const ParamsGetLoop& parameters) {
   if (parameters.edges.size() == 0) {
     if (parameters.points.size() > 0) {
       curve.points = parameters.points;
+
+      // A point-list loop is a CLOSED polygon that does not repeat its head -
+      // an IFCPOLYLOOP by definition, and the AP214 poly-loop path likewise.
+      // Record that here, where it is known from the entity, rather than
+      // leaving a downstream consumer to guess it from the geometry.
+      //
+      // The points are deliberately NOT normalised by appending the head. That
+      // would make the invariant self-describing, but it would also change the
+      // point count of every poly-loop face bound in every IFC model, moving
+      // digests across the whole IFC corpus to inform one gate. The flag costs
+      // nothing and changes no geometry.
+      //
+      // Fewer than three points cannot enclose anything - a VERTEX_LOOP is one
+      // point by design, the degenerate loop at a sphere pole or cone apex -
+      // so those are left unflagged.
+      curve.closedByConstruction = pointListLoopIsClosedPolygon( curve.points );
     }
   } else {
     int id = 0;
