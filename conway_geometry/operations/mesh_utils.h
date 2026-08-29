@@ -5493,10 +5493,35 @@ inline bool tryRibbonLoft(
 
     while ( leftA > 0 || leftB > 0 ) {
 
-      const bool takeA =
-        leftB == 0 ||
-        ( leftA > 0 &&
-          vertexOf( legA[ onA ] ).uv.y >= vertexOf( legB[ onB ] ).uv.y );
+      // Descending in v, and AT EQUAL v ordered by u - a geometric ordering,
+      // not a chain preference.
+      //
+      // `>=` alone silently means "chain A first", and that is wrong wherever
+      // the two chains meet at one v. A horizontal edge on chain A puts two A
+      // vertices at the same v; if a B vertex shares that v, chain preference
+      // emits both A vertices before it, the sweep then reaches three
+      // consecutive vertices at one v, the triangle it forms has zero area and
+      // is dropped, and the face finishes one triangle short of `count - 2`.
+      // The validity gate then rejects a perfectly good v-monotone ribbon back
+      // to the ear-clipper - restoring exactly the long chords this path
+      // exists to remove (codex on conway-geom#190).
+      //
+      // Which u comes first depends on which side is which, and that is what
+      // `winding` carries: the two chains are traversed in opposite senses
+      // around the loop, so the boundary's own orientation fixes the order
+      // without anyone having to decide which leg is "left".
+      bool takeA = leftB == 0;
+
+      if ( !takeA && leftA > 0 ) {
+
+        const glm::dvec2& onChainA = vertexOf( legA[ onA ] ).uv;
+        const glm::dvec2& onChainB = vertexOf( legB[ onB ] ).uv;
+
+        takeA =
+          onChainA.y != onChainB.y ?
+            ( onChainA.y > onChainB.y ) :
+            ( ( onChainA.x - onChainB.x ) * winding > 0.0 );
+      }
 
       if ( takeA ) {
 
