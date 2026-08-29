@@ -26,6 +26,7 @@
 #include "logging/Logger.h"
 #include "manifold_utils.h"
 #include "../structures/scratch_arena.h"
+#include "../structures/alloc_telemetry.h"
 
 #if !defined(_USE_MATH_DEFINES)
 #define _USE_MATH_DEFINES 1
@@ -99,6 +100,12 @@ inline Geometry Sweep(
     const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0),
     const bool rotate90 = false,
     const bool optimize = true) {
+  // The other solid-sweep entry point (IfcRevolvedAreaSolid / swept-disk),
+  // instrumented alongside Extrude() for the same reason: an untagged sweep is
+  // invisible to the AFTP pass by construction, not by being cheap.
+  conway::AllocTelemetryScope telemetryScope(
+    conway::AllocSite::SweepSolid );
+
   Geometry geom;
 
   std::vector<glm::vec<3, glm::f64>> dpts;
@@ -308,6 +315,9 @@ inline Geometry SweepCircular(
   const glm::dvec3 &initialDirectrixNormal = glm::dvec3(0),
   const bool rotate90 = false)
 {
+  conway::AllocTelemetryScope telemetryScope(
+    conway::AllocSite::SweepSolid );
+
   Geometry geom;
 
   std::vector<glm::vec<3, glm::f64>> dpts;
@@ -1047,11 +1057,32 @@ inline Geometry Extrude(
   const glm::dvec3& cuttingPlaneNormal = glm::dvec3(0),
   const glm::dvec3& cuttingPlanePos = glm::dvec3(0)) {
   
+  // The solid-sweep path -- IfcExtrudedAreaSolid and the two halfspace
+  // builders -- reaches this function and nothing else instruments it, so
+  // until this scope existed the AFTP pass saw an extrusion-dominated model as
+  // "no scoped faces" and that null was read as a measurement. It is not one:
+  // AllocTelemetryScope is the only thing that makes the malloc wrappers
+  // record at all. See conway#637 and design/new/geometry-memory-coverage.md.
+  //
+  // The unit is one Extrude() call, i.e. one swept solid, NOT one face -- so
+  // its averages are bucketed under their own scope kind rather than blended
+  // with AddFaceToGeometry's per-face population.
+  conway::AllocTelemetryScope telemetryScope(
+    conway::AllocSite::ExtrudeSolid );
+
   Geometry geom;
   std::vector<bool> holesIndicesHash;
 
   // build the caps
   {
+    // Covers the cap ring buffers (`polygon`, a vector-of-vectors on the
+    // default allocator -- the concrete thing an arena extension would back)
+    // together with the cap mesh growth emitted in this block. The earcut call
+    // below nests its own tag inside this one, so the triangulator's transients
+    // are separated out rather than counted here; whatever is left under
+    // `other` in this scope kind is the side-wall pass after the block.
+    conway::AllocTagScope capTag( conway::AllocSite::ExtrudeCap );
+
     using Point = std::array<double, 2>;
     int polygonCount = 1 + profile.holes.size();  // Main profile + holes
     std::vector<std::vector<Point>> polygon(polygonCount);
@@ -1093,7 +1124,13 @@ inline Geometry Extrude(
       }
     }
 
-    std::vector<uint32_t> indices = mapbox::earcut<uint32_t>( polygon );
+    std::vector<uint32_t> indices;
+
+    {
+      conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
+
+      indices = mapbox::earcut<uint32_t>( polygon );
+    }
 
     if (indices.size() < 3) {
 

@@ -219,16 +219,35 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
     std::vector<Geometry> &secondGeoms,
     bool isSubtractOperand ) {
 
+  // The single entry point for CSG/boolean composition (RelVoidSubtract and
+  // GetBooleanResult both funnel here), and the other half of the call graph
+  // conway#637 asks about. The unit is one boolean composition -- which may
+  // run several csg.run() passes internally -- so peak-vs-retained here is per
+  // composition, not per operand.
+  AllocTelemetryScope telemetryScope( AllocSite::CsgBoolean );
+
   //printf( "%s\n", isSubtractOperand ? "sop" : "nop" );
 
   if ( firstGeoms.size() == 1 && secondGeoms.size() == 1 && !secondGeoms[ 0 ].halfSpace ) {
     
     Geometry resultMesh;
 
-    firstGeoms[ 0 ].Cleanup();
-    secondGeoms[ 0 ].Cleanup( !isSubtractOperand );
+    {
+      // Operand conditioning is separated from the kernel because the two have
+      // opposite memory shapes: Cleanup()'s weld/dedupe structures are pure
+      // transients an arena could back, while the kernel's output is retained.
+      // Deciding whether to extend the arena here needs them apart.
+      AllocTagScope prepTag( AllocSite::CsgOperandPrep );
 
-    csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ], secondGeoms[ 0 ], resultMesh, 0 );
+      firstGeoms[ 0 ].Cleanup();
+      secondGeoms[ 0 ].Cleanup( !isSubtractOperand );
+    }
+
+    {
+      AllocTagScope kernelTag( AllocSite::CsgKernel );
+
+      csg.run( CSG::Operation::SUBTRACTION, firstGeoms[ 0 ], secondGeoms[ 0 ], resultMesh, 0 );
+    }
 
     return resultMesh;
   }
@@ -237,13 +256,21 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
 
   for ( auto &firstGeom : firstGeoms ) {
 
-    firstGeom.Cleanup();
+    {
+      AllocTagScope prepTag( AllocSite::CsgOperandPrep );
+
+      firstGeom.Cleanup();
+    }
 
     Geometry result = firstGeom;
 
     for ( auto &secondGeom : secondGeoms ) {
 
-      result.Cleanup();
+      {
+        AllocTagScope prepTag( AllocSite::CsgOperandPrep );
+
+        result.Cleanup();
+      }
 
       if ( result.IsEmpty() ) {
 
@@ -255,7 +282,11 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
         break;
       }
 
-      secondGeom.Cleanup( !isSubtractOperand );
+      {
+        AllocTagScope prepTag( AllocSite::CsgOperandPrep );
+
+        secondGeom.Cleanup( !isSubtractOperand );
+      }
 
       if ( secondGeom.IsEmpty() ) {
         
@@ -313,19 +344,31 @@ Geometry ConwayGeometryProcessor::BoolSubtract(
           scaleZ * 2,
           secondGeom.halfSpaceOrigin );
 
-        newSecond.Cleanup( !isSubtractOperand );
+        {
+          AllocTagScope prepTag( AllocSite::CsgOperandPrep );
+
+          newSecond.Cleanup( !isSubtractOperand );
+        }
 
         Geometry newResult;
 
-        csg.run( CSG::Operation::SUBTRACTION, result, newSecond, newResult, 0 );
+        {
+          AllocTagScope kernelTag( AllocSite::CsgKernel );
+
+          csg.run( CSG::Operation::SUBTRACTION, result, newSecond, newResult, 0 );
+        }
 
         result = std::move( newResult );
 
       } else {
 
         Geometry newResult;
-        
-        csg.run( CSG::Operation::SUBTRACTION, result, secondGeom, newResult, 0 );
+
+        {
+          AllocTagScope kernelTag( AllocSite::CsgKernel );
+
+          csg.run( CSG::Operation::SUBTRACTION, result, secondGeom, newResult, 0 );
+        }
 
         result = std::move( newResult );
       }
@@ -621,7 +664,7 @@ namespace {
 
 void ConwayGeometryProcessor::AddFaceToGeometrySimple(
   ParamsAddFaceToGeometrySimple& parameters, Geometry &geometry) {
-  AllocTelemetryScope telemetryScope;
+  AllocTelemetryScope telemetryScope( AllocSite::AdvancedFace );
 
   // Instrumented for the same reason as the advanced path: this one drops
   // just as silently, and it is the one IFC calls directly, so leaving it
@@ -673,7 +716,7 @@ void ConwayGeometryProcessor::AddFaceToGeometrySimple(
 
 void ConwayGeometryProcessor::AddFaceToGeometry(
     ParamsAddFaceToGeometry& parameters, Geometry &geometry) {
-  AllocTelemetryScope telemetryScope;
+  AllocTelemetryScope telemetryScope( AllocSite::AdvancedFace );
 
   // A face that contributes nothing is recoverable information, and until
   // now it was thrown away: every triangulator returns void, and one that
