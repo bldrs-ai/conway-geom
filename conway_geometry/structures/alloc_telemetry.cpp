@@ -291,18 +291,27 @@ void DumpScopeKind(int kind) {
   fprintf(stderr,
           "[alloc-telemetry]     peakBytesTotal=%" PRIu64
           " retainedBytes(avg=%" PRIu64 " max=%" PRIu64 " total=%" PRIu64
-          ")  [NOT ownership-tracked -- do not derive ratios]\n",
+          ")  [NOT ownership-tracked, NOT lifetime-classified --"
+          " raw diagnostics, they bound nothing]\n",
           peakTotal, escapedTotal / scopes, g_maxEscapedBytes[kind].load(),
           escapedTotal);
 
-  // Arena sizing. A bump arena's free is a no-op until rewind, so what it must
-  // hold for one unit is every byte the unit allocated, not the most it held at
-  // once. On a path that recycles heavily the two differ by orders of
-  // magnitude, and quoting the live-peak histogram as arena sizing evidence
-  // would understate the arena by exactly that factor.
+  // Total in-scope allocation volume per unit. NOT arena capacity, and an
+  // earlier revision labelled it as such: sizing a bump arena needs the
+  // arena-ELIGIBLE subset, i.e. allocations that die inside the scope, and this
+  // total also contains the returned Geometry (which must outlive the unit by
+  // definition) and persistent caches such as the global VertexWelder. The
+  // instrument classifies neither ownership nor lifetime, so it cannot compute
+  // that subset, and this figure bounds nothing.
+  //
+  // It is printed anyway because it is a raw, uncorrupted quantity -- computed
+  // in onAlloc alone, never touching liveBytes -- and deleting it would only
+  // mean the next reader recomputes it from the site table. What is removed is
+  // the claim it was carrying.
   fprintf(stderr,
           "[alloc-telemetry]     cumulativeBytes(avg=%" PRIu64 " max=%" PRIu64
-          " total=%" PRIu64 ") -- what a bump arena must hold per unit\n",
+          " total=%" PRIu64 ")  [total in-scope volume, NOT arena-eligible --"
+          " no lifetime classification]\n",
           g_totalCumulativeBytes[kind].load() / scopes,
           g_maxCumulativeBytes[kind].load(),
           g_totalCumulativeBytes[kind].load());
@@ -345,9 +354,12 @@ void DumpScopeKind(int kind) {
             g_siteBytes[kind][site].load());
   }
 
-  // Two distributions, and conflating them is how an arena gets undersized.
-  // `peak<` is the most bytes live at once in a unit -- what a heap needs.
-  // `alloc<` is every byte the unit allocated -- what a bump arena needs.
+  // Two distributions. `peak<` is the most bytes live at once in a unit;
+  // `alloc<` is every byte it allocated. NEITHER sizes a bump arena: the first
+  // is the wrong quantity (an arena does not reuse freed space before rewind),
+  // and the second is a superset that includes allocations which must outlive
+  // the scope. Arena sizing needs the arena-eligible subset, which requires
+  // lifetime classification this instrument does not have.
   uint64_t running = 0;
 
   for (int i = 0; i < kBuckets; ++i) {
@@ -378,7 +390,7 @@ void DumpScopeKind(int kind) {
     running += count;
     fprintf(stderr,
             "[alloc-telemetry]     alloc<%8" PRIu64 "KiB: %10" PRIu64
-            " units (%6.2f%% cumulative) -- arena sizing\n",
+            " units (%6.2f%% cumulative) -- volume, not arena capacity\n",
             (uint64_t(1) << (i + 1)) / 1024, count,
             100.0 * static_cast<double>(running) /
                 static_cast<double>(scopes));
