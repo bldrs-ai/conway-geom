@@ -73,6 +73,46 @@ inline double positiveMod2Pi( double angle ) {
   return result;
 }
 
+/**
+ * Rounding-error bound for a shoelace sum taken over `vertexCount` vertices
+ * whose coordinates have been shifted to a reference point, with
+ * `maxShiftedCoordinate` the largest magnitude among them.
+ *
+ * A shoelace result below this is indistinguishable from zero and the polygon
+ * must be treated as enclosing nothing. A FIXED floor cannot serve: the charts
+ * these loops live in are normalized per face, so the same absolute number
+ * means "degenerate" on one face and "a real trim" on another. Measured, a
+ * fixed 1e-12 classified a genuine four-corner patch of chart span 5e-7
+ * (shoelace 8.4e-14) as degenerate.
+ *
+ * Derivation, with e = DBL_EPSILON and M = maxShiftedCoordinate:
+ *
+ *   - each shift fl(a - r) carries absolute error <= e*M;
+ *   - a product of two shifted coordinates therefore carries
+ *     M*(e*M) + M*(e*M) + e*M^2 = 3*e*M^2, and each shoelace term is a
+ *     difference of two such products, so <= 8*e*M^2 including the
+ *     subtraction's own rounding;
+ *   - summing n terms adds running-sum rounding, bounded by
+ *     n*e*max|partial sum| <= 2*n^2*e*M^2.
+ *
+ * 4*n^2*e*M^2 covers both with margin, and stays far below any real area: a
+ * loop it can reject encloses less than the 1e-9 constraint weld can
+ * represent, so it would already have welded onto a line.
+ *
+ * This is a "encloses literally nothing" bound, deliberately NOT a thinness
+ * threshold - see bldrs-ai/conway#595 on why a shape ratio such as
+ * area/perimeter^2 cannot be used, since it decays continuously as a genuine
+ * lune narrows and would silently reject real trims at some width.
+ */
+inline double shoelaceAreaTolerance(
+    size_t vertexCount, double maxShiftedCoordinate ) {
+
+  const double n = static_cast< double >( vertexCount );
+
+  return 4.0 * n * n * DBL_EPSILON *
+         maxShiftedCoordinate * maxShiftedCoordinate;
+}
+
 struct BoundaryPoint {
   glm::dvec3 world;
   double     theta;
@@ -383,20 +423,39 @@ inline bool triangulateUnwrappedLoops(
 
       const CDT::V2d< double >& reference = cdtVertices[ weldedSequence[ 0 ] ];
 
-      double twiceArea = 0.0;
+      const size_t n = weldedSequence.size();
 
-      for ( size_t where = 0, n = weldedSequence.size(); where < n; ++where ) {
+      double twiceArea  = 0.0;
+      double maxShifted = 0.0;
+
+      for ( size_t where = 0; where < n; ++where ) {
 
         const CDT::V2d< double >& a =
           cdtVertices[ weldedSequence[ where ] ];
         const CDT::V2d< double >& b =
           cdtVertices[ weldedSequence[ ( where + 1 ) % n ] ];
 
-        twiceArea += ( a.x - reference.x ) * ( b.y - reference.y ) -
-                     ( b.x - reference.x ) * ( a.y - reference.y );
+        const double ax = a.x - reference.x;
+        const double ay = a.y - reference.y;
+        const double bx = b.x - reference.x;
+        const double by = b.y - reference.y;
+
+        maxShifted = std::max( maxShifted,
+                       std::max( std::abs( ax ), std::abs( ay ) ) );
+
+        twiceArea += ( ax * by ) - ( bx * ay );
       }
 
-      enclosesArea = std::abs( twiceArea ) > 1e-12;
+      // The threshold is the shoelace's OWN rounding error, not a constant -
+      // see shoelaceAreaTolerance for the derivation and for why a fixed floor
+      // cannot work on a per-face-normalized chart.
+      //
+      // On the collinear case this sum is EXACTLY 0.0, because constant-theta
+      // points are exactly collinear in both layouts, so any positive
+      // tolerance rejects it.
+      const double areaTolerance = shoelaceAreaTolerance( n, maxShifted );
+
+      enclosesArea = std::abs( twiceArea ) > areaTolerance;
     }
 
     if ( enclosesArea ) {

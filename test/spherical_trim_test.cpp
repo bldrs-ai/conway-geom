@@ -917,6 +917,71 @@ void testCollinearInnerLoopFallsBackToLegacy() {
              meridian( 0.76 ), meridian( 0.78 ) }, 929 );
 }
 
+/**
+ * Test 11 - the shoelace tolerance is calibrated, not a constant.
+ *
+ * Tests the predicate directly rather than through the pipeline, because at
+ * pipeline level this defect is nearly invisible: on the patch that exposed it
+ * both paths emit 896 triangles and their areas differ by 0.03%. That makes a
+ * pipeline assertion a fragile fourth-decimal golden, and it would pin the
+ * consequence rather than the calibration. The calibration is the thing that
+ * was wrong.
+ *
+ * The case, from review on bldrs-ai/conway-geom#193: a genuine four-corner
+ * inner trim of chart span 5e-7 has a shoelace of 8.4e-14 over 5 welded
+ * vertices with max shifted coordinate 2.5e-7. A fixed 1e-12 floor called that
+ * degenerate and demoted the face to the legacy path - fail-safe, but wrong,
+ * and it would have demoted every sufficiently small real trim.
+ *
+ * Red-proven: with shoelaceAreaTolerance replaced by a constant 1e-12 the
+ * first check below fails.
+ */
+void testShoelaceToleranceIsCalibrated() {
+
+  printf( "=== shoelace tolerance is calibrated ===\n" );
+
+  using conway::geometry::unwrap_detail::shoelaceAreaTolerance;
+
+  // The measured values from the tiny-real-patch case.
+  constexpr size_t TINY_VERTICES  = 5;
+  constexpr double TINY_MAX_SHIFT = 2.5e-7;
+  constexpr double TINY_SHOELACE  = 8.4009e-14;
+
+  const double tinyTolerance =
+    shoelaceAreaTolerance( TINY_VERTICES, TINY_MAX_SHIFT );
+
+  printf( "      tiny patch: shoelace=%.4e tolerance=%.4e\n",
+          TINY_SHOELACE, tinyTolerance );
+
+  check( TINY_SHOELACE > tinyTolerance,
+         "a genuine chart-span-5e-7 trim is above its own rounding floor" );
+
+  // A degenerate loop's shoelace is exactly zero, so any positive tolerance
+  // rejects it. The tolerance must therefore be strictly positive whenever the
+  // loop has any extent at all.
+  const double collinearTolerance = shoelaceAreaTolerance( 6, 5e-2 );
+
+  printf( "      collinear:  shoelace=%.4e tolerance=%.4e\n",
+          0.0, collinearTolerance );
+
+  // Strictly positive is what rejects the exactly-zero collinear shoelace.
+  // ("0.0 <= tolerance" would be vacuous - it cannot fail once the above
+  // holds - so it is not asserted.)
+  check( collinearTolerance > 0.0,
+         "a loop with extent gets a strictly positive tolerance, which is "
+         "what rejects an exactly-zero shoelace" );
+
+  // Scaling: the bound must track M^2, or it is a constant wearing a formula.
+  const double atUnitScale  = shoelaceAreaTolerance( 5, 1.0 );
+  const double atTenthScale = shoelaceAreaTolerance( 5, 0.1 );
+
+  printf( "      scaling:    M=1 -> %.4e   M=0.1 -> %.4e   ratio=%.1f\n",
+          atUnitScale, atTenthScale, atUnitScale / atTenthScale );
+
+  check( atUnitScale > atTenthScale * 50.0,
+         "the tolerance scales with the square of the coordinate magnitude" );
+}
+
 }  // namespace
 
 int main() {
@@ -931,6 +996,7 @@ int main() {
   testWeldMergedInnerLoopDoesNotPave();
   testTwoVertexInnerLoopIsNotTriangulatedAcross();
   testCollinearInnerLoopFallsBackToLegacy();
+  testShoelaceToleranceIsCalibrated();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
