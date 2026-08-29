@@ -6183,54 +6183,55 @@ inline size_t reSolveClosedTrimHead(
     return 0;
   }
 
-  // Median segment length, as the loop's own scale. Median rather than mean so
-  // one long run-out segment cannot license an open bound.
-  std::vector< double > segments;
+  // EXPLICIT CLOSURE ONLY: the last point must repeat the first.
+  //
+  // This gate was first written as a proximity heuristic - closing gap against
+  // the loop's own median segment - and that approach is not merely
+  // mis-tuned, it is unusable, because the gap is fixed by geometry while the
+  // median scales with sampling density. The same open arc spanning one coil
+  // turn, whose tail sits one pitch from its head on a different sheet,
+  // measures:
+  //
+  //     samples   120    60    40    30    20
+  //     ratio    4.05  2.02  1.35  1.01  0.68
+  //
+  // against an adjacency-closed loop's ~1.0. At 30 samples the open arc is
+  // INDISTINGUISHABLE from a closed loop, and at 20 it looks more closed than
+  // one. No threshold separates the two classes; a coarser mesh walks an open
+  // bound through any gate you pick. Found on bldrs-ai/conway#655.
+  //
+  // Explicit closure has no such failure mode. Measured, it also costs nothing:
+  // all 859 trim bounds in the three b-spline-carrying regression models close
+  // by EXACT duplication, the last point bit-identical to the first. So the
+  // head and tail are not merely neighbours but the SAME QUERY, and a cold
+  // start that disagrees with the continuity-seeded solve of that identical
+  // point is self-evidently the wrong one of the two - this pass removes an
+  // inconsistency rather than choosing between two defensible answers.
+  //
+  // DELIBERATELY DECLINED: loops that close by ADJACENCY - last point one
+  // sample step from the first, no duplicate. An earlier revision accepted
+  // those, on a proximity test that has since been shown unusable. No corpus
+  // bound exhibits adjacency closure; the case was synthetic, built for a
+  // fixture. If a real producer of it appears, it needs a closure signal from
+  // the front end (where the ORIENTED_EDGEs are still visible and closure is a
+  // topological fact) rather than a geometric guess here.
+  //
+  // The tolerance is float noise, not a proximity budget: head and tail are
+  // multiplied by the same `scaling` and so stay bit-identical through it, but
+  // a few ULP of the coordinate magnitude costs nothing to allow and keeps the
+  // test from depending on that staying true.
+  double maxMagnitude = 0.0;
 
-  segments.reserve( count - 1 );
-
-  for ( size_t i = 0; i + 1 < count; ++i ) {
-    segments.push_back( glm::distance( scaledPoints[ i + 1 ], scaledPoints[ i ] ) );
-  }
-
-  std::sort( segments.begin(), segments.end() );
-
-  const double medianSegment = segments[ segments.size() / 2 ];
-
-  if ( !( medianSegment > 0.0 ) ) {
-    return 0;
+  for ( const glm::dvec3& point : scaledPoints ) {
+    maxMagnitude = std::max( maxMagnitude,
+      std::max( std::abs( point.x ),
+                std::max( std::abs( point.y ), std::abs( point.z ) ) ) );
   }
 
   const double closingGap =
     glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
 
-  // Swept over the corpus before being chosen rather than guessed: all 859
-  // trim bounds in the three b-spline-carrying regression models close at a
-  // ratio of exactly 0.0 - the last point of a trim polyline is bit-identical
-  // to the first - so this gate's entire reach is bounds that do NOT close.
-  //
-  // The factor has to separate three MEASURED cases, and the window is
-  // narrower than it first looks:
-  //
-  //   0.00  every one of the 859 corpus bounds - closed by DUPLICATION, the
-  //         last point bit-identical to the first;
-  //   ~1.0  closed by ADJACENCY - the last point one sample step from the
-  //         first, with no duplicate. Must also be accepted: nothing requires
-  //         a front end to repeat the point, and declining these would
-  //         silently leave them on the cold start.
-  //   4.05  an open arc spanning ONE COIL TURN, whose tail sits a single pitch
-  //         from its head - spatially adjacent, a whole turn away in v, i.e. a
-  //         different sheet. MUST be declined; seeding the head from that tail
-  //         is exactly the cross-sheet failure this gate exists to stop.
-  //
-  // 2.0 sits between the last two with a factor of two either side. A first
-  // draft used 8.0, which accepts the coil-turn case - caught only by trying
-  // to red-prove the gate and finding the test vacuous. The margin is not
-  // generous, and it is the number to revisit if a model ever samples a trim
-  // so coarsely that one step spans a coil turn.
-  constexpr double CLOSURE_FACTOR = 2.0;
-
-  if ( closingGap > medianSegment * CLOSURE_FACTOR ) {
+  if ( closingGap > 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) {
     return 0;
   }
 

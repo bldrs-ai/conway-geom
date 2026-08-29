@@ -807,6 +807,12 @@ void testClosedTrimHeadIsNotColdStarted() {
     rotated.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
   }
 
+  // Close it by DUPLICATION, as all 859 corpus trim bounds do. The gate accepts
+  // explicit closure only - see reSolveClosedTrimHead on why proximity cannot
+  // be made to work - so a fixture closing by adjacency would now be declined
+  // and would test nothing.
+  rotated.push_back( rotated.front() );
+
   conway::geometry::RationalNurbsInverseMethod solve( surface );
 
   solve.resetContinuity();
@@ -851,22 +857,38 @@ void testClosedTrimHeadIsNotColdStarted() {
 
 
 /**
- * The closure gate declines an OPEN bound.
+ * The closure gate declines OPEN bounds at every sampling density, and declines
+ * adjacency closure too.
  *
- * Everything reSolveClosedTrimHead does rests on the last point neighbouring
- * the first. An open bound's tail is somewhere unrelated, and seeding the head
- * from it is the cross-sheet failure resetContinuity exists to prevent,
- * arriving by a different door - so the gate must leave open bounds on the cold
- * start they have today.
+ * Everything reSolveClosedTrimHead does rests on the tail being the head. An
+ * open bound's tail is somewhere unrelated, and seeding the head from it is the
+ * cross-sheet failure resetContinuity exists to prevent, arriving by another
+ * door.
  *
- * The tail here is placed most of a turn away along the coil, which on this
- * surface is a genuinely different sheet: near in space, far in v.
+ * WHY THE GATE IS EXPLICIT CLOSURE AND NOT PROXIMITY. The first version
+ * compared the closing gap to the loop's own median segment. That is unusable,
+ * not merely mis-tuned: the gap is fixed by geometry while the median scales
+ * with sampling. The same open one-turn arc measures
  *
- * Red-proven: with the gate removed the pass runs and rewrites the head.
+ *     samples   120    60    40    30    20
+ *     ratio    4.05  2.02  1.35  1.01  0.68
+ *
+ * against an adjacency-closed loop's ~1.0 - indistinguishable at 30 samples,
+ * and at 20 it looks MORE closed than a closed loop. Every density here is
+ * asserted, because a single-density fixture is exactly what let the earlier
+ * 2.0 threshold look sound. Found on bldrs-ai/conway#655.
+ *
+ * Red-proven, and precisely: under the previous proximity gate at 2.0 the
+ * 40-interval case is accepted (rewritten=1) and this test fails. The 30- and
+ * 20-interval cases pass under BOTH gates - their re-solve happens to return
+ * the head unchanged - so they are coverage of the gate's behaviour across the
+ * density range, not proof of it. Only the 40 case discriminates. Saying so
+ * because a row of five green checks reads like five proofs, and three of them
+ * are not.
  */
 void testOpenBoundIsNotReSeeded() {
 
-  printf( "=== open bound is not re-seeded ===\n" );
+  printf( "=== open bounds are declined at every sampling density ===\n" );
 
   constexpr double COIL_RADIUS = 3.0;
   constexpr double PITCH       = 0.60;
@@ -879,52 +901,83 @@ void testOpenBoundIsNotReSeeded() {
 
   conway::geometry::RationalSurfaceEvaluator evaluator( surface );
 
-  // An open arc spanning EXACTLY one coil turn. Its tail sits one pitch from
-  // its head - spatially adjacent, a whole turn away in v, i.e. a different
-  // sheet - which is the case that actually threatens the gate. A first draft
-  // of this test used an arc whose ends were far apart in space; that passed
-  // with the gate REMOVED, because the re-solve happened to return the head
-  // unchanged, so it proved nothing. This construction changes the head.
-  std::vector< glm::dvec3 > open;
+  // An open arc spanning exactly one coil turn: its tail sits one pitch from
+  // its head - spatially adjacent, a whole turn away in v, a different sheet.
+  for ( int intervals : { 120, 60, 40, 30, 20 } ) {
 
-  for ( int i = 0; i <= 120; ++i ) {
-    open.push_back(
-      evaluator.point( 0.5, 0.30 + ( 1.0 / TURNS ) * i / 120.0 ) );
+    std::vector< glm::dvec3 > open;
+
+    for ( int i = 0; i <= intervals; ++i ) {
+      open.push_back( evaluator.point(
+        0.5, 0.30 + ( 1.0 / TURNS ) * i / static_cast< double >( intervals ) ) );
+    }
+
+    conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+    solve.resetContinuity();
+
+    std::vector< glm::dvec2 > solved;
+
+    for ( const glm::dvec3& query : open ) {
+      solved.push_back( solve( query ) );
+    }
+
+    const std::vector< glm::dvec2 > before = solved;
+
+    const size_t rewritten =
+      conway::geometry::reSolveClosedTrimHead( solve, open, solved );
+
+    std::vector< double > segments;
+
+    for ( size_t i = 0; i + 1 < open.size(); ++i ) {
+      segments.push_back( glm::distance( open[ i + 1 ], open[ i ] ) );
+    }
+
+    std::sort( segments.begin(), segments.end() );
+
+    const double gap    = glm::distance( open.back(), open.front() );
+    const double median = segments[ segments.size() / 2 ];
+
+    printf( "      intervals=%-4d gap/median=%.2f rewritten=%zu\n",
+            intervals, gap / median, rewritten );
+
+    check( rewritten == 0 && solved == before,
+           std::string( "open arc declined at " ) +
+             std::to_string( intervals ) + " intervals" );
   }
 
-  conway::geometry::RationalNurbsInverseMethod solve( surface );
+  // Adjacency closure - last point one step from the first, no duplicate - is
+  // declined too, deliberately. It is indistinguishable from the coarse open
+  // arcs above by any proximity measure, and no corpus bound exhibits it.
+  {
+    std::vector< glm::dvec3 > adjacent;
 
-  solve.resetContinuity();
+    for ( int i = 0; i < 120; ++i ) {
+      adjacent.push_back( evaluator.point(
+        0.02, 0.30 + 0.20 * i / 120.0 ) );
+    }
 
-  std::vector< glm::dvec2 > solved;
+    adjacent.push_back( evaluator.point( 0.02, 0.30 ) );
+    adjacent.pop_back();   // leave it closed by ADJACENCY, not duplication
 
-  for ( const glm::dvec3& query : open ) {
-    solved.push_back( solve( query ) );
+    conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+    solve.resetContinuity();
+
+    std::vector< glm::dvec2 > solved;
+
+    for ( const glm::dvec3& query : adjacent ) {
+      solved.push_back( solve( query ) );
+    }
+
+    const size_t rewritten =
+      conway::geometry::reSolveClosedTrimHead( solve, adjacent, solved );
+
+    printf( "      adjacency-closed loop: rewritten=%zu\n", rewritten );
+
+    check( rewritten == 0,
+           "adjacency closure is declined - explicit closure only" );
   }
-
-  const std::vector< glm::dvec2 > before = solved;
-
-  const size_t rewritten =
-    conway::geometry::reSolveClosedTrimHead( solve, open, solved );
-
-  double closingGap = glm::distance( open.back(), open.front() );
-
-  std::vector< double > segments;
-
-  for ( size_t i = 0; i + 1 < open.size(); ++i ) {
-    segments.push_back( glm::distance( open[ i + 1 ], open[ i ] ) );
-  }
-
-  std::sort( segments.begin(), segments.end() );
-
-  printf( "      closingGap=%.4e medianSegment=%.4e ratio=%.1f rewritten=%zu\n",
-          closingGap, segments[ segments.size() / 2 ],
-          closingGap / segments[ segments.size() / 2 ], rewritten );
-
-  check( rewritten == 0, "the gate declines an open bound" );
-
-  check( solved == before,
-         "an open bound's solved uv is left exactly as the cold start had it" );
 }
 
 /**
