@@ -5425,12 +5425,20 @@ inline bool tryRibbonLoft(
 
   // The polygon's own winding, so emitted triangles can be oriented to match
   // what earcut would have produced on this same boundary.
+  //
+  // Relative to a boundary point for the same reason the validity gate's sums
+  // are - see there. This one only needs a SIGN, but a sign is exactly what
+  // cancellation destroys first, and getting it wrong inverts every triangle
+  // the face emits.
+  const glm::dvec2 windingReference = mesh.vertices[ 0 ].uv;
+
   double shoelace = 0.0;
 
   for ( size_t at = 0; at < count; ++at ) {
 
-    const glm::dvec2& here = mesh.vertices[ at ].uv;
-    const glm::dvec2& next = mesh.vertices[ ( at + 1 ) % count ].uv;
+    const glm::dvec2 here = mesh.vertices[ at ].uv - windingReference;
+    const glm::dvec2 next =
+      mesh.vertices[ ( at + 1 ) % count ].uv - windingReference;
 
     shoelace += ( here.x * next.y ) - ( next.x * here.y );
   }
@@ -5688,12 +5696,34 @@ inline bool tryRibbonLoft(
       return false;
     }
 
+    // Both sums are taken RELATIVE TO A BOUNDARY POINT, never on the raw
+    // parameters.
+    //
+    // A shoelace term is a difference of products, and a b-spline's uv comes
+    // straight from the file's knot domain, which carries whatever offset the
+    // exporter used. On a domain like [1e4, 1e4 + 0.03] every product is ~1e8
+    // while their difference is ~1e-3, so the leading digits cancel and the
+    // area arrives as noise - it can come out zero, or wrong by more than the
+    // 1e-6 the check below allows. Either way a perfectly good sweep is
+    // rejected to the ear-clipper and the long chords come back, which is a
+    // failure that would have been invisible: the gate is designed to reject,
+    // so it rejecting looks like it working (codex on conway-geom#190).
+    //
+    // Subtracting a vertex of the polygon itself makes every coordinate small
+    // relative to the shape, and area is translation invariant so the value is
+    // unchanged. The triangle sum is already written as differences and is
+    // sound as it stands, but it is shifted by the same reference so the two
+    // quantities the ratio compares are computed the same way rather than
+    // merely being equal in exact arithmetic.
+    const glm::dvec2 reference = mesh.vertices[ 0 ].uv;
+
     double shoelaceArea = 0.0;
 
     for ( size_t at = 0; at < count; ++at ) {
 
-      const glm::dvec2& here = mesh.vertices[ at ].uv;
-      const glm::dvec2& next = mesh.vertices[ ( at + 1 ) % count ].uv;
+      const glm::dvec2 here = mesh.vertices[ at ].uv - reference;
+      const glm::dvec2 next =
+        mesh.vertices[ ( at + 1 ) % count ].uv - reference;
 
       shoelaceArea += ( here.x * next.y ) - ( next.x * here.y );
     }
@@ -5704,9 +5734,9 @@ inline bool tryRibbonLoft(
 
     for ( const std::array< uint32_t, 3 >& triangle : swept ) {
 
-      const glm::dvec2& a = mesh.vertices[ triangle[ 0 ] ].uv;
-      const glm::dvec2& b = mesh.vertices[ triangle[ 1 ] ].uv;
-      const glm::dvec2& c = mesh.vertices[ triangle[ 2 ] ].uv;
+      const glm::dvec2 a = mesh.vertices[ triangle[ 0 ] ].uv - reference;
+      const glm::dvec2 b = mesh.vertices[ triangle[ 1 ] ].uv - reference;
+      const glm::dvec2 c = mesh.vertices[ triangle[ 2 ] ].uv - reference;
 
       covered +=
         fabs( ( ( b.x - a.x ) * ( c.y - a.y ) ) -

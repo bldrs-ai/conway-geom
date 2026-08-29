@@ -595,6 +595,107 @@ void testNoTVerticesAgainstANeighbour() {
          "the seed itself adds no vertex at all" );
 }
 
+/**
+ * A ribbon whose uv sits on a far-from-origin knot domain still passes the
+ * validity gate.
+ *
+ * A b-spline's parameters come straight from the file's knot domain, which
+ * carries whatever offset the exporter used. The gate compares the emitted
+ * triangles' area against the boundary's shoelace area, and a shoelace term is
+ * a difference of products: on a domain like [1e4, 1e4 + 0.03] the products
+ * are ~1e8 and their difference ~1e-3, so the leading digits cancel and the
+ * boundary area arrives as noise. The sweep is then rejected to the
+ * ear-clipper and the long chords come back (codex on conway-geom#190).
+ *
+ * The failure mode is why this needs a test rather than an eyeball: the gate
+ * exists in order to reject, so it rejecting a good face looks exactly like it
+ * working. Nothing downstream would report anything wrong - the face would
+ * just quietly go back to being badly triangulated.
+ */
+void testFarFromOriginKnotDomain() {
+
+  printf( "\n== ribbon on a far-from-origin knot domain ==\n" );
+
+  // The same ribbon as the coverage test, shifted onto an offset domain.
+  //
+  // The offset has to be chosen against the shape, not picked round: the
+  // relative error of a raw shoelace goes as offset^2 * epsilon / area, so at
+  // 1e4 on this 0.03-wide ribbon it is ~2e-7 and slips under the gate's 1e-6
+  // unnoticed. 1e5 puts it at ~1e-4, comfortably over. The assertion below
+  // measures the error rather than assuming it, so if this ever stops being
+  // the bad case the test says so instead of passing quietly.
+  constexpr double OFFSET = 1.0e5;
+  constexpr double WIDTH  = 0.03;
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  const size_t steps = 24;
+
+  for ( size_t at = 0; at <= steps; ++at ) {
+
+    const double along =
+      1.0 - ( static_cast< double >( at ) / static_cast< double >( steps ) );
+
+    mesh.makeVertex(
+      ParameterVertex{ ribbonPoint( 0.0, along ),
+                       glm::dvec2( OFFSET, OFFSET + along ) } );
+  }
+
+  for ( size_t at = 1; at < steps; ++at ) {
+
+    const double along =
+      static_cast< double >( at ) / static_cast< double >( steps );
+
+    mesh.makeVertex(
+      ParameterVertex{ ribbonPoint( WIDTH, along ),
+                       glm::dvec2( OFFSET + WIDTH, OFFSET + along ) } );
+  }
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  // State the hazard as arithmetic, so this test cannot pass for the wrong
+  // reason: on these coordinates the raw shoelace really does lose the area.
+  {
+    double raw = 0.0, shifted = 0.0;
+
+    const glm::dvec2 reference = mesh.vertices[ 0 ].uv;
+
+    for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+      const glm::dvec2& here = mesh.vertices[ at ].uv;
+      const glm::dvec2& next = mesh.vertices[ ( at + 1 ) % boundaryCount ].uv;
+
+      raw += ( here.x * next.y ) - ( next.x * here.y );
+
+      const glm::dvec2 hereShifted = here - reference;
+      const glm::dvec2 nextShifted = next - reference;
+
+      shifted +=
+        ( hereShifted.x * nextShifted.y ) - ( nextShifted.x * hereShifted.y );
+    }
+
+    printf( "  shoelace raw %.9e, relative to a boundary point %.9e\n",
+            std::fabs( raw ) * 0.5, std::fabs( shifted ) * 0.5 );
+
+    check( std::fabs( ( std::fabs( raw ) * 0.5 ) /
+                      ( std::fabs( shifted ) * 0.5 ) - 1.0 ) > 1e-6,
+           "the raw shoelace really is wrong here, so this test can fail" );
+  }
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  printf( "  built=%d, triangles %zu, expected %zu\n",
+          (int)built, mesh.triangles.size(), boundaryCount - 2 );
+
+  check( built, "the offset ribbon is not rejected back to the ear-clipper" );
+
+  check( built && mesh.triangles.size() == boundaryCount - 2,
+         "and it triangulates completely" );
+}
+
 }  // namespace
 
 int main() {
@@ -606,6 +707,7 @@ int main() {
   testConcaveRibbonTilesExactlyOnce();
   testSweepEmitsExactlyTheEarcutSeed();
   testNoTVerticesAgainstANeighbour();
+  testFarFromOriginKnotDomain();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
