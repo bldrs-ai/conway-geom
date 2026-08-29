@@ -250,7 +250,7 @@ void testLoftCoversAndReusesTheBoundary() {
   conway::geometry::RationalNurbsInverseMethod solve( surface );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, 1e-6 );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
 
   check( built, "the ribbon lofts" );
 
@@ -347,7 +347,7 @@ void testNotchedBoundaryIsRejected() {
   const size_t before = mesh.triangles.size();
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, mesh.vertices.size(), 1e-6 );
+    conway::geometry::tryRibbonLoft( mesh, solve, mesh.vertices.size() );
 
   check( !built, "a notched boundary is rejected" );
   check( mesh.triangles.size() == before,
@@ -421,7 +421,7 @@ void testConcaveRibbonTilesExactlyOnce() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, 1e-6 );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
 
   check( built, "the concave ribbon lofts" );
 
@@ -450,16 +450,24 @@ void testConcaveRibbonTilesExactlyOnce() {
 }
 
 /**
- * A small ribbon at its column ceiling stays inside the amplification budget.
+ * The sweep emits EXACTLY `boundary - 2` triangles, which is what keeps the
+ * amplification budget honest.
  *
- * The ceiling started as the constant 1 + MAX_TRIANGLE_AMPLIFACTION / 2, which
- * assumed rungs ~ boundary. That holds for a large ribbon and fails for a
- * small one, so the cap meant to DERIVE from MAX_TRIANGLE_AMPLIFACTION quietly
- * exceeded it (codex on conway-geom#190).
+ * Any triangulation of a simple n-gon has exactly n - 2 triangles, so a sweep
+ * that emits that many has triangulated the polygon and nothing else - it has
+ * not fanned, doubled back, or dropped an ear. That is also precisely earcut's
+ * seed size on the same boundary, so the face reaches `tesselate` with the
+ * budget it would have had anyway and MAX_TRIANGLE_AMPLIFACTION stays the real
+ * limit.
+ *
+ * Asserted as an equality rather than as "within budget": under the sweep the
+ * inequality cannot fail - n - 2 is always under 32(n - 2) - and an assertion
+ * that cannot fail is not a test. An earlier version of this test made exactly
+ * that mistake once the column cap it was written for stopped existing.
  */
-void testSmallRibbonStaysInBudget() {
+void testSweepEmitsExactlyTheEarcutSeed() {
 
-  printf( "\n== small ribbon stays in budget ==\n" );
+  printf( "\n== sweep emits exactly the earcut seed ==\n" );
 
   WingedEdgeMesh< ParameterVertex > mesh = buildRibbon( 4, 1.0, false );
 
@@ -470,7 +478,7 @@ void testSmallRibbonStaysInBudget() {
   // A target of zero is unreachable, so the column search runs to its ceiling
   // - which is exactly the case the constant cap got wrong.
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, 0.0 );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
 
   check( built, "the small ribbon lofts" );
 
@@ -482,11 +490,109 @@ void testSmallRibbonStaysInBudget() {
     static_cast< size_t >( conway::geometry::MAX_TRIANGLE_AMPLIFACTION ) *
     ( boundaryCount - 2 );
 
-  printf( "  boundary %zu, emitted %zu triangles, budget %zu\n",
-          boundaryCount, mesh.triangles.size(), budget );
+  printf( "  boundary %zu, emitted %zu triangles, expected %zu, budget %zu\n",
+          boundaryCount, mesh.triangles.size(), boundaryCount - 2, budget );
+
+  check( mesh.triangles.size() == boundaryCount - 2,
+         "the sweep emits exactly boundary - 2 triangles, earcut's seed size" );
 
   check( mesh.triangles.size() <= budget,
-         "emission stays within MAX_TRIANGLE_AMPLIFACTION x the earcut seed" );
+         "which is inside MAX_TRIANGLE_AMPLIFACTION x that seed" );
+}
+
+/**
+ * The seed introduces NO new boundary vertices, so it cannot create a
+ * T-vertex against the neighbouring face.
+ *
+ * This is the topology finding, pinned directly. The construction this
+ * replaced joined the two legs at one v, which forced an interpolated vertex
+ * onto whichever leg had no sample there. The point is collinear, so the
+ * solid stayed geometrically gap-free and every geometric check passed - but
+ * Reify's weld does not subdivide the neighbour's edge, so the loft ended up
+ * with two half-edges facing one. On Orbiter that took unpaired half-edges
+ * from 1,448 to 70,698 (codex on conway-geom#190).
+ *
+ * The oracle is a two-face fixture: the ribbon plus a neighbour built from the
+ * SAME leg-B polyline, which is what sharing a trim edge means. Every half
+ * edge must pair.
+ */
+void testNoTVerticesAgainstANeighbour() {
+
+  printf( "\n== no T-vertices against a neighbour ==\n" );
+
+  // Legs deliberately sampled at DIFFERENT v - the motivating 2544/2545 case.
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  mesh.makeVertex( ribbonVertex( 0.0, 0.0 ) );
+
+  for ( size_t at = 1; at < 9; ++at ) {
+    mesh.makeVertex( ribbonVertex( 0.0, static_cast< double >( at ) / 9.0 ) );
+  }
+
+  mesh.makeVertex( ribbonVertex( 0.0, 1.0 ) );
+
+  // Leg B: seven samples where leg A has nine, so their v values interleave
+  // and almost never coincide.
+  std::vector< uint32_t > legB;
+
+  for ( size_t at = 1; at < 8; ++at ) {
+
+    const double v = 1.0 - ( static_cast< double >( at ) / 8.0 );
+
+    legB.push_back( mesh.makeVertex( ribbonVertex( 1.0, v ) ) );
+  }
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  check( built, "the unevenly sampled ribbon triangulates" );
+
+  if ( !built ) {
+    return;
+  }
+
+  printf( "  vertices %zu -> %zu\n", boundaryCount, mesh.vertices.size() );
+
+  // The T-vertex property is not "no vertices were added" - interior
+  // refinement adds plenty, and must be free to. It is that EVERY EDGE OF THE
+  // ORIGINAL TRIM POLYLINE survives in the mesh unsplit, so the neighbouring
+  // face, which builds that same polyline, meets it half-edge for half-edge.
+  size_t missing = 0;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+    const uint32_t from = static_cast< uint32_t >( at );
+    const uint32_t to   = static_cast< uint32_t >( ( at + 1 ) % boundaryCount );
+
+    bool found = false;
+
+    for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+      for ( uint32_t corner = 0; corner < 3; ++corner ) {
+
+        const uint32_t a = triangle.vertices[ corner ];
+        const uint32_t b = triangle.vertices[ ( corner + 1 ) % 3 ];
+
+        if ( ( a == from && b == to ) || ( b == from && a == to ) ) {
+          found = true;
+        }
+      }
+    }
+
+    if ( !found ) { ++missing; }
+  }
+
+  printf( "  trim-polyline edges missing from the mesh: %zu of %zu\n",
+          missing, boundaryCount );
+
+  check( missing == 0,
+         "every shared boundary edge survives unsplit - no T-vertex" );
+
+  check( mesh.vertices.size() == boundaryCount,
+         "the seed itself adds no vertex at all" );
 }
 
 }  // namespace
@@ -498,7 +604,8 @@ int main() {
   testLoftCoversAndReusesTheBoundary();
   testNotchedBoundaryIsRejected();
   testConcaveRibbonTilesExactlyOnce();
-  testSmallRibbonStaysInBudget();
+  testSweepEmitsExactlyTheEarcutSeed();
+  testNoTVerticesAgainstANeighbour();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
