@@ -5185,6 +5185,578 @@ inline bool tryFullCoverageSeamGrid(
 }
 
 
+/**
+ * Sign changes of dv around a closed uv boundary, with `dv == 0` treated as
+ * NO INFORMATION rather than as a reversal.
+ *
+ * The obvious test - `previous * next < 0` on the two adjacent differences -
+ * silently misses a turning point that sits on a PLATEAU, and on these
+ * boundaries the loop's start vertex is exactly such a plateau. Measured on
+ * `step/conor/Orbiter_v1.1_Gear_7.5.step`: the 5089-, 5057-, 1017- and
+ * 1025-point b-spline faces each report one plateau, at the wrap, so the
+ * strict test finds ONE reversal where there are two and rejects a boundary
+ * that is a textbook ribbon. That cost a full implementation cycle, so the
+ * plateau handling is the reason this helper exists rather than being written
+ * inline (bldrs-ai/conway#608).
+ *
+ * @param mesh  The mesh holding the boundary as its first `count` vertices.
+ * @param count Number of boundary vertices.
+ * @return Indices at which the v direction reverses, ascending.
+ */
+inline std::vector< size_t > uvMonotoneBreaks(
+    const WingedEdgeMesh< ParameterVertex >& mesh,
+    size_t                                   count ) {
+
+  std::vector< size_t > breaks;
+
+  if ( count < 3 ) {
+    return breaks;
+  }
+
+  const auto deltaAt =
+    [ & ]( size_t at ) {
+      return mesh.vertices[ ( at + 1 ) % count ].uv.y - mesh.vertices[ at ].uv.y;
+    };
+
+  // Start the scan ON a non-zero delta and seed the running sign from it.
+  //
+  // Seeding with "no sign yet" instead loses a reversal: the first non-zero
+  // delta would only establish the sign, so a boundary whose index 0 falls in
+  // the middle of a run reports one break rather than two - which is the whole
+  // failure this helper exists to avoid, arrived at from the other direction.
+  size_t start = count;
+
+  for ( size_t at = 0; at < count; ++at ) {
+
+    if ( deltaAt( at ) != 0.0 ) {
+      start = at;
+      break;
+    }
+  }
+
+  if ( start == count ) {
+    // Constant v all the way round: no runs, so no ribbon.
+    return breaks;
+  }
+
+  int lastSign = deltaAt( start ) > 0.0 ? 1 : -1;
+
+  // Exactly one full turn, so every delta including the wrap is seen once.
+  for ( size_t step = 1; step <= count; ++step ) {
+
+    const size_t at = ( start + step ) % count;
+
+    const double delta = deltaAt( at );
+
+    if ( delta == 0.0 ) {
+      continue;
+    }
+
+    const int sign = delta > 0.0 ? 1 : -1;
+
+    if ( sign != lastSign ) {
+      breaks.push_back( at );
+    }
+
+    lastSign = sign;
+  }
+
+  std::sort( breaks.begin(), breaks.end() );
+  breaks.erase( std::unique( breaks.begin(), breaks.end() ), breaks.end() );
+
+  return breaks;
+}
+
+/**
+ * Triangulate a trimmed b-spline face that is a RIBBON - a boundary of two
+ * v-monotone legs meeting at two turning points - with a monotone sweep over
+ * its own boundary vertices, instead of ear-clipping its parametric chart.
+ *
+ * WHY EARCUT CANNOT DO THIS FACE. The thread flanks of
+ * `step/conor/Orbiter_v1.1_Gear_7.5.step` are trimmed strips whose uv chart
+ * has an aspect ratio of 7489:1. Ear clipping introduces no interior vertices
+ * and has no quality criterion, so on a strip that narrow it fills the chart
+ * with slivers running its length - and a sliver long in v is a CHORD ACROSS
+ * THE COIL. Measured on `ADVANCED_FACE #51059`, whose chart is provably sound
+ * (inverse solve converged on 5,087 of 5,089 boundary points, earcut coverage
+ * 1.0000, zero inverted seed triangles):
+ *
+ *   seed triangles spanning > 98% of the v range     1
+ *   seed slivers (> 1% of v, < 50% of u)         2,456 of 5,086
+ *   longest seed edge                          19.4998  (face diagonal 19.94)
+ *   shipped p90 deviation                       2.3519  (118x its target)
+ *
+ * The seed is a VALID tiling of the chart and a useless triangulation of the
+ * surface at the same time, which is why per-axis uv normalisation before
+ * earcut measured as a byte-identical no-op (conway#601). Refinement cannot
+ * repair it either: `tesselate` only splits edges, so it inherits the chords;
+ * with the livelock guard removed and the budget raised sixteenfold the p90
+ * still sits at 11.8x target while the mesh area inflates 45x, i.e. it folds.
+ *
+ * WHAT THIS DOES INSTEAD. A v-monotone polygon has a textbook linear-time
+ * triangulation (de Berg et al.), and its decisive property here is that it
+ * emits triangles between EXISTING boundary vertices only. So:
+ *
+ *   - it cannot create a T-vertex, and the trim polyline reaches the mesh
+ *     exactly as the neighbouring faces build it - watertight topologically,
+ *     not merely geometrically;
+ *   - it is correct for ANY monotone polygon, concave included, with no
+ *     convexity test and no tolerance;
+ *   - a horizontal edge is just a tie in the sweep order, so it needs no
+ *     restriction on flat stretches of a leg.
+ *
+ * Two earlier designs are recorded here because each was refuted by
+ * measurement rather than by argument, and both look reasonable on paper.
+ *
+ * A TENSOR GRID on shared rows, mirroring tryFullCoverageSeamGrid, needs the
+ * two legs to CORRESPOND. They do not: leg lengths 2544/2545, 2528/2529,
+ * 512/513, 498/519, and across all 21 lofted Orbiter faces the two legs share
+ * exactly TWO v values - their turning points - out of a 5,088-value union.
+ *
+ * A LOFT joining the legs at one v fixes the geometry but not the topology.
+ * Wherever the legs' samples differ, one rung endpoint must be interpolated
+ * onto a leg; the point is collinear so nothing leaks, but Reify's weld does
+ * not subdivide the neighbour's edge, leaving two half-edges facing one.
+ * Measured on the shipped GLB with half-edges matched on exact world position,
+ * Orbiter's unpaired half-edges went 1,448 -> 70,698 - a 48x increase against
+ * the metric conway-geom#188 used to certify the spring fix by driving it to
+ * zero (codex on conway-geom#190).
+ *
+ * WHERE QUALITY COMES FROM. Not the seed. `tesselate` runs over this mesh as
+ * it does over the ear-clipped one, and it splits INTERIOR edges only - it
+ * returns early on edge.border() - so every vertex it adds is strictly
+ * interior and the boundary stays verbatim however finely the face resolves.
+ * The amplification budget is therefore the same one every other b-spline face
+ * gets, and MAX_TRIANGLE_AMPLIFACTION stays the real limit.
+ *
+ * SCOPE. Genuine two-leg ribbons only. A boundary with more than two
+ * v-monotone runs returns false and ear-clips exactly as it does today,
+ * including the four faces whose uv chart is self-overlapping because their
+ * inverse solve did not converge (conway#642). Narrow and provably correct
+ * beats broad and hopeful; this is the posture tryFullCoverageSeamGrid takes.
+ *
+ * @param mesh              The face mesh, holding the projected boundary
+ *                          vertices as its first `boundaryCount` entries.
+ * @param solve             The face's inverse solve, unused by the sweep and
+ *                          kept so the signature matches the seam grid's.
+ * @param boundaryCount     Number of boundary vertices in `mesh`.
+ * @return True when the sweep triangulated the face.
+ */
+inline bool tryRibbonLoft(
+    WingedEdgeMesh< ParameterVertex >& mesh,
+    const RationalNurbsInverseMethod&  solve,
+    size_t                             boundaryCount ) {
+
+  (void)solve;
+
+  size_t count = boundaryCount;
+
+  // A loop that repeats its first point at the end would read as a plateau for
+  // the wrong reason. Drop it before looking at the v profile.
+  if ( count > 1 &&
+       mesh.vertices[ count - 1 ].point == mesh.vertices[ 0 ].point ) {
+    --count;
+  }
+
+  if ( count < 8 ) {
+    return false;
+  }
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, count );
+
+  // Exactly two turning points is what "ribbon" means. Everything else - a
+  // notched or oscillating boundary - is out of scope and ear-clips.
+  if ( breaks.size() != 2 ) {
+    return false;
+  }
+
+  const size_t first  = breaks[ 0 ];
+  const size_t second = breaks[ 1 ];
+
+  // Leg A is the arc first -> second; leg B is the rest of the loop. Both
+  // INCLUDE the two turning points, which they share.
+  // Carried as INDICES into the mesh's own boundary vertices, not as copies:
+  // the emitted mesh has to share those vertices, which is what makes the trim
+  // polylines bit-identical rather than merely equal.
+  std::vector< uint32_t > legA;
+  std::vector< uint32_t > legB;
+
+  for ( size_t at = first; at <= second; ++at ) {
+    legA.push_back( static_cast< uint32_t >( at ) );
+  }
+
+  for ( size_t at = second; at <= second + ( count - ( second - first ) ); ++at ) {
+    legB.push_back( static_cast< uint32_t >( at % count ) );
+  }
+
+  if ( legA.size() < 2 || legB.size() < 2 ) {
+    return false;
+  }
+
+  // Structural coverage: every boundary vertex belongs to exactly one leg, and
+  // the two turning points to both. Nothing may be dropped - a mesh built over
+  // part of a face still sits close to the surface, so the deflection metric
+  // cannot see a truncated boundary and this count is the only thing that can.
+  if ( legA.size() + legB.size() != count + 2 ) {
+    return false;
+  }
+
+  // Orient both legs ascending in v so the staircase below is monotone.
+  const auto vertexOf =
+    [ & ]( uint32_t index ) -> const ParameterVertex& {
+      return mesh.vertices[ index ];
+    };
+
+  if ( vertexOf( legA.front() ).uv.y > vertexOf( legA.back() ).uv.y ) {
+    std::reverse( legA.begin(), legA.end() );
+  }
+
+  if ( vertexOf( legB.front() ).uv.y > vertexOf( legB.back() ).uv.y ) {
+    std::reverse( legB.begin(), legB.end() );
+  }
+
+  // The legs must meet at both ends, exactly. That is what makes this one
+  // closed ribbon rather than two unrelated curves, and it is an identity
+  // between vertices the loop already shares, so it needs no tolerance.
+  if ( !( vertexOf( legA.front() ).point == vertexOf( legB.front() ).point ) ||
+       !( vertexOf( legA.back() ).point == vertexOf( legB.back() ).point ) ) {
+    return false;
+  }
+
+  // The polygon's own winding, so emitted triangles can be oriented to match
+  // what earcut would have produced on this same boundary.
+  //
+  // Relative to a boundary point for the same reason the validity gate's sums
+  // are - see there. This one only needs a SIGN, but a sign is exactly what
+  // cancellation destroys first, and getting it wrong inverts every triangle
+  // the face emits.
+  const glm::dvec2 windingReference = mesh.vertices[ 0 ].uv;
+
+  double shoelace = 0.0;
+
+  for ( size_t at = 0; at < count; ++at ) {
+
+    const glm::dvec2 here = mesh.vertices[ at ].uv - windingReference;
+    const glm::dvec2 next =
+      mesh.vertices[ ( at + 1 ) % count ].uv - windingReference;
+
+    shoelace += ( here.x * next.y ) - ( next.x * here.y );
+  }
+
+  const double winding = shoelace >= 0.0 ? 1.0 : -1.0;
+
+  // MONOTONE TWO-CHAIN SWEEP.
+  //
+  // The textbook triangulation of a v-monotone polygon (de Berg et al.), and
+  // the reason it is used here rather than anything cleverer is that it emits
+  // triangles between EXISTING boundary vertices only. It never introduces a
+  // vertex on the boundary, so it cannot create a T-vertex, and the face's
+  // trim polyline reaches the mesh exactly as the neighbouring faces build it.
+  //
+  // That is not a refinement of the previous design, it is the correction of
+  // it. The loft this replaced joined the two legs at one v, which meant that
+  // wherever the legs' v samples differed - which is everywhere, they are
+  // independently tessellated trim curves, and measured they share only their
+  // two turning points out of 5,088 - one rung endpoint had to be interpolated
+  // ONTO a leg. That point is collinear, so the solid stayed geometrically
+  // gap-free, but Reify's weld does not subdivide the neighbour's edge, so the
+  // result was two half-edges facing one. Measured on the shipped GLB with
+  // half-edges matched on exact world position: Orbiter's unpaired half-edges
+  // went 1,448 -> 70,698, a 48x increase, against a metric this epic used to
+  // certify the spring fix by driving it to zero (codex on conway-geom#190).
+  //
+  // The sweep also subsumes the concavity fix that preceded it: it is correct
+  // for ANY v-monotone polygon, concave or not, and needs no plateau
+  // restriction, because a horizontal edge is just a tie in the sweep order.
+  //
+  // Quality does not come from the seed here. It comes from `tesselate`
+  // afterwards, which splits INTERIOR edges only - it returns early on
+  // edge.border() - so every vertex refinement adds is strictly interior and
+  // the boundary stays verbatim no matter how finely the face is resolved.
+  enum class Chain : uint8_t { A, B };
+
+  struct SweepVertex {
+
+    uint32_t index;
+    Chain    chain;
+  };
+
+  std::vector< SweepVertex > sweep;
+
+  sweep.reserve( count );
+
+  // Descending in v: the shared top, then both chains' interiors merged, then
+  // the shared bottom. Both legs are ascending, so they are walked backwards.
+  sweep.push_back( { legA.back(), Chain::A } );
+
+  {
+    size_t onA = legA.size() >= 2 ? legA.size() - 2 : 0;
+    size_t onB = legB.size() >= 2 ? legB.size() - 2 : 0;
+
+    const bool hasA = legA.size() >= 2;
+    const bool hasB = legB.size() >= 2;
+
+    size_t leftA = hasA ? legA.size() - 2 : 0;
+    size_t leftB = hasB ? legB.size() - 2 : 0;
+
+    while ( leftA > 0 || leftB > 0 ) {
+
+      // Descending in v, and AT EQUAL v ordered by u - a geometric ordering,
+      // not a chain preference.
+      //
+      // `>=` alone silently means "chain A first", and that is wrong wherever
+      // the two chains meet at one v. A horizontal edge on chain A puts two A
+      // vertices at the same v; if a B vertex shares that v, chain preference
+      // emits both A vertices before it, the sweep then reaches three
+      // consecutive vertices at one v, the triangle it forms has zero area and
+      // is dropped, and the face finishes one triangle short of `count - 2`.
+      // The validity gate then rejects a perfectly good v-monotone ribbon back
+      // to the ear-clipper - restoring exactly the long chords this path
+      // exists to remove (codex on conway-geom#190).
+      //
+      // Which u comes first depends on which side is which, and that is what
+      // `winding` carries: the two chains are traversed in opposite senses
+      // around the loop, so the boundary's own orientation fixes the order
+      // without anyone having to decide which leg is "left".
+      bool takeA = leftB == 0;
+
+      if ( !takeA && leftA > 0 ) {
+
+        const glm::dvec2& onChainA = vertexOf( legA[ onA ] ).uv;
+        const glm::dvec2& onChainB = vertexOf( legB[ onB ] ).uv;
+
+        takeA =
+          onChainA.y != onChainB.y ?
+            ( onChainA.y > onChainB.y ) :
+            ( ( onChainA.x - onChainB.x ) * winding > 0.0 );
+      }
+
+      if ( takeA ) {
+
+        sweep.push_back( { legA[ onA ], Chain::A } );
+
+        --leftA;
+
+        if ( onA > 0 ) { --onA; }
+
+      } else {
+
+        sweep.push_back( { legB[ onB ], Chain::B } );
+
+        --leftB;
+
+        if ( onB > 0 ) { --onB; }
+      }
+    }
+  }
+
+  sweep.push_back( { legA.front(), Chain::B } );
+
+  if ( sweep.size() < 3 ) {
+    return false;
+  }
+
+  // Emit with the boundary's own winding, so the face's normals match what the
+  // ear-clipped path produced and `appendMeshToGeometry` flips them the same
+  // way.
+  std::vector< std::array< uint32_t, 3 > > swept;
+
+  swept.reserve( count );
+
+  const auto emit =
+    [ & ]( uint32_t a, uint32_t b, uint32_t c ) {
+
+      if ( a == b || b == c || c == a ) {
+        return;
+      }
+
+      const glm::dvec2& p = mesh.vertices[ a ].uv;
+      const glm::dvec2& q = mesh.vertices[ b ].uv;
+      const glm::dvec2& r = mesh.vertices[ c ].uv;
+
+      const double area =
+        ( ( q.x - p.x ) * ( r.y - p.y ) ) - ( ( r.x - p.x ) * ( q.y - p.y ) );
+
+      if ( area == 0.0 ) {
+        return;
+      }
+
+      if ( ( area * winding ) > 0.0 ) {
+        swept.push_back( { a, b, c } );
+      } else {
+        swept.push_back( { a, c, b } );
+      }
+    };
+
+  // Is the diagonal from `current` to `next` interior? On one chain that asks
+  // for a left turn and on the other a right turn; `winding` folds in which
+  // way round the boundary runs.
+  const auto diagonalInside =
+    [ & ]( const SweepVertex& current,
+           const SweepVertex& last,
+           const SweepVertex& next ) {
+
+      const glm::dvec2& p = mesh.vertices[ next.index ].uv;
+      const glm::dvec2& q = mesh.vertices[ last.index ].uv;
+      const glm::dvec2& r = mesh.vertices[ current.index ].uv;
+
+      const double turn =
+        ( ( q.x - p.x ) * ( r.y - p.y ) ) - ( ( r.x - p.x ) * ( q.y - p.y ) );
+
+      const double want = current.chain == Chain::A ? -1.0 : 1.0;
+
+      return ( turn * winding * want ) > 0.0;
+    };
+
+  std::vector< SweepVertex > stack;
+
+  stack.reserve( sweep.size() );
+
+  stack.push_back( sweep[ 0 ] );
+  stack.push_back( sweep[ 1 ] );
+
+  for ( size_t at = 2; ( at + 1 ) < sweep.size(); ++at ) {
+
+    const SweepVertex current = sweep[ at ];
+
+    if ( current.chain != stack.back().chain ) {
+
+      while ( stack.size() > 1 ) {
+
+        const SweepVertex top = stack.back();
+
+        stack.pop_back();
+
+        emit( current.index, top.index, stack.back().index );
+      }
+
+      stack.pop_back();
+      stack.push_back( sweep[ at - 1 ] );
+      stack.push_back( current );
+
+    } else {
+
+      SweepVertex last = stack.back();
+
+      stack.pop_back();
+
+      while ( !stack.empty() && diagonalInside( current, last, stack.back() ) ) {
+
+        const SweepVertex next = stack.back();
+
+        stack.pop_back();
+
+        emit( current.index, last.index, next.index );
+
+        last = next;
+      }
+
+      stack.push_back( last );
+      stack.push_back( current );
+    }
+  }
+
+  {
+    const SweepVertex bottom = sweep.back();
+
+    while ( stack.size() > 1 ) {
+
+      const SweepVertex top = stack.back();
+
+      stack.pop_back();
+
+      emit( bottom.index, top.index, stack.back().index );
+    }
+  }
+
+  // VALIDITY GATE. The sweep is only committed if it actually triangulated the
+  // polygon, and that is checked exactly rather than trusted.
+  //
+  // Any triangulation of a simple n-gon has exactly n - 2 triangles, so a
+  // different count means the sweep terminated early or fanned - it dropped
+  // part of the face. And the triangles' summed |uv area| must equal the
+  // boundary's shoelace area, or they overlap. Both are properties of the
+  // OUTPUT, so neither depends on trusting the sweep's own reasoning.
+  //
+  // This is not belt-and-braces: measured across 284 lofted faces on the
+  // corpus, 3 faces violate the count (one 45-point boundary emitted 21
+  // triangles where 43 are required) and 9 overlap by more than 1e-6, up to
+  // 4.5%. Every one of them is a SMALL face - 15 to 67 boundary points - and
+  // every one of the large thread faces this path exists for passes both
+  // checks exactly. Rather than ship a construction that is right on the
+  // faces that motivated it and quietly wrong on a handful of others, a face
+  // that fails either check is handed back to the ear-clipper, which is
+  // exactly what it got before this function existed.
+  //
+  // The tolerance on the area check is relative and loose (1e-6) because the
+  // sum runs over thousands of triangles: at 1e-9 the honest faces fail on
+  // double-precision accumulation alone. The count check needs no tolerance.
+  {
+    if ( swept.size() != count - 2 ) {
+      return false;
+    }
+
+    // Both sums are taken RELATIVE TO A BOUNDARY POINT, never on the raw
+    // parameters.
+    //
+    // A shoelace term is a difference of products, and a b-spline's uv comes
+    // straight from the file's knot domain, which carries whatever offset the
+    // exporter used. On a domain like [1e4, 1e4 + 0.03] every product is ~1e8
+    // while their difference is ~1e-3, so the leading digits cancel and the
+    // area arrives as noise - it can come out zero, or wrong by more than the
+    // 1e-6 the check below allows. Either way a perfectly good sweep is
+    // rejected to the ear-clipper and the long chords come back, which is a
+    // failure that would have been invisible: the gate is designed to reject,
+    // so it rejecting looks like it working (codex on conway-geom#190).
+    //
+    // Subtracting a vertex of the polygon itself makes every coordinate small
+    // relative to the shape, and area is translation invariant so the value is
+    // unchanged. The triangle sum is already written as differences and is
+    // sound as it stands, but it is shifted by the same reference so the two
+    // quantities the ratio compares are computed the same way rather than
+    // merely being equal in exact arithmetic.
+    const glm::dvec2 reference = mesh.vertices[ 0 ].uv;
+
+    double shoelaceArea = 0.0;
+
+    for ( size_t at = 0; at < count; ++at ) {
+
+      const glm::dvec2 here = mesh.vertices[ at ].uv - reference;
+      const glm::dvec2 next =
+        mesh.vertices[ ( at + 1 ) % count ].uv - reference;
+
+      shoelaceArea += ( here.x * next.y ) - ( next.x * here.y );
+    }
+
+    shoelaceArea = fabs( shoelaceArea ) * 0.5;
+
+    double covered = 0.0;
+
+    for ( const std::array< uint32_t, 3 >& triangle : swept ) {
+
+      const glm::dvec2 a = mesh.vertices[ triangle[ 0 ] ].uv - reference;
+      const glm::dvec2 b = mesh.vertices[ triangle[ 1 ] ].uv - reference;
+      const glm::dvec2 c = mesh.vertices[ triangle[ 2 ] ].uv - reference;
+
+      covered +=
+        fabs( ( ( b.x - a.x ) * ( c.y - a.y ) ) -
+              ( ( c.x - a.x ) * ( b.y - a.y ) ) ) * 0.5;
+    }
+
+    if ( shoelaceArea <= 0.0 ||
+         fabs( ( covered / shoelaceArea ) - 1.0 ) > 1e-6 ) {
+      return false;
+    }
+  }
+
+  for ( const std::array< uint32_t, 3 >& triangle : swept ) {
+    mesh.makeTriangle( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] );
+  }
+
+  return true;
+}
+
+
 // TODO: review and simplify
 inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
@@ -5355,9 +5927,21 @@ inline void TriangulateBspline(Geometry &geometry,
       tryFullCoverageSeamGrid(
         mesh, bSplineInverseEvaluation, mesh.vertices.size(), seamGridDeflection2 );
 
+    // A trimmed RIBBON - two v-monotone boundary legs - is lofted rather than
+    // ear-clipped, for the reasons in tryRibbonLoft. Single-bound only, like
+    // the seam grid: an inner trim loop is a hole, and a loft spanning the
+    // whole chart would pave over it. Anything that is not a ribbon returns
+    // false here and takes exactly the path it takes today.
+    const bool builtRibbonLoft =
+      !builtSeamGrid &&
+      bounds.size() == 1 &&
+      tryRibbonLoft( mesh, bSplineInverseEvaluation, mesh.vertices.size() );
+
+    const bool builtStructured = builtSeamGrid || builtRibbonLoft;
+
     std::vector<uint32_t> indices;
 
-    if ( !builtSeamGrid ) {
+    if ( !builtStructured ) {
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
     indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
@@ -5378,6 +5962,8 @@ inline void TriangulateBspline(Geometry &geometry,
     // target in parameter space. Running the topological refiner over it does
     // not converge - it spends the whole 32x budget and folds the mesh - see
     // tryFullCoverageSeamGrid.
+    // Runs over the ribbon sweep too: it splits interior edges only, so it is
+    // where the ribbon's quality comes from, and it cannot touch the boundary.
     if ( !builtSeamGrid )
     tesselate(
       mesh,
