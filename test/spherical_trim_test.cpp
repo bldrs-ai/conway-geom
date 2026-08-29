@@ -771,6 +771,217 @@ void testWeldMergedInnerLoopDoesNotPave() {
          "the hole is not paved over when a loop merges in the weld" );
 }
 
+/**
+ * Test 9 - an inner loop that welds to only TWO distinct vertices is a slit,
+ * not a boundary, and must not be triangulated across.
+ *
+ * The fourth and last member of the loop-guard family, and the only one that
+ * was a genuine REGRESSION rather than a defect shared with the legacy path.
+ * The earlier guards asked whether a loop reached the CDT at all, which a
+ * two-vertex loop does: it emits one open edge. The CDT then triangulates
+ * straight across that slit and fills the hole.
+ *
+ * Measured before the fix: 832 triangles at area 2.8692 against a 1.2578 band
+ * and a 2.8884 band-plus-hole - the hole filled. The pre-#191 legacy path
+ * emits 0 triangles for the same input, so unlike tests 6 to 8 this one was
+ * strictly worse than doing nothing.
+ *
+ * Both spellings are pinned because they enter the guard by different routes:
+ * `A,A,B,B` has four collected points and dedups to two, while `A,B,B` has the
+ * bare minimum three and dedups to two. An implementation that only counted
+ * collected points would pass the first and fail the second.
+ */
+void testTwoVertexInnerLoopIsNotTriangulatedAcross() {
+
+  printf( "=== two-vertex inner loop is not triangulated across ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+  constexpr double INNER  = 0.737;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  const std::vector< glm::dvec3 > innerRing =
+    latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, INNER, 24, true );
+
+  const glm::dvec3 pointA = innerRing[ 0 ];
+  const glm::dvec3 pointB = innerRing[ 12 ];
+
+  const double band          = zoneArea( RADIUS, OUTER, INNER );
+  const double capInsideHole = zoneArea( RADIUS, INNER, 0.0 );
+
+  auto runCase =
+    [ & ]( const char* what, const std::vector< glm::dvec3 >& inner ) {
+
+      IfcSurface surface = makeSphere( RADIUS );
+      Geometry   geometry;
+
+      std::vector< IfcBound3D > bounds;
+
+      bounds.push_back( makeBound(
+        latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+        IfcBoundType::OUTERBOUND ) );
+
+      bounds.push_back( makeBound( inner, IfcBoundType::BOUND ) );
+
+      TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+
+      const Coverage coverage = measure( geometry, glm::dvec3( 0 ), bandAxis );
+
+      printf( "      %-12s triangles=%zu area=%.4f band=%.4f band+hole=%.4f\n",
+              what, coverage.triangles, coverage.area, band,
+              band + capInsideHole );
+
+      check( coverage.area < band + ( capInsideHole * 0.5 ),
+             std::string( "the hole is not filled across a two-vertex loop (" ) +
+               what + ")" );
+    };
+
+  runCase( "A,A,B,B", { pointA, pointA, pointB, pointB } );
+  runCase( "A,B,B",   { pointA, pointB, pointB } );
+}
+
+/**
+ * Test 10 - a collinear inner loop encloses nothing and must not be treated as
+ * a boundary, even though it has three or more distinct welded vertices.
+ *
+ * The completion of the loop-guard family. Test 9 pinned a loop welded down to
+ * TWO vertices; three points strung along one meridian are distinct, survive
+ * the weld, satisfy a cardinality test - and still enclose no area. It is the
+ * same slit with an extra point on it, and the CDT triangulates across it
+ * identically. That is why the closing invariant is AREA rather than a vertex
+ * count.
+ *
+ * WHAT THIS PINS, and it differs from test 9 in a way worth stating: the
+ * legacy path FILLS this hole too (865 and 929 triangles for the three- and
+ * five-point spellings). So unlike test 9's two-vertex case - a genuine
+ * regression where the fallback emitted nothing - collinear input is a defect
+ * the two paths share, and declining cannot save the hole. What it buys is
+ * that the unwrap does not own the failure and the face behaves exactly as it
+ * did before this path existed.
+ *
+ * The triangle count is therefore the pin, as in test 6, and it is a golden
+ * taken from df11afd: if legacy's refinement changes, update it. Asserting
+ * "hole preserved" here would be asserting something no engine does.
+ *
+ * Red-proven: with the area check reduced to the cardinality test these report
+ * 896 and 1024 - the unwrap's own numbers, not legacy's.
+ */
+void testCollinearInnerLoopFallsBackToLegacy() {
+
+  printf( "=== collinear inner loop falls back to legacy ===\n" );
+
+  constexpr double RADIUS = 1.0;
+  constexpr double OUTER  = 1.00;
+
+  const glm::dvec3 bandAxis( 1.0, 0.0, 0.0 );
+
+  // Points along a single meridian of the band axis: distinct in 3D, distinct
+  // after the weld, collinear in the chart.
+  auto meridian = []( double polar ) {
+
+    return glm::dvec3( std::cos( polar ), std::sin( polar ), 0.0 );
+  };
+
+  auto runCase =
+    [ & ]( const char* what,
+           const std::vector< glm::dvec3 >& inner,
+           size_t legacyTriangleCount ) {
+
+      IfcSurface surface = makeSphere( RADIUS );
+      Geometry   geometry;
+
+      std::vector< IfcBound3D > bounds;
+
+      bounds.push_back( makeBound(
+        latitudeRing( glm::dvec3( 0 ), RADIUS, bandAxis, OUTER, 24, false ),
+        IfcBoundType::OUTERBOUND ) );
+
+      bounds.push_back( makeBound( inner, IfcBoundType::BOUND ) );
+
+      TriangulateSphericalSurface( geometry, bounds, surface, RADIUS * 2.0 );
+
+      printf( "      %-10s triangles=%zu legacyExpected=%zu\n",
+              what, geometry.triangles.size(), legacyTriangleCount );
+
+      check( geometry.triangles.size() == legacyTriangleCount,
+             std::string( "the face took the legacy path, not the unwrap (" ) +
+               what + ")" );
+    };
+
+  runCase( "3 points",
+           { meridian( 0.70 ), meridian( 0.737 ), meridian( 0.78 ) }, 865 );
+
+  runCase( "5 points",
+           { meridian( 0.68 ), meridian( 0.70 ), meridian( 0.737 ),
+             meridian( 0.76 ), meridian( 0.78 ) }, 929 );
+}
+
+/**
+ * Test 11 - the shoelace tolerance is calibrated, not a constant.
+ *
+ * Tests the predicate directly rather than through the pipeline, because at
+ * pipeline level this defect is nearly invisible: on the patch that exposed it
+ * both paths emit 896 triangles and their areas differ by 0.03%. That makes a
+ * pipeline assertion a fragile fourth-decimal golden, and it would pin the
+ * consequence rather than the calibration. The calibration is the thing that
+ * was wrong.
+ *
+ * The case, from review on bldrs-ai/conway-geom#193: a genuine four-corner
+ * inner trim of chart span 5e-7 has a shoelace of 8.4e-14 over 5 welded
+ * vertices with max shifted coordinate 2.5e-7. A fixed 1e-12 floor called that
+ * degenerate and demoted the face to the legacy path - fail-safe, but wrong,
+ * and it would have demoted every sufficiently small real trim.
+ *
+ * Red-proven: with shoelaceAreaTolerance replaced by a constant 1e-12 the
+ * first check below fails.
+ */
+void testShoelaceToleranceIsCalibrated() {
+
+  printf( "=== shoelace tolerance is calibrated ===\n" );
+
+  using conway::geometry::unwrap_detail::shoelaceAreaTolerance;
+
+  // The measured values from the tiny-real-patch case.
+  constexpr size_t TINY_VERTICES  = 5;
+  constexpr double TINY_MAX_SHIFT = 2.5e-7;
+  constexpr double TINY_SHOELACE  = 8.4009e-14;
+
+  const double tinyTolerance =
+    shoelaceAreaTolerance( TINY_VERTICES, TINY_MAX_SHIFT );
+
+  printf( "      tiny patch: shoelace=%.4e tolerance=%.4e\n",
+          TINY_SHOELACE, tinyTolerance );
+
+  check( TINY_SHOELACE > tinyTolerance,
+         "a genuine chart-span-5e-7 trim is above its own rounding floor" );
+
+  // A degenerate loop's shoelace is exactly zero, so any positive tolerance
+  // rejects it. The tolerance must therefore be strictly positive whenever the
+  // loop has any extent at all.
+  const double collinearTolerance = shoelaceAreaTolerance( 6, 5e-2 );
+
+  printf( "      collinear:  shoelace=%.4e tolerance=%.4e\n",
+          0.0, collinearTolerance );
+
+  // Strictly positive is what rejects the exactly-zero collinear shoelace.
+  // ("0.0 <= tolerance" would be vacuous - it cannot fail once the above
+  // holds - so it is not asserted.)
+  check( collinearTolerance > 0.0,
+         "a loop with extent gets a strictly positive tolerance, which is "
+         "what rejects an exactly-zero shoelace" );
+
+  // Scaling: the bound must track M^2, or it is a constant wearing a formula.
+  const double atUnitScale  = shoelaceAreaTolerance( 5, 1.0 );
+  const double atTenthScale = shoelaceAreaTolerance( 5, 0.1 );
+
+  printf( "      scaling:    M=1 -> %.4e   M=0.1 -> %.4e   ratio=%.1f\n",
+          atUnitScale, atTenthScale, atUnitScale / atTenthScale );
+
+  check( atUnitScale > atTenthScale * 50.0,
+         "the tolerance scales with the square of the coordinate magnitude" );
+}
+
 }  // namespace
 
 int main() {
@@ -783,6 +994,9 @@ int main() {
   testCollapsedInnerLoopFallsBackToLegacy();
   testNonFiniteSampleInInnerLoopDoesNotPave();
   testWeldMergedInnerLoopDoesNotPave();
+  testTwoVertexInnerLoopIsNotTriangulatedAcross();
+  testCollinearInnerLoopFallsBackToLegacy();
+  testShoelaceToleranceIsCalibrated();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

@@ -73,6 +73,46 @@ inline double positiveMod2Pi( double angle ) {
   return result;
 }
 
+/**
+ * Rounding-error bound for a shoelace sum taken over `vertexCount` vertices
+ * whose coordinates have been shifted to a reference point, with
+ * `maxShiftedCoordinate` the largest magnitude among them.
+ *
+ * A shoelace result below this is indistinguishable from zero and the polygon
+ * must be treated as enclosing nothing. A FIXED floor cannot serve: the charts
+ * these loops live in are normalized per face, so the same absolute number
+ * means "degenerate" on one face and "a real trim" on another. Measured, a
+ * fixed 1e-12 classified a genuine four-corner patch of chart span 5e-7
+ * (shoelace 8.4e-14) as degenerate.
+ *
+ * Derivation, with e = DBL_EPSILON and M = maxShiftedCoordinate:
+ *
+ *   - each shift fl(a - r) carries absolute error <= e*M;
+ *   - a product of two shifted coordinates therefore carries
+ *     M*(e*M) + M*(e*M) + e*M^2 = 3*e*M^2, and each shoelace term is a
+ *     difference of two such products, so <= 8*e*M^2 including the
+ *     subtraction's own rounding;
+ *   - summing n terms adds running-sum rounding, bounded by
+ *     n*e*max|partial sum| <= 2*n^2*e*M^2.
+ *
+ * 4*n^2*e*M^2 covers both with margin, and stays far below any real area: a
+ * loop it can reject encloses less than the 1e-9 constraint weld can
+ * represent, so it would already have welded onto a line.
+ *
+ * This is a "encloses literally nothing" bound, deliberately NOT a thinness
+ * threshold - see bldrs-ai/conway#595 on why a shape ratio such as
+ * area/perimeter^2 cannot be used, since it decays continuously as a genuine
+ * lune narrows and would silently reject real trims at some width.
+ */
+inline double shoelaceAreaTolerance(
+    size_t vertexCount, double maxShiftedCoordinate ) {
+
+  const double n = static_cast< double >( vertexCount );
+
+  return 4.0 * n * n * DBL_EPSILON *
+         maxShiftedCoordinate * maxShiftedCoordinate;
+}
+
 struct BoundaryPoint {
   glm::dvec3 world;
   double     theta;
@@ -132,7 +172,7 @@ inline bool triangulateUnwrappedLoops(
     const std::vector< std::vector< BoundaryPoint > > &loops,
     WingedEdgeMesh< glm::dvec3 > &mesh,
     const char *label,
-    size_t *loopsReachingCdt = nullptr ) {
+    size_t *closedLoopsReachingCdt = nullptr ) {
 
   if ( loops.empty() ) {
     return false;
@@ -293,21 +333,37 @@ inline bool triangulateUnwrappedLoops(
     return found->second;
   };
 
-  // Tallied per loop rather than globally: the 1e-9 weld above can merge a
-  // whole loop onto one vertex, which emits no edges and drops that loop from
-  // the constraints WITHOUT failing anything - `cdtEdges.size() < 3` still
-  // passes on the surviving loops, so a caller that supplied an inner trim
-  // gets its hole paved over. Reported out so a caller can require that every
-  // loop it supplied actually reached the CDT; callers that do not ask
-  // (cylinder, cone) keep exactly their previous behaviour.
-  size_t loopsWithConstraints = 0;
+  // Tallied per loop rather than globally, and counted as DISTINCT WELDED
+  // VERTICES rather than as edges emitted.
+  //
+  // The weld above runs at 1e-9 while callers dedup at their own tolerance, so
+  // a loop can arrive here intact and still lose vertices. Two ways that ends
+  // badly, and only the stronger test catches both:
+  //
+  //   - all vertices merge to one: no edges at all, the loop vanishes from the
+  //     constraints, and `cdtEdges.size() < 3` still passes on the survivors;
+  //   - vertices merge to exactly TWO: the loop emits a single open edge, which
+  //     is a slit rather than a boundary. The CDT triangulates straight across
+  //     it, so an inner trim's hole is filled with surface.
+  //
+  // An edge-emitted test sees the first and misses the second - measured, that
+  // second case filled a hole with 832 triangles where the caller's fallback
+  // emitted none. Three distinct vertices is the least that can enclose area,
+  // so that is the bar. Reported out so a caller can require every loop it
+  // supplied to have cleared it; callers that do not ask (cylinder, cone) keep
+  // exactly their previous behaviour.
+  size_t closedLoops = 0;
 
   for ( size_t which = 0; which < loops.size(); ++which ) {
 
     const std::vector< BoundaryPoint > &loop   = loops[ which ];
     const std::vector< glm::dvec2 >    &loop2D = loops2D[ which ];
 
-    bool loopContributed = false;
+    std::set< uint32_t > distinctWelded;
+
+    // The welded vertex sequence, so the loop's enclosed area can be taken on
+    // what the CDT will actually see rather than on the points as supplied.
+    std::vector< uint32_t > weldedSequence;
 
     for ( size_t where = 0, count = loop.size(); where < count; ++where ) {
 
@@ -320,9 +376,17 @@ inline bool triangulateUnwrappedLoops(
         continue;
       }
 
-      // Set before the dedup below: an edge this loop shares with one already
-      // inserted still means the loop reached the triangulation.
-      loopContributed = true;
+      // Recorded before the edgeSet dedup below: a vertex this loop shares
+      // with one already inserted is still a vertex this loop reached the
+      // triangulation with.
+      distinctWelded.insert( v1 );
+      distinctWelded.insert( v2 );
+
+      if ( weldedSequence.empty() ) {
+        weldedSequence.push_back( v1 );
+      }
+
+      weldedSequence.push_back( v2 );
 
       std::pair< uint32_t, uint32_t > ordered(
         std::min( v1, v2 ), std::max( v1, v2 ) );
@@ -332,13 +396,75 @@ inline bool triangulateUnwrappedLoops(
       }
     }
 
-    if ( loopContributed ) {
-      ++loopsWithConstraints;
+    // AREA, not cardinality, is the closing test. Three distinct vertices are
+    // necessary but NOT sufficient: three points strung along one meridian are
+    // distinct, survive the weld, and still enclose nothing - a slit with an
+    // extra point on it, which the CDT triangulates straight across exactly as
+    // it does a two-point one. Measured, a collinear inner bound filled the
+    // hole at 896 triangles where the intended band is 1.2578.
+    //
+    // The cardinality test is kept as the cheap precondition: it is O(1)
+    // against a set that has to be built anyway, and it short-circuits the
+    // shoelace for the common degenerate cases.
+    //
+    // This is a "does it enclose literally nothing" test, deliberately NOT a
+    // thinness test. #595's comment block records why: a shape ratio such as
+    // area/perimeter^2 falls continuously toward zero as a genuine lune
+    // narrows, so any threshold on it silently rejects real trims at some
+    // width. An absolute floor at the noise level rejects only what is
+    // degenerate to floating point.
+    //
+    // Shoelace taken relative to the loop's own first vertex, for the
+    // cancellation reason recorded on conway-geom#190: on a chart offset far
+    // from the origin the raw sums lose the answer to rounding.
+    bool enclosesArea = false;
+
+    if ( distinctWelded.size() >= 3 && weldedSequence.size() >= 3 ) {
+
+      const CDT::V2d< double >& reference = cdtVertices[ weldedSequence[ 0 ] ];
+
+      const size_t n = weldedSequence.size();
+
+      double twiceArea  = 0.0;
+      double maxShifted = 0.0;
+
+      for ( size_t where = 0; where < n; ++where ) {
+
+        const CDT::V2d< double >& a =
+          cdtVertices[ weldedSequence[ where ] ];
+        const CDT::V2d< double >& b =
+          cdtVertices[ weldedSequence[ ( where + 1 ) % n ] ];
+
+        const double ax = a.x - reference.x;
+        const double ay = a.y - reference.y;
+        const double bx = b.x - reference.x;
+        const double by = b.y - reference.y;
+
+        maxShifted = std::max( maxShifted,
+                       std::max( std::abs( ax ), std::abs( ay ) ) );
+
+        twiceArea += ( ax * by ) - ( bx * ay );
+      }
+
+      // The threshold is the shoelace's OWN rounding error, not a constant -
+      // see shoelaceAreaTolerance for the derivation and for why a fixed floor
+      // cannot work on a per-face-normalized chart.
+      //
+      // On the collinear case this sum is EXACTLY 0.0, because constant-theta
+      // points are exactly collinear in both layouts, so any positive
+      // tolerance rejects it.
+      const double areaTolerance = shoelaceAreaTolerance( n, maxShifted );
+
+      enclosesArea = std::abs( twiceArea ) > areaTolerance;
+    }
+
+    if ( enclosesArea ) {
+      ++closedLoops;
     }
   }
 
-  if ( loopsReachingCdt != nullptr ) {
-    *loopsReachingCdt = loopsWithConstraints;
+  if ( closedLoopsReachingCdt != nullptr ) {
+    *closedLoopsReachingCdt = closedLoops;
   }
 
   if ( !inputFinite || cdtEdges.size() < 3 ) {
@@ -1710,28 +1836,38 @@ inline void TriangulateSphericalSurface(Geometry &geometry,
       //
       //   2. AT THE CONSTRAINT WELD, inside triangulateUnwrappedLoops. It
       //      welds at 1e-9 while the dedup above works at 1e-12, so points
-      //      that legitimately survive here can merge there; a loop merged
-      //      onto one vertex emits no edges and disappears from the
-      //      constraints while `cdtEdges.size() < 3` still passes on the outer
-      //      loop alone. Only the helper can see that, so it reports the count
-      //      back and the equality is checked after it returns.
+      //      that legitimately survive here can merge there. A loop merged
+      //      onto ONE vertex emits no edges and disappears from the
+      //      constraints; a loop merged onto TWO emits a single open edge,
+      //      which is a slit rather than a boundary and gets triangulated
+      //      straight across. Either way `cdtEdges.size() < 3` still passes on
+      //      the outer loop alone. Only the helper can see this, so it reports
+      //      how many loops survived as CLOSED constraints - three distinct
+      //      welded vertices, the least that can enclose area - and the
+      //      equality is checked after it returns.
       //
-      // Failing either way sends the face down the legacy path exactly as if
+      // Failing any of these sends the face down the legacy path exactly as if
       // this code were not here, which is what keeps the "can never make
       // output worse" contract literally true rather than true-except-here.
-      // The legacy path paves these cases too, so what this buys is that the
-      // new chart does not OWN the failure - not that the hole survives.
-      // Both sub-cases found by review on bldrs-ai/conway-geom#191.
+      //
+      // Worth being precise about what that buys, because it differs by case:
+      // for a loop collapsing under this function's own dedup the legacy path
+      // paves too, so the check only stops this chart OWNING the failure; but
+      // for the two-vertex case the legacy path DECLINES, emitting nothing
+      // where this chart filled a hole with 832 triangles. That one was a
+      // genuine regression, not a shared defect.
+      //
+      // All found by review on bldrs-ai/conway-geom#191 and #192.
       const bool everyBoundSurvivedCollection = loops.size() == bounds.size();
 
       WingedEdgeMesh< glm::dvec3 > unwrapMesh;
 
-      size_t loopsReachingCdt = 0;
+      size_t closedLoopsReachingCdt = 0;
 
       if ( everyBoundSurvivedCollection && !loops.empty() &&
            triangulateUnwrappedLoops(
-             loops, unwrapMesh, "sphere", &loopsReachingCdt ) &&
-           loopsReachingCdt == loops.size() ) {
+             loops, unwrapMesh, "sphere", &closedLoopsReachingCdt ) &&
+           closedLoopsReachingCdt == loops.size() ) {
 
         tesselate(
           unwrapMesh,
