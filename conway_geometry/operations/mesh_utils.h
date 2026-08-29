@@ -6132,6 +6132,129 @@ inline bool tryRibbonLoft(
 
 
 // TODO: review and simplify
+/**
+ * Re-solve the head of a CLOSED trim loop, seeded by its own last point.
+ *
+ * RationalNurbsInverseMethod::resetContinuity() scopes the continuity seed to
+ * one bound, which is correct - a cross-loop seed can converge silently onto a
+ * different sheet. But it leaves the FIRST point of every bound with no seed at
+ * all, cold-starting from the grid. On a surface that passes near itself (a
+ * multi-turn thread flank, the conway#594 configuration) that grid can land in
+ * the wrong basin, and the bad uv then seeds its successors until the descent
+ * claws its way back. Measured across three models, 10 of 848 b-spline faces
+ * cold-start into a residual more than 100x their own loop median and above
+ * 0.1% of the face extent; the worst lands 26% of the face away from the
+ * surface and one returns the domain corner (0,0) outright.
+ *
+ * A closed loop's first point is adjacent to its last, so after the caller's
+ * first pass the solver's continuity seed is exactly the right one. Re-solving
+ * the head from there replaces a grid guess with a genuine neighbour. Stop at
+ * the first point whose answer does not change: from there the caller's pass
+ * was already running on a seed of its own.
+ *
+ * Measured, the case is even plainer than "adjacent": across 859 trim bounds in
+ * the three b-spline-carrying regression models, the closing gap is EXACTLY
+ * zero in every one - the last point of a trim polyline is bit-identical to the
+ * first. So the head and the tail are not merely neighbours, they are the SAME
+ * QUERY, and a cold start that disagrees with the continuity-seeded solve of
+ * that identical point is self-evidently the wrong one of the two. This pass
+ * does not choose between two defensible answers; it removes an inconsistency
+ * where one point had two.
+ *
+ * THE CLOSURE GATE IS NOT OPTIONAL. Everything above depends on the last point
+ * genuinely neighbouring the first. An OPEN bound - a trim that failed to
+ * close, an extraction that dropped its tail - has a tail somewhere unrelated,
+ * and seeding the head from it is precisely the cross-sheet failure
+ * resetContinuity exists to prevent, arriving by a different door. So the gate
+ * measures the closing gap against the loop's own median segment and declines
+ * anything that does not look like a closure, leaving those bounds on the cold
+ * start they have today.
+ *
+ * @return the number of head points rewritten; 0 if the gate declined.
+ */
+inline size_t reSolveClosedTrimHead(
+    RationalNurbsInverseMethod    &solve,
+    const std::vector< glm::dvec3 > &scaledPoints,
+    std::vector< glm::dvec2 >       &solved ) {
+
+  const size_t count = scaledPoints.size();
+
+  if ( count < 3 || solved.size() != count ) {
+    return 0;
+  }
+
+  // Median segment length, as the loop's own scale. Median rather than mean so
+  // one long run-out segment cannot license an open bound.
+  std::vector< double > segments;
+
+  segments.reserve( count - 1 );
+
+  for ( size_t i = 0; i + 1 < count; ++i ) {
+    segments.push_back( glm::distance( scaledPoints[ i + 1 ], scaledPoints[ i ] ) );
+  }
+
+  std::sort( segments.begin(), segments.end() );
+
+  const double medianSegment = segments[ segments.size() / 2 ];
+
+  if ( !( medianSegment > 0.0 ) ) {
+    return 0;
+  }
+
+  const double closingGap =
+    glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
+
+  // Swept over the corpus before being chosen rather than guessed: all 859
+  // trim bounds in the three b-spline-carrying regression models close at a
+  // ratio of exactly 0.0 - the last point of a trim polyline is bit-identical
+  // to the first - so this gate's entire reach is bounds that do NOT close.
+  //
+  // The factor has to separate three MEASURED cases, and the window is
+  // narrower than it first looks:
+  //
+  //   0.00  every one of the 859 corpus bounds - closed by DUPLICATION, the
+  //         last point bit-identical to the first;
+  //   ~1.0  closed by ADJACENCY - the last point one sample step from the
+  //         first, with no duplicate. Must also be accepted: nothing requires
+  //         a front end to repeat the point, and declining these would
+  //         silently leave them on the cold start.
+  //   4.05  an open arc spanning ONE COIL TURN, whose tail sits a single pitch
+  //         from its head - spatially adjacent, a whole turn away in v, i.e. a
+  //         different sheet. MUST be declined; seeding the head from that tail
+  //         is exactly the cross-sheet failure this gate exists to stop.
+  //
+  // 2.0 sits between the last two with a factor of two either side. A first
+  // draft used 8.0, which accepts the coil-turn case - caught only by trying
+  // to red-prove the gate and finding the test vacuous. The margin is not
+  // generous, and it is the number to revisit if a model ever samples a trim
+  // so coarsely that one step spans a coil turn.
+  constexpr double CLOSURE_FACTOR = 2.0;
+
+  if ( closingGap > medianSegment * CLOSURE_FACTOR ) {
+    return 0;
+  }
+
+  size_t rewritten = 0;
+
+  for ( size_t i = 0; i < count; ++i ) {
+
+    glm::dvec2 again;
+    {
+      conway::AllocTagScope inverseTag( conway::AllocSite::NurbsInverse );
+      again = solve( scaledPoints[ i ] );
+    }
+
+    if ( again == solved[ i ] ) {
+      break;
+    }
+
+    solved[ i ] = again;
+    ++rewritten;
+  }
+
+  return rewritten;
+}
+
 inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
                                IfcSurface &surface, double scaling,
@@ -6257,20 +6380,19 @@ inline void TriangulateBspline(Geometry &geometry,
 
       const size_t boundPointCount = bounds[ i ].curve.points.size();
 
-      auto scaledPoint = [ & ]( size_t j ) {
+      std::vector< glm::dvec3 > scaledPoints;
+      std::vector< glm::dvec2 > solvedUv;
 
-        glm::dvec3 pt = bounds[ i ].curve.points[ j ];
+      scaledPoints.reserve( boundPointCount );
+      solvedUv.reserve( boundPointCount );
+
+      for (size_t j = 0; j < boundPointCount; j++) {
+        glm::dvec3 pt = bounds[i].curve.points[j];
 
         //hack 
         pt.x *= scaling;
         pt.y *= scaling;
         pt.z *= scaling;
-
-        return pt;
-      };
-
-      for (size_t j = 0; j < boundPointCount; j++) {
-        glm::dvec3 pt = scaledPoint( j );
 
         glm::dvec2 pInv;
         {
@@ -6278,51 +6400,22 @@ inline void TriangulateBspline(Geometry &geometry,
           pInv = bSplineInverseEvaluation( pt );
         }
 
+        scaledPoints.push_back( pt );
+        solvedUv.push_back( pInv );
+
         points.push_back({pInv.x, pInv.y});
         mesh.makeVertex( { pt, pInv } );
       }
 
-      // SECOND PASS OVER THE HEAD OF THE LOOP.
-      //
-      // resetContinuity() above leaves the FIRST point of every bound with no
-      // continuity seed, so it cold-starts from the seed grid. On a surface
-      // that passes near itself - a multi-turn thread flank, the conway#594
-      // configuration - that grid can land in the wrong basin, and the bad uv
-      // then seeds the points after it until the descent claws its way back.
-      //
-      // Measured across three models, 10 of 848 b-spline faces cold-start into
-      // a residual more than 100x their own loop median and above 0.1% of the
-      // face extent; the worst lands 26% of the face away from the surface,
-      // and one returns the domain corner (0,0) outright. Downstream that
-      // shows as a spurious v-monotone reversal where the good run meets the
-      // bad head, which is what pushes conway#647's thread flank from two
-      // monotone runs to four and out of the ribbon gate.
-      //
-      // The loop is CLOSED, so its first point is adjacent to its last, and
-      // after the pass above the solver's continuity seed holds exactly that
-      // last point's solution. Re-solving the head from there is therefore
-      // seeded by a genuine neighbour rather than by a grid guess. Stop at the
-      // first point whose answer does not change: from there on the original
-      // pass was already running on a continuity seed of its own.
-      //
-      // This does NOT weaken resetContinuity's guarantee. That reset exists to
-      // stop one bound's solution seeding a DIFFERENT bound, where an
-      // unrelated preimage can be converged onto silently; the seed used here
-      // comes from this same bound.
-      for ( size_t j = 0; j < boundPointCount; j++ ) {
+      // The head of a closed loop has no continuity seed - see
+      // reSolveClosedTrimHead, which also carries the closure gate that keeps
+      // an OPEN bound on its cold start rather than seeding it cross-sheet.
+      const size_t rewritten =
+        reSolveClosedTrimHead( bSplineInverseEvaluation, scaledPoints, solvedUv );
 
-        glm::dvec2 reInv;
-        {
-          conway::AllocTagScope inverseTag( conway::AllocSite::NurbsInverse );
-          reInv = bSplineInverseEvaluation( scaledPoint( j ) );
-        }
-
-        if ( reInv == mesh.vertices[ firstVertex + j ].uv ) {
-          break;
-        }
-
-        mesh.vertices[ firstVertex + j ].uv = reInv;
-        points[ j ] = { reInv.x, reInv.y };
+      for ( size_t j = 0; j < rewritten; ++j ) {
+        mesh.vertices[ firstVertex + j ].uv = solvedUv[ j ];
+        points[ j ] = { solvedUv[ j ].x, solvedUv[ j ].y };
       }
 
       uvBoundaryValues.push_back(points);
