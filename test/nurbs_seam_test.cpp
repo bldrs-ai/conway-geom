@@ -15,6 +15,14 @@
  */
 #include "conway_geometry/operations/mesh_utils.h"
 
+#include <cstdarg>
+
+// TriangulateBspline's CDT error paths call this; the rest of the header is
+// header-only. Defining it here keeps the test linking nothing, matching
+// spherical_trim_test.cpp.
+void Logger::logError( const char*, ... ) {}
+
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -678,9 +686,396 @@ void testGridRejectsAmbiguousSeamAxis() {
   }
 }
 
+
+/**
+ * A multi-turn helical ribbon: v runs along the coil, u across its narrow
+ * width. Consecutive turns pass close to each other in 3D, which is what gives
+ * the inverse solve several near-equal basins for one query - the conway#594
+ * configuration, and the one every cold-start failure in the corpus sits on.
+ */
+tinynurbs::RationalSurface3d makeHelicalRibbon(
+    double coilRadius, double pitch, double turns, double width,
+    int samples ) {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 3;
+
+  const int alongCount  = samples;
+  const int acrossCount = 2;
+
+  surface.knots_u = { 0, 0, 1, 1 };
+
+  surface.knots_v.clear();
+
+  for ( int i = 0; i < surface.degree_v + 1; ++i ) {
+    surface.knots_v.push_back( 0.0 );
+  }
+
+  for ( int i = 1; i < alongCount - surface.degree_v; ++i ) {
+    surface.knots_v.push_back(
+      static_cast< double >( i ) / ( alongCount - surface.degree_v ) );
+  }
+
+  for ( int i = 0; i < surface.degree_v + 1; ++i ) {
+    surface.knots_v.push_back( 1.0 );
+  }
+
+  surface.control_points.resize( acrossCount, alongCount );
+  surface.weights.resize( acrossCount, alongCount );
+
+  for ( int j = 0; j < alongCount; ++j ) {
+
+    const double t = turns * 2.0 * PI * j / ( alongCount - 1 );
+
+    const glm::dvec3 centre(
+      coilRadius * std::cos( t ),
+      coilRadius * std::sin( t ),
+      pitch * t / ( 2.0 * PI ) );
+
+    const glm::dvec3 outward( std::cos( t ), std::sin( t ), 0.0 );
+
+    for ( int i = 0; i < acrossCount; ++i ) {
+      surface.control_points( i, j ) = centre + outward * ( width * ( i - 0.5 ) );
+      surface.weights( i, j )        = 1.0;
+    }
+  }
+
+  return surface;
+}
+
+
+/**
+ * The first point of a closed trim must not cold-start into the wrong basin.
+ *
+ * resetContinuity() scopes the continuity seed to one bound, which is correct
+ * and deliberate - see its own comment on why a cross-loop seed can converge
+ * silently onto a different sheet. But it leaves the FIRST point of every
+ * bound with no seed at all, cold-starting from the grid. On a surface that
+ * passes near itself the grid can pick the wrong basin, and the bad uv then
+ * seeds its successors until the descent recovers.
+ *
+ * Measured across Orbiter, Right_Hand and nist_ctc_02: 10 of 848 b-spline
+ * faces cold-start into a residual more than 100x their own loop median and
+ * above 0.1% of the face extent, the worst 26% of the face away from the
+ * surface. Downstream it shows as a spurious v-monotone reversal where the
+ * good run meets the bad head - the defect behind conway#647.
+ *
+ * The loop is closed, so its first point neighbours its last; re-solving the
+ * head seeded from that last solution removes the cold start. This pins the
+ * property directly on the solver rather than through triangulation, because
+ * the triangulated consequence depends on the ribbon gate as well.
+ *
+ * Red-proven: with the second pass removed the first point's residual here is
+ * 1.2e+00 against a loop median of 1.3e-03.
+ */
+void testClosedTrimHeadIsNotColdStarted() {
+
+  printf( "=== closed trim head is not cold-started ===\n" );
+
+  constexpr double COIL_RADIUS = 3.0;
+  constexpr double PITCH       = 0.60;
+  constexpr double TURNS       = 8.0;
+  constexpr double WIDTH       = 0.30;
+  constexpr int    SAMPLES     = 200;
+  constexpr int    ALONG       = 400;
+
+  // Start the loop 500 points in. A real STEP edge loop begins wherever the
+  // file put it; starting at a domain corner is the case the seed grid always
+  // gets right, so it would prove nothing.
+  constexpr int    ROTATION    = 500;
+
+  const tinynurbs::RationalSurface3d surface =
+    makeHelicalRibbon( COIL_RADIUS, PITCH, TURNS, WIDTH, SAMPLES );
+
+  conway::geometry::RationalSurfaceEvaluator evaluator( surface );
+
+  std::vector< glm::dvec3 > loop;
+
+  for ( int i = 0; i < ALONG; ++i ) {
+    loop.push_back( evaluator.point( 0.02, static_cast< double >( i ) / ALONG ) );
+  }
+
+  for ( int i = ALONG; i > 0; --i ) {
+    loop.push_back( evaluator.point( 0.98, static_cast< double >( i ) / ALONG ) );
+  }
+
+  std::vector< glm::dvec3 > rotated;
+
+  for ( size_t i = 0; i < loop.size(); ++i ) {
+    rotated.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
+  }
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  solve.resetContinuity();
+
+  std::vector< glm::dvec2 > solved;
+
+  for ( const glm::dvec3& query : rotated ) {
+    solved.push_back( solve( query ) );
+  }
+
+  // THE PRODUCTION HELPER, not a copy of it. An earlier version of this test
+  // reimplemented the loop inline, which meant deleting the production call
+  // site left the test green - caught in review on conway-geom#194.
+  conway::geometry::reSolveClosedTrimHead( solve, rotated, solved );
+
+  auto residual = [ & ]( size_t i ) {
+
+    return glm::distance(
+      solve.evaluator.point( solved[ i ].x, solved[ i ].y ), rotated[ i ] );
+  };
+
+  std::vector< double > rest;
+
+  for ( size_t i = 1; i < rotated.size(); ++i ) {
+    rest.push_back( residual( i ) );
+  }
+
+  std::sort( rest.begin(), rest.end() );
+
+  const double head   = residual( 0 );
+  const double median = rest[ rest.size() / 2 ];
+
+  printf( "      headResidual=%.4e loopMedian=%.4e ratio=%.2e\n",
+          head, median, head / median );
+
+  // The head must be in the same league as the rest of its own loop. A
+  // cold-start failure here is four to five orders out, so the bar does not
+  // need to be tight to be decisive.
+  check( head < median * 100.0,
+         "the loop head solves to within 100x its own loop median" );
+}
+
+
+/**
+ * The closure gate declines an OPEN bound.
+ *
+ * Everything reSolveClosedTrimHead does rests on the last point neighbouring
+ * the first. An open bound's tail is somewhere unrelated, and seeding the head
+ * from it is the cross-sheet failure resetContinuity exists to prevent,
+ * arriving by a different door - so the gate must leave open bounds on the cold
+ * start they have today.
+ *
+ * The tail here is placed most of a turn away along the coil, which on this
+ * surface is a genuinely different sheet: near in space, far in v.
+ *
+ * Red-proven: with the gate removed the pass runs and rewrites the head.
+ */
+void testOpenBoundIsNotReSeeded() {
+
+  printf( "=== open bound is not re-seeded ===\n" );
+
+  constexpr double COIL_RADIUS = 3.0;
+  constexpr double PITCH       = 0.60;
+  constexpr double TURNS       = 8.0;
+  constexpr double WIDTH       = 0.30;
+  constexpr int    SAMPLES     = 200;
+
+  const tinynurbs::RationalSurface3d surface =
+    makeHelicalRibbon( COIL_RADIUS, PITCH, TURNS, WIDTH, SAMPLES );
+
+  conway::geometry::RationalSurfaceEvaluator evaluator( surface );
+
+  // An open arc spanning EXACTLY one coil turn. Its tail sits one pitch from
+  // its head - spatially adjacent, a whole turn away in v, i.e. a different
+  // sheet - which is the case that actually threatens the gate. A first draft
+  // of this test used an arc whose ends were far apart in space; that passed
+  // with the gate REMOVED, because the re-solve happened to return the head
+  // unchanged, so it proved nothing. This construction changes the head.
+  std::vector< glm::dvec3 > open;
+
+  for ( int i = 0; i <= 120; ++i ) {
+    open.push_back(
+      evaluator.point( 0.5, 0.30 + ( 1.0 / TURNS ) * i / 120.0 ) );
+  }
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  solve.resetContinuity();
+
+  std::vector< glm::dvec2 > solved;
+
+  for ( const glm::dvec3& query : open ) {
+    solved.push_back( solve( query ) );
+  }
+
+  const std::vector< glm::dvec2 > before = solved;
+
+  const size_t rewritten =
+    conway::geometry::reSolveClosedTrimHead( solve, open, solved );
+
+  double closingGap = glm::distance( open.back(), open.front() );
+
+  std::vector< double > segments;
+
+  for ( size_t i = 0; i + 1 < open.size(); ++i ) {
+    segments.push_back( glm::distance( open[ i + 1 ], open[ i ] ) );
+  }
+
+  std::sort( segments.begin(), segments.end() );
+
+  printf( "      closingGap=%.4e medianSegment=%.4e ratio=%.1f rewritten=%zu\n",
+          closingGap, segments[ segments.size() / 2 ],
+          closingGap / segments[ segments.size() / 2 ], rewritten );
+
+  check( rewritten == 0, "the gate declines an open bound" );
+
+  check( solved == before,
+         "an open bound's solved uv is left exactly as the cold start had it" );
+}
+
+/**
+ * End-to-end through TriangulateBspline: the head fix reaches the mesh.
+ *
+ * The other tests here exercise the solver. This one drives the production
+ * triangulation entry point and asserts on the geometry it emits, so that
+ * deleting the call to reSolveClosedTrimHead inside TriangulateBspline turns
+ * this test red. Review on conway-geom#194 found that the solver-level tests
+ * alone did not have that property.
+ *
+ * The assertion is emitted AREA against the analytic ribbon area. A wrong-basin
+ * head puts the loop's first vertices in the wrong place in the chart, and the
+ * triangulation smears across the strip - the same failure that made
+ * conway#647's flank ship 328 mm2 where its symmetric sibling ships 49.
+ *
+ * Red-proven by disabling the production pass, not by reading.
+ */
+void testHeadFixReachesTheEmittedMesh() {
+
+  printf( "=== head fix reaches the emitted mesh ===\n" );
+
+  constexpr double COIL_RADIUS = 3.0;
+  constexpr double PITCH       = 0.60;
+  constexpr double TURNS       = 8.0;
+  constexpr double WIDTH       = 0.30;
+  constexpr int    SAMPLES     = 200;
+  constexpr int    ALONG       = 400;
+  constexpr int    ROTATION    = 500;
+
+  const tinynurbs::RationalSurface3d nurbs =
+    makeHelicalRibbon( COIL_RADIUS, PITCH, TURNS, WIDTH, SAMPLES );
+
+  conway::geometry::RationalSurfaceEvaluator evaluator( nurbs );
+
+  // The same surface, expressed the way the extractor hands it over.
+  conway::geometry::IfcSurface surface;
+
+  surface.transformation           = glm::dmat4( 1.0 );
+  surface.BSplineSurface.Active    = true;
+  surface.BSplineSurface.UDegree   = nurbs.degree_u;
+  surface.BSplineSurface.VDegree   = nurbs.degree_v;
+
+  for ( int i = 0; i < 2; ++i ) {
+
+    std::vector< glm::dvec3 > row;
+    std::vector< double >     weightRow;
+
+    for ( int j = 0; j < SAMPLES; ++j ) {
+      row.push_back( nurbs.control_points( i, j ) );
+      weightRow.push_back( 1.0 );
+    }
+
+    surface.BSplineSurface.ControlPoints.push_back( row );
+    surface.BSplineSurface.WeightPoints.push_back( weightRow );
+  }
+
+  // Knots arrive as distinct values plus multiplicities.
+  auto pushKnots = []( const std::vector< double >& flat,
+                       std::vector< glm::f64 >& values,
+                       std::vector< glm::f64 >& multiplicities ) {
+
+    for ( size_t i = 0; i < flat.size(); ) {
+
+      size_t run = 1;
+
+      while ( i + run < flat.size() && flat[ i + run ] == flat[ i ] ) {
+        ++run;
+      }
+
+      values.push_back( flat[ i ] );
+      multiplicities.push_back( static_cast< double >( run ) );
+
+      i += run;
+    }
+  };
+
+  pushKnots( nurbs.knots_u, surface.BSplineSurface.UKnots,
+             surface.BSplineSurface.UMultiplicity );
+  pushKnots( nurbs.knots_v, surface.BSplineSurface.VKnots,
+             surface.BSplineSurface.VMultiplicity );
+
+  // A closed ribbon trim, rotated so the head does not start at a domain
+  // corner - the case the seed grid always gets right.
+  std::vector< glm::dvec3 > loop;
+
+  for ( int i = 0; i < ALONG; ++i ) {
+    loop.push_back( evaluator.point( 0.02, static_cast< double >( i ) / ALONG ) );
+  }
+
+  for ( int i = ALONG; i > 0; --i ) {
+    loop.push_back( evaluator.point( 0.98, static_cast< double >( i ) / ALONG ) );
+  }
+
+  conway::geometry::IfcBound3D bound;
+
+  bound.type        = conway::geometry::IfcBoundType::OUTERBOUND;
+  bound.orientation = true;
+
+  for ( size_t i = 0; i < loop.size(); ++i ) {
+    bound.curve.points.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
+  }
+
+  // Close it explicitly, as every trim polyline in the corpus does: all 859
+  // measured bounds repeat their first point as their last.
+  bound.curve.points.push_back( bound.curve.points.front() );
+
+  conway::geometry::Geometry geometry;
+
+  conway::geometry::TriangulateBspline(
+    geometry, { bound }, surface, 1.0, COIL_RADIUS * 2.0 );
+
+  double area = 0.0;
+
+  for ( const auto& triangle : geometry.triangles ) {
+
+    const glm::dvec3 a = geometry.vertices[ triangle.vertices[ 0 ] ];
+    const glm::dvec3 b = geometry.vertices[ triangle.vertices[ 1 ] ];
+    const glm::dvec3 c = geometry.vertices[ triangle.vertices[ 2 ] ];
+
+    area += 0.5 * glm::length( glm::cross( b - a, c - a ) );
+  }
+
+  // The ribbon is 0.96 of its width across and runs the full coil length.
+  // Helix length for 8 turns at radius 3 and pitch 0.6.
+  const double coilLength =
+    TURNS * std::sqrt( std::pow( 2.0 * PI * COIL_RADIUS, 2.0 ) +
+                       std::pow( PITCH, 2.0 ) );
+  const double expected = coilLength * WIDTH * 0.96;
+
+  printf( "      triangles=%zu area=%.4f expected=%.4f ratio=%.4f\n",
+          geometry.triangles.size(), area, expected, area / expected );
+
+  check( geometry.triangles.size() > 0, "the ribbon emits geometry" );
+
+  // A smeared head inflates the area far past the strip; an inscribed
+  // tessellation of the true strip lands just under it.
+  check( area < expected * 1.10,
+         "the emitted area does not overshoot the ribbon - head not smeared" );
+
+  check( area > expected * 0.80,
+         "the emitted area covers the ribbon" );
+}
+
 }  // namespace
 
 int main() {
+
+  testClosedTrimHeadIsNotColdStarted();
+  testOpenBoundIsNotReSeeded();
+  testHeadFixReachesTheEmittedMesh();
 
   testWideStepAcrossSeamKeepsArmijoSound();
   testClosureRequiresMatchingWeights();
