@@ -3937,10 +3937,16 @@ inline void TriangulateExtrusion(Geometry &geometry,
   refineAndAppend( mesh );
 }
 
-// Side of the refinement lattice the wrong-basin escape lays over a small
-// neighbourhood of the best coarse grid sample. 16 was measured; the escape's
-// job is only to land in the right BASIN, after which the descent converges,
-// so resolution past that buys nothing. See the escape in operator().
+// Number of INTERVALS the refinement lattice divides its neighbourhood into,
+// per axis. The escape's loops run 0..REFINE_SIDE inclusive, so the lattice
+// actually evaluated is 17x17 = 289 samples per span - and its centre sample
+// reproduces the coarse grid sample the neighbourhood is built around, which
+// is why the scan is seeded with that sample's own distance rather than with
+// DBL_MAX.
+//
+// 16 intervals is what was measured. The escape's job is only to land in the
+// right BASIN, after which the descent converges on its own, so resolution
+// past that buys nothing. See the escape in operator().
 constexpr size_t REFINE_SIDE         = 16;
 constexpr double REFINE_SIDE_D       = static_cast< double >( REFINE_SIDE );
 constexpr size_t INVERSE_GRID_SIDE   = 8.0; 
@@ -4073,9 +4079,20 @@ struct RationalNurbsInverseMethod {
    * being closed, not an observed one - but nothing about an unseen model
    * bounds it, and the invariant is cheap to enforce and was previously only
    * asserted.
+   *
+   * Clears the severity arming too, so that "reset" means ALL per-bound
+   * state rather than the continuity memo alone. Callers do re-arm
+   * immediately after this call today, which makes the extra line a no-op -
+   * but the correctness of a per-bound threshold should not rest on every
+   * caller remembering a second call, including the zero-arming branch for a
+   * bound too short to have a median chord. That is the shape of the
+   * closed-loop flag that survived a recycle in this same solver family; it
+   * costs one store to close the class instead of re-auditing the call sites
+   * each time one is added.
    */
   void resetContinuity() {
     hasPreviousSolution_ = false;
+    chordSeverity_       = 0.0;
   }
 
   RationalNurbsInverseMethod( const tinynurbs::RationalSurface3d& srf )
@@ -4314,18 +4331,28 @@ struct RationalNurbsInverseMethod {
    * self-intersecting uv chart that earcut then triangulates inside out
    * (bldrs-ai/conway#642).
    *
-   * DERIVED, not chosen. Measured over all 843 single-bound b-spline faces in
-   * the regression corpus (74,838 boundary points), residual/medianChord
-   * separates the classes: 0.21% of points on undamaged faces exceed 1.0 and
-   * none exceed 3.0, against 5.5% and 1.0% on damaged ones. At the 0.3 used
-   * below, 18 of the 19 wrong-basin faces are caught while 33 of 810 clean
-   * faces trip it, and 1,847 of 74,838 points (2.5%) are refined.
+   * DERIVED, not chosen: residual/medianChord separates the damaged faces
+   * from the clean ones, where the absolute residual does not, because a
+   * misplaced uv matters exactly when it can outrun the polyline's own
+   * sampling.
    *
-   * The overlap is deliberate and costs only time. This gate decides WHERE TO
-   * SPEND WORK, not what to believe: the refinement below is accepted only on
-   * a strictly lower final residual, so a clean face tripping the gate does
-   * extra evaluations and keeps its existing answer. Recall is what matters
-   * here; precision only buys speed.
+   * Counted on the shipped gate - `max( 0.3 * medianChord, convergence_error )`
+   * - over the whole b-spline population of the regression corpus, which is
+   * 848 faces (843 of them single-bound) carrying 64,323 boundary points:
+   *
+   *   faces with at least one point through the gate      63 of 848
+   *   faces the refinement then improved                  61
+   *   points refined                        1,764 of 64,323 (2.74%)
+   *   points the refinement improved                   1,418
+   *
+   * So 785 of 848 faces never enter this tier at all, and 80% of the points
+   * that do are improved by it.
+   *
+   * The remaining 20% are the overlap, and it is deliberate: this gate
+   * decides WHERE TO SPEND WORK, not what to believe. The refinement below
+   * is accepted only on a strictly lower final residual, so a clean face
+   * tripping the gate does extra evaluations and keeps its existing answer.
+   * Recall is what matters here; precision only buys speed.
    *
    * Left at zero the escape never fires, which is what every caller that does
    * not set it gets.
@@ -4350,8 +4377,23 @@ struct RationalNurbsInverseMethod {
 
   glm::dvec2 operator()( const glm::dvec3& point ) {
 
-    glm::dvec2 gridGuess;
-    glm::dvec3 gridPoint;
+    // Initialised, not merely assigned below. This repo does not set
+    // GLM_FORCE_CTOR_INIT, so a bare glm vector is uninitialised storage, and
+    // three separate consumers now read these: the tier-1 retry, the tier-3
+    // refinement centre, and the seed comparison itself. The grid loop below
+    // does write them on any surface with a finite sample - `distance2 <
+    // DBL_MAX` is true for any finite candidate - but that is a property of
+    // the surface, not of this function, and a surface whose every sample
+    // evaluates non-finite would leave them unwritten. Pinning them to the
+    // domain minimum makes the fallback a valid uv rather than whatever was
+    // on the stack.
+    //
+    // Free: `grid[0][0]` IS the sample at `min_extent` - the constructor
+    // evaluates it at exactly that uv - so this is a copy of an already
+    // computed point, not an extra evaluation on a path taken ~75,000 times
+    // per model.
+    glm::dvec2 gridGuess     = min_extent;
+    glm::dvec3 gridPoint     = grid[ 0 ][ 0 ];
     double     gridDistance2 = DBL_MAX;
 
     // Take initial guess from the grid.
@@ -4518,12 +4560,32 @@ struct RationalNurbsInverseMethod {
     // worse costs one descent and changes nothing. That matters for the case
     // this cannot distinguish up front: if the previous point itself solved
     // badly, its uv is a bad seed, and the residual comparison is what
-    // refuses it.
+    // refuses it. As in the tier below, "strictly lower" is this tier's
+    // guarantee and not the caller's: seamContinuousSolution afterwards may
+    // still move the answer to a period-shifted branch within one
+    // convergence_error of it.
+    //
+    // Scope, because it is wider than the tier below and nothing in the code
+    // narrows it: this retry is NOT armed by boundSeverityToChord and is live
+    // on every b-spline bound in every model. Counted over the regression
+    // corpus's 848 b-spline faces / 64,323 boundary points, it runs on 6,851
+    // points across 347 faces and improves 2,211 of them on 255 faces. It
+    // also runs inside reSolveClosedTrimHead's second pass, which is the same
+    // bound and therefore the same continuity scope.
     //
     // Cost is bounded the same way the retry above is: only a non-converged
-    // solve, and only one that did not already take the continuity seed.
-    else if ( !usedContinuitySeed &&
-              continuityDistance2 < DBL_MAX &&
+    // solve, and only one that did not already take the continuity seed -
+    // which the `else` already establishes: reaching here with the
+    // continuity seed taken means the solve CONVERGED, and the residual test
+    // below then rejects it. So the gate names only what the `else` does not.
+    //
+    // The finiteness test is not redundant with `hasPreviousSolution_`: a
+    // previous solution can evaluate to a non-finite 3D point, which makes
+    // `continuityDistance2` NaN, and NaN would sail through a bare `>`
+    // comparison. `DBL_MAX` was doing this job implicitly before; saying
+    // isfinite says which job.
+    else if ( hasPreviousSolution_ &&
+              std::isfinite( continuityDistance2 ) &&
               solvedDistance2 > convergence_error * convergence_error ) {
 
       double     continuitySolvedDistance2 = 0.0;
@@ -4549,8 +4611,11 @@ struct RationalNurbsInverseMethod {
     // sheet. Gauss-Newton is a local method, so it converges inside that
     // sheet and reports a converged-looking answer that is simply wrong.
     //
-    // Measured on the regression corpus, over the 491 boundary points whose
-    // residual exceeds this gate:
+    // Measured during the diagnosis, on the 491 outlier boundary points the
+    // pre-fix census found across 19 damaged faces. Those are the population
+    // this tier was designed against; the shipped gate's own census is below
+    // and is a different, larger set, because the gate is deliberately looser
+    // than the defect:
     //
     //   re-seed from the far-side good neighbour   18.5% recovered
     //   pure grid seed, continuity reset            0.0% recovered
@@ -4573,14 +4638,36 @@ struct RationalNurbsInverseMethod {
     // the 256x256 scan's own floor. The scan only has to land in the right
     // basin; the descent does the rest.
     //
-    // Cost is gated twice - only a non-converged solve, and only one whose
-    // residual exceeds boundSeverityToChord's threshold - so 829 of 848
-    // corpus faces never enter it.
+    // Cost is gated twice - the residual must exceed boundSeverityToChord's
+    // severity threshold AND the convergence target - so 785 of the corpus's
+    // 848 b-spline faces never enter it, and 1,764 of 64,323 boundary points
+    // (2.74%) are refined. Counted on this gate, not estimated; the same
+    // census is broken out in boundSeverityToChord's comment.
     if ( chordSeverity_ > 0.0 ) {
 
-      const double severity = 0.3 * chordSeverity_;
+      // Floored at the convergence target, which is the OTHER half of "gated
+      // twice" above and was previously only claimed.
+      //
+      // Without the floor the single gate is `0.3 * medianChord`, and nothing
+      // stops that from landing BELOW convergence_error: the crossover is
+      // medianChord < 3.33 * convergence_error, i.e. under ~2e-7 absolute
+      // once the MIN_INVERSE_ERROR floor binds. Uniform sampling does not
+      // reach it - a loop would need ~300k points - but a median is a median,
+      // and a bound where more than half of the consecutive pairs are
+      // near-duplicates without being coincident arms the tier below its own
+      // convergence target. Every point on such a bound then pays the full
+      // scan while already solved: measured 0.0157 ms -> 0.0980 ms per solve,
+      // 6.2x, for an answer that cannot improve.
+      //
+      // Correctness, not only cost. Below the convergence target a "strictly
+      // lower" residual is noise rather than evidence, so the accept rule
+      // that protects this tier everywhere else stops discriminating: it can
+      // swap an accepted uv for one lower by 1e-11 that sits on a different
+      // sheet - the exact reordering this change exists to prevent, reached
+      // through its own accept rule.
+      const double gate = std::max( 0.3 * chordSeverity_, convergence_error );
 
-      if ( solvedDistance2 > severity * severity ) {
+      if ( solvedDistance2 > gate * gate ) {
 
         glm::dvec2 coarseUv    = gridGuess;
         glm::dvec3 coarsePoint = gridPoint;
@@ -4634,9 +4721,27 @@ struct RationalNurbsInverseMethod {
 
           // Accept ONLY on a strictly lower final residual. This is what
           // makes a false trigger cost time rather than correctness.
+          //
+          // "Strictly lower" is this tier's own guarantee, not the one the
+          // caller receives: seamContinuousSolution runs after all three
+          // tiers and accepts a period-shifted candidate within
+          // convergence_error of the residual reached here, so end to end the
+          // promise is "strictly lower, up to a seam allowance of one
+          // convergence_error". That allowance predates this change and is
+          // deliberate - on a closed surface the two branches are the same
+          // 3D point - but it is what the guarantee actually is.
           if ( refinedDistance2 < solvedDistance2 ) {
             solution        = refined;
             solvedDistance2 = refinedDistance2;
+          }
+
+          // Span 2 exists to reach an answer span 1 could not. Once the
+          // residual is at the convergence target there is no such answer
+          // left, and the second 17x17 lattice plus its descent is spent
+          // looking for one - roughly half this tier's worst case, on the
+          // points most likely to trip a loosely-armed gate.
+          if ( solvedDistance2 <= convergence_error * convergence_error ) {
+            break;
           }
         }
       }

@@ -264,6 +264,19 @@ void testWorseContinuityCandidateIsRejected() {
          "precondition: the bad candidate also loses the seed comparison, so "
          "it reaches the symmetric retry rather than the seed" );
 
+  // The gate must be OPEN, or this test cannot fail.
+  //
+  // The retry fires only on a NON-converged base solve. Without this
+  // assertion the invariance check below passes just as happily when the
+  // retry is compiled out entirely - verified, it does - so it would be
+  // pinning the accept rule only for as long as some other test's fixture
+  // happens to leave the base solve non-converged. Asserting the gate here
+  // is what makes the check below a statement about the accept rule rather
+  // than about the fixture.
+  check( residual( solve, gridOnly, query ) > solve.convergence_error,
+         "precondition: the base solve is NON-converged, so the symmetric "
+         "retry's gate is open and it actually runs" );
+
   solve.resetContinuity();
   solve.previousSolution_    = badCandidate;
   solve.hasPreviousSolution_ = true;
@@ -316,49 +329,88 @@ void testSeverityArmedRefinementRecoversTheSheet() {
 }
 
 /**
- * The refinement's false-trigger cost: a face whose points are already solved
- * cannot be moved by arming it.
+ * The refinement's accept rule: a tier that FIRES and finds nothing better
+ * must leave the answer alone.
  *
  * The severity gate is deliberately loose - it decides where to SPEND WORK,
- * not what to believe - so clean faces do trip it. This pins the claim that
- * doing so costs evaluations and nothing else.
+ * not what to believe - so faces that are already solved do trip it. This
+ * pins the claim that doing so costs evaluations and nothing else.
+ *
+ * The query is deliberately OFF the surface, one normal offset out. That is
+ * what makes the test non-vacuous now that the gate carries a convergence
+ * floor: an on-surface point solves to below convergence_error, the floor
+ * closes the gate, and the tier never runs - the assertion would then hold
+ * for the wrong reason. Off the surface the best possible residual IS the
+ * offset, so the solve is permanently non-converged, the gate stays open at
+ * any armed chord, and the tier runs on every call.
+ *
+ * It also cannot pass by accident. The refinement is centred on the COARSE
+ * GRID sample, which on this ribbon sits a full turn away, so its own
+ * descent ends at 0.979 against the ordinary path's 0.020 - 49x worse. Under
+ * the accept rule that result is discarded; without it the answer would move
+ * a whole turn. Both directions were measured before the constants below
+ * were frozen.
  */
 void testFalseTriggerLeavesTheAnswerUnchanged() {
 
-  printf( "== a false severity trigger changes no answer\n" );
+  printf( "== a firing refinement that finds nothing better changes no answer\n" );
 
   const tinynurbs::RationalSurface3d surface =
     makeHelicalRibbon( 3.0, 0.35, 1.0, 6 );
 
   RationalNurbsInverseMethod solve( surface );
 
-  // A point that solves correctly on the ordinary path: a continuity
-  // candidate close enough to WIN the seed comparison, which is what a
-  // finely-sampled trim loop gives every point after its first. Deliberately
-  // not the near-tie above - this test is about the refinement's behaviour on
-  // an answer that is already right, so it must not depend on either retry.
-  const glm::dvec3 query = solve.evaluator.point( QUERY_U, QUERY_V );
+  // One normal offset off the surface at the fixture's own uv.
+  constexpr double OFFSET = 0.02;
 
-  check( glm::distance( solve.evaluator.point( 0.5, 2.65 ), query ) <
-           bestGridDistance( solve, query ),
+  auto [tangentU, tangentV] = solve.evaluator.tangent( QUERY_U, QUERY_V );
+
+  const glm::dvec3 normal =
+    glm::normalize( glm::cross( tangentU, tangentV ) );
+
+  const glm::dvec3 query =
+    solve.evaluator.point( QUERY_U, QUERY_V ) + normal * OFFSET;
+
+  // A continuity candidate close enough to WIN the seed comparison, which is
+  // what a finely-sampled trim loop gives every point after its first. This
+  // test is about the refinement's behaviour on an answer that is already
+  // right, so it must not depend on either retry.
+  const glm::dvec2 continuityUv( QUERY_U, QUERY_V - 0.10 );
+
+  check( glm::distance( solve.evaluator.point( continuityUv.x, continuityUv.y ),
+                        query ) < bestGridDistance( solve, query ),
          "precondition: the continuity candidate WINS the seed comparison, so "
          "this query solves on the ordinary path" );
 
   solve.resetContinuity();
-  solve.previousSolution_    = glm::dvec2( 0.5, 2.65 );
+  solve.previousSolution_    = continuityUv;
   solve.hasPreviousSolution_ = true;
 
   const glm::dvec2 clean = solve( query );
 
-  check( residual( solve, clean, query ) < 1.0e-4,
-         "precondition: this query solves cleanly without the refinement" );
+  check( std::abs( clean.y - QUERY_V ) < 1.0e-6,
+         "precondition: the ordinary path finds the true foot point" );
 
-  // An absurdly small chord, so the gate trips on a residual that is already
-  // at the convergence target.
+  const double cleanResidual = residual( solve, clean, query );
+
+  check( std::abs( cleanResidual - OFFSET ) < 1.0e-6,
+         "precondition: its residual is the offset - the best that exists" );
+
+  // The gate must be OPEN, or this test cannot fail. The shipped gate is
+  // max( 0.3 * chord, convergence_error ); assert the residual clears BOTH
+  // terms, so neither the severity half nor the convergence floor can be
+  // what stops the tier from running.
+  constexpr double ARMED_CHORD = 0.01;
+
+  check( cleanResidual > 0.3 * ARMED_CHORD &&
+           cleanResidual > solve.convergence_error,
+         "precondition: the residual clears both halves of the gate, so the "
+         "refinement genuinely fires" );
+
   solve.resetContinuity();
-  solve.previousSolution_    = glm::dvec2( 0.5, 2.65 );
+  solve.previousSolution_    = continuityUv;
   solve.hasPreviousSolution_ = true;
-  solve.boundSeverityToChord( 1.0e-9 );
+  solve.boundSeverityToChord( ARMED_CHORD );
 
   const glm::dvec2 armed = solve( query );
 
