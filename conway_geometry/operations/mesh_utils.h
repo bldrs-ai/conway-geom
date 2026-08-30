@@ -6094,7 +6094,18 @@ inline bool tryRibbonLoft(
       return mesh.vertices[ index ];
     };
 
-  if ( vertexOf( legA.front() ).uv.y > vertexOf( legA.back() ).uv.y ) {
+  // WHICH SIDE OF THE POLYGON CHAIN A IS ON, kept for diagonalInside below.
+  //
+  // legA is the arc first -> second in LOOP order, so whether it is the left
+  // or the right chain is decided by whether it runs up or down in v: the two
+  // legs are traversed in opposite senses around the boundary, and reversing
+  // one of them to sweep it is exactly the case where its label stops matching
+  // the side it occupies. Reversing here and then testing the LABEL there
+  // silently assumed `first` is always the bottom turning point.
+  const bool reversedA =
+    vertexOf( legA.front() ).uv.y > vertexOf( legA.back() ).uv.y;
+
+  if ( reversedA ) {
     std::reverse( legA.begin(), legA.end() );
   }
 
@@ -6290,7 +6301,20 @@ inline bool tryRibbonLoft(
       const double turn =
         ( ( q.x - p.x ) * ( r.y - p.y ) ) - ( ( r.x - p.x ) * ( q.y - p.y ) );
 
-      const double want = current.chain == Chain::A ? -1.0 : 1.0;
+      // Chain A's side comes from its TRAVERSAL DIRECTION, not from its label.
+      //
+      // Hard-coding A -> -1 is right only when legA already ran upward in v.
+      // When it had to be reversed, chain A is the other side of the polygon
+      // and every diagonal this predicate accepts is outside it: measured on
+      // the corpus, on such a face 112 of 112 and 16 of 16 triangles emitted
+      // by the same-chain branch below had their centroid outside the trim
+      // loop. Those faces were then refused by the validity gate and fell back
+      // to the ear-clipper, which is where their 37-49%-of-extent deflection
+      // came from (bldrs-ai/conway#665).
+      const double chainASide = reversedA ? 1.0 : -1.0;
+
+      const double want =
+        current.chain == Chain::A ? chainASide : -chainASide;
 
       return ( turn * winding * want ) > 0.0;
     };

@@ -696,6 +696,311 @@ void testFarFromOriginKnotDomain() {
          "and it triangulates completely" );
 }
 
+/**
+ * An UNEVENLY SAMPLED ribbon, in both traversal directions, is tiled exactly
+ * once and stays inside its own trim loop.
+ *
+ * This is the case the sweep's same-chain branch exists for and the one every
+ * fixture above misses. When the two legs' v samples interleave one-for-one -
+ * which is what `buildRibbon` arranges, and what the corpus's clean thread
+ * flanks happen to do - consecutive sweep vertices always alternate chains, so
+ * the same-chain branch NEVER RUNS and its predicate is never exercised. Give
+ * one leg many samples where the other has none, as a near-horizontal cap on
+ * a real trim does, and the branch fires on every one of them.
+ *
+ * With the chain-side sign taken from the LABEL rather than from the leg's
+ * traversal direction, every triangle that branch emits lands outside the
+ * polygon: 112 of 112 on the corpus face with 401 boundary points, 16 of 16 on
+ * the one with 1,167 (bldrs-ai/conway#665). Both directions are built here
+ * because the label happens to be right for one of them - a fix that merely
+ * flipped the constant would pass a one-sided test and break the other side.
+ *
+ * The oracle is not the validity gate's own area sum: every emitted triangle's
+ * uv centroid is tested against the boundary by ray casting, which is
+ * independent of both the sweep and the gate. The area equality is checked too,
+ * because overlap can hide from a centroid test and vice versa.
+ */
+void testUnevenlySampledRibbonStaysInsideItsTrim() {
+
+  printf( "\n== unevenly sampled ribbon, both traversal directions ==\n" );
+
+  // `descending` puts the TOP turning point at index 0, so leg A - the arc
+  // between the two breaks in loop order - runs downward in v and has to be
+  // reversed for the sweep. That is the case the label-based sign gets wrong.
+  for ( int descending = 1; descending >= 0; --descending ) {
+
+    printf( "  -- leg A runs %s in v --\n",
+            descending != 0 ? "downward" : "upward" );
+
+    constexpr size_t DENSE  = 40;
+    constexpr size_t SPARSE = 5;
+    constexpr double WIDTH  = 1.0;
+
+    WingedEdgeMesh< ParameterVertex > mesh;
+
+    // The densely sampled leg, from one turning point to the other.
+    for ( size_t at = 0; at <= DENSE; ++at ) {
+
+      const double along =
+        static_cast< double >( at ) / static_cast< double >( DENSE );
+
+      mesh.makeVertex(
+        ribbonVertex( 0.0, descending != 0 ? 1.0 - along : along ) );
+    }
+
+    // The sparse leg back, STRICTLY BETWEEN the turning points, which the two
+    // legs share as single vertices.
+    for ( size_t at = 1; at < SPARSE; ++at ) {
+
+      const double along =
+        static_cast< double >( at ) / static_cast< double >( SPARSE );
+
+      mesh.makeVertex(
+        ribbonVertex( WIDTH, descending != 0 ? along : 1.0 - along ) );
+    }
+
+    const size_t boundaryCount = mesh.vertices.size();
+
+    // PRECONDITIONS. Asserted, not assumed: a fixture that quietly stopped
+    // being a two-break ribbon, or stopped running leg A the intended way
+    // round, would make every check below pass without testing anything.
+    const std::vector< size_t > breaks =
+      uvMonotoneBreaks( mesh, boundaryCount );
+
+    check( breaks.size() == 2, "the fixture is a two-break ribbon" );
+
+    if ( breaks.size() != 2 ) {
+      continue;
+    }
+
+    const double vFirst  = mesh.vertices[ breaks[ 0 ] ].uv.y;
+    const double vSecond = mesh.vertices[ breaks[ 1 ] ].uv.y;
+
+    printf( "    leg A spans v %.3f -> %.3f, %zu boundary points\n",
+            vFirst, vSecond, boundaryCount );
+
+    check( ( vFirst > vSecond ) == ( descending != 0 ),
+           "leg A runs the direction this iteration is testing" );
+
+    // And the legs really are unevenly sampled, which is what makes the
+    // same-chain branch fire at all.
+    check( DENSE > 4 * SPARSE,
+           "one leg carries many more samples than the other" );
+
+    double shoelace = 0.0;
+
+    for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+      const glm::dvec2& p = mesh.vertices[ at ].uv;
+      const glm::dvec2& q = mesh.vertices[ ( at + 1 ) % boundaryCount ].uv;
+
+      shoelace += ( p.x * q.y ) - ( q.x * p.y );
+    }
+
+    shoelace = std::fabs( shoelace ) * 0.5;
+
+    conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+    const bool built =
+      conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+    check( built, "the unevenly sampled ribbon lofts" );
+
+    if ( !built ) {
+      continue;
+    }
+
+    check( mesh.triangles.size() == boundaryCount - 2,
+           "it emits exactly boundary - 2 triangles" );
+
+    // Ray-cast every triangle's uv centroid against the boundary. Independent
+    // of the sweep and of the gate's area sum, which is the point.
+    size_t outside = 0;
+    double absolute = 0.0;
+
+    for ( const conway::geometry::ConnectedTriangle& triangle :
+            mesh.triangles ) {
+
+      const glm::dvec2& a = mesh.vertices[ triangle.vertices[ 0 ] ].uv;
+      const glm::dvec2& b = mesh.vertices[ triangle.vertices[ 1 ] ].uv;
+      const glm::dvec2& c = mesh.vertices[ triangle.vertices[ 2 ] ].uv;
+
+      absolute += std::fabs(
+        0.5 * ( ( ( b.x - a.x ) * ( c.y - a.y ) ) -
+                ( ( c.x - a.x ) * ( b.y - a.y ) ) ) );
+
+      const glm::dvec2 centroid = ( a + b + c ) / 3.0;
+
+      bool in = false;
+
+      for ( size_t at = 0, previous = boundaryCount - 1;
+            at < boundaryCount;
+            previous = at++ ) {
+
+        const glm::dvec2& here = mesh.vertices[ at ].uv;
+        const glm::dvec2& last = mesh.vertices[ previous ].uv;
+
+        if ( ( ( here.y > centroid.y ) != ( last.y > centroid.y ) ) &&
+             ( centroid.x < ( ( last.x - here.x ) *
+                              ( centroid.y - here.y ) /
+                              ( last.y - here.y ) ) + here.x ) ) {
+          in = !in;
+        }
+      }
+
+      if ( !in ) {
+        ++outside;
+      }
+    }
+
+    printf( "    triangles %zu, outside the trim %zu, coverage %.9f\n",
+            mesh.triangles.size(), outside, absolute / shoelace );
+
+    check( outside == 0,
+           "no emitted triangle has its centroid outside the trim loop" );
+
+    check( std::fabs( ( absolute / shoelace ) - 1.0 ) < 1e-9,
+           "and the emitted triangles cover the chart exactly once" );
+  }
+}
+
+/**
+ * A ribbon whose overlap is SMALL ENOUGH TO PASS the validity gate, so the
+ * gate cannot be what pins this.
+ *
+ * The test above is refused by the gate when the sign is wrong, which is the
+ * defect's usual outcome: the face falls back to the ear-clipper and ships the
+ * chords. But the gate's tolerance is relative and loose (1e-6 of the chart's
+ * area, for the accumulation reasons stated at the gate), so a face whose
+ * same-chain branch fires over only a short stretch of its boundary overlaps by
+ * LESS THAN THAT and is accepted with triangles lying outside itself. That is
+ * not hypothetical: the corpus face with 1,112 boundary points sits at a
+ * covered/shoelace ratio of 1.0000002 and ships 13 such triangles today
+ * (bldrs-ai/conway#665).
+ *
+ * The fixture reproduces that regime deliberately. The legs interleave
+ * one-for-one almost everywhere - the quiet case - with one short cluster of
+ * extra samples on leg A, wandering in u by 1e-5. That amplitude was chosen by
+ * measurement, not by taste: with the chain-side sign taken from the label, the
+ * emitted mesh covers 1.000000546 of its chart, i.e. 5.5e-7 over - inside the
+ * gate's 1e-6 - while four of its triangles have their centroid outside the
+ * trim. The u wander matters; at exactly zero the mis-signed sweep fans over a
+ * locally convex cap and the fan is accidentally valid, which is why the same
+ * fixture with a straight leg proves nothing.
+ *
+ * So the only oracle that can fail here is the point-in-polygon census.
+ */
+void testOverlapBelowTheAreaGateIsStillCaught() {
+
+  printf( "\n== overlap too small for the area gate ==\n" );
+
+  constexpr size_t STEPS   = 24;
+  constexpr size_t CLUSTER = 6;
+  constexpr double WANDER  = 1e-5;
+  constexpr double WIDTH   = 1.0;
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  // Leg A, downward from the top turning point - the reversed case - with a
+  // short cluster of extra samples inside its first step, wandering slightly
+  // in u the way a real trim curve does between its samples.
+  mesh.makeVertex( ribbonVertex( 0.0, 1.0 ) );
+
+  for ( size_t at = 1; at <= CLUSTER; ++at ) {
+
+    const double within =
+      static_cast< double >( at ) /
+      ( static_cast< double >( CLUSTER + 1 ) * static_cast< double >( STEPS ) );
+
+    mesh.makeVertex(
+      ribbonVertex( WANDER * std::sin( 2.1 * static_cast< double >( at ) ),
+                    1.0 - within ) );
+  }
+
+  for ( size_t at = 1; at <= STEPS; ++at ) {
+
+    const double along =
+      static_cast< double >( at ) / static_cast< double >( STEPS );
+
+    mesh.makeVertex( ribbonVertex( 0.0, 1.0 - along ) );
+  }
+
+  // Leg B back up, interleaved half a step with leg A's regular samples.
+  for ( size_t at = 1; at < STEPS; ++at ) {
+
+    const double along =
+      ( static_cast< double >( at ) - 0.5 ) / static_cast< double >( STEPS );
+
+    mesh.makeVertex( ribbonVertex( WIDTH, along ) );
+  }
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, boundaryCount );
+
+  check( breaks.size() == 2, "the capped fixture is a two-break ribbon" );
+
+  if ( breaks.size() != 2 ) {
+    return;
+  }
+
+  check( mesh.vertices[ breaks[ 0 ] ].uv.y > mesh.vertices[ breaks[ 1 ] ].uv.y,
+         "leg A runs downward, so it is the reversed case" );
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  // Stated as a check rather than an early return: if this fixture ever stops
+  // lofting, the census below silently stops running and the test goes quiet
+  // instead of red.
+  check( built,
+         "the capped ribbon lofts - its overlap is under the gate's tolerance" );
+
+  if ( !built ) {
+    return;
+  }
+
+  size_t outside = 0;
+
+  for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+
+    const glm::dvec2& a = mesh.vertices[ triangle.vertices[ 0 ] ].uv;
+    const glm::dvec2& b = mesh.vertices[ triangle.vertices[ 1 ] ].uv;
+    const glm::dvec2& c = mesh.vertices[ triangle.vertices[ 2 ] ].uv;
+
+    const glm::dvec2 centroid = ( a + b + c ) / 3.0;
+
+    bool in = false;
+
+    for ( size_t at = 0, previous = boundaryCount - 1;
+          at < boundaryCount;
+          previous = at++ ) {
+
+      const glm::dvec2& here = mesh.vertices[ at ].uv;
+      const glm::dvec2& last = mesh.vertices[ previous ].uv;
+
+      if ( ( ( here.y > centroid.y ) != ( last.y > centroid.y ) ) &&
+           ( centroid.x < ( ( last.x - here.x ) *
+                            ( centroid.y - here.y ) /
+                            ( last.y - here.y ) ) + here.x ) ) {
+        in = !in;
+      }
+    }
+
+    if ( !in ) {
+      ++outside;
+    }
+  }
+
+  printf( "  boundary %zu, triangles %zu, outside the trim %zu\n",
+          boundaryCount, mesh.triangles.size(), outside );
+
+  check( outside == 0,
+         "no emitted triangle has its centroid outside the trim loop" );
+}
+
 }  // namespace
 
 int main() {
@@ -708,6 +1013,8 @@ int main() {
   testSweepEmitsExactlyTheEarcutSeed();
   testNoTVerticesAgainstANeighbour();
   testFarFromOriginKnotDomain();
+  testUnevenlySampledRibbonStaysInsideItsTrim();
+  testOverlapBelowTheAreaGateIsStillCaught();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
