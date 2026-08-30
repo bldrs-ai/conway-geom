@@ -807,6 +807,12 @@ void testClosedTrimHeadIsNotColdStarted() {
     rotated.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
   }
 
+  // Close it by DUPLICATION, as all 859 corpus trim bounds do. The gate accepts
+  // explicit closure only - see reSolveClosedTrimHead on why proximity cannot
+  // be made to work - so a fixture closing by adjacency would now be declined
+  // and would test nothing.
+  rotated.push_back( rotated.front() );
+
   conway::geometry::RationalNurbsInverseMethod solve( surface );
 
   solve.resetContinuity();
@@ -820,7 +826,7 @@ void testClosedTrimHeadIsNotColdStarted() {
   // THE PRODUCTION HELPER, not a copy of it. An earlier version of this test
   // reimplemented the loop inline, which meant deleting the production call
   // site left the test green - caught in review on conway-geom#194.
-  conway::geometry::reSolveClosedTrimHead( solve, rotated, solved );
+  conway::geometry::reSolveClosedTrimHead( solve, rotated, solved, false );
 
   auto residual = [ & ]( size_t i ) {
 
@@ -851,22 +857,38 @@ void testClosedTrimHeadIsNotColdStarted() {
 
 
 /**
- * The closure gate declines an OPEN bound.
+ * The closure gate declines OPEN bounds at every sampling density, and declines
+ * adjacency closure too.
  *
- * Everything reSolveClosedTrimHead does rests on the last point neighbouring
- * the first. An open bound's tail is somewhere unrelated, and seeding the head
- * from it is the cross-sheet failure resetContinuity exists to prevent,
- * arriving by a different door - so the gate must leave open bounds on the cold
- * start they have today.
+ * Everything reSolveClosedTrimHead does rests on the tail being the head. An
+ * open bound's tail is somewhere unrelated, and seeding the head from it is the
+ * cross-sheet failure resetContinuity exists to prevent, arriving by another
+ * door.
  *
- * The tail here is placed most of a turn away along the coil, which on this
- * surface is a genuinely different sheet: near in space, far in v.
+ * WHY THE GATE IS EXPLICIT CLOSURE AND NOT PROXIMITY. The first version
+ * compared the closing gap to the loop's own median segment. That is unusable,
+ * not merely mis-tuned: the gap is fixed by geometry while the median scales
+ * with sampling. The same open one-turn arc measures
  *
- * Red-proven: with the gate removed the pass runs and rewrites the head.
+ *     samples   120    60    40    30    20
+ *     ratio    4.05  2.02  1.35  1.01  0.68
+ *
+ * against an adjacency-closed loop's ~1.0 - indistinguishable at 30 samples,
+ * and at 20 it looks MORE closed than a closed loop. Every density here is
+ * asserted, because a single-density fixture is exactly what let the earlier
+ * 2.0 threshold look sound. Found on bldrs-ai/conway#655.
+ *
+ * Red-proven, and precisely: under the previous proximity gate at 2.0 the
+ * 40-interval case is accepted (rewritten=1) and this test fails. The 30- and
+ * 20-interval cases pass under BOTH gates - their re-solve happens to return
+ * the head unchanged - so they are coverage of the gate's behaviour across the
+ * density range, not proof of it. Only the 40 case discriminates. Saying so
+ * because a row of five green checks reads like five proofs, and three of them
+ * are not.
  */
 void testOpenBoundIsNotReSeeded() {
 
-  printf( "=== open bound is not re-seeded ===\n" );
+  printf( "=== open bounds are declined at every sampling density ===\n" );
 
   constexpr double COIL_RADIUS = 3.0;
   constexpr double PITCH       = 0.60;
@@ -879,18 +901,184 @@ void testOpenBoundIsNotReSeeded() {
 
   conway::geometry::RationalSurfaceEvaluator evaluator( surface );
 
-  // An open arc spanning EXACTLY one coil turn. Its tail sits one pitch from
-  // its head - spatially adjacent, a whole turn away in v, i.e. a different
-  // sheet - which is the case that actually threatens the gate. A first draft
-  // of this test used an arc whose ends were far apart in space; that passed
-  // with the gate REMOVED, because the re-solve happened to return the head
-  // unchanged, so it proved nothing. This construction changes the head.
-  std::vector< glm::dvec3 > open;
+  // An open arc spanning exactly one coil turn: its tail sits one pitch from
+  // its head - spatially adjacent, a whole turn away in v, a different sheet.
+  for ( int intervals : { 120, 60, 40, 30, 20 } ) {
 
-  for ( int i = 0; i <= 120; ++i ) {
-    open.push_back(
-      evaluator.point( 0.5, 0.30 + ( 1.0 / TURNS ) * i / 120.0 ) );
+    std::vector< glm::dvec3 > open;
+
+    for ( int i = 0; i <= intervals; ++i ) {
+      open.push_back( evaluator.point(
+        0.5, 0.30 + ( 1.0 / TURNS ) * i / static_cast< double >( intervals ) ) );
+    }
+
+    conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+    solve.resetContinuity();
+
+    std::vector< glm::dvec2 > solved;
+
+    for ( const glm::dvec3& query : open ) {
+      solved.push_back( solve( query ) );
+    }
+
+    const std::vector< glm::dvec2 > before = solved;
+
+    const size_t rewritten =
+      conway::geometry::reSolveClosedTrimHead( solve, open, solved, false );
+
+    std::vector< double > segments;
+
+    for ( size_t i = 0; i + 1 < open.size(); ++i ) {
+      segments.push_back( glm::distance( open[ i + 1 ], open[ i ] ) );
+    }
+
+    std::sort( segments.begin(), segments.end() );
+
+    const double gap    = glm::distance( open.back(), open.front() );
+    const double median = segments[ segments.size() / 2 ];
+
+    printf( "      intervals=%-4d gap/median=%.2f rewritten=%zu\n",
+            intervals, gap / median, rewritten );
+
+    check( rewritten == 0 && solved == before,
+           std::string( "open arc declined at " ) +
+             std::to_string( intervals ) + " intervals" );
   }
+
+  // ADJACENCY closure: a loop that genuinely returns to its start, with the
+  // tail ONE sample increment from the head and no duplicate.
+  //
+  // Two earlier attempts at this fixture asserted nothing. The first pushed a
+  // closing point and immediately popped it; the second used a long open arc
+  // whose ends are 23.9 sample steps apart. Both were declined for reasons
+  // unrelated to adjacency, so both passed with the gate removed. The guard
+  // below - that the gap really is about one step - is what makes this one
+  // real, and it is asserted rather than assumed.
+  //
+  // The geometry here is identical to testClosedPointListLoopIsAccepted's. The
+  // ONLY difference is closedByConstruction, so the pair is a clean A/B on the
+  // producer's closure signal: unflagged it is declined, flagged it is
+  // accepted. That is the whole design - closure is a fact the producer states,
+  // never something measured from the points.
+  {
+    constexpr int ALONG = 400;
+
+    std::vector< glm::dvec3 > adjacent;
+
+    for ( int i = 0; i < ALONG; ++i ) {
+      adjacent.push_back(
+        evaluator.point( 0.02, static_cast< double >( i ) / ALONG ) );
+    }
+
+    for ( int i = ALONG; i > 0; --i ) {
+      adjacent.push_back(
+        evaluator.point( 0.98, static_cast< double >( i ) / ALONG ) );
+    }
+
+    const double step = glm::distance( adjacent[ 1 ], adjacent[ 0 ] );
+    const double gap  = glm::distance( adjacent.back(), adjacent.front() );
+
+    conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+    solve.resetContinuity();
+
+    std::vector< glm::dvec2 > solved;
+
+    for ( const glm::dvec3& query : adjacent ) {
+      solved.push_back( solve( query ) );
+    }
+
+    const std::vector< glm::dvec2 > before = solved;
+
+    const size_t rewritten =
+      conway::geometry::reSolveClosedTrimHead( solve, adjacent, solved, false );
+
+    printf( "      adjacency: gap=%.4e step=%.4e gap/step=%.2f rewritten=%zu\n",
+            gap, step, gap / step, rewritten );
+
+    check( gap < step * 2.0,
+           "the adjacency fixture really does close to within a sample step" );
+
+    check( rewritten == 0 && solved == before,
+           "adjacency closure alone is declined - the producer must say so" );
+  }
+}
+
+/**
+ * A closed POINT-LIST loop is accepted, on the producer's own say-so.
+ *
+ * GetLoop's point-list branch - IFCPOLYLOOP and the AP214 poly-loop path -
+ * emits a closed polygon that does NOT repeat its head. An exact-duplication
+ * gate declines that entire producer class and silently restores the
+ * cold-start error for it. Found by review on conway-geom#195, and it is the
+ * negative answer to "is there a front-end closure signal": the producer knows,
+ * it just was not encoding it.
+ *
+ * WHAT THIS COVERS AND WHAT IT DOES NOT, stated because the gap is real:
+ * `pointListLoopIsClosedPolygon` is the rule GetLoop applies, and the gate
+ * honouring its result is asserted end to end below. What is NOT covered is
+ * GetLoop's one-line CALL to it - ConwayGeometryProcessor.h reaches for draco
+ * and the GLTF SDK, so these standalone tests cannot include the producer at
+ * all (which is why run_native_tests.sh excludes the linked tests). Deleting
+ * that call would leave this green. Closing that needs the linked test target
+ * repaired, which is out of scope here.
+ *
+ * Red-proven: with the gate's closedByConstruction branch removed, the
+ * un-duplicated loop is declined and rewritten drops to 0.
+ */
+void testClosedPointListLoopIsAccepted() {
+
+  printf( "=== closed point-list loop is accepted ===\n" );
+
+  constexpr double COIL_RADIUS = 3.0;
+  constexpr double PITCH       = 0.60;
+  constexpr double TURNS       = 8.0;
+  constexpr double WIDTH       = 0.30;
+  constexpr int    SAMPLES     = 200;
+  constexpr int    ALONG       = 400;
+  constexpr int    ROTATION    = 500;
+
+  const tinynurbs::RationalSurface3d surface =
+    makeHelicalRibbon( COIL_RADIUS, PITCH, TURNS, WIDTH, SAMPLES );
+
+  conway::geometry::RationalSurfaceEvaluator evaluator( surface );
+
+  std::vector< glm::dvec3 > loop;
+
+  for ( int i = 0; i < ALONG; ++i ) {
+    loop.push_back( evaluator.point( 0.02, static_cast< double >( i ) / ALONG ) );
+  }
+
+  for ( int i = ALONG; i > 0; --i ) {
+    loop.push_back( evaluator.point( 0.98, static_cast< double >( i ) / ALONG ) );
+  }
+
+  // The point-list form: rotated so the head is not at a domain corner, and
+  // with NO head repeated - which is exactly what the producer emits.
+  std::vector< glm::dvec3 > pointList;
+
+  for ( size_t i = 0; i < loop.size(); ++i ) {
+    pointList.push_back( loop[ ( i + ROTATION ) % loop.size() ] );
+  }
+
+  const bool closed =
+    conway::geometry::pointListLoopIsClosedPolygon( pointList );
+
+  printf( "      points=%zu headRepeated=%d closedByConstruction=%d\n",
+          pointList.size(),
+          ( pointList.front() == pointList.back() ) ? 1 : 0,
+          closed ? 1 : 0 );
+
+  check( pointList.front() != pointList.back(),
+         "the producer form does NOT repeat the head - the case under test" );
+
+  check( closed, "and the producer's rule calls it closed" );
+
+  // A VERTEX_LOOP must not be flagged: one point encloses nothing.
+  check( !conway::geometry::pointListLoopIsClosedPolygon(
+           { glm::dvec3( 0.0 ) } ),
+         "a one-point vertex loop is not a closed polygon" );
 
   conway::geometry::RationalNurbsInverseMethod solve( surface );
 
@@ -898,33 +1086,92 @@ void testOpenBoundIsNotReSeeded() {
 
   std::vector< glm::dvec2 > solved;
 
-  for ( const glm::dvec3& query : open ) {
+  for ( const glm::dvec3& query : pointList ) {
     solved.push_back( solve( query ) );
   }
 
-  const std::vector< glm::dvec2 > before = solved;
-
   const size_t rewritten =
-    conway::geometry::reSolveClosedTrimHead( solve, open, solved );
+    conway::geometry::reSolveClosedTrimHead( solve, pointList, solved, closed );
 
-  double closingGap = glm::distance( open.back(), open.front() );
+  auto residual = [ & ]( size_t i ) {
 
-  std::vector< double > segments;
+    return glm::distance(
+      solve.evaluator.point( solved[ i ].x, solved[ i ].y ), pointList[ i ] );
+  };
 
-  for ( size_t i = 0; i + 1 < open.size(); ++i ) {
-    segments.push_back( glm::distance( open[ i + 1 ], open[ i ] ) );
+  std::vector< double > rest;
+
+  for ( size_t i = 1; i < pointList.size(); ++i ) {
+    rest.push_back( residual( i ) );
   }
 
-  std::sort( segments.begin(), segments.end() );
+  std::sort( rest.begin(), rest.end() );
 
-  printf( "      closingGap=%.4e medianSegment=%.4e ratio=%.1f rewritten=%zu\n",
-          closingGap, segments[ segments.size() / 2 ],
-          closingGap / segments[ segments.size() / 2 ], rewritten );
+  printf( "      rewritten=%zu headResidual=%.4e loopMedian=%.4e\n",
+          rewritten, residual( 0 ), rest[ rest.size() / 2 ] );
 
-  check( rewritten == 0, "the gate declines an open bound" );
+  check( rewritten > 0,
+         "an un-duplicated closed loop is accepted, not declined" );
 
-  check( solved == before,
-         "an open bound's solved uv is left exactly as the cold start had it" );
+  check( residual( 0 ) < rest[ rest.size() / 2 ] * 100.0,
+         "and its head is solved to within 100x its own loop median" );
+}
+
+/**
+ * The raw-array producer's closure composition.
+ *
+ * createSimpleBound3D (conway-api.cpp) is the optimised path extractFace uses
+ * for point-list loops. Its closure is `pointListLoopClosure( callerSaysClosed,
+ * points )`, and BOTH halves matter for different reasons:
+ *
+ *   - the caller's word is REQUIRED because a raw vertex array carries no
+ *     entity type. Deriving closure inside would make the function assert
+ *     something about every future caller it cannot know.
+ *
+ *   - the predicate is a DEGENERACY FILTER, not a check on the caller. A
+ *     one-point VERTEX_LOOP is a perfectly legitimate thing to hand over and
+ *     to call closed - it is the degenerate loop at a pole - but it encloses
+ *     nothing, so it must not reach a consumer that treats it as a polygon.
+ *
+ * Missed in the first audit of this family, which fixed GetLoop and stopped -
+ * review on conway-geom#195 found this second producer. A later pass of that
+ * review then found this test VACUOUS: it re-implemented the AND in a local
+ * lambda, so deleting the composition from production left it green. The
+ * composition now lives in pointListLoopClosure (ConwayCurve.h) and the
+ * producer calls it, so this exercises the shipped code rather than a copy.
+ *
+ * Red-proven by weakening the real helper, not by reading: dropping its
+ * `callerDeclaresClosed &&` fails check 2, and dropping the predicate call
+ * fails check 3.
+ *
+ * COVERAGE LIMIT, same as the GetLoop case: conway-api.cpp needs embind and the
+ * standalone tests link nothing, so the entry point itself is not exercised -
+ * only the helper it delegates to and the gate that consumes the result. A
+ * caller passing the wrong argument, or none, is not catchable here at all;
+ * that is what the required parameter on the TypeScript wrapper is for.
+ */
+void testRawArrayProducerClosureComposition() {
+
+  printf( "=== raw-array producer closure composition ===\n" );
+
+  using conway::geometry::pointListLoopClosure;
+
+  const std::vector< glm::dvec3 > polygon = {
+    glm::dvec3( 0.0, 0.0, 0.0 ),
+    glm::dvec3( 1.0, 0.0, 0.0 ),
+    glm::dvec3( 1.0, 1.0, 0.0 ),
+    glm::dvec3( 0.0, 1.0, 0.0 ) };
+
+  const std::vector< glm::dvec3 > vertexLoop = { glm::dvec3( 0.0, 0.0, 0.0 ) };
+
+  check( pointListLoopClosure( true, polygon ),
+         "a poly loop the caller calls closed is flagged closed" );
+
+  check( !pointListLoopClosure( false, polygon ),
+         "the caller's word is required - geometry alone does not flag it" );
+
+  check( !pointListLoopClosure( true, vertexLoop ),
+         "a one-point vertex loop is filtered out as degenerate" );
 }
 
 /**
@@ -1075,6 +1322,8 @@ int main() {
 
   testClosedTrimHeadIsNotColdStarted();
   testOpenBoundIsNotReSeeded();
+  testClosedPointListLoopIsAccepted();
+  testRawArrayProducerClosureComposition();
   testHeadFixReachesTheEmittedMesh();
 
   testWideStepAcrossSeamKeepsArmijoSound();

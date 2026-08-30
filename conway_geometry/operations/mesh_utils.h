@@ -6152,30 +6152,33 @@ inline bool tryRibbonLoft(
  * the first point whose answer does not change: from there the caller's pass
  * was already running on a seed of its own.
  *
- * Measured, the case is even plainer than "adjacent": across 859 trim bounds in
- * the three b-spline-carrying regression models, the closing gap is EXACTLY
+ * That argument is about ADJACENCY and holds for any closed loop: the head's
+ * neighbour is one segment away, exactly as every mid-loop point's seed is.
+ *
+ * The corpus happens to give a stronger version of it. Across 859 trim bounds
+ * in the three b-spline-carrying regression models the closing gap is EXACTLY
  * zero in every one - the last point of a trim polyline is bit-identical to the
- * first. So the head and the tail are not merely neighbours, they are the SAME
- * QUERY, and a cold start that disagrees with the continuity-seeded solve of
- * that identical point is self-evidently the wrong one of the two. This pass
- * does not choose between two defensible answers; it removes an inconsistency
- * where one point had two.
+ * first - so head and tail are not merely neighbours but the SAME QUERY, and a
+ * cold start disagreeing with the continuity-seeded solve of that identical
+ * point is self-evidently the wrong one of the two. Worth stating because it
+ * makes the corpus evidence airtight, but it is a BONUS of the duplication
+ * case, not the justification: a loop that closes by adjacency without
+ * repeating its head is served by the adjacency argument alone, which is why
+ * such loops are admitted when their producer flags them.
  *
  * THE CLOSURE GATE IS NOT OPTIONAL. Everything above depends on the last point
  * genuinely neighbouring the first. An OPEN bound - a trim that failed to
  * close, an extraction that dropped its tail - has a tail somewhere unrelated,
  * and seeding the head from it is precisely the cross-sheet failure
- * resetContinuity exists to prevent, arriving by a different door. So the gate
- * measures the closing gap against the loop's own median segment and declines
- * anything that does not look like a closure, leaving those bounds on the cold
- * start they have today.
+ * resetContinuity exists to prevent, arriving by a different door.
  *
  * @return the number of head points rewritten; 0 if the gate declined.
  */
 inline size_t reSolveClosedTrimHead(
-    RationalNurbsInverseMethod    &solve,
+    RationalNurbsInverseMethod      &solve,
     const std::vector< glm::dvec3 > &scaledPoints,
-    std::vector< glm::dvec2 >       &solved ) {
+    std::vector< glm::dvec2 >       &solved,
+    bool                             closedByConstruction ) {
 
   const size_t count = scaledPoints.size();
 
@@ -6183,55 +6186,66 @@ inline size_t reSolveClosedTrimHead(
     return 0;
   }
 
-  // Median segment length, as the loop's own scale. Median rather than mean so
-  // one long run-out segment cannot license an open bound.
-  std::vector< double > segments;
-
-  segments.reserve( count - 1 );
-
-  for ( size_t i = 0; i + 1 < count; ++i ) {
-    segments.push_back( glm::distance( scaledPoints[ i + 1 ], scaledPoints[ i ] ) );
-  }
-
-  std::sort( segments.begin(), segments.end() );
-
-  const double medianSegment = segments[ segments.size() / 2 ];
-
-  if ( !( medianSegment > 0.0 ) ) {
-    return 0;
-  }
-
-  const double closingGap =
-    glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
-
-  // Swept over the corpus before being chosen rather than guessed: all 859
-  // trim bounds in the three b-spline-carrying regression models close at a
-  // ratio of exactly 0.0 - the last point of a trim polyline is bit-identical
-  // to the first - so this gate's entire reach is bounds that do NOT close.
+  // EXPLICIT CLOSURE ONLY: the last point must repeat the first.
   //
-  // The factor has to separate three MEASURED cases, and the window is
-  // narrower than it first looks:
+  // This gate was first written as a proximity heuristic - closing gap against
+  // the loop's own median segment - and that approach is not merely
+  // mis-tuned, it is unusable, because the gap is fixed by geometry while the
+  // median scales with sampling density. The same open arc spanning one coil
+  // turn, whose tail sits one pitch from its head on a different sheet,
+  // measures:
   //
-  //   0.00  every one of the 859 corpus bounds - closed by DUPLICATION, the
-  //         last point bit-identical to the first;
-  //   ~1.0  closed by ADJACENCY - the last point one sample step from the
-  //         first, with no duplicate. Must also be accepted: nothing requires
-  //         a front end to repeat the point, and declining these would
-  //         silently leave them on the cold start.
-  //   4.05  an open arc spanning ONE COIL TURN, whose tail sits a single pitch
-  //         from its head - spatially adjacent, a whole turn away in v, i.e. a
-  //         different sheet. MUST be declined; seeding the head from that tail
-  //         is exactly the cross-sheet failure this gate exists to stop.
+  //     samples   120    60    40    30    20
+  //     ratio    4.05  2.02  1.35  1.01  0.68
   //
-  // 2.0 sits between the last two with a factor of two either side. A first
-  // draft used 8.0, which accepts the coil-turn case - caught only by trying
-  // to red-prove the gate and finding the test vacuous. The margin is not
-  // generous, and it is the number to revisit if a model ever samples a trim
-  // so coarsely that one step spans a coil turn.
-  constexpr double CLOSURE_FACTOR = 2.0;
+  // against an adjacency-closed loop's ~1.0. At 30 samples the open arc is
+  // INDISTINGUISHABLE from a closed loop, and at 20 it looks more closed than
+  // one. No threshold separates the two classes; a coarser mesh walks an open
+  // bound through any gate you pick. Found on bldrs-ai/conway#655.
+  //
+  // Explicit closure has no such failure mode, and there are exactly two ways
+  // to have it. BOTH are facts rather than measurements:
+  //
+  //   - the PRODUCER says so. A point-list loop is a closed polygon that does
+  //     not repeat its head (IfcCurve::closedByConstruction, set in GetLoop
+  //     and passed across the wasm boundary by createSimpleBound3D's callers).
+  //     Without this the whole poly-loop producer class would be declined and
+  //     silently keep the cold-start error. Found by review on
+  //     bldrs-ai/conway-geom#195; it is the answer to "is there a front-end
+  //     closure signal", namely that the producer knows and was not encoding
+  //     it. Such a loop need not repeat its head, so it is served by the
+  //     adjacency argument in the doc comment above, not by "same query".
+  //
+  //   - the POINTS say so, by repeating the head as the tail. This is how all
+  //     859 edge-loop trim bounds in the regression corpus arrive.
+  //
+  // MEASURED REACH, so the balance here is not overstated: instrumented across
+  // the corpus, all 859 bounds arriving at this pass are of the second kind
+  // (gap exactly zero, flag false), and createSimpleBound3D is not called at
+  // all. So the flagged branch is live code with zero corpus reach - kept
+  // because dropping it re-opens the latent defect review found twice, not
+  // because anything here exercises it. A regression model whose b-spline
+  // faces carry point-list bounds would be the thing that covers it.
+  //
+  // The tolerance below is float noise, not a proximity budget: head and tail
+  // take the same `scaling` multiplication and stay bit-identical through it,
+  // but a few ULP costs nothing to allow and keeps this from depending on that.
+  if ( !closedByConstruction ) {
 
-  if ( closingGap > medianSegment * CLOSURE_FACTOR ) {
-    return 0;
+    double maxMagnitude = 0.0;
+
+    for ( const glm::dvec3& point : scaledPoints ) {
+      maxMagnitude = std::max( maxMagnitude,
+        std::max( std::abs( point.x ),
+                  std::max( std::abs( point.y ), std::abs( point.z ) ) ) );
+    }
+
+    const double closingGap =
+      glm::distance( scaledPoints[ count - 1 ], scaledPoints[ 0 ] );
+
+    if ( closingGap > 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) {
+      return 0;
+    }
   }
 
   size_t rewritten = 0;
@@ -6411,7 +6425,8 @@ inline void TriangulateBspline(Geometry &geometry,
       // reSolveClosedTrimHead, which also carries the closure gate that keeps
       // an OPEN bound on its cold start rather than seeding it cross-sheet.
       const size_t rewritten =
-        reSolveClosedTrimHead( bSplineInverseEvaluation, scaledPoints, solvedUv );
+        reSolveClosedTrimHead( bSplineInverseEvaluation, scaledPoints, solvedUv,
+                               bounds[ i ].curve.closedByConstruction );
 
       for ( size_t j = 0; j < rewritten; ++j ) {
         mesh.vertices[ firstVertex + j ].uv = solvedUv[ j ];

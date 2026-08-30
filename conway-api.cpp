@@ -333,9 +333,31 @@ std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
   return vec;
 }
 
-conway::geometry::IfcBound3D createSimpleBound3D(uintptr_t verticesArray_, size_t length, bool orientation, uint32_t type) {
+/**
+ * The optimised raw-array bound path, used by extractFace for point-list loops.
+ *
+ * `closedByConstruction` is supplied by the CALLER rather than derived here.
+ * Closure is a topological fact about the entity that was read, which the
+ * caller has and this function does not; deriving it from a bare vertex array
+ * would make this assert something about every future caller it cannot know.
+ * That is the mistake this parameter exists to avoid: closure is stated, never
+ * measured or assumed. See IfcCurve::closedByConstruction and
+ * bldrs-ai/conway-geom#195.
+ *
+ * The callers live in the bldrs-ai/conway repository, which consumes this
+ * module through interface/conway_geometry.ts. That wrapper's
+ * `createSimpleBound3D` declares the parameter REQUIRED, which is the only
+ * place a missing argument is caught: embind performs no arity check on a
+ * non-overloaded binding, `_embind_register_bool` converts a missing argument
+ * to `false` silently, and ConwayGeomWasm.d.ts types the module as `any`. So a
+ * caller that reaches past the wrapper to the raw module loses closure with no
+ * diagnostic at all. Route through the wrapper.
+ */
+conway::geometry::IfcBound3D createSimpleBound3D(uintptr_t verticesArray_, size_t length, bool orientation, uint32_t type, bool closedByConstruction) {
   conway::geometry::IfcCurve curve;
   curve.points = createVertexVector(verticesArray_, length);
+  curve.closedByConstruction =
+    conway::geometry::pointListLoopClosure( closedByConstruction, curve.points );
 
   conway::geometry::IfcBound3D bounds3D;
   bounds3D.curve = curve;
