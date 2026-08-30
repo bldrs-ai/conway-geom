@@ -47,6 +47,13 @@ constexpr int kSiteCount = static_cast<int>(conway::AllocSite::Count);
 // "csg_boolean is N % of this load's allocator calls" (a ranking). conway#637
 // published a share against the in-scope subtotal and had to retract it.
 std::atomic<uint64_t> g_loadAllocCalls{0};
+// Calls that returned null. `g_loadAllocCalls` counts attempts, so successful
+// allocations are calls - failed, and a share taken against the denominator
+// uses that difference. Kept as its own term rather than folded away because
+// "which paths were allocating when the heap ran out" is exactly the question
+// a failure census answers, and this build can produce failures: every wasm
+// target links -s ABORTING_MALLOC=0 (genie.lua).
+std::atomic<uint64_t> g_loadAllocFailed{0};
 std::atomic<uint64_t> g_loadAllocBytes{0};
 std::atomic<uint64_t> g_loadFreeCalls{0};
 std::atomic<uint64_t> g_loadFreeBytes{0};
@@ -224,6 +231,12 @@ struct ThreadFaceStats {
   // arena could hold, since it includes allocations that must outlive the
   // unit. diedBytes is the arena-eligible subset.
   uint64_t cumulativeBytes = 0;
+  // In-scope allocation calls that returned null. Deliberately NOT part of
+  // allocCalls: that stays the census of successful allocations, which is what
+  // the ownership identity (allocCalls == ownedAllocs + unownedAllocs) and
+  // every byte column rest on. A failure allocates nothing, so it belongs in
+  // its own column rather than inflating one that means bytes exist.
+  uint64_t failedAllocs = 0;
   uint64_t ownedAllocs = 0;
   // Allocations the table refused (it was at its load limit). Counted in
   // allocCalls, cumulativeBytes and the load-wide denominator, but not
@@ -267,15 +280,32 @@ std::atomic<uint64_t> g_siteDiedCounts[kSiteCount][kSiteCount] = {};
 std::atomic<uint64_t> g_siteDiedBytes[kSiteCount][kSiteCount] = {};
 
 inline void onAlloc(void* ptr) {
+  // Counted before the null test AND before the scope test, deliberately. The
+  // scope test is skipped because this counter's whole purpose is to see the
+  // traffic the scopes do not. The null test is skipped because filtering
+  // failures out here would quietly turn a census of allocation CALLS into a
+  // census of successful ones, understating exactly the paths that are
+  // allocating hardest when the heap is under pressure -- and null is a state
+  // this build produces rather than a theoretical one (-s ABORTING_MALLOC=0
+  // on every wasm target, and dlmalloc returns 0 for a request at or above
+  // MAX_REQUEST).
+  g_loadAllocCalls.fetch_add(1, std::memory_order_relaxed);
+
   if (ptr == nullptr) {
+    g_loadAllocFailed.fetch_add(1, std::memory_order_relaxed);
+
+    // Attributed to the open scope too: "which path was allocating when the
+    // allocator started refusing" is the question a failure census exists to
+    // answer, and a per-kind total is how it gets answered.
+    if (tls.active) {
+      tls.failedAllocs += 1;
+    }
+
     return;
   }
 
   const uint64_t size = malloc_usable_size(ptr);
 
-  // Before the scope test, deliberately: this counter's whole purpose is to
-  // see the traffic the scopes do not.
-  g_loadAllocCalls.fetch_add(1, std::memory_order_relaxed);
   g_loadAllocBytes.fetch_add(size, std::memory_order_relaxed);
 
   if (!tls.active) {
@@ -309,12 +339,16 @@ inline void onAlloc(void* ptr) {
   }
 }
 
-inline void onFree(void* ptr) {
+/** Account for the release of `ptr`, whose usable size the caller has already
+ *  measured.
+ *
+ *  Split out for `__wrap_realloc`, which has to read the size while the block
+ *  is still valid but must not commit the accounting until it knows whether
+ *  the realloc succeeded. */
+inline void onFreeSized(void* ptr, uint64_t size) {
   if (ptr == nullptr) {
     return;
   }
-
-  const uint64_t size = malloc_usable_size(ptr);
 
   g_loadFreeCalls.fetch_add(1, std::memory_order_relaxed);
   g_loadFreeBytes.fetch_add(size, std::memory_order_relaxed);
@@ -347,6 +381,10 @@ inline void onFree(void* ptr) {
   tls.diedBytes += owned;
   g_siteDiedCounts[tls.kind][site].fetch_add(1, std::memory_order_relaxed);
   g_siteDiedBytes[tls.kind][site].fetch_add(owned, std::memory_order_relaxed);
+}
+
+inline void onFree(void* ptr) {
+  onFreeSized(ptr, ptr != nullptr ? malloc_usable_size(ptr) : 0);
 }
 
 // ---- process-wide aggregates, merged on scope exit -------------------------
@@ -384,6 +422,7 @@ std::atomic<uint64_t> g_diedHistogram[kSiteCount][kBuckets] = {};
 std::atomic<uint64_t> g_totalCumulativeBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_maxCumulativeBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_cumulativeHistogram[kSiteCount][kBuckets] = {};
+std::atomic<uint64_t> g_totalFailedAllocs[kSiteCount] = {};
 std::atomic<uint64_t> g_totalOwnedAllocs[kSiteCount] = {};
 std::atomic<uint64_t> g_totalOwnedBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_totalUnownedAllocs[kSiteCount] = {};
@@ -442,8 +481,39 @@ void* __wrap_calloc(size_t count, size_t size) {
 }
 
 void* __wrap_realloc(void* ptr, size_t size) {
-  onFree(ptr);
+  // The old block's size must be read BEFORE the call -- afterwards the block
+  // may have been freed or moved, and malloc_usable_size on it would be a
+  // use-after-free read -- but the ACCOUNTING cannot be applied until the
+  // outcome is known.
+  const uint64_t oldSize = ptr != nullptr ? malloc_usable_size(ptr) : 0;
+
   void* out = __real_realloc(ptr, size);
+
+  // Two different things return null here, and they need opposite handling.
+  //
+  //   - FAILURE, when a size was actually requested. realloc's contract
+  //     leaves the ORIGINAL block allocated, so its ownership entry has to
+  //     survive. An earlier revision ran the free accounting unconditionally
+  //     and up front, which recorded a still-live block as died-in-scope,
+  //     understated escaped by its size, and left its eventual in-scope free
+  //     to be misread as foreign. Verified in both allocators this code runs
+  //     against, rather than assumed: emscripten's dlrealloc takes the
+  //     `bytes >= MAX_REQUEST` branch and returns 0 with oldmem untouched
+  //     (system/lib/dlmalloc.c:5279), and glibc's realloc(p, SIZE_MAX)
+  //     returns null with p still usable and its contents intact.
+  //   - A SIZE-ZERO request the allocator chose to treat as a free. glibc
+  //     does that and returns null, so the block really is gone and the
+  //     normal path below is right. Emscripten's dlmalloc does NOT --
+  //     REALLOC_ZERO_BYTES_FREES is left undefined there, so it reallocs down
+  //     to a minimum chunk and returns non-null. Only the native harness
+  //     reaches this branch.
+  if (out == nullptr && ptr != nullptr && size != 0) {
+    // Counts the attempt and its failure, and touches nothing else.
+    onAlloc(out);
+    return out;
+  }
+
+  onFreeSized(ptr, oldSize);
   onAlloc(out);
   return out;
 }
@@ -466,6 +536,7 @@ AllocTelemetryScope::AllocTelemetryScope(AllocSite kind) {
     tls.liveBytes = 0;
     tls.peakBytes = 0;
     tls.cumulativeBytes = 0;
+    tls.failedAllocs = 0;
     tls.ownedAllocs = 0;
     tls.unownedAllocs = 0;
     tls.unownedBytes = 0;
@@ -515,6 +586,8 @@ AllocTelemetryScope::~AllocTelemetryScope() {
   atomicMax(g_maxCumulativeBytes[kind], tls.cumulativeBytes);
   g_cumulativeHistogram[kind][bucketFor(tls.cumulativeBytes)].fetch_add(
       1, std::memory_order_relaxed);
+  g_totalFailedAllocs[kind].fetch_add(tls.failedAllocs,
+                                      std::memory_order_relaxed);
   g_totalOwnedAllocs[kind].fetch_add(tls.ownedAllocs,
                                      std::memory_order_relaxed);
   g_totalOwnedBytes[kind].fetch_add(tls.diedBytes + escaped,
@@ -563,7 +636,7 @@ void DumpHistogram(const std::atomic<uint64_t>* histogram, uint64_t scopes,
 // but note the ABSENCE of a kind here means "no scope of that kind ran", which
 // on an uninstrumented call graph is indistinguishable from "no work". Only
 // the presence of a nonzero line is evidence.
-void DumpScopeKind(int kind, uint64_t loadAllocCalls) {
+void DumpScopeKind(int kind, uint64_t loadSuccessfulAllocs) {
   const uint64_t scopes = g_scopes[kind].load();
 
   if (scopes == 0) {
@@ -578,16 +651,22 @@ void DumpScopeKind(int kind, uint64_t loadAllocCalls) {
   const uint64_t unownedBytes = g_totalUnownedBytes[kind].load();
   const uint64_t unownedAllocs = g_totalUnownedAllocs[kind].load();
 
+  // The share is successes over successes. allocCalls counts the allocations
+  // this kind actually got; the denominator it is divided by is the load's
+  // successful allocations, not its calls, so the two ends of the ratio mean
+  // the same thing. Failed attempts are reported beside it, never folded in.
   fprintf(stderr,
           "[alloc-telemetry]   scope %-13s: units=%" PRIu64
           " allocCalls(total=%" PRIu64 " avg=%.1f max=%" PRIu64
-          ") = %.3f%% of load-wide alloc calls\n",
+          " failed=%" PRIu64 ") = %.3f%% of load-wide successful allocs\n",
           kSiteNames[kind], scopes, allocCalls,
           static_cast<double>(allocCalls) / static_cast<double>(scopes),
           g_maxAllocCallsPerScope[kind].load(),
-          loadAllocCalls == 0 ? 0.0
-                              : 100.0 * static_cast<double>(allocCalls) /
-                                    static_cast<double>(loadAllocCalls));
+          g_totalFailedAllocs[kind].load(),
+          loadSuccessfulAllocs == 0
+              ? 0.0
+              : 100.0 * static_cast<double>(allocCalls) /
+                    static_cast<double>(loadSuccessfulAllocs));
 
   // The lifetime split, and the line the arena question is answered from.
   // diedBytes is the arena-eligible subset: allocated inside the unit and
@@ -684,19 +763,37 @@ void DumpAllocTelemetry(const char* label) {
   }
 
   const uint64_t loadAllocCalls = g_loadAllocCalls.load();
+  const uint64_t loadAllocFailed = g_loadAllocFailed.load();
+  const uint64_t loadSuccessfulAllocs = loadAllocCalls - loadAllocFailed;
 
   // The denominator, printed first because every in-scope figure below is a
   // share of it. Unlike the per-scope counters this one sees allocations made
   // on call graphs no scope covers, which is what lets an unscoped path be
-  // ruled larger or smaller than an instrumented one.
+  // ruled larger or smaller than an instrumented one. `calls` counts every
+  // attempt and `failed` the null returns, so successes are the difference --
+  // spelled out rather than left to the reader, since which of the two a
+  // percentage was taken against is exactly the kind of thing this instrument
+  // has had to retract before.
+  //
+  // "In scope or not" includes the runtime's own traffic -- module bring-up,
+  // the filesystem shim, the pthread pool. That is correct (it IS allocator
+  // traffic) but it is not deterministic, so on a model whose geometry work is
+  // small the denominator moves between runs and any share taken against it
+  // moves with it. Measured on this tree: a 25 KB IFC fixture reported
+  // 2,710 / 4,260 / 3,108 calls over three runs of one binary -- shares of
+  // 41.1 / 26.1 / 35.8 % for an in-scope count that was 1,113 every time --
+  // while a fixture whose own work dominates (224,779 of 316,607) was
+  // bit-identical across runs. Quote a share only when the load's own traffic
+  // dominates, and say which run it came from.
   fprintf(stderr,
           "[alloc-telemetry] %s: load-wide allocator traffic:"
-          " allocs(calls=%" PRIu64 " bytes=%" PRIu64
-          ") frees(calls=%" PRIu64 " bytes=%" PRIu64
-          ")  [every wrapped call, in scope or not]\n",
-          label != nullptr ? label : "", loadAllocCalls,
-          g_loadAllocBytes.load(), g_loadFreeCalls.load(),
-          g_loadFreeBytes.load());
+          " allocs(calls=%" PRIu64 " failed=%" PRIu64 " ok=%" PRIu64
+          " bytes=%" PRIu64 ") frees(calls=%" PRIu64 " bytes=%" PRIu64
+          ")  [every wrapped call, in scope or not -- includes"
+          " nondeterministic runtime traffic; see the note in the source]\n",
+          label != nullptr ? label : "", loadAllocCalls, loadAllocFailed,
+          loadSuccessfulAllocs, g_loadAllocBytes.load(),
+          g_loadFreeCalls.load(), g_loadFreeBytes.load());
 
   if (scopes == 0) {
     fprintf(stderr, "[alloc-telemetry] %s: no scoped units recorded\n",
@@ -708,7 +805,7 @@ void DumpAllocTelemetry(const char* label) {
           label != nullptr ? label : "", scopes);
 
   for (int kind = 0; kind < kSiteCount; ++kind) {
-    DumpScopeKind(kind, loadAllocCalls);
+    DumpScopeKind(kind, loadSuccessfulAllocs);
   }
 }
 
@@ -720,6 +817,7 @@ AllocTelemetryKindTotals GetAllocTelemetryKindTotals(AllocSite kind) {
   totals.scopes = g_scopes[at].load();
   totals.allocCalls = g_totalAllocCalls[at].load();
   totals.cumulativeBytes = g_totalCumulativeBytes[at].load();
+  totals.failedAllocs = g_totalFailedAllocs[at].load();
   totals.ownedAllocs = g_totalOwnedAllocs[at].load();
   totals.ownedBytes = g_totalOwnedBytes[at].load();
   totals.unownedAllocs = g_totalUnownedAllocs[at].load();
@@ -758,6 +856,7 @@ AllocTelemetryLoadTotals GetAllocTelemetryLoadTotals() {
   AllocTelemetryLoadTotals totals{};
 
   totals.allocCalls = g_loadAllocCalls.load();
+  totals.allocFailed = g_loadAllocFailed.load();
   totals.allocBytes = g_loadAllocBytes.load();
   totals.freeCalls = g_loadFreeCalls.load();
   totals.freeBytes = g_loadFreeBytes.load();
@@ -773,6 +872,7 @@ AllocTagScope::~AllocTagScope() { g_currentSite = previous_; }
 
 void ResetAllocTelemetry() {
   g_loadAllocCalls.store(0);
+  g_loadAllocFailed.store(0);
   g_loadAllocBytes.store(0);
   g_loadFreeCalls.store(0);
   g_loadFreeBytes.store(0);
@@ -790,6 +890,7 @@ void ResetAllocTelemetry() {
     g_maxDiedBytes[kind].store(0);
     g_totalCumulativeBytes[kind].store(0);
     g_maxCumulativeBytes[kind].store(0);
+    g_totalFailedAllocs[kind].store(0);
     g_totalOwnedAllocs[kind].store(0);
     g_totalOwnedBytes[kind].store(0);
     g_totalUnownedAllocs[kind].store(0);

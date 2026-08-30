@@ -93,6 +93,24 @@ constexpr uint64_t TABLE_SLOTS = 256;
 constexpr uint64_t TABLE_LOAD_LIMIT = ( TABLE_SLOTS / 8 ) * 7;
 
 /**
+ * A request size the allocator will refuse without going near the OS.
+ *
+ * Read through `volatile` so the size is not a compile-time constant at the
+ * call site. Two reasons, both practical: gcc otherwise emits
+ * `-Walloc-size-larger-than` on every use, and a constant-folded refusal is
+ * exactly the shape the optimiser is entitled to elide -- which is how a
+ * malloc/free pair already vanished out of one of these tests once.
+ *
+ * @return {size_t} SIZE_MAX, opaque to the optimiser.
+ */
+size_t refusedSize() {
+
+  volatile size_t huge = SIZE_MAX;
+
+  return huge;
+}
+
+/**
  * Sum of the allocator's usable sizes for a run of pointers.
  *
  * The instrument books `malloc_usable_size`, not the requested size, because
@@ -426,6 +444,156 @@ void testOverflowIsCountedNotSilent() {
 }
 
 /**
+ * A failed allocation is an allocation CALL, and the denominator counts it.
+ *
+ * Codex P2 on conway-geom#198: the null test used to run before the load
+ * counters, so the "every wrapped call" denominator was silently a census of
+ * SUCCESSFUL calls. That understates precisely the paths allocating hardest
+ * when the heap is under pressure — the one condition under which the
+ * denominator is most worth having — and it is the epic's signature defect
+ * again: a counter that reads low for a structural reason nothing announces.
+ *
+ * Forcible natively: glibc rejects `malloc(SIZE_MAX)` on the size check and
+ * returns null without going near the OS, so no memory pressure is needed to
+ * reach the branch. The wasm build reaches the same branch through dlmalloc's
+ * `bytes >= MAX_REQUEST` test and `-s ABORTING_MALLOC=0`.
+ *
+ * Red on a revert: with the null test back in front of the counters, every
+ * assertion below reads 0.
+ */
+void testFailedAllocationsAreCountedAsCalls() {
+
+  printf( "\n=== a failed allocation is still a call ===\n" );
+  conway::ResetAllocTelemetry();
+
+  void* refused = malloc( refusedSize() );
+
+  check( refused == nullptr, "the allocator really did refuse" );
+
+  const AllocTelemetryLoadTotals unscoped =
+    conway::GetAllocTelemetryLoadTotals();
+
+  checkEq( unscoped.allocCalls, 1, "the attempt reached the denominator" );
+  checkEq( unscoped.allocFailed, 1, "and was recorded as a failure" );
+  checkEq( unscoped.allocBytes, 0, "with no bytes attributed to it" );
+
+  void* refusedInScope = nullptr;
+  void* succeeded = nullptr;
+  uint64_t succeededBytes = 0;
+
+  {
+    AllocTelemetryScope scope( AllocSite::CsgBoolean );
+
+    refusedInScope = malloc( refusedSize() );
+    succeeded = malloc( 128 );
+    succeededBytes = malloc_usable_size( succeeded );
+  }
+
+  const AllocTelemetryKindTotals totals =
+    conway::GetAllocTelemetryKindTotals( AllocSite::CsgBoolean );
+  const AllocTelemetryLoadTotals load = conway::GetAllocTelemetryLoadTotals();
+
+  check( refusedInScope == nullptr, "the in-scope attempt was refused too" );
+  checkEq( load.allocCalls, 3, "all three calls reached the denominator" );
+  checkEq( load.allocFailed, 2, "two of them failed" );
+
+  // allocCalls stays the success census, because the ownership and byte
+  // identities are stated over it: a failure owns no pointer and allocates no
+  // bytes, so folding it in here would make allocCalls disagree with
+  // ownedAllocs + unownedAllocs on nothing more than a refused request.
+  checkEq( totals.allocCalls, 1, "only the successful one is an allocCall" );
+  checkEq( totals.failedAllocs, 1, "the refusal has its own column" );
+  checkEq( totals.ownedAllocs + totals.unownedAllocs, totals.allocCalls,
+           "so allocCalls == owned + unowned still holds" );
+  checkEq( totals.cumulativeBytes, succeededBytes,
+           "and cumulative is the successful allocation alone" );
+
+  free( succeeded );
+}
+
+/**
+ * A FAILED realloc leaves the original block allocated, and owned.
+ *
+ * Codex P2 on conway-geom#198: `__wrap_realloc` ran `onFree(ptr)` before
+ * `__real_realloc`, so a failing realloc booked a still-live block as
+ * died-in-scope and erased its ownership entry. Two consequences, both silent:
+ * escaped was understated by the block's size, and the eventual in-scope free
+ * of that same block was misclassified as foreign.
+ *
+ * Forcible natively, and verified before this test was written rather than
+ * assumed: glibc's `realloc(p, SIZE_MAX)` returns null with `p` still usable
+ * and its contents intact.
+ *
+ * Red on a revert to the unconditional up-front free: diedBytes comes back as
+ * the block's size instead of 0, escaped as 0 instead of the block's size, and
+ * the free after the realloc reads foreign.
+ */
+void testFailedReallocKeepsTheOriginalOwned() {
+
+  printf( "\n=== a failed realloc keeps the original owned ===\n" );
+  conway::ResetAllocTelemetry();
+
+  void* block = nullptr;
+  void* refused = nullptr;
+  uint64_t blockBytes = 0;
+  bool survived = false;
+
+  {
+    AllocTelemetryScope scope( AllocSite::CsgBoolean );
+
+    block = malloc( 512 );
+    blockBytes = malloc_usable_size( block );
+    memset( block, 0xAB, 512 );
+
+    refused = realloc( block, refusedSize() );
+
+    // realloc's contract: on failure the original is untouched. Checked here
+    // so a libc that behaved otherwise would fail loudly rather than making
+    // the assertions below quietly meaningless.
+    survived = refused == nullptr &&
+      malloc_usable_size( block ) == blockBytes &&
+      static_cast< unsigned char* >( block )[ 0 ] == 0xAB;
+  }
+
+  const AllocTelemetryKindTotals afterFailure =
+    conway::GetAllocTelemetryKindTotals( AllocSite::CsgBoolean );
+  const AllocTelemetryLoadTotals load = conway::GetAllocTelemetryLoadTotals();
+
+  check( survived, "the failed realloc left the original block intact" );
+  checkEq( afterFailure.allocCalls, 1, "only the malloc allocated" );
+  checkEq( afterFailure.failedAllocs, 1, "the realloc attempt was counted" );
+  checkEq( load.allocCalls, 2, "both calls reached the denominator" );
+  checkEq( load.freeCalls, 0, "and no free was invented for the failure" );
+  checkEq( afterFailure.diedBytes, 0,
+           "a live block was not recorded as died-in-scope" );
+  checkEq( afterFailure.escapedBytes, blockBytes,
+           "escaped still holds it" );
+
+  // The other half of the defect: with the entry erased, the block's own free
+  // reads as a free of memory the scope never allocated.
+  conway::ResetAllocTelemetry();
+
+  {
+    AllocTelemetryScope scope( AllocSite::SweepSolid );
+
+    void* live = malloc( 512 );
+
+    check( realloc( live, refusedSize() ) == nullptr, "the realloc failed again" );
+
+    free( live );
+  }
+
+  const AllocTelemetryKindTotals afterFree =
+    conway::GetAllocTelemetryKindTotals( AllocSite::SweepSolid );
+
+  checkEq( afterFree.diedCalls, 1, "the block's own free was owned" );
+  checkEq( afterFree.foreignFrees, 0, "not misread as foreign" );
+  checkEq( afterFree.escapedBytes, 0, "and nothing escaped the scope" );
+
+  free( block );
+}
+
+/**
  * Sustained allocate/free churn with a stable live set.
  *
  * This is the test for the table's deletion path. `tableErase` compacts the
@@ -562,6 +730,8 @@ int main() {
   testSmallPreScopeFreeIsNotSubtractedSilently();
   testLoadWideDenominatorCountsUnscopedTraffic();
   testOverflowIsCountedNotSilent();
+  testFailedAllocationsAreCountedAsCalls();
+  testFailedReallocKeepsTheOriginalOwned();
   testChurnKeepsOwnershipExact();
   testSitesAreLifetimeClassifiedSeparately();
 

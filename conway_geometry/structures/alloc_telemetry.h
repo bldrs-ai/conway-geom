@@ -33,8 +33,10 @@
  *      inside the scope, so `diedBytes` -- not the live peak, and not total
  *      in-scope volume -- is the distribution that sizes one.
  *   3. A LOAD-WIDE DENOMINATOR. Counters incremented on EVERY wrapped
- *      allocation and free, in scope or not. In-scope counts alone identify a
- *      lever; only a denominator ranks one.
+ *      allocation and free, in scope or not, and before the null test as well
+ *      as before the scope test -- so it is a census of allocation CALLS, with
+ *      the failures carried as their own term rather than filtered out.
+ *      In-scope counts alone identify a lever; only a denominator ranks one.
  *
  * Counters are thread-local during collection and merged into process-wide
  * atomics on scope exit, so the instrument works identically on the MT build.
@@ -150,6 +152,12 @@ class AllocTagScope {
  *
  *    cumulativeBytes == ownedBytes  + unownedBytes
  *    ownedBytes      == diedBytes   + escapedBytes
+ *    allocCalls      == ownedAllocs + unownedAllocs
+ *
+ *  `failedAllocs` sits outside all three: an allocation call that returned
+ *  null produced no bytes and no pointer to own, so counting it in
+ *  `allocCalls` would inflate a number the byte identities rest on. It is
+ *  reported as its own column instead.
  *
  *  `unownedBytes` is allocation the ownership table refused (it was full);
  *  such an allocation is still counted in `allocCalls`, `cumulativeBytes` and
@@ -158,6 +166,7 @@ class AllocTagScope {
 struct AllocTelemetryKindTotals {
   uint64_t scopes;
   uint64_t allocCalls;
+  uint64_t failedAllocs;
   uint64_t cumulativeBytes;
   uint64_t ownedAllocs;
   uint64_t ownedBytes;
@@ -191,6 +200,7 @@ struct AllocTelemetrySiteTotals {
  *  share. A realloc counts as one free and one allocation. */
 struct AllocTelemetryLoadTotals {
   uint64_t allocCalls;
+  uint64_t allocFailed;
   uint64_t allocBytes;
   uint64_t freeCalls;
   uint64_t freeBytes;
@@ -258,6 +268,7 @@ class AllocTagScope {
 struct AllocTelemetryKindTotals {
   uint64_t scopes;
   uint64_t allocCalls;
+  uint64_t failedAllocs;
   uint64_t cumulativeBytes;
   uint64_t ownedAllocs;
   uint64_t ownedBytes;
@@ -285,6 +296,7 @@ struct AllocTelemetrySiteTotals {
 
 struct AllocTelemetryLoadTotals {
   uint64_t allocCalls;
+  uint64_t allocFailed;
   uint64_t allocBytes;
   uint64_t freeCalls;
   uint64_t freeBytes;
