@@ -46,7 +46,7 @@ for source in test/*_test.cpp; do
   case "${source}" in
     test/nurbs_seam_test.cpp | test/ribbon_loft_test.cpp | \
     test/spherical_trim_test.cpp | test/inverse_wrong_sheet_test.cpp | \
-    test/corner_normals_test.cpp ) ;;
+    test/corner_normals_test.cpp | test/gltf_stream_test.cpp ) ;;
     * ) continue ;;
   esac
 

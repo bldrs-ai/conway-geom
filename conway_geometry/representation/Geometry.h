@@ -31,6 +31,35 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
+/**
+ * Does baking `transform` into a triangle's positions reverse its winding?
+ *
+ * THE MIRRORING INVARIANT, stated once because two places have to agree and a
+ * sign error in either is invisible until something renders inside-out:
+ *
+ *   For a transform M, the winding normal of the transformed triangle is
+ *   det(M) * M^-T n, while a surface normal carried alongside transforms by the
+ *   normal matrix M^-T alone. When det(M) < 0 the two therefore end up
+ *   OPPOSED. The fix is to reverse the winding — swap two corners — which flips
+ *   the winding normal back into agreement. The normals themselves are NOT
+ *   negated: they are still the outward direction of the same surface, and
+ *   negating them as well would put the geometry inside-out instead.
+ *
+ * Both sites that bake a transform into positions follow that rule:
+ * Geometry::ApplyTransform (swapping corners 0 and 2 of every triangle, and
+ * reordering the corner normals to match) and the GLB writer's per-component
+ * append (emitting each index triple reversed). This is deliberately NOT the
+ * same operation as Geometry::ReverseFace, which exists to invert a face's
+ * outward direction and therefore DOES negate — see ReverseCornerNormals.
+ *
+ * @param transform The transform being baked into positions.
+ * @return true when the transform reverses winding.
+ */
+inline bool TransformMirrors( const glm::dmat4& transform ) {
+
+  return glm::determinant( glm::dmat3( transform ) ) < 0.0;
+}
+
 
 struct Geometry {
 
@@ -381,12 +410,37 @@ struct Geometry {
 
   /**
    * The reified vertex stream, interleaved [px, py, pz, nx, ny, nz] per
-   * emitted vertex — the same buffer GetVertexData() hands to wasm as a raw
-   * address, typed. Reify() first if you need it current; this does not.
+   * emitted vertex, reifying first if needed.
    *
-   * @return The stream, empty when the geometry has not been reified.
+   * THIS, not GetVertexData(), is what internal C++ must use. GetVertexData()
+   * returns the buffer's address narrowed to `uint32_t` because it is an embind
+   * entry point and wasm pointers are 32 bits; on a 64-bit native build that
+   * value cannot be widened back into the pointer it came from, so a native
+   * caller dereferences a truncated address. Every use inside the library goes
+   * through the typed accessors instead (bldrs-ai/conway#667).
+   *
+   * @return The interleaved stream.
    */
-  const std::vector< float >& GetVertexStream() const { return floatVertexData_; }
+  const std::vector< float >& GetVertexStream() {
+
+    Reify( previousReificationOffset_ );
+
+    return floatVertexData_;
+  }
+
+  /**
+   * The reified index stream, three corners per triangle, indexing the vertex
+   * stream above. Same rule as GetVertexStream: internal code uses this rather
+   * than GetIndexData().
+   *
+   * @return The index stream.
+   */
+  const std::vector< uint32_t >& GetIndexStream() {
+
+    Reify( previousReificationOffset_ );
+
+    return indexData_;
+  }
 
   void ClearReification() {
 

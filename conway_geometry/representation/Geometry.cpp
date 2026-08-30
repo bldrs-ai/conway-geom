@@ -842,7 +842,11 @@ void Geometry::ApplyTransform( const glm::dmat4& transform ) {
 
   TransformCornerNormalRange( transform, 0, triangles.size() );
 
-  if ( glm::determinant( transform ) < 0 ) {
+  // The mirroring invariant, stated once on TransformMirrors: a mirroring
+  // transform leaves the winding normal opposed to the transformed surface
+  // normal, and reversing the winding — not negating the normals — is what puts
+  // them back in agreement.
+  if ( TransformMirrors( transform ) ) {
 
     for ( Triangle& triangle : triangles ) {
 

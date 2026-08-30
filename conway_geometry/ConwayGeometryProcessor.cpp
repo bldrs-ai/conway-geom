@@ -17,6 +17,7 @@
 
 #include "operations/curve_utils.h"
 #include "operations/geometry_utils.h"
+#include "operations/gltf_stream.h"
 #include "operations/mesh_utils.h"
 #include "representation/Geometry.h"
 #include "Logger.h"
@@ -28,15 +29,6 @@
 #include "structures/vertex_welder.h"
 
 namespace conway::geometry {
-
-/**
- * Floats per vertex in the reified vertex stream: interleaved position then
- * normal, [px, py, pz, nx, ny, nz]. This is a CONTRACT, not an implementation
- * detail — Share's conway-direct loader reads the same buffer with the same
- * stride (src/viewer/ifc/flatMeshToBufferGeometry.js), so it cannot change
- * without changing the viewer in lockstep.
- */
-constexpr uint32_t VERTEX_STREAM_STRIDE = 6;
 
 double normalDiff( const glm::dvec3& extents ) {
   double a = extents.x;
@@ -1570,24 +1562,32 @@ ConwayGeometryProcessor::GeometryToGltf(
       for (conway::geometry::Geometry *componentPtr : geom.components) {
         conway::geometry::Geometry &component = *componentPtr;
 
-        numPoints  += component.GetVertexDataSize() / VERTEX_STREAM_STRIDE;
-        numIndices += component.GetIndexDataSize();
+        numPoints  += static_cast< uint32_t >(
+            component.GetVertexStream().size() / GLTF_STREAM_STRIDE );
+        numIndices += static_cast< uint32_t >( component.GetIndexStream().size() );
+      }
+
+      // Emptied BY the reification the loop above just forced, which is why
+      // this cannot be folded into the `hasTriangles` check higher up: that one
+      // reads `triangles` before Reify(), and Reify() drops every degenerate and
+      // duplicate-index triangle. A collection made entirely of those arrives
+      // here with triangles and leaves with no points — and the Draco branch
+      // below would then declare no attributes but still dereference
+      // pos_att_id / norm_att_id (bldrs-ai/conway#667).
+      if ( numPoints == 0 || numIndices == 0 ) {
+        continue;
       }
 
       std::vector<float> positions;
       std::vector<float> normals;
       std::vector<uint32_t> indexData;
 
-      positions.resize( numPoints * 3 );
-      normals.resize( numPoints * 3 );
+      positions.reserve( numPoints * 3 );
+      normals.reserve( numPoints * 3 );
       indexData.reserve( numIndices );
 
       std::vector<float> minValues( 3U, std::numeric_limits< float >::max() );
       std::vector<float> maxValues( 3U, std::numeric_limits< float >::lowest() );
-
-      const size_t positionCount = positions.size();
-      float *positionOutputCursor = positions.data();
-      float *normalOutputCursor = normals.data();
 
       uint32_t pointOffset = 0;
       size_t transformCursor = 0;
@@ -1597,79 +1597,40 @@ ConwayGeometryProcessor::GeometryToGltf(
         glm::dmat4 geomTransform =
             transform * geom.transforms[transformCursor++];
 
-        // Normals transform by the inverse transpose, not by the placement
-        // itself; a non-uniform scale would otherwise shear them off the
-        // surface. Singular placements have no normal matrix, so the normals
-        // are zeroed rather than filled with NaN.
-        glm::dmat3 linear( geomTransform );
-        bool singularPlacement =
-            std::abs( glm::determinant( linear ) ) < DBL_EPSILON;
-        glm::dmat3 normalMatrix = singularPlacement ?
-            glm::dmat3( 1.0 ) : glm::transpose( glm::inverse( linear ) );
-
-        const float *vertexStream =
-            reinterpret_cast< const float* >(
-                static_cast< size_t >( component.GetVertexData() ) );
+        // Typed accessors, never GetVertexData()/GetIndexData(): those narrow
+        // the buffer address to uint32_t for embind, which a 64-bit native
+        // build cannot widen back into a valid pointer.
+        const std::vector< float >&    vertexStream = component.GetVertexStream();
+        const std::vector< uint32_t >& indexStream  = component.GetIndexStream();
 
         uint32_t componentPoints =
-            component.GetVertexDataSize() / VERTEX_STREAM_STRIDE;
+            static_cast< uint32_t >( vertexStream.size() / GLTF_STREAM_STRIDE );
 
-        for ( uint32_t vertex = 0; vertex < componentPoints; ++vertex ) {
+        // The bias is the first placed point in the whole chunk, and it is
+        // subtracted exactly once — here — because the node translation adds it
+        // back exactly once. Established before the append so the append can
+        // stay a pure function of its inputs.
+        if ( !hasFirstPoint && componentPoints > 0 ) {
 
-          const float *source = vertexStream + ( vertex * VERTEX_STREAM_STRIDE );
-
-          glm::dvec3 t = glm::dvec3( geomTransform * glm::dvec4(
-              source[ 0 ], source[ 1 ], source[ 2 ], 1 ) );
-
-          if ( !hasFirstPoint ) {
-
-            hasFirstPoint = true;
-            positionBias = glm::dvec3( t );
-          }
-
-          t -= positionBias;
-
-          *(positionOutputCursor++) = (float)t.x;
-          *(positionOutputCursor++) = (float)t.y;
-          *(positionOutputCursor++) = (float)t.z;
-
-          glm::dvec3 n = singularPlacement ? glm::dvec3( 0.0 ) :
-              normalMatrix * glm::dvec3( source[ 3 ], source[ 4 ], source[ 5 ] );
-
-          double nLength = glm::length( n );
-
-          // glTF requires NORMAL to be unit length. A zero or non-finite
-          // normal (degenerate source triangle) would fail validation, so it
-          // is emitted as +Z rather than as NaN.
-          if ( !std::isfinite( nLength ) || nLength < DBL_EPSILON ) {
-
-            *(normalOutputCursor++) = 0.0f;
-            *(normalOutputCursor++) = 0.0f;
-            *(normalOutputCursor++) = 1.0f;
-
-          } else {
-
-            n /= nLength;
-
-            *(normalOutputCursor++) = (float)n.x;
-            *(normalOutputCursor++) = (float)n.y;
-            *(normalOutputCursor++) = (float)n.z;
-          }
+          hasFirstPoint = true;
+          positionBias  = glm::dvec3( geomTransform * glm::dvec4(
+              vertexStream[ 0 ], vertexStream[ 1 ], vertexStream[ 2 ], 1 ) );
         }
 
-        const uint32_t *componentIndices =
-            reinterpret_cast< const uint32_t* >(
-                static_cast< size_t >( component.GetIndexData() ) );
-
-        uint32_t componentIndexCount = component.GetIndexDataSize();
-
-        for ( uint32_t where = 0; where < componentIndexCount; ++where ) {
-
-          indexData.push_back( componentIndices[ where ] + pointOffset );
-        }
+        appendComponentToGltfStream(
+            vertexStream,
+            indexStream,
+            geomTransform,
+            positionBias,
+            pointOffset,
+            positions,
+            normals,
+            indexData );
 
         pointOffset += componentPoints;
       }
+
+      const size_t positionCount = positions.size();
 
       // Accessor min/max properties must be set for vertex position data so
       // calculate them here. Non-finite values (degenerate upstream geometry)
@@ -1731,10 +1692,14 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         for (uint32_t vertex = 0; vertex < numPoints; ++vertex) {
 
+          // Taken as-is. `positions` is ALREADY rebased by positionBias, and
+          // the node translation adds that offset back exactly once, so
+          // subtracting it a second time here would displace the compressed
+          // primitive by -bias relative to every uncompressed one.
           float positionValue[3] = {
-              positions[vertex * 3] - static_cast<float>(positionBias.x),
-              positions[vertex * 3 + 1] - static_cast<float>(positionBias.y),
-              positions[vertex * 3 + 2] - static_cast<float>(positionBias.z)};
+              positions[vertex * 3],
+              positions[vertex * 3 + 1],
+              positions[vertex * 3 + 2]};
 
           dracoMesh->attribute(pos_att_id)
               ->SetAttributeValue(draco::AttributeValueIndex(vertex), positionValue);
@@ -1835,17 +1800,12 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       if (outputDraco) {
         Microsoft::glTF::Accessor positionsAccessor;
-        // Biased to match the values actually encoded above; the bounds are
-        // read as the primitive's own extent, so they have to be in the same
-        // frame as the data or every consumer culls against the wrong box.
-        positionsAccessor.min = {
-            minValues[0] - static_cast<float>(positionBias.x),
-            minValues[1] - static_cast<float>(positionBias.y),
-            minValues[2] - static_cast<float>(positionBias.z)};
-        positionsAccessor.max = {
-            maxValues[0] - static_cast<float>(positionBias.x),
-            maxValues[1] - static_cast<float>(positionBias.y),
-            maxValues[2] - static_cast<float>(positionBias.z)};
+        // Straight from `positions`, which is the frame the Draco attribute is
+        // encoded in — both are rebased by positionBias exactly once, and the
+        // node translation puts that offset back. Biasing these again is the
+        // same mistake as biasing the encoded values again.
+        positionsAccessor.min = minValues;
+        positionsAccessor.max = maxValues;
         positionsAccessor.count = dracoMesh->num_points();
         positionsAccessor.componentType =
             Microsoft::glTF::ComponentType::COMPONENT_FLOAT;

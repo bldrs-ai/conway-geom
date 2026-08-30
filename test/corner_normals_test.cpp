@@ -386,6 +386,76 @@ void testExtractTrianglesDropsCornerNormals() {
          "normals that described the old triangles are dropped, not reused" );
 }
 
+/*
+ * The fact the GLB writer's post-reification guard rests on: a geometry can
+ * hold triangles and still reify to nothing.
+ *
+ * GeometryToGltf checks `!component.triangles.empty()` before it reifies, and
+ * Reify() then drops every duplicate-index and zero-area triangle. A collection
+ * made only of those passes the first check and arrives at the Draco branch
+ * with numPoints == 0, which declares no attributes but still dereferences
+ * pos_att_id / norm_att_id. The writer now re-checks AFTER reification; this
+ * pins that the gap between the two checks is real rather than theoretical
+ * (bldrs-ai/conway#667).
+ */
+void testDegenerateOnlyGeometryReifiesToNothing() {
+
+  printf( "\n=== a geometry of only degenerate triangles reifies to nothing ===\n" );
+
+  Geometry geometry;
+
+  geometry.MakeVertex( glm::dvec3( 0, 0, 0 ) );
+  geometry.MakeVertex( glm::dvec3( 1, 0, 0 ) );
+  geometry.MakeVertex( glm::dvec3( 2, 0, 0 ) );
+
+  // Collinear: zero area. And one with a repeated corner.
+  geometry.MakeTriangle( 0, 1, 2 );
+  geometry.MakeTriangle( 0, 1, 1 );
+
+  check( !geometry.triangles.empty(),
+         "the pre-reification check the writer used to rely on passes" );
+
+  const std::vector< float >&    stream  = geometry.GetVertexStream();
+  const std::vector< uint32_t >& indices = geometry.GetIndexStream();
+
+  printf( "      %zu triangle(s) before, %zu stream float(s) and %zu index/es after\n",
+          size_t( 2 ), stream.size(), indices.size() );
+
+  check( stream.empty() && indices.empty(),
+         "and the reified stream it would have been written from is empty" );
+}
+
+/*
+ * The typed accessors are what internal C++ must use: GetVertexData() narrows
+ * the buffer's address to uint32_t for embind, which a 64-bit native build
+ * cannot widen back. This pins that the typed pair describes exactly the same
+ * data as the size APIs, so there is never a reason to reach for the address.
+ */
+void testTypedStreamAccessorsMatchTheSizeApis() {
+
+  printf( "\n=== the typed stream accessors are the same data ===\n" );
+
+  Geometry geometry = twoFaceFan( 1.0, true, false );
+
+  // Deliberately called before any explicit Reify(): the accessors have to
+  // reify themselves, or a caller reads an empty buffer and writes an empty
+  // primitive.
+  const std::vector< float >&    stream  = geometry.GetVertexStream();
+  const std::vector< uint32_t >& indices = geometry.GetIndexStream();
+
+  check( !stream.empty() && !indices.empty(),
+         "the accessors reify on demand" );
+
+  check( stream.size() == geometry.GetVertexDataSize(),
+         "the vertex stream is exactly GetVertexDataSize() floats" );
+
+  check( indices.size() == geometry.GetIndexDataSize(),
+         "the index stream is exactly GetIndexDataSize() indices" );
+
+  check( stream.size() % 6 == 0,
+         "and it holds whole [position, normal] vertices" );
+}
+
 }  // namespace
 
 int main() {
@@ -395,6 +465,8 @@ int main() {
   testReverseFaceNegatesAnalyticNormals();
   testRollbackTruncatesCornerNormals();
   testExtractTrianglesDropsCornerNormals();
+  testDegenerateOnlyGeometryReifiesToNothing();
+  testTypedStreamAccessorsMatchTheSizeApis();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
