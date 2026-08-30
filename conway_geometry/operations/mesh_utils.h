@@ -6979,12 +6979,20 @@ inline bool splitByDiagonals(
  *                      face's single trim bound, in loop order.
  * @param solve         Unused; kept so the call site reads like its neighbours.
  * @param boundaryCount Number of boundary vertices.
+ * @param earClippedSeed Optional out-parameter. When the decomposed branch
+ *                       builds an ear-clipped seed to compare against, it is
+ *                       left here so the caller's fallback can use it instead
+ *                       of ear-clipping the same polygon a second time. Filled
+ *                       ONLY on that branch, so a face that never reaches the
+ *                       comparison leaves it untouched and the caller clips as
+ *                       it always did. May be null.
  * @return true if the face was triangulated here, false to ear-clip it.
  */
 inline bool tryRibbonLoft(
     WingedEdgeMesh< ParameterVertex >& mesh,
     const RationalNurbsInverseMethod&  solve,
-    size_t                             boundaryCount ) {
+    size_t                             boundaryCount,
+    std::vector< uint32_t >*           earClippedSeed ) {
 
   (void)solve;
 
@@ -7095,12 +7103,11 @@ inline bool tryRibbonLoft(
     // KEEP THE BETTER SEED, MEASURED, NOT THE STRUCTURED ONE ON PRINCIPLE.
     //
     // A decomposition always succeeds on a non-monotone boundary; succeeding is
-    // not the same as helping. Measured across the 511 faces on the corpus that
-    // reach this branch, 337 come out with the SAME longest chord the
-    // ear-clipper produced (within 1%), 113 come out WORSE - the cut hands the
-    // sweep pieces that are themselves ears - and 53 improve. Taking all of
-    // them costs +4.4% triangles on the thread model and +28.8% on
-    // `Right_Hand` while moving nothing at all against conway#665's damage bar.
+    // not the same as helping. Measured across the faces on the corpus that
+    // reach this branch, most come out with the same worst interior chord the
+    // ear-clipper produced and a large minority come out WORSE - the cut hands
+    // the sweep pieces that are themselves ears. Taking all of them costs
+    // triangles while moving nothing against conway#665's damage bar.
     //
     // So the gate is that comparison: build the seed the ear-clipper would have
     // built and keep the decomposition only if its worst chord is materially
@@ -7109,25 +7116,58 @@ inline bool tryRibbonLoft(
     // issue is about rather than a proxy for it, and it is a property of the
     // OUTPUT, like every other gate in this function.
     //
-    // A tenth shorter, because the ratio's distribution is bimodal and the
-    // constant lands in the empty part of it: the improvers stop at 0.91 and
-    // the indifferent mass starts at 0.96, so any cut in that gap selects the
-    // same faces. It is a separator, not a tuned parameter.
+    // ONLY INTERIOR EDGES COUNT, and getting this wrong silently disables the
+    // gate's whole purpose. A boundary edge belongs to the trim polyline: it is
+    // in BOTH seeds, identical, and neither triangulator can change it. If one
+    // such edge is longer than every diagonal either seed introduces - a
+    // sparsely sampled boundary, or one long cap segment - then both maxima are
+    // that same immutable edge, the ratio is exactly 1, and a decomposition
+    // whose introduced chords are dramatically shorter is refused for a
+    // difference it was never allowed to make. Comparing only the edges the
+    // triangulator actually chose is the whole comparison
+    // (codex on conway-geom#201).
     //
-    // The extra earcut costs nothing on the faces this refuses - they were
-    // going to run it anyway on the caller's fallback - and one seed build on
-    // the faces it accepts.
+    // A tenth shorter. Measured over the 511 corpus faces reaching this branch,
+    // the ratio's distribution is bimodal: 55 improvers ending at 0.872, then
+    // nothing until 0.911, then a mass of 344 sitting at 1 and 110 above it. So
+    // 0.9 lands in an empty interval and any cut in (0.872, 0.911) selects the
+    // same faces - a separator rather than a tuned parameter.
     {
-      const auto longestOf =
+      // Indices into the ORIGINAL boundary, so a repeated closing vertex maps
+      // onto the vertex it repeats and the adjacency test below stays true for
+      // the edge that spans the wrap.
+      const auto onBoundary =
+        [ & ]( uint32_t first, uint32_t second ) {
+
+          const size_t a2 = static_cast< size_t >( first ) % count;
+          const size_t b2 = static_cast< size_t >( second ) % count;
+
+          return ( ( a2 + 1 ) % count == b2 ) || ( ( b2 + 1 ) % count == a2 );
+        };
+
+      const auto longestInteriorOf =
         [ & ]( uint32_t first, uint32_t second, uint32_t third ) {
 
-          return std::max( {
-            glm::distance( mesh.vertices[ first ].point,
-                           mesh.vertices[ second ].point ),
-            glm::distance( mesh.vertices[ second ].point,
-                           mesh.vertices[ third ].point ),
-            glm::distance( mesh.vertices[ third ].point,
-                           mesh.vertices[ first ].point ) } );
+          const uint32_t corners[ 3 ] = { first, second, third };
+
+          double longest = 0.0;
+
+          for ( size_t at = 0; at < 3; ++at ) {
+
+            const uint32_t from = corners[ at ];
+            const uint32_t to   = corners[ ( at + 1 ) % 3 ];
+
+            if ( onBoundary( from, to ) ) {
+              continue;
+            }
+
+            longest =
+              std::max( longest,
+                        glm::distance( mesh.vertices[ from ].point,
+                                       mesh.vertices[ to ].point ) );
+          }
+
+          return longest;
         };
 
       double decomposed = 0.0;
@@ -7135,26 +7175,89 @@ inline bool tryRibbonLoft(
       for ( const std::array< uint32_t, 3 >& triangle : swept ) {
         decomposed =
           std::max( decomposed,
-                    longestOf( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] ) );
+                    longestInteriorOf( triangle[ 0 ], triangle[ 1 ],
+                                       triangle[ 2 ] ) );
       }
 
+      // Ear-clipped over the WHOLE bound, repeated closing vertex included,
+      // because that is exactly the polygon the caller's fallback clips. Same
+      // input, same output - which is what makes handing the result back sound
+      // rather than merely convenient.
       std::vector< std::vector< std::array< double, 2 > > > outline( 1 );
 
-      outline[ 0 ].reserve( count );
+      outline[ 0 ].reserve( boundaryCount );
 
-      for ( size_t at = 0; at < count; ++at ) {
+      for ( size_t at = 0; at < boundaryCount; ++at ) {
         outline[ 0 ].push_back(
           { mesh.vertices[ at ].uv.x, mesh.vertices[ at ].uv.y } );
       }
 
-      const std::vector< uint32_t > ears = mapbox::earcut< uint32_t >( outline );
+      std::vector< uint32_t > ears;
+
+      {
+        conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
+        ears = mapbox::earcut< uint32_t >( outline );
+      }
 
       double earClipped = 0.0;
 
       for ( size_t at = 0; at + 2 < ears.size(); at += 3 ) {
         earClipped =
           std::max( earClipped,
-                    longestOf( ears[ at ], ears[ at + 1 ], ears[ at + 2 ] ) );
+                    longestInteriorOf( ears[ at ], ears[ at + 1 ],
+                                       ears[ at + 2 ] ) );
+      }
+
+      // Handed back whatever the verdict, so the fallback never clips this
+      // polygon twice. The previous revision claimed this comparison was free
+      // on refused faces; it was not - it was a second full ear-clipping pass
+      // on every face it refused (codex on conway-geom#201).
+      if ( earClippedSeed != nullptr ) {
+        *earClippedSeed = ears;
+      }
+
+      if ( getenv( "CONWAY_CHORD201" ) != nullptr ) {
+
+        // Also compute the OLD metric, boundary edges included, so the two can
+        // be compared face by face.
+        const auto longestAnyOf =
+          [ & ]( uint32_t first, uint32_t second, uint32_t third ) {
+            return std::max( {
+              glm::distance( mesh.vertices[ first ].point, mesh.vertices[ second ].point ),
+              glm::distance( mesh.vertices[ second ].point, mesh.vertices[ third ].point ),
+              glm::distance( mesh.vertices[ third ].point, mesh.vertices[ first ].point ) } );
+          };
+
+        double decAll = 0.0, earAll = 0.0;
+
+        for ( const std::array< uint32_t, 3 >& t : swept ) {
+          decAll = std::max( decAll, longestAnyOf( t[ 0 ], t[ 1 ], t[ 2 ] ) );
+        }
+
+        for ( size_t at = 0; at + 2 < ears.size(); at += 3 ) {
+          earAll = std::max( earAll, longestAnyOf( ears[ at ], ears[ at + 1 ], ears[ at + 2 ] ) );
+        }
+
+        glm::dvec3 lo( std::numeric_limits< double >::max() );
+        glm::dvec3 hi( std::numeric_limits< double >::lowest() );
+
+        for ( size_t at = 0; at < count; ++at ) {
+          lo = glm::min( lo, mesh.vertices[ at ].point );
+          hi = glm::max( hi, mesh.vertices[ at ].point );
+        }
+
+        const double extent = glm::distance( lo, hi );
+
+        printf( "CHORD201 n=%zu newRatio=%.6f oldRatio=%.6f decNew=%.6f earNew=%.6f "
+                "decOld=%.6f earOld=%.6f admitted=%d\n",
+                count,
+                earClipped > 0.0 ? decomposed / earClipped : -1.0,
+                earAll > 0.0 ? decAll / earAll : -1.0,
+                extent > 0.0 ? decomposed / extent : -1.0,
+                extent > 0.0 ? earClipped / extent : -1.0,
+                extent > 0.0 ? decAll / extent : -1.0,
+                extent > 0.0 ? earAll / extent : -1.0,
+                ( decomposed < 0.9 * earClipped ) ? 1 : 0 );
       }
 
       if ( !( decomposed < 0.9 * earClipped ) ) {
@@ -7571,10 +7674,19 @@ inline void TriangulateBspline(Geometry &geometry,
     // the seam grid: an inner trim loop is a hole, and a loft spanning the
     // whole chart would pave over it. Anything that is not a ribbon returns
     // false here and takes exactly the path it takes today.
+    // Reused rather than recomputed: when tryRibbonLoft's seed comparison
+    // ear-clips this boundary to compare against, that result is the same
+    // triangulation of the same polygon the fallback below needs, so it is
+    // carried across instead of clipping twice (codex on conway-geom#201).
+    // Left empty on every path that does not reach the comparison, and the
+    // fallback then clips exactly as it always did.
+    std::vector< uint32_t > earClippedSeed;
+
     const bool builtRibbonLoft =
       !builtSeamGrid &&
       bounds.size() == 1 &&
-      tryRibbonLoft( mesh, bSplineInverseEvaluation, mesh.vertices.size() );
+      tryRibbonLoft( mesh, bSplineInverseEvaluation, mesh.vertices.size(),
+                     &earClippedSeed );
 
     const bool builtStructured = builtSeamGrid || builtRibbonLoft;
 
@@ -7583,7 +7695,10 @@ inline void TriangulateBspline(Geometry &geometry,
     if ( !builtStructured ) {
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
-    indices = mapbox::earcut<uint32_t>(uvBoundaryValues);
+    indices =
+      earClippedSeed.empty() ?
+        mapbox::earcut<uint32_t>(uvBoundaryValues) :
+        std::move( earClippedSeed );
   }
 
     for ( size_t i = 0; i < indices.size(); i += 3 ) {

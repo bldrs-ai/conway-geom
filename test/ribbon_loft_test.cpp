@@ -262,7 +262,7 @@ void testLoftCoversAndReusesTheBoundary() {
   conway::geometry::RationalNurbsInverseMethod solve( surface );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "the ribbon lofts" );
 
@@ -376,7 +376,7 @@ void testNotchedBoundaryIsRejected() {
   const size_t before = mesh.triangles.size();
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, mesh.vertices.size() );
+    conway::geometry::tryRibbonLoft( mesh, solve, mesh.vertices.size(), nullptr );
 
   check( !built,
          "a notched boundary whose pieces are ears is rejected" );
@@ -452,7 +452,7 @@ void testConcaveRibbonTilesExactlyOnce() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "the concave ribbon lofts" );
 
@@ -509,7 +509,7 @@ void testSweepEmitsExactlyTheEarcutSeed() {
   // A target of zero is unreachable, so the column search runs to its ceiling
   // - which is exactly the case the constant cap got wrong.
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "the small ribbon lofts" );
 
@@ -578,7 +578,7 @@ void testNoTVerticesAgainstANeighbour() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "the unevenly sampled ribbon triangulates" );
 
@@ -716,7 +716,7 @@ void testFarFromOriginKnotDomain() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   printf( "  built=%d, triangles %zu, expected %zu\n",
           (int)built, mesh.triangles.size(), boundaryCount - 2 );
@@ -833,7 +833,7 @@ void testUnevenlySampledRibbonStaysInsideItsTrim() {
     conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
     const bool built =
-      conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+      conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
     check( built, "the unevenly sampled ribbon lofts" );
 
@@ -981,7 +981,7 @@ void testOverlapBelowTheAreaGateIsStillCaught() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   // Stated as a check rather than an early return: if this fixture ever stops
   // lofting, the census below silently stops running and the test goes quiet
@@ -1118,7 +1118,7 @@ void testCappedRibbonDecomposesAndLofts() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "a ribbon with a non-monotone cap lofts" );
 
@@ -1289,7 +1289,7 @@ void testSharedDiagonalsPairExactlyTwice() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( built, "the capped ribbon lofts, so there is a composition to check" );
 
@@ -1512,11 +1512,226 @@ void testOscillatingBoundaryIsRefusedByTheSeedComparison() {
   conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
 
   const bool built =
-    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, nullptr );
 
   check( !built, "an oscillating chart is refused" );
   check( mesh.triangles.size() == before,
          "and the mesh is left untouched for the ear-clipper" );
+}
+
+/**
+ * A LONG BOUNDARY EDGE MUST NOT DECIDE THE SEED COMPARISON.
+ *
+ * The gate compares the decomposed seed's worst chord against the
+ * ear-clipper's. A boundary edge is in BOTH seeds, identical, and neither
+ * triangulator can change it - so if one boundary edge is longer than every
+ * chord either seed introduces, both maxima are that same edge, the ratio is
+ * exactly 1, and the decomposition is refused for a difference it was never
+ * allowed to make.
+ *
+ * That is not hypothetical: on this fixture the all-edge ratio is exactly
+ * 1.0000 and the interior-only ratio is 0.826, so the whole verdict is decided
+ * by which edges the comparison counts. A sparsely sampled leg is enough to
+ * produce it (codex on conway-geom#201).
+ *
+ * Red-proven by counting boundary edges in the comparison - dropping the
+ * `onBoundary` skip in tryRibbonLoft's `longestInteriorOf` - which takes the
+ * ratio to 1.0000 and refuses this face.
+ */
+void testALongBoundaryEdgeDoesNotDecideTheComparison() {
+
+  printf( "\n== a long boundary edge does not decide the comparison ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  constexpr size_t DENSE  = 9;
+  constexpr double WIDTH  = 0.8;
+  constexpr double SPAN   = 0.85;
+  constexpr double DIP    = 0.3 / static_cast< double >( DENSE );
+
+  // A densely sampled leg down...
+  for ( size_t at = 0; at <= DENSE; ++at ) {
+
+    mesh.makeVertex( ribbonVertex(
+      0.0, 1.0 - ( static_cast< double >( at ) / static_cast< double >( DENSE ) ) ) );
+  }
+
+  // ...and a SPARSE one back up, whose two segments are the longest edges
+  // anywhere on this boundary. That is what puts an immutable edge at the top
+  // of both seeds' maxima.
+  for ( size_t at = 1; at <= 2; ++at ) {
+    mesh.makeVertex( ribbonVertex(
+      WIDTH, SPAN * static_cast< double >( at ) / 3.0 ) );
+  }
+
+  // A zig-zag cap, so the boundary is not a two-break ribbon and actually
+  // reaches the decomposed branch where the comparison lives.
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.6, 1.0 - DIP ) );
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.3, 1.0 ) );
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.1, 1.0 - DIP ) );
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, boundaryCount );
+
+  check( breaks.size() > 2,
+         "the fixture reaches the decomposed branch, where the gate lives" );
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  std::vector< uint32_t > earClipped;
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, &earClipped );
+
+  check( built,
+         "the decomposition is judged on the chords it chose, so it is taken" );
+
+  if ( !built ) {
+    return;
+  }
+
+  check( mesh.triangles.size() == boundaryCount - 2,
+         "and it tiles the boundary exactly once" );
+
+  // THE PRECONDITION, MEASURED RATHER THAN ASSERTED IN THE ABSTRACT: compute
+  // the comparison both ways over the two seeds this face actually produced.
+  // Counting boundary edges makes the two maxima the same immutable edge and
+  // the ratio 1; counting only the chords each triangulator chose separates
+  // them. Without this the test would pass on a fixture where the boundary
+  // edge never mattered, and would prove nothing.
+  const auto worstChord =
+    [ & ]( const std::vector< std::array< uint32_t, 3 > >& triangles,
+           bool                                            interiorOnly ) {
+
+      double worst = 0.0;
+
+      for ( const std::array< uint32_t, 3 >& triangle : triangles ) {
+        for ( size_t at = 0; at < 3; ++at ) {
+
+          const uint32_t from = triangle[ at ];
+          const uint32_t to   = triangle[ ( at + 1 ) % 3 ];
+
+          const bool onBoundary =
+            ( ( from + 1 ) % boundaryCount == to ) ||
+            ( ( to + 1 ) % boundaryCount == from );
+
+          if ( interiorOnly && onBoundary ) {
+            continue;
+          }
+
+          worst = std::max( worst,
+                            glm::distance( mesh.vertices[ from ].point,
+                                           mesh.vertices[ to ].point ) );
+        }
+      }
+
+      return worst;
+    };
+
+  std::vector< std::array< uint32_t, 3 > > decomposed;
+
+  for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+    decomposed.push_back( { triangle.vertices[ 0 ],
+                            triangle.vertices[ 1 ],
+                            triangle.vertices[ 2 ] } );
+  }
+
+  std::vector< std::array< uint32_t, 3 > > ears;
+
+  for ( size_t at = 0; at + 2 < earClipped.size(); at += 3 ) {
+    ears.push_back( { earClipped[ at ],
+                      earClipped[ at + 1 ],
+                      earClipped[ at + 2 ] } );
+  }
+
+  const double allEdges =
+    worstChord( decomposed, false ) / worstChord( ears, false );
+  const double interiorOnly =
+    worstChord( decomposed, true ) / worstChord( ears, true );
+
+  printf( "  ratio counting every edge %.4f, counting only chords %.4f\n",
+          allEdges, interiorOnly );
+
+  check( allEdges >= 0.9,
+         "counting boundary edges would have refused this face" );
+  check( interiorOnly < 0.9,
+         "and counting only the chords each seed chose admits it" );
+}
+
+/**
+ * THE COMPARISON'S EAR-CLIPPED SEED IS HANDED BACK, so the caller never clips
+ * the same polygon twice.
+ *
+ * The comparison has to ear-clip the boundary to have something to compare
+ * against, and it does so BEFORE it reaches a verdict - so the seed is
+ * available whichever way the verdict goes. Until it was carried across, a
+ * face that reached the comparison and was refused paid two complete
+ * ear-clipping passes, the gate's and then the caller's, and the pull request
+ * claimed the comparison was free on exactly those faces
+ * (codex on conway-geom#201).
+ *
+ * Asserted as identity, not merely as non-empty: the seed is clipped from the
+ * same polygon the caller would clip, so it must match index for index, or
+ * reusing it would quietly change what every ear-clipped face ships.
+ *
+ * Red-proven by not filling the out-parameter: the seed comes back empty.
+ */
+void testTheComparisonHandsBackItsEarClippedSeed() {
+
+  printf( "\n== the comparison hands back its ear-clipped seed ==\n" );
+
+  // The same fixture as the test above, which is the one that reaches the
+  // comparison. A boundary refused EARLIER - by a piece that will not sweep,
+  // as the oscillating fixture is - never ear-clips here at all, and so has no
+  // seed to hand back and never paid twice.
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  constexpr size_t DENSE = 9;
+  constexpr double WIDTH = 0.8;
+  constexpr double SPAN  = 0.85;
+  constexpr double DIP   = 0.3 / static_cast< double >( DENSE );
+
+  for ( size_t at = 0; at <= DENSE; ++at ) {
+
+    mesh.makeVertex( ribbonVertex(
+      0.0, 1.0 - ( static_cast< double >( at ) / static_cast< double >( DENSE ) ) ) );
+  }
+
+  for ( size_t at = 1; at <= 2; ++at ) {
+    mesh.makeVertex( ribbonVertex(
+      WIDTH, SPAN * static_cast< double >( at ) / 3.0 ) );
+  }
+
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.6, 1.0 - DIP ) );
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.3, 1.0 ) );
+  mesh.makeVertex( ribbonVertex( WIDTH * 0.1, 1.0 - DIP ) );
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  std::vector< uint32_t > handedBack;
+
+  conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount, &handedBack );
+
+  printf( "  seed handed back: %zu indices, expected %zu\n",
+          handedBack.size(), ( boundaryCount - 2 ) * 3 );
+
+  check( handedBack.size() == ( boundaryCount - 2 ) * 3,
+         "the comparison hands back a complete ear-clipped seed" );
+
+  std::vector< std::vector< std::array< double, 2 > > > outline( 1 );
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+    outline[ 0 ].push_back(
+      { mesh.vertices[ at ].uv.x, mesh.vertices[ at ].uv.y } );
+  }
+
+  const std::vector< uint32_t > callers = mapbox::earcut< uint32_t >( outline );
+
+  check( handedBack == callers,
+         "and it is identical to what the caller would have clipped" );
 }
 
 }  // namespace
@@ -1536,6 +1751,8 @@ int main() {
   testCappedRibbonDecomposesAndLofts();
   testSharedDiagonalsPairExactlyTwice();
   testOscillatingBoundaryIsRefusedByTheSeedComparison();
+  testALongBoundaryEdgeDoesNotDecideTheComparison();
+  testTheComparisonHandsBackItsEarClippedSeed();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
