@@ -507,6 +507,14 @@ void* __wrap_realloc(void* ptr, size_t size) {
   //     REALLOC_ZERO_BYTES_FREES is left undefined there, so it reallocs down
   //     to a minimum chunk and returns non-null. Only the native harness
   //     reaches this branch.
+  //
+  // One known imprecision, recorded rather than branched around: the
+  // size-zero form falls through to `onAlloc(out)` with out == null, so it is
+  // booked as one failed allocation ATTEMPT on top of the free. That is
+  // defensible -- it was an allocation call that yielded no block -- and the
+  // alternative, skipping onAlloc entirely, would put a call back outside the
+  // denominator, which is the defect this pair of wrappers was just fixed for.
+  // Unreachable in the wasm build, and the form is deprecated in C23.
   if (out == nullptr && ptr != nullptr && size != 0) {
     // Counts the attempt and its failure, and touches nothing else.
     onAlloc(out);
