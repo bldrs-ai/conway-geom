@@ -285,6 +285,83 @@ struct Geometry {
     }
   }
 
+  /**
+   * Mirror a winding reversal of one triangle in `corner_normals`: corners 0
+   * and 2 swap, and every corner's normal is negated.
+   *
+   * Both halves are needed and they are independent. The swap keeps a normal
+   * with the corner it belongs to; the negation is what makes the face's
+   * shading follow its new outward direction. Reify() prefers the analytic
+   * vector over the face normal, so a reversal that flipped only the winding
+   * would shade the face inside-out (bldrs-ai/conway#667).
+   *
+   * NOT to be used for a mirroring transform: there the normal matrix
+   * (inverse transpose) has already flipped the normals relative to the
+   * winding, so ApplyTransform's corner swap alone is the whole correction —
+   * negating as well would undo it.
+   *
+   * @param index Triangle whose winding was reversed.
+   */
+  void ReverseCornerNormals( uint32_t index ) {
+
+    if ( corner_normals.empty() ) {
+
+      return;
+    }
+
+    uint32_t base = index * 3;
+
+    std::swap( corner_normals[ base ], corner_normals[ base + 2 ] );
+
+    corner_normals[ base     ] = -corner_normals[ base     ];
+    corner_normals[ base + 1 ] = -corner_normals[ base + 1 ];
+    corner_normals[ base + 2 ] = -corner_normals[ base + 2 ];
+  }
+
+  /**
+   * Drop every triangle from `triangleCount` on, keeping `corner_normals` in
+   * step. A no-op when the list is already that short or shorter.
+   *
+   * This is the all-or-nothing rollback a face triangulator that throws needs
+   * (ConwayGeometryProcessor's rollbackFace). It exists as a method rather
+   * than a bare `triangles.resize()` at the call site precisely because the
+   * bare resize is what left the corner normals long: the stale tail slots are
+   * then reused by the NEXT face's triangles, so a fallback-only face inherits
+   * the failed face's analytic normals (bldrs-ai/conway#667).
+   *
+   * @param triangleCount Number of triangles to keep.
+   */
+  void TruncateTriangles( size_t triangleCount ) {
+
+    if ( triangles.size() <= triangleCount ) {
+
+      return;
+    }
+
+    triangles.resize( triangleCount );
+
+    SyncCornerNormalsToTriangles();
+  }
+
+  /**
+   * Restore the 3-per-triangle invariant after the triangle list has been
+   * truncated by something other than DeleteTriangle — today, the per-face
+   * rollback in ConwayGeometryProcessor.
+   *
+   * Truncation only; a caller that GREW the triangle list without going
+   * through MakeTriangle would leave the tail zeroed here, which reads as
+   * "fall back", not as a wrong normal.
+   */
+  void SyncCornerNormalsToTriangles() {
+
+    if ( corner_normals.empty() ) {
+
+      return;
+    }
+
+    corner_normals.resize( triangles.size() * 3, glm::vec3( 0.0f ) );
+  }
+
   void MoveCornerNormals( uint32_t from, uint32_t to ) {
 
     if ( corner_normals.empty() ) {
@@ -301,6 +378,15 @@ struct Geometry {
   uint32_t MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex );
 
   void Reify( const glm::dvec3& offset = glm::dvec3( 0 ) );
+
+  /**
+   * The reified vertex stream, interleaved [px, py, pz, nx, ny, nz] per
+   * emitted vertex — the same buffer GetVertexData() hands to wasm as a raw
+   * address, typed. Reify() first if you need it current; this does not.
+   *
+   * @return The stream, empty when the geometry has not been reified.
+   */
+  const std::vector< float >& GetVertexStream() const { return floatVertexData_; }
 
   void ClearReification() {
 
@@ -438,10 +524,7 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
 
   triangles.pop_back();
 
-  if ( !corner_normals.empty() ) {
-
-    corner_normals.resize( triangles.size() * 3 );
-  }
+  SyncCornerNormalsToTriangles();
 
   if ( bvh.has_value() ) {
 

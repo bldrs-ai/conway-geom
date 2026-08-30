@@ -657,9 +657,13 @@ namespace {
     size_t    vertexCount,
     size_t    triangleCount ) {
 
-    if ( geometry.triangles.size() > triangleCount ) {
-      geometry.triangles.resize( triangleCount );
-    }
+    // Truncates the analytic corner normals with the triangles. A bare
+    // `triangles.resize()` here would leave them long, and the stale tail slots
+    // are then reused by the NEXT face's MakeTriangle calls — which append
+    // zeros at the physical end, past the live range — so a later
+    // fallback-only face would silently inherit the failed face's normals
+    // (bldrs-ai/conway#667).
+    geometry.TruncateTriangles( triangleCount );
 
     if ( geometry.vertices.size() > vertexCount ) {
       geometry.vertices.resize( vertexCount );
@@ -1498,7 +1502,10 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     bool hasFirstPoint = false;
 
-    glm::dvec3 positionBias;
+    // Zero-initialized: a collection whose components hold no reified points
+    // leaves `hasFirstPoint` false, and the draco branch below reads the bias
+    // unconditionally.
+    glm::dvec3 positionBias( 0.0 );
 
     for (conway::geometry::GeometryCollection &geom : geoms) {
 
@@ -1540,193 +1547,11 @@ ConwayGeometryProcessor::GeometryToGltf(
           dracoMeshCompression;
 
       int32_t pos_att_id = -1;
+      int32_t norm_att_id = -1;
       // this internally populates the vertex float array, current storage type
       // is double
       // geom.GetVertexData();
 
-      if (outputDraco) {
-        dracoMesh.reset(new draco::Mesh());
-
-        // set the number of positions and faces
-        uint32_t numPositions = 0;
-        uint32_t numFaces = 0;
-
-        for ( conway::geometry::Geometry *componentPtr : geom.components ) {
-
-          conway::geometry::Geometry &component = *componentPtr;
-
-          numPositions += component.vertices.size();
-          numFaces     += component.triangles.size();
-        }
-
-        uint32_t numIndices = numFaces * 3;
-
-        if (numFaces > 0) {
-          // set number of faces
-          dracoMesh->SetNumFaces(numFaces);
-
-          // set number of indices
-          dracoMesh->set_num_points(numIndices);
-        }
-
-        // Add attributes if they are present in the input data.
-        if (numPositions > 0) {
-          draco::GeometryAttribute va;
-
-          va.set_unique_id(uniqueIdDraco++);
-
-          va.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
-                  draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
-          pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
-        }
-
-        // populate position attribute
-
-        uint32_t vertexCount = 0;
-        uint32_t totalPoints = 0;
-        uint32_t totalIndices = 0;
-
-        // populate geometry components position attribute
-        for (uint32_t geometryComponentIndex = 0;
-             geometryComponentIndex < geom.components.size();
-             ++geometryComponentIndex) {
-          Geometry &component = *geom.components[geometryComponentIndex];
-          glm::dmat4 geomTransform =
-              transform * geom.transforms[geometryComponentIndex];
-
-          for ( const glm::dvec3 *where = component.vertices.data(),
-                            *end = where + component.vertices.size();
-               where < end; ++where ) {
-            glm::dvec3 t = glm::dvec3(
-                geomTransform * glm::dvec4( *where, 1) );
-
-            if ( !hasFirstPoint ) {
-
-              hasFirstPoint = true;
-              positionBias = t;
-            }
-
-            t = t - positionBias;
-
-            float vertexVal[3] = {static_cast<float>(t.x),
-                                  static_cast<float>(t.y),
-                                  static_cast<float>(t.z)};
-
-            dracoMesh->attribute( pos_att_id )
-                ->SetAttributeValue( draco::AttributeValueIndex( vertexCount++ ),
-                                    vertexVal );
-          }
-
-          const Triangle *triangles = component.triangles.data();
-
-          // no textures, just map vertices to face indices
-          for (
-            size_t triangleIndex = 0, end = component.triangles.size();
-            triangleIndex < end; 
-            ++triangleIndex ) {
-
-            const Triangle& triangle = triangles[ triangleIndex ];
-
-            uint32_t triangle0 = triangle.vertices[ 0 ] + totalPoints;
-            uint32_t triangle1 = triangle.vertices[ 1 ] + totalPoints;
-            uint32_t triangle2 = triangle.vertices[ 2 ] + totalPoints;
-
-            uint32_t compositeIndiceIndex = totalIndices + triangleIndex * 3;
-
-            const draco::PointIndex vert_id_0(compositeIndiceIndex);
-            const draco::PointIndex vert_id_1(compositeIndiceIndex + 1);
-            const draco::PointIndex vert_id_2(compositeIndiceIndex + 2);
-
-            // map vertex to face index
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_0,
-                                   draco::AttributeValueIndex(triangle0));
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_1,
-                                   draco::AttributeValueIndex(triangle1));
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_2,
-                                   draco::AttributeValueIndex(triangle2));
-          }
-
-          totalIndices += static_cast< uint32_t >( component.triangles.size() * 3 );
-          totalPoints  += static_cast< uint32_t >( component.vertices.size() );
-        }
-
-        // Add faces with identity mapping between vertex and corner indices.
-        // Duplicate vertices will get removed below.
-        draco::Mesh::Face face;
-
-        for (draco::FaceIndex i(0); i < numFaces; ++i) {
-          for (int c = 0; c < 3; ++c) {
-            face[c] = 3 * i.value() + c;
-          }
-          dracoMesh->SetFace(i, face);
-        }
-
-#ifdef DRACO_ATTRIBUTE_VALUES_DEDUPLICATION_SUPPORTED
-        if (dracoOptions.deduplicateInputValues) {
-          dracoMesh->DeduplicateAttributeValues();
-        }
-#endif
-
-#ifdef DRACO_ATTRIBUTE_INDICES_DEDUPLICATION_SUPPORTED
-        dracoMesh->DeduplicatePointIds();
-#endif
-
-        // Convert compression level to speed (that 0 = slowest, 10 = fastest).
-        const int32_t dracoCompressionSpeed =
-            10 - dracoOptions.compressionLevel;
-
-        // Setup encoder options.
-        if (dracoOptions.posQuantizationBits > 0) {
-          encoder.SetAttributeQuantization(
-              draco::GeometryAttribute::POSITION,
-              14);  // dracoOptions.posQuantizationBits );
-        }
-
-        if (dracoOptions.texCoordsQuantizationBits > 0) {
-          encoder.SetAttributeQuantization(
-              draco::GeometryAttribute::TEX_COORD,
-              8);  // dracoOptions.texCoordsQuantizationBits );
-        }
-
-        if (dracoOptions.normalsQuantizationBits > 0) {
-          encoder.SetAttributeQuantization(
-              draco::GeometryAttribute::NORMAL,
-              8);  // dracoOptions.normalsQuantizationBits );
-        }
-
-        if (dracoOptions.genericQuantizationBits > 0) {
-          encoder.SetAttributeQuantization(
-              draco::GeometryAttribute::GENERIC,
-              8);  // dracoOptions.genericQuantizationBits );
-        }
-
-        encoder.SetSpeedOptions(dracoCompressionSpeed, dracoCompressionSpeed);
-
-        expert_encoder.reset(new draco::ExpertEncoder(*dracoMesh));
-
-        expert_encoder->Reset(encoder.CreateExpertEncoderOptions(*dracoMesh));
-        // set up timer
-        draco::CycleTimer timer;
-
-        timer.Start();
-
-        const draco::Status status = expert_encoder->EncodeToBuffer(&buffer);
-
-        timer.Stop();
-
-        if (!status.ok()) {
-          Logger::logError("Failed to encode the mesh: %s\n", status.error_msg());
-          results.success = false;
-          return results;
-        }
-
-        if (outputFile) {
-          Logger::logInfo("Encoded To Draco in %lld ms\n", timer.GetInMs());
-        }
-      }
 
       std::string accessorIdIndices;
       std::string accessorIdPositions;
@@ -1858,16 +1683,187 @@ ConwayGeometryProcessor::GeometryToGltf(
         maxValues[j] = std::max(positions[i], maxValues[j]);
       }
 
+      /*
+       * Draco encoding, from the SAME reified positions and normals the
+       * uncompressed branch writes.
+       *
+       * It used to run before this point and build its mesh from the raw
+       * `vertices` / `triangles` arrays with a POSITION attribute and nothing
+       * else, so a compressed GLB carried no normals at all and stayed
+       * flat-shaded — the #667 defect this change exists to fix, surviving in
+       * the one output path that skipped the new accessors. Moving it down
+       * here is what lets it share the arrays rather than re-derive them, and
+       * the normals ride along for the cost of one more attribute.
+       *
+       * Positions are biased by the first point seen, as before: draco
+       * quantizes POSITION to 14 bits over the attribute's own range, so a
+       * model placed far from the origin would otherwise spend most of that
+       * range on the offset.
+       */
+      if (outputDraco) {
+
+        dracoMesh.reset(new draco::Mesh());
+
+        uint32_t numFaces = static_cast< uint32_t >( indexData.size() / 3 );
+
+        if (numFaces > 0) {
+          dracoMesh->SetNumFaces(numFaces);
+          dracoMesh->set_num_points(numFaces * 3);
+        }
+
+        if (numPoints > 0) {
+          draco::GeometryAttribute positionAttribute;
+
+          positionAttribute.set_unique_id(uniqueIdDraco++);
+
+          positionAttribute.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
+                  draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
+          pos_att_id = dracoMesh->AddAttribute(positionAttribute, false, numPoints);
+
+          draco::GeometryAttribute normalAttribute;
+
+          normalAttribute.set_unique_id(uniqueIdDraco++);
+
+          normalAttribute.Init(draco::GeometryAttribute::NORMAL, nullptr, 3,
+                  draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
+          norm_att_id = dracoMesh->AddAttribute(normalAttribute, false, numPoints);
+        }
+
+        for (uint32_t vertex = 0; vertex < numPoints; ++vertex) {
+
+          float positionValue[3] = {
+              positions[vertex * 3] - static_cast<float>(positionBias.x),
+              positions[vertex * 3 + 1] - static_cast<float>(positionBias.y),
+              positions[vertex * 3 + 2] - static_cast<float>(positionBias.z)};
+
+          dracoMesh->attribute(pos_att_id)
+              ->SetAttributeValue(draco::AttributeValueIndex(vertex), positionValue);
+
+          float normalValue[3] = {
+              normals[vertex * 3], normals[vertex * 3 + 1], normals[vertex * 3 + 2]};
+
+          dracoMesh->attribute(norm_att_id)
+              ->SetAttributeValue(draco::AttributeValueIndex(vertex), normalValue);
+        }
+
+        // One point per CORNER, mapped to the vertex the index names — the
+        // same identity face mapping as before, now applied to both attributes
+        // so a corner reads its own normal rather than none.
+        for (uint32_t corner = 0, end = numFaces * 3; corner < end; ++corner) {
+
+          const draco::PointIndex pointIndex(corner);
+          const draco::AttributeValueIndex valueIndex(indexData[corner]);
+
+          dracoMesh->attribute(pos_att_id)->SetPointMapEntry(pointIndex, valueIndex);
+          dracoMesh->attribute(norm_att_id)->SetPointMapEntry(pointIndex, valueIndex);
+        }
+
+        // Add faces with identity mapping between vertex and corner indices.
+        // Duplicate vertices will get removed below.
+        draco::Mesh::Face face;
+
+        for (draco::FaceIndex i(0); i < numFaces; ++i) {
+          for (int c = 0; c < 3; ++c) {
+            face[c] = 3 * i.value() + c;
+          }
+          dracoMesh->SetFace(i, face);
+        }
+
+#ifdef DRACO_ATTRIBUTE_VALUES_DEDUPLICATION_SUPPORTED
+        if (dracoOptions.deduplicateInputValues) {
+          dracoMesh->DeduplicateAttributeValues();
+        }
+#endif
+
+#ifdef DRACO_ATTRIBUTE_INDICES_DEDUPLICATION_SUPPORTED
+        dracoMesh->DeduplicatePointIds();
+#endif
+
+        // Convert compression level to speed (that 0 = slowest, 10 = fastest).
+        const int32_t dracoCompressionSpeed =
+            10 - dracoOptions.compressionLevel;
+
+        // Setup encoder options.
+        if (dracoOptions.posQuantizationBits > 0) {
+          encoder.SetAttributeQuantization(
+              draco::GeometryAttribute::POSITION,
+              14);  // dracoOptions.posQuantizationBits );
+        }
+
+        if (dracoOptions.texCoordsQuantizationBits > 0) {
+          encoder.SetAttributeQuantization(
+              draco::GeometryAttribute::TEX_COORD,
+              8);  // dracoOptions.texCoordsQuantizationBits );
+        }
+
+        if (dracoOptions.normalsQuantizationBits > 0) {
+          encoder.SetAttributeQuantization(
+              draco::GeometryAttribute::NORMAL,
+              8);  // dracoOptions.normalsQuantizationBits );
+        }
+
+        if (dracoOptions.genericQuantizationBits > 0) {
+          encoder.SetAttributeQuantization(
+              draco::GeometryAttribute::GENERIC,
+              8);  // dracoOptions.genericQuantizationBits );
+        }
+
+        encoder.SetSpeedOptions(dracoCompressionSpeed, dracoCompressionSpeed);
+
+        expert_encoder.reset(new draco::ExpertEncoder(*dracoMesh));
+
+        expert_encoder->Reset(encoder.CreateExpertEncoderOptions(*dracoMesh));
+        // set up timer
+        draco::CycleTimer timer;
+
+        timer.Start();
+
+        const draco::Status status = expert_encoder->EncodeToBuffer(&buffer);
+
+        timer.Stop();
+
+        if (!status.ok()) {
+          Logger::logError("Failed to encode the mesh: %s\n", status.error_msg());
+          results.success = false;
+          return results;
+        }
+
+        if (outputFile) {
+          Logger::logInfo("Encoded To Draco in %lld ms\n", timer.GetInMs());
+        }
+      }
+
       if (outputDraco) {
         Microsoft::glTF::Accessor positionsAccessor;
-        positionsAccessor.min = minValues;
-        positionsAccessor.max = maxValues;
+        // Biased to match the values actually encoded above; the bounds are
+        // read as the primitive's own extent, so they have to be in the same
+        // frame as the data or every consumer culls against the wrong box.
+        positionsAccessor.min = {
+            minValues[0] - static_cast<float>(positionBias.x),
+            minValues[1] - static_cast<float>(positionBias.y),
+            minValues[2] - static_cast<float>(positionBias.z)};
+        positionsAccessor.max = {
+            maxValues[0] - static_cast<float>(positionBias.x),
+            maxValues[1] - static_cast<float>(positionBias.y),
+            maxValues[2] - static_cast<float>(positionBias.z)};
         positionsAccessor.count = dracoMesh->num_points();
         positionsAccessor.componentType =
             Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
         positionsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
         dracoMeshCompression.attributes.emplace(
             "POSITION", dracoMesh->attribute(pos_att_id)->unique_id());
+
+        // The compressed half of the #667 fix: without this pair — the
+        // accessor and the extension's attribute declaration — a decoder has
+        // no NORMAL to bind the decoded attribute to, and three.js flat-shades
+        // the primitive exactly as it did before the change.
+        Microsoft::glTF::Accessor normalsAccessor;
+        normalsAccessor.count = positionsAccessor.count;
+        normalsAccessor.componentType =
+            Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
+        normalsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
+        dracoMeshCompression.attributes.emplace(
+            "NORMAL", dracoMesh->attribute(norm_att_id)->unique_id());
 
         Microsoft::glTF::Accessor indicesAccessor;
         indicesAccessor.count = dracoMesh->num_faces() * 3;
@@ -1878,6 +1874,12 @@ ConwayGeometryProcessor::GeometryToGltf(
         accessorIdPositions =
             document.accessors
                 .Append(positionsAccessor,
+                        Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
+                .id;
+
+        accessorIdNormals =
+            document.accessors
+                .Append(normalsAccessor,
                         Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
                 .id;
 
@@ -1986,6 +1988,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
+        meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_NORMAL] =
+            accessorIdNormals;
 
         dracoMeshCompression.bufferViewId = bufferView.id;
 
