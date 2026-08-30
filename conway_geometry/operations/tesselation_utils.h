@@ -233,7 +233,140 @@ namespace conway::geometry {
   }
 
   /**
-   * Append a winged edge mesh 
+   * Decide, once for a whole face, whether the analytic surface normal points
+   * along the face's triangle winding or against it.
+   *
+   * Derived from the mesh rather than from `same_sense` because the two append
+   * overloads reach their final winding by different routes — one negates the
+   * surface normal and flips to agree, the other flips on a CCW test in the
+   * parameter domain — so a shared convention read off the flag would be wrong
+   * for one of them. The winding of the emitted triangles is the authoritative
+   * outward direction by the time this runs, so ask it directly.
+   *
+   * The vote is area-weighted (the cross product is left unnormalized) and
+   * taken over the whole face, which is what makes it robust: a face is one
+   * surface with one orientation, and the sliver triangles along a trimmed
+   * boundary — whose individual winding normals are the unreliable ones this
+   * whole change exists to stop trusting — carry almost no weight.
+   *
+   * @param mesh The tesselated mesh, with final winding.
+   * @param positionOf Maps a mesh vertex to its position.
+   * @param vertexNormals Per-mesh-vertex surface normals, from
+   *   evaluateVertexNormals().
+   * @return +1.0 when the surface normal agrees with the winding, else -1.0.
+   */
+  template< typename VertexType, typename PositionFunction >
+  inline double analyticNormalSign(
+    const WingedEdgeMesh< VertexType >& mesh,
+    PositionFunction&& positionOf,
+    const std::vector< glm::dvec3 >& vertexNormals ) {
+
+    double agreement = 0.0;
+
+    for ( const ConnectedTriangle& triangle : mesh.triangles ) {
+
+      uint32_t i0 = triangle.vertices[ 0 ];
+      uint32_t i1 = triangle.vertices[ 1 ];
+      uint32_t i2 = triangle.vertices[ 2 ];
+
+      const glm::dvec3& p0 = positionOf( mesh.vertices[ i0 ] );
+      const glm::dvec3& p1 = positionOf( mesh.vertices[ i1 ] );
+      const glm::dvec3& p2 = positionOf( mesh.vertices[ i2 ] );
+
+      glm::dvec3 winding = glm::cross( p1 - p0, p2 - p0 );
+
+      // Summed at the corners rather than evaluated once at the centroid: a
+      // centroid can fall on the axis of a cylinder or cone, where the normal
+      // is undefined, even when all three corners are well away from it.
+      glm::dvec3 outward =
+        vertexNormals[ i0 ] + vertexNormals[ i1 ] + vertexNormals[ i2 ];
+
+      double contribution = glm::dot( winding, outward );
+
+      if ( std::isfinite( contribution ) ) {
+
+        agreement += contribution;
+      }
+    }
+
+    return agreement < 0.0 ? -1.0 : 1.0;
+  }
+
+  /**
+   * Evaluate the analytic surface normal once per MESH VERTEX.
+   *
+   * Corners that share a mesh vertex share its position and parameters, so they
+   * share its surface normal exactly — this is a cache, not an approximation.
+   * Evaluating per corner instead costs about six times as much (the average
+   * vertex valence), which on B-spline faces is the difference between a cheap
+   * change and a 3.4x geometry-time regression: tinynurbs::surfaceNormal builds
+   * a full derivative array and has none of the fast paths point() has.
+   *
+   * @param mesh The tesselated mesh.
+   * @param normalOf Maps a mesh vertex to its outward surface normal.
+   * @return One normal per mesh vertex, zero where undefined.
+   */
+  template< typename VertexType, typename NormalFunction >
+  inline std::vector< glm::dvec3 > evaluateVertexNormals(
+    const WingedEdgeMesh< VertexType >& mesh,
+    NormalFunction&& normalOf ) {
+
+    std::vector< glm::dvec3 > normals;
+
+    normals.reserve( mesh.vertices.size() );
+
+    for ( const VertexType& vertex : mesh.vertices ) {
+
+      glm::dvec3 normal = normalOf( vertex );
+
+      double length = glm::length( normal );
+
+      // A pole, an apex, or a collapsed B-spline row: no usable normal. Stored
+      // as zero so both consumers below read it as "fall back".
+      normals.push_back(
+        ( !std::isfinite( length ) || length < DBL_EPSILON ) ?
+          glm::dvec3( 0.0 ) : normal / length );
+    }
+
+    return normals;
+  }
+
+  /**
+   * Evaluate and store the analytic surface normal at each corner of one
+   * triangle, oriented to match the face's sense.
+   *
+   * A point where the normal is undefined — a cone apex, a sphere pole, the
+   * axis of a surface of revolution — yields a zero or non-finite vector.
+   * Those corners are left at zero, which Reify() reads as "fall back to the
+   * face normal", rather than being normalized into a NaN that would poison the
+   * whole smoothing group.
+   *
+   * @param geometry Destination geometry.
+   * @param triangleIndex Triangle whose corners are being recorded.
+   * @param vertexNormals Per-mesh-vertex normals from evaluateVertexNormals().
+   * @param i0 Mesh vertex index at corner 0.
+   * @param i1 Mesh vertex index at corner 1.
+   * @param i2 Mesh vertex index at corner 2.
+   * @param sign +1 or -1, from analyticNormalSign() for the whole face.
+   */
+  inline void recordCornerNormals(
+    Geometry& geometry,
+    uint32_t  triangleIndex,
+    const std::vector< glm::dvec3 >& vertexNormals,
+    uint32_t i0,
+    uint32_t i1,
+    uint32_t i2,
+    double sign ) {
+
+    geometry.SetCornerNormals(
+      triangleIndex,
+      glm::vec3( vertexNormals[ i0 ] * sign ),
+      glm::vec3( vertexNormals[ i1 ] * sign ),
+      glm::vec3( vertexNormals[ i2 ] * sign ) );
+  }
+
+  /**
+   * Append a winged edge mesh
    */
   inline void appendMeshToGeometry( WingedEdgeMesh< ParameterVertex >& mesh, Geometry& geometry, bool sameSense ) {
 
@@ -263,12 +396,88 @@ namespace conway::geometry {
       geometry.MakeVertex( mesh.vertices[ vertexIndex ].point );
     }
 
-    for ( const ConnectedTriangle& triangle : mesh.triangles ) {   
+    for ( const ConnectedTriangle& triangle : mesh.triangles ) {
 
       geometry.MakeTriangle(
         baseVertex + triangle.vertices[ 0 ],
         baseVertex + triangle.vertices[ 1 ],
         baseVertex + triangle.vertices[ 2 ] );
+    }
+  }
+
+  /**
+   * UV-parameterized append that also records the analytic normal per corner.
+   *
+   * Same body as the three-argument overload above — the winding decision is
+   * unchanged — with the shading normals captured in the second pass, after the
+   * corner order is final. Split as an overload rather than a default argument
+   * so the callers that have no surface normal to give keep byte-identical
+   * output (bldrs-ai/conway#667).
+   *
+   * Takes the normal per VERTEX rather than per point, because a B-spline's
+   * normal is a function of (u, v) and only the vertex carries that; the
+   * quadric surfaces just read `.point` and ignore the parameters.
+   *
+   * @param mesh The tesselated mesh.
+   * @param geometry Destination geometry.
+   * @param sameSense The face's same_sense flag.
+   * @param normalOf Maps a ParameterVertex to its outward surface normal.
+   */
+  template< typename NormalFunction >
+  inline void appendMeshToGeometry(
+    WingedEdgeMesh< ParameterVertex >& mesh,
+    Geometry& geometry,
+    bool sameSense,
+    NormalFunction&& normalOf ) {
+
+    uint32_t baseVertex = geometry.vertices.size();
+
+    for ( ConnectedTriangle& triangle : mesh.triangles ) {
+
+      uint32_t v0 = triangle.vertices[ 0 ];
+      uint32_t v1 = triangle.vertices[ 1 ];
+      uint32_t v2 = triangle.vertices[ 2 ];
+
+      if ( ( !isCCW(
+        mesh.vertices[ v0 ],
+        mesh.vertices[ v1 ],
+        mesh.vertices[ v2 ] ) ) != sameSense ) {
+
+        std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
+        std::swap( triangle.edges[ 0 ], triangle.edges[ 2 ] );
+      }
+    }
+
+    for ( size_t vertexIndex = 0, end = mesh.vertices.size(); vertexIndex < end; ++vertexIndex ) {
+
+      geometry.MakeVertex( mesh.vertices[ vertexIndex ].point );
+    }
+
+    auto positionOf = []( const ParameterVertex& vertex ) -> const glm::dvec3& {
+
+      return vertex.point;
+    };
+
+    std::vector< glm::dvec3 > vertexNormals =
+      evaluateVertexNormals( mesh, normalOf );
+
+    double sign = analyticNormalSign( mesh, positionOf, vertexNormals );
+
+    for ( const ConnectedTriangle& triangle : mesh.triangles ) {
+
+      uint32_t triangleIndex = geometry.MakeTriangle(
+        baseVertex + triangle.vertices[ 0 ],
+        baseVertex + triangle.vertices[ 1 ],
+        baseVertex + triangle.vertices[ 2 ] );
+
+      recordCornerNormals(
+        geometry,
+        triangleIndex,
+        vertexNormals,
+        triangle.vertices[ 0 ],
+        triangle.vertices[ 1 ],
+        triangle.vertices[ 2 ],
+        sign );
     }
   }
 
@@ -348,6 +557,12 @@ namespace conway::geometry {
       mesh.vertices.begin(),
       mesh.vertices.end() );
 
+    // Vertices here ARE positions, so the winding function applies unchanged.
+    // Evaluated once per vertex, not once per corner — see
+    // evaluateVertexNormals for why that matters.
+    std::vector< glm::dvec3 > vertexNormals =
+      evaluateVertexNormals( mesh, normalAt );
+
     for ( const ConnectedTriangle& triangle : mesh.triangles ) {
 
       uint32_t v0 = triangle.vertices[ 0 ];
@@ -377,10 +592,25 @@ namespace conway::geometry {
         std::swap( v0, v2 );
       }
 
-      geometry.MakeTriangle(
+      uint32_t triangleIndex = geometry.MakeTriangle(
         baseVertex + v0,
         baseVertex + v1,
         baseVertex + v2 );
+
+      // Record the analytic normal per corner. `outward` above is only the
+      // direction at the centroid, used to pick a winding; shading wants the
+      // normal AT each corner. No analyticNormalSign() vote is needed here,
+      // unlike the UV overload: this loop has just forced every triangle's
+      // winding to agree with `sameSense`-negated `normalAt`, so that same
+      // negation is the shading sign by construction (bldrs-ai/conway#667).
+      recordCornerNormals(
+        geometry,
+        triangleIndex,
+        vertexNormals,
+        v0,
+        v1,
+        v2,
+        sameSense ? 1.0 : -1.0 );
     }
   }
 

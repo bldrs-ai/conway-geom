@@ -36,6 +36,13 @@ void Geometry::ReverseFace( uint32_t index ) {
 
   std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
 
+  // Corner normals are indexed by corner position, so reversing the winding has
+  // to carry them along or corner 0 would read the normal of the old corner 2.
+  if ( !corner_normals.empty() ) {
+
+    std::swap( corner_normals[ index * 3 ], corner_normals[ ( index * 3 ) + 2 ] );
+  }
+
   if ( bvh.has_value() ) {
 
     bvh->clearDipoles();
@@ -48,7 +55,15 @@ void Geometry::ReverseFaces() {
 
     std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
   }
-  
+
+  if ( !corner_normals.empty() ) {
+
+    for ( size_t index = 0, end = triangles.size(); index < end; ++index ) {
+
+      std::swap( corner_normals[ index * 3 ], corner_normals[ ( index * 3 ) + 2 ] );
+    }
+  }
+
   if ( bvh.has_value() ) {
 
     bvh->clearDipoles();
@@ -179,6 +194,51 @@ void Geometry::Reify( const glm::dvec3& offset ) {
 
   double cosineCutoff = cos( SMOOTHING_GROUP_ANGLE );
 
+  bool hasAnalyticNormals = !corner_normals.empty();
+
+  /*
+   * The shading normal for one triangle corner: the analytic surface normal the
+   * tessellator recorded, when there is one, and otherwise the triangle's own
+   * face normal exactly as before.
+   *
+   * This one substitution is the whole of the bldrs-ai/conway#667 fix. The
+   * grouping below is greedy — every candidate is compared against the FIRST
+   * triangle's normal, never against the running average — so its result
+   * depends on triangle order, and a single near-degenerate sliver whose face
+   * normal points anywhere can capture or exclude a whole fan. Along a trimmed
+   * face's boundary row, where the constrained edge forces exactly such
+   * slivers, that produced a normal error that cycled 0..64 degrees once per
+   * trim-polyline segment: the reported "regular, broken dark line". Feeding
+   * the analytic normal in instead removes the guess at the source — a sliver's
+   * SURFACE normal is still correct even when its face normal is garbage, and
+   * every normal within one smooth face agrees to within a rounding error, so
+   * the grouping stops depending on order at all. Creases still split, because
+   * two faces meeting at an edge genuinely disagree by the dihedral angle.
+   *
+   * Note the two return paths differ in magnitude on purpose: the fallback
+   * returns the UNNORMALIZED cross product, so the accumulation below stays
+   * area-weighted and byte-identical to the previous behaviour for every
+   * geometry with no analytic normals. The analytic path returns a unit vector,
+   * giving each contributing corner equal say — which is what we want when a
+   * sliver's area would otherwise erase a correct normal.
+   */
+  auto cornerShadingNormal =
+    [&]( uint32_t triangleIndex, uint32_t vertexInTriangle ) -> glm::dvec3 {
+
+      if ( hasAnalyticNormals ) {
+
+        const glm::vec3& analytic =
+          corner_normals[ ( triangleIndex * 3 ) + vertexInTriangle ];
+
+        if ( analytic.x != 0.0f || analytic.y != 0.0f || analytic.z != 0.0f ) {
+
+          return glm::normalize( glm::dvec3( analytic ) );
+        }
+      }
+
+      return faceNormals[ triangleIndex ];
+    };
+
   // Greedy vertex smoothing.
   for ( uint32_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex ) {
 
@@ -204,8 +264,8 @@ void Geometry::Reify( const glm::dvec3& offset ) {
       floatVertexData_.push_back( static_cast< float >( vertex.y - offset.y ) );
       floatVertexData_.push_back( static_cast< float >( vertex.z - offset.z ) );
 
-      const glm::dvec3& normal     = faceNormals[ triangleIndex ];
-      double            doubleArea = glm::length( normal );
+      glm::dvec3 normal     = cornerShadingNormal( triangleIndex, vertexInTriangle );
+      double     doubleArea = glm::length( normal );
 
       indexData_[ indexDataOffset ] = outputVertexIndex;
 
@@ -236,8 +296,9 @@ void Geometry::Reify( const glm::dvec3& offset ) {
           continue;
         }
 
-        const glm::dvec3& opposingNormal     = faceNormals[ nextTriangleIndex ];
-        double            doubleOpposingArea = glm::length( opposingNormal );
+        glm::dvec3 opposingNormal =
+          cornerShadingNormal( nextTriangleIndex, vertexInNextTriangle );
+        double     doubleOpposingArea = glm::length( opposingNormal );
 
         if ( doubleOpposingArea < DBL_EPSILON || ( doubleOpposingArea * doubleArea ) < DBL_EPSILON ) {
 
@@ -347,7 +408,8 @@ void Geometry::AppendWithTransform(
   const Geometry &geom,
   const glm::dmat4x4& transform ) {
 
-  size_t currentVertexCount = vertices.size();
+  size_t currentVertexCount   = vertices.size();
+  size_t currentTriangleCount = triangles.size();
 
   AppendGeometry( geom );
 
@@ -355,6 +417,8 @@ void Geometry::AppendWithTransform(
 
     *where = transform * glm::dvec4( *where, 1 );
   }
+
+  TransformCornerNormalRange( transform, currentTriangleCount, triangles.size() );
 }
 
 void Geometry::AppendWithScalingTransform(
@@ -372,8 +436,17 @@ void Geometry::AppendWithScalingTransform(
   cleanedUp_ = false;
 
   size_t currentVertexCount = vertices.size();
-  
+
   AppendGeometry( geom );
+
+  // The per-axis scale below is applied in `trans`'s own frame rather than as a
+  // single matrix, so there is no normal matrix to rotate the analytic normals
+  // by. Rather than reconstruct one for a path this rare, drop them and let
+  // Reify() fall back — correctness over coverage (bldrs-ai/conway#667).
+  if ( ( scx != 1 || scy != 1 || scz != 1 ) && !corner_normals.empty() ) {
+
+    ClearCornerNormals();
+  }
 
   if (scx != 1 || scy != 1 || scz != 1) {
 
@@ -399,6 +472,13 @@ void Geometry::AppendWithScalingTransform(
 
 void Geometry::Cleanup( bool forSubtract ) {
 
+  // CSG preparation. The boolean that follows clips triangles and synthesises
+  // new ones along the intersection curve, and those have no face to inherit an
+  // analytic normal from — so a CSG result is a fallback geometry by
+  // construction. Dropping them here rather than after the boolean keeps the
+  // invariant simple: nothing downstream of Cleanup has to reason about
+  // partially-valid normals (bldrs-ai/conway#667).
+  ClearCornerNormals();
 
   {
     conway::AllocTagScope weldTag( conway::AllocSite::VertexWeld );
@@ -461,6 +541,29 @@ void Geometry::AppendGeometry( const Geometry &geom ) {
   vertices.insert( vertices.end(), geom.vertices.begin(), geom.vertices.end() );
 
   size_t maxTriangle = triangles.size();
+
+  // Corner normals have to be merged BEFORE the triangle insert below, because
+  // both sides are sized off their own triangle counts. Either side may be
+  // empty (no analytic normals); the missing side contributes zeros so the
+  // result keeps the 3-per-triangle invariant and the un-normalled half simply
+  // falls back to face normals in Reify().
+  if ( !corner_normals.empty() || !geom.corner_normals.empty() ) {
+
+    corner_normals.resize( maxTriangle * 3, glm::vec3( 0.0f ) );
+
+    if ( geom.corner_normals.empty() ) {
+
+      corner_normals.insert(
+        corner_normals.end(), geom.triangles.size() * 3, glm::vec3( 0.0f ) );
+
+    } else {
+
+      corner_normals.insert(
+        corner_normals.end(),
+        geom.corner_normals.begin(),
+        geom.corner_normals.end() );
+    }
+  }
 
   triangles.insert( triangles.end(), geom.triangles.begin(), geom.triangles.end() );
 
@@ -618,6 +721,11 @@ void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin )
     vertex = ( ( vertex - origin ) * scale ) + origin;
   }
 
+  // A per-axis rescale shears normals unless they are pushed through the
+  // inverse scale; a zero component makes that undefined outright. Not worth
+  // reconstructing here — fall back.
+  ClearCornerNormals();
+
   ClearReification();
 
   if ( bvh.has_value() ) {
@@ -645,11 +753,23 @@ void Geometry::ApplyTransform( const glm::dmat4& transform ) {
     vertex = t;
   }
 
+  TransformCornerNormalRange( transform, 0, triangles.size() );
+
   if ( glm::determinant( transform ) < 0 ) {
 
     for ( Triangle& triangle : triangles ) {
 
       std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
+    }
+
+    // Same corner-order argument as ReverseFace: the winding flip above
+    // renumbers corners 0 and 2, so their normals have to move with them.
+    if ( !corner_normals.empty() ) {
+
+      for ( size_t index = 0, end = triangles.size(); index < end; ++index ) {
+
+        std::swap( corner_normals[ index * 3 ], corner_normals[ ( index * 3 ) + 2 ] );
+      }
     }
 
     if ( hasConnectivity_ ) {

@@ -29,6 +29,15 @@
 
 namespace conway::geometry {
 
+/**
+ * Floats per vertex in the reified vertex stream: interleaved position then
+ * normal, [px, py, pz, nx, ny, nz]. This is a CONTRACT, not an implementation
+ * detail — Share's conway-direct loader reads the same buffer with the same
+ * stride (src/viewer/ifc/flatMeshToBufferGeometry.js), so it cannot change
+ * without changing the viewer in lockstep.
+ */
+constexpr uint32_t VERTEX_STREAM_STRIDE = 6;
+
 double normalDiff( const glm::dvec3& extents ) {
   double a = extents.x;
 
@@ -1721,22 +1730,31 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       std::string accessorIdIndices;
       std::string accessorIdPositions;
+      std::string accessorIdNormals;
       std::string accessorIdUVs;
 
       uint32_t numPoints = 0;
       uint32_t numIndices = 0;
 
+      // Sized from the REIFIED stream, not from `vertices` / `triangles`.
+      // Reify() splits a vertex once per smoothing group, so its vertex count
+      // is the emitted one (~1.8x the welded count on a curved model) and its
+      // index buffer is already rebased onto that split set. Reading the raw
+      // arrays here is what left every primitive POSITION-only, which made
+      // three.js flat-shade the whole model — see bldrs-ai/conway#667.
       for (conway::geometry::Geometry *componentPtr : geom.components) {
         conway::geometry::Geometry &component = *componentPtr;
 
-        numPoints  += static_cast< uint32_t >( component.vertices.size() );
-        numIndices += component.triangles.size() * 3;
+        numPoints  += component.GetVertexDataSize() / VERTEX_STREAM_STRIDE;
+        numIndices += component.GetIndexDataSize();
       }
 
       std::vector<float> positions;
+      std::vector<float> normals;
       std::vector<uint32_t> indexData;
 
       positions.resize( numPoints * 3 );
+      normals.resize( numPoints * 3 );
       indexData.reserve( numIndices );
 
       std::vector<float> minValues( 3U, std::numeric_limits< float >::max() );
@@ -1744,6 +1762,7 @@ ConwayGeometryProcessor::GeometryToGltf(
 
       const size_t positionCount = positions.size();
       float *positionOutputCursor = positions.data();
+      float *normalOutputCursor = normals.data();
 
       uint32_t pointOffset = 0;
       size_t transformCursor = 0;
@@ -1753,13 +1772,29 @@ ConwayGeometryProcessor::GeometryToGltf(
         glm::dmat4 geomTransform =
             transform * geom.transforms[transformCursor++];
 
-        for (const glm::dvec3 *where = component.vertices.data(),
-                              *end   = where + component.vertices.size();
-             where < end;
-             ++where ) {
+        // Normals transform by the inverse transpose, not by the placement
+        // itself; a non-uniform scale would otherwise shear them off the
+        // surface. Singular placements have no normal matrix, so the normals
+        // are zeroed rather than filled with NaN.
+        glm::dmat3 linear( geomTransform );
+        bool singularPlacement =
+            std::abs( glm::determinant( linear ) ) < DBL_EPSILON;
+        glm::dmat3 normalMatrix = singularPlacement ?
+            glm::dmat3( 1.0 ) : glm::transpose( glm::inverse( linear ) );
 
-          glm::dvec3 t =
-              glm::dvec3( geomTransform * glm::dvec4( *where, 1 ) );
+        const float *vertexStream =
+            reinterpret_cast< const float* >(
+                static_cast< size_t >( component.GetVertexData() ) );
+
+        uint32_t componentPoints =
+            component.GetVertexDataSize() / VERTEX_STREAM_STRIDE;
+
+        for ( uint32_t vertex = 0; vertex < componentPoints; ++vertex ) {
+
+          const float *source = vertexStream + ( vertex * VERTEX_STREAM_STRIDE );
+
+          glm::dvec3 t = glm::dvec3( geomTransform * glm::dvec4(
+              source[ 0 ], source[ 1 ], source[ 2 ], 1 ) );
 
           if ( !hasFirstPoint ) {
 
@@ -1772,24 +1807,43 @@ ConwayGeometryProcessor::GeometryToGltf(
           *(positionOutputCursor++) = (float)t.x;
           *(positionOutputCursor++) = (float)t.y;
           *(positionOutputCursor++) = (float)t.z;
+
+          glm::dvec3 n = singularPlacement ? glm::dvec3( 0.0 ) :
+              normalMatrix * glm::dvec3( source[ 3 ], source[ 4 ], source[ 5 ] );
+
+          double nLength = glm::length( n );
+
+          // glTF requires NORMAL to be unit length. A zero or non-finite
+          // normal (degenerate source triangle) would fail validation, so it
+          // is emitted as +Z rather than as NaN.
+          if ( !std::isfinite( nLength ) || nLength < DBL_EPSILON ) {
+
+            *(normalOutputCursor++) = 0.0f;
+            *(normalOutputCursor++) = 0.0f;
+            *(normalOutputCursor++) = 1.0f;
+
+          } else {
+
+            n /= nLength;
+
+            *(normalOutputCursor++) = (float)n.x;
+            *(normalOutputCursor++) = (float)n.y;
+            *(normalOutputCursor++) = (float)n.z;
+          }
         }
 
-        size_t indexDataOffset = indexData.size();
+        const uint32_t *componentIndices =
+            reinterpret_cast< const uint32_t* >(
+                static_cast< size_t >( component.GetIndexData() ) );
 
-        indexData.insert(
-          indexData.end(),
-          &component.triangles[ 0 ].vertices[ 0 ],
-          &component.triangles[ component.triangles.size() ].vertices[ 0 ] );
+        uint32_t componentIndexCount = component.GetIndexDataSize();
 
-        for (uint32_t *where = indexData.data() + indexDataOffset,
-                      *end = indexData.data() + indexData.size();
-             where < end; where += 3) {
-          where[0] += pointOffset;
-          where[1] += pointOffset;
-          where[2] += pointOffset;
+        for ( uint32_t where = 0; where < componentIndexCount; ++where ) {
+
+          indexData.push_back( componentIndices[ where ] + pointOffset );
         }
 
-        pointOffset += component.vertices.size();
+        pointOffset += componentPoints;
       }
 
       // Accessor min/max properties must be set for vertex position data so
@@ -1843,12 +1897,39 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         // // Copy the Accessor's id - subsequent calls to AddAccessor may
         // // invalidate the returned reference
-        accessorIdIndices =
-            bufferBuilder
-                .AddAccessor(indexData,
-                             {Microsoft::glTF::TYPE_SCALAR,
-                              Microsoft::glTF::COMPONENT_UNSIGNED_INT})
-                .id;
+        //
+        // Narrow the index type when the primitive's vertices fit: u16 halves
+        // the index buffer, which is the larger half of a conway GLB (7.35 MB
+        // of 11.05 MB on the model in bldrs-ai/conway#667), and it is pure
+        // profit — no extension, universally supported. Only a primitive above
+        // 65,535 vertices has to stay on u32.
+        if ( numPoints <= std::numeric_limits< uint16_t >::max() ) {
+
+          std::vector< uint16_t > narrowIndices;
+
+          narrowIndices.reserve( indexData.size() );
+
+          for ( uint32_t index : indexData ) {
+
+            narrowIndices.push_back( static_cast< uint16_t >( index ) );
+          }
+
+          accessorIdIndices =
+              bufferBuilder
+                  .AddAccessor(narrowIndices,
+                               {Microsoft::glTF::TYPE_SCALAR,
+                                Microsoft::glTF::COMPONENT_UNSIGNED_SHORT})
+                  .id;
+
+        } else {
+
+          accessorIdIndices =
+              bufferBuilder
+                  .AddAccessor(indexData,
+                               {Microsoft::glTF::TYPE_SCALAR,
+                                Microsoft::glTF::COMPONENT_UNSIGNED_INT})
+                  .id;
+        }
 
         // Create a BufferView with target ARRAY_BUFFER (as it will reference
         // vertex attribute data)
@@ -1862,6 +1943,16 @@ ConwayGeometryProcessor::GeometryToGltf(
                              {Microsoft::glTF::TYPE_VEC3,
                               Microsoft::glTF::COMPONENT_FLOAT, false,
                               std::move(minValues), std::move(maxValues)})
+                .id;
+
+        bufferBuilder.AddBufferView(
+            Microsoft::glTF::BufferViewTarget::ARRAY_BUFFER);
+
+        accessorIdNormals =
+            bufferBuilder
+                .AddAccessor(normals,
+                             {Microsoft::glTF::TYPE_VEC3,
+                              Microsoft::glTF::COMPONENT_FLOAT})
                 .id;
       }
 
@@ -1904,6 +1995,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
+        meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_NORMAL] =
+            accessorIdNormals;
       }
 
       mesh.primitives.push_back(std::move(meshPrimitive));
