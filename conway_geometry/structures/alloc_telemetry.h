@@ -150,19 +150,32 @@ class AllocTagScope {
  *
  *  Two exact identities hold over these fields, and both are asserted there:
  *
- *    cumulativeBytes == ownedBytes  + unownedBytes
- *    ownedBytes      == diedBytes   + escapedBytes
- *    allocCalls      == ownedAllocs + unownedAllocs
+ *    cumulativeBytes == ownedBytes       + unownedBytes
+ *    ownedBytes      == diedBytes        + escapedBytes
+ *    allocCalls      == ownedAllocs      + unownedAllocs
+ *    unownedAllocs   == unownedFullAllocs + unownedNoTableAllocs
+ *    freeCalls       == diedCalls        + foreignFrees
  *
- *  `failedAllocs` sits outside all three: an allocation call that returned
- *  null produced no bytes and no pointer to own, so counting it in
- *  `allocCalls` would inflate a number the byte identities rest on. It is
- *  reported as its own column instead.
+ *  Two counters sit deliberately OUTSIDE all of them, for the same reason:
+ *  each records a call that really happened but that neither moved bytes nor
+ *  produced anything to classify, so folding either in would inflate a number
+ *  the identities rest on.
  *
- *  `unownedBytes` is allocation the ownership table refused (it was full);
- *  such an allocation is still counted in `allocCalls`, `cumulativeBytes` and
- *  the load-wide denominator, but it cannot be lifetime-classified, so it is
- *  reported as its own residual rather than folded into either class. */
+ *    - `failedAllocs` — an allocation call that returned null.
+ *    - `nullFrees` — `free(nullptr)`, which is legal, common, and releases
+ *      nothing. `freeCalls` therefore counts non-null frees only, which is
+ *      what makes the last identity above exact.
+ *
+ *  `unownedBytes` is allocation the ownership table could not take. It is
+ *  still counted in `allocCalls`, `cumulativeBytes` and the load-wide
+ *  denominator, but it cannot be lifetime-classified, so it is a residual
+ *  rather than being folded into `died` or `escaped`. Its two causes are
+ *  reported apart because their remedies are opposite: `unownedFull*` means
+ *  the table hit its capacity and wants a BIGGER
+ *  CONWAY_ALLOC_TELEMETRY_TABLE_BITS, while `unownedNoTable*` means the
+ *  per-thread table could not be allocated at all and wants a SMALLER one (or
+ *  less memory pressure). Counts and the denominator stay valid either way;
+ *  only classification is lost. */
 struct AllocTelemetryKindTotals {
   uint64_t scopes;
   uint64_t allocCalls;
@@ -172,6 +185,10 @@ struct AllocTelemetryKindTotals {
   uint64_t ownedBytes;
   uint64_t unownedAllocs;
   uint64_t unownedBytes;
+  uint64_t unownedFullAllocs;
+  uint64_t unownedFullBytes;
+  uint64_t unownedNoTableAllocs;
+  uint64_t unownedNoTableBytes;
   uint64_t diedCalls;
   uint64_t diedBytes;
   uint64_t maxDiedBytes;
@@ -180,6 +197,7 @@ struct AllocTelemetryKindTotals {
   uint64_t peakBytesTotal;
   uint64_t maxPeakBytes;
   uint64_t freeCalls;
+  uint64_t nullFrees;
   uint64_t freedBytes;
   uint64_t foreignFrees;
   uint64_t foreignBytes;
@@ -203,6 +221,7 @@ struct AllocTelemetryLoadTotals {
   uint64_t allocFailed;
   uint64_t allocBytes;
   uint64_t freeCalls;
+  uint64_t freeNull;
   uint64_t freeBytes;
 };
 
@@ -274,6 +293,10 @@ struct AllocTelemetryKindTotals {
   uint64_t ownedBytes;
   uint64_t unownedAllocs;
   uint64_t unownedBytes;
+  uint64_t unownedFullAllocs;
+  uint64_t unownedFullBytes;
+  uint64_t unownedNoTableAllocs;
+  uint64_t unownedNoTableBytes;
   uint64_t diedCalls;
   uint64_t diedBytes;
   uint64_t maxDiedBytes;
@@ -282,6 +305,7 @@ struct AllocTelemetryKindTotals {
   uint64_t peakBytesTotal;
   uint64_t maxPeakBytes;
   uint64_t freeCalls;
+  uint64_t nullFrees;
   uint64_t freedBytes;
   uint64_t foreignFrees;
   uint64_t foreignBytes;
@@ -299,6 +323,7 @@ struct AllocTelemetryLoadTotals {
   uint64_t allocFailed;
   uint64_t allocBytes;
   uint64_t freeCalls;
+  uint64_t freeNull;
   uint64_t freeBytes;
 };
 

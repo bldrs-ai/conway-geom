@@ -111,6 +111,22 @@ size_t refusedSize() {
 }
 
 /**
+ * A null pointer the optimiser cannot see through.
+ *
+ * `free(NULL)` and `realloc(NULL, n)` are both shapes the compiler knows the
+ * semantics of and is entitled to fold away, which would make the tests below
+ * assert against calls that never reached the wrapper.
+ *
+ * @return {void*} nullptr, opaque to the optimiser.
+ */
+void* nullPointer() {
+
+  void* volatile none = nullptr;
+
+  return none;
+}
+
+/**
  * Sum of the allocator's usable sizes for a run of pointers.
  *
  * The instrument books `malloc_usable_size`, not the requested size, because
@@ -215,6 +231,8 @@ void testDiedAndEscapedPartitionTheScope() {
            "cumulative == died + escaped" );
   checkEq( totals.ownedBytes, totals.diedBytes + totals.escapedBytes,
            "owned == died + escaped" );
+  checkEq( totals.freeCalls, totals.diedCalls + totals.foreignFrees,
+           "freeCalls == died + foreign" );
 
   // Freeing the survivors outside the scope must not reach back into the
   // closed unit's figures.
@@ -431,6 +449,12 @@ void testOverflowIsCountedNotSilent() {
   checkEq( totals.ownedAllocs, TABLE_LOAD_LIMIT, "ownership stopped at the limit" );
   checkEq( totals.unownedAllocs, BLOCKS - TABLE_LOAD_LIMIT,
            "the remainder is reported as unowned" );
+  checkEq( totals.unownedFullAllocs, BLOCKS - TABLE_LOAD_LIMIT,
+           "attributed to the capacity cause" );
+  checkEq( totals.unownedNoTableAllocs, 0,
+           "and not to the table-could-not-be-allocated cause" );
+  checkEq( totals.unownedFullAllocs + totals.unownedNoTableAllocs,
+           totals.unownedAllocs, "the two causes partition the residual" );
   checkEq( totals.cumulativeBytes, allocated,
            "cumulative volume is unaffected by the table" );
   checkEq( totals.ownedBytes + totals.unownedBytes, totals.cumulativeBytes,
@@ -594,6 +618,181 @@ void testFailedReallocKeepsTheOriginalOwned() {
 }
 
 /**
+ * free(nullptr) is a wrapped call, and the census counts it.
+ *
+ * Codex P2 on conway-geom#198, round 2: the free side had the same
+ * successful-operation-only bias P2-1 fixed on the allocation side — the null
+ * test ran before the counters, so a call the API describes as counted was
+ * not. free(nullptr) is legal, common, and a real trip through the wrapper.
+ *
+ * It gets its own term rather than joining `freeCalls`, because `freeCalls ==
+ * diedCalls + foreignFrees` is an exact identity over frees that released
+ * something, and a null free can be neither owned nor foreign. Same shape as
+ * `failedAllocs` on the allocation side.
+ *
+ * Red on a revert: with the null test back in front, every count below is 0.
+ */
+void testNullFreesAreCountedAsCalls() {
+
+  printf( "\n=== free(nullptr) is still a call ===\n" );
+  conway::ResetAllocTelemetry();
+
+  free( nullPointer() );
+  free( nullPointer() );
+
+  const AllocTelemetryLoadTotals unscoped =
+    conway::GetAllocTelemetryLoadTotals();
+
+  checkEq( unscoped.freeCalls, 2, "unscoped null frees reached the census" );
+  checkEq( unscoped.freeNull, 2, "and were recorded as null" );
+  checkEq( unscoped.freeBytes, 0, "with no bytes attributed to them" );
+
+  void* escapee = nullptr;
+  uint64_t diedBytes = 0;
+
+  {
+    AllocTelemetryScope scope( AllocSite::ExtrudeSolid );
+
+    void* dies = malloc( 256 );
+
+    // Read, not just allocated and freed: gcc elides an allocate/free pair
+    // whose pointer is otherwise unused, and it did elide this one — which
+    // showed up as the free census being short by exactly the free that never
+    // happened. Same trap as in the denominator test above.
+    diedBytes = malloc_usable_size( dies );
+
+    escapee = malloc( 256 );
+    free( nullPointer() );
+    free( dies );
+  }
+
+  const AllocTelemetryKindTotals totals =
+    conway::GetAllocTelemetryKindTotals( AllocSite::ExtrudeSolid );
+  const AllocTelemetryLoadTotals load = conway::GetAllocTelemetryLoadTotals();
+
+  checkEq( load.freeCalls, 4, "all four free calls reached the census" );
+  checkEq( load.freeNull, 3, "three of them were null" );
+  checkEq( totals.nullFrees, 1, "the in-scope null free has its own column" );
+  checkEq( totals.freeCalls, 1, "and is not one of the classified frees" );
+  checkEq( totals.freeCalls, totals.diedCalls + totals.foreignFrees,
+           "so freeCalls == died + foreign still holds" );
+  checkEq( totals.diedBytes, diedBytes,
+           "and the one real free is the one that moved bytes" );
+
+  free( escapee );
+}
+
+/**
+ * realloc(nullptr, n) is a malloc, and must not invent a free.
+ *
+ * The mirror of the test above, and the reason `__wrap_realloc` guards its
+ * call into the free accounting instead of relying on the null handling there:
+ * once free(nullptr) counts as a call, routing realloc's null pointer through
+ * the same path would book a free that never happened.
+ */
+void testReallocOfNullIsNotAFree() {
+
+  printf( "\n=== realloc(nullptr, n) is a malloc, not a free ===\n" );
+  conway::ResetAllocTelemetry();
+
+  void* fresh = nullptr;
+
+  {
+    AllocTelemetryScope scope( AllocSite::SweepSolid );
+
+    fresh = realloc( nullPointer(), 256 );
+  }
+
+  const AllocTelemetryKindTotals totals =
+    conway::GetAllocTelemetryKindTotals( AllocSite::SweepSolid );
+  const AllocTelemetryLoadTotals load = conway::GetAllocTelemetryLoadTotals();
+
+  check( fresh != nullptr, "the realloc-as-malloc succeeded" );
+  checkEq( totals.allocCalls, 1, "it counted as one allocation" );
+  checkEq( load.freeCalls, 0, "and no free call was invented" );
+  checkEq( load.freeNull, 0, "not even a null one" );
+  checkEq( totals.nullFrees, 0, "nor in the scope's own column" );
+
+  free( fresh );
+}
+
+/**
+ * When the ownership table cannot be allocated at all, say so — and say the
+ * OPPOSITE thing from "the table filled".
+ *
+ * Codex P2 on conway-geom#198, round 2. Under `-s ABORTING_MALLOC=0` the
+ * table's own `__real_malloc` can return null; every allocation then goes
+ * unowned, and the report used to present that as "table filled — raise
+ * CONWAY_ALLOC_TELEMETRY_TABLE_BITS". That is the wrong remedy and an actively
+ * harmful one: a bigger request is likelier to fail, and no table size
+ * restores classification for a run that could not get one. The two causes are
+ * now counted apart and carry opposite advice.
+ *
+ * WHAT IS PINNED, AND WHAT IS NOT. This test is built from the same source as
+ * the main binary with `CONWAY_ALLOC_TELEMETRY_TABLE_ALLOC_ALWAYS_FAILS`,
+ * which replaces the table's `__real_malloc` call with a null. So the
+ * attribution, the counters, the identities and the report path are all the
+ * production ones and all pinned here. What is NOT pinned is that
+ * `__real_malloc` returns null in the first place — that is reasoned from
+ * `-s ABORTING_MALLOC=0` in genie.lua and from dlmalloc's documented
+ * behaviour, and forcing a genuine 6 MB allocation failure natively would need
+ * an address-space limit this harness does not impose.
+ */
+void testNoTableIsDistinctFromTableFull() {
+
+  printf( "\n=== a table that could not be allocated is its own state ===\n" );
+  conway::ResetAllocTelemetry();
+
+  constexpr size_t BLOCKS = 16;
+
+  void* blocks[ BLOCKS ] = {};
+
+  {
+    AllocTelemetryScope scope( AllocSite::CsgBoolean );
+
+    for ( size_t where = 0; where < BLOCKS; ++where ) {
+      blocks[ where ] = malloc( 128 );
+    }
+
+    // Freed in scope, which under a working table would make every one of
+    // these a died-in-scope allocation. With no table there is nothing to look
+    // them up in, so they are foreign frees -- classification really is
+    // unavailable, which is what the report has to say rather than implying a
+    // table size would fix it.
+    for ( size_t where = 0; where < BLOCKS; ++where ) {
+      free( blocks[ where ] );
+    }
+  }
+
+  const AllocTelemetryKindTotals totals =
+    conway::GetAllocTelemetryKindTotals( AllocSite::CsgBoolean );
+  const AllocTelemetryLoadTotals load = conway::GetAllocTelemetryLoadTotals();
+
+  checkEq( totals.allocCalls, BLOCKS, "every allocation was still counted" );
+  checkEq( totals.ownedAllocs, 0, "none could be owned" );
+  checkEq( totals.unownedAllocs, BLOCKS, "all are unowned" );
+  checkEq( totals.unownedNoTableAllocs, BLOCKS,
+           "attributed to the no-table cause" );
+  checkEq( totals.unownedFullAllocs, 0,
+           "and NOT to the capacity cause, whose remedy is the opposite" );
+  checkEq( totals.ownedBytes, 0, "no bytes could be classified" );
+  checkEq( totals.diedBytes, 0, "so nothing is claimed to have died" );
+  checkEq( totals.escapedBytes, 0, "and nothing is claimed to have escaped" );
+
+  // The counts and the denominator are the part that stays valid, and the
+  // report says so. Asserting it here is what makes that claim checkable.
+  checkEq( totals.cumulativeBytes, totals.unownedBytes,
+           "cumulative == owned + unowned still holds, with owned zero" );
+  checkEq( load.allocCalls, BLOCKS,
+           "the load-wide denominator is unaffected" );
+  checkEq( load.freeCalls, BLOCKS, "and so is the free census" );
+  checkEq( totals.freeCalls, totals.diedCalls + totals.foreignFrees,
+           "freeCalls == died + foreign still holds" );
+  checkEq( totals.foreignFrees, BLOCKS,
+           "with every free unclassifiable rather than silently owned" );
+}
+
+/**
  * Sustained allocate/free churn with a stable live set.
  *
  * This is the test for the table's deletion path. `tableErase` compacts the
@@ -724,6 +923,15 @@ void testSitesAreLifetimeClassifiedSeparately() {
 
 int main() {
 
+#ifdef CONWAY_ALLOC_TELEMETRY_TABLE_ALLOC_ALWAYS_FAILS
+
+  // This build forces every ownership-table allocation to fail, so only the
+  // test about that state is meaningful; the rest assert ownership the build
+  // has deliberately removed.
+  testNoTableIsDistinctFromTableFull();
+
+#else
+
   testEmptyScopeSeesNoStrayAllocations();
   testDiedAndEscapedPartitionTheScope();
   testLargePreScopeFreeIsNotSubtracted();
@@ -732,8 +940,12 @@ int main() {
   testOverflowIsCountedNotSilent();
   testFailedAllocationsAreCountedAsCalls();
   testFailedReallocKeepsTheOriginalOwned();
+  testNullFreesAreCountedAsCalls();
+  testReallocOfNullIsNotAFree();
   testChurnKeepsOwnershipExact();
   testSitesAreLifetimeClassifiedSeparately();
+
+#endif
 
   // Not an assertion -- the report is what a profiling run reads, and running
   // it here is what stops a format-string or divide-by-zero defect in it from

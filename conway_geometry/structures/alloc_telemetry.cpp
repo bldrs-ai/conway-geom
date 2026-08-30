@@ -56,6 +56,10 @@ std::atomic<uint64_t> g_loadAllocCalls{0};
 std::atomic<uint64_t> g_loadAllocFailed{0};
 std::atomic<uint64_t> g_loadAllocBytes{0};
 std::atomic<uint64_t> g_loadFreeCalls{0};
+// Of those, calls with a null pointer. Same shape as g_loadAllocFailed: the
+// call happened, it released nothing, and folding it into the byte or
+// classification columns would be a lie about both.
+std::atomic<uint64_t> g_loadFreeNull{0};
 std::atomic<uint64_t> g_loadFreeBytes{0};
 
 // ---- per-thread ownership table -------------------------------------------
@@ -104,13 +108,29 @@ inline void tableBeginEpoch() {
     // Through the UNWRAPPED allocator on purpose. Routing this through
     // malloc() would re-enter __wrap_malloc -> onAlloc -> tableBeginEpoch.
     // Calling __real_malloc from the wrapper is sequential, not nested: the
-    // allocator call it is interposing has already returned.
+    // allocator call it is interposing has already returned. It is also why
+    // the instrument's own memory never appears in the numbers it reports.
+#ifdef CONWAY_ALLOC_TELEMETRY_TABLE_ALLOC_ALWAYS_FAILS
+    // Test-only, and never defined by genie.lua: forces the branch below so
+    // the no-table state and its reporting can be pinned by a known-answer
+    // test (test/alloc_telemetry_test.cpp, built a second time with this
+    // define). Everything downstream of here is the production path.
+    tlsTable = nullptr;
+#else
     tlsTable = static_cast<OwnedEntry*>(
         __real_malloc(sizeof(OwnedEntry) * static_cast<size_t>(kTableSlots)));
+#endif
 
     // The wasm build links -s ABORTING_MALLOC=0 (genie.lua), so a null return
-    // is a state this build can actually produce. Every allocation the scope
-    // then sees is counted unowned, which the report shows.
+    // is a state this build can actually produce.
+    //
+    // This is NOT the same condition as a full table, and conflating the two
+    // gives the reader the opposite of the right advice: a full table wants a
+    // BIGGER CONWAY_ALLOC_TELEMETRY_TABLE_BITS, while a table that could not be
+    // allocated wants a smaller one (or less memory pressure) -- asking for
+    // more is asking for the same failure. So the two are counted apart and
+    // reported apart. Left unlatched deliberately: pressure can pass, and the
+    // next scope on this thread retries, restoring classification mid-run.
     if (tlsTable == nullptr) {
       return;
     }
@@ -244,7 +264,20 @@ struct ThreadFaceStats {
   // silently attributed to one class or the other.
   uint64_t unownedAllocs = 0;
   uint64_t unownedBytes = 0;
+  // The two causes, kept apart because they have opposite remedies: a table at
+  // capacity wants a BIGGER CONWAY_ALLOC_TELEMETRY_TABLE_BITS, one that could
+  // not be allocated wants a smaller one. Their sum is unownedAllocs, so the
+  // documented identity over unownedBytes is unchanged.
+  uint64_t unownedFullAllocs = 0;
+  uint64_t unownedFullBytes = 0;
+  uint64_t unownedNoTableAllocs = 0;
+  uint64_t unownedNoTableBytes = 0;
+  // Frees of a non-null pointer. Every one of them is classified, so
+  // freeCalls == diedCalls + foreignFrees exactly. free(nullptr) is a real
+  // wrapped call and is counted, but it releases nothing and can be neither
+  // owned nor foreign, so it sits in nullFrees rather than breaking that.
   uint64_t freeCalls = 0;
+  uint64_t nullFrees = 0;
   uint64_t freedBytes = 0;
   // Allocated AND freed inside the unit. This is the arena-eligible subset: a
   // bump arena rewound at scope exit is correct for exactly these.
@@ -328,6 +361,15 @@ inline void onAlloc(void* ptr) {
                    static_cast<uint32_t>(site))) {
     tls.unownedAllocs += 1;
     tls.unownedBytes += size;
+
+    if (tlsTable == nullptr) {
+      tls.unownedNoTableAllocs += 1;
+      tls.unownedNoTableBytes += size;
+    } else {
+      tls.unownedFullAllocs += 1;
+      tls.unownedFullBytes += size;
+    }
+
     return;
   }
 
@@ -346,11 +388,22 @@ inline void onAlloc(void* ptr) {
  *  is still valid but must not commit the accounting until it knows whether
  *  the realloc succeeded. */
 inline void onFreeSized(void* ptr, uint64_t size) {
+  // Counted before the null test, for the reason the allocation side is: the
+  // report calls this a census of wrapped calls, and free(nullptr) is one --
+  // it is a real, legal, extremely common call. Filtering it out here would
+  // reintroduce the successful-operation-only bias on the free side.
+  g_loadFreeCalls.fetch_add(1, std::memory_order_relaxed);
+
   if (ptr == nullptr) {
+    g_loadFreeNull.fetch_add(1, std::memory_order_relaxed);
+
+    if (tls.active) {
+      tls.nullFrees += 1;
+    }
+
     return;
   }
 
-  g_loadFreeCalls.fetch_add(1, std::memory_order_relaxed);
   g_loadFreeBytes.fetch_add(size, std::memory_order_relaxed);
 
   if (!tls.active) {
@@ -427,7 +480,12 @@ std::atomic<uint64_t> g_totalOwnedAllocs[kSiteCount] = {};
 std::atomic<uint64_t> g_totalOwnedBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_totalUnownedAllocs[kSiteCount] = {};
 std::atomic<uint64_t> g_totalUnownedBytes[kSiteCount] = {};
+std::atomic<uint64_t> g_totalUnownedFullAllocs[kSiteCount] = {};
+std::atomic<uint64_t> g_totalUnownedFullBytes[kSiteCount] = {};
+std::atomic<uint64_t> g_totalUnownedNoTableAllocs[kSiteCount] = {};
+std::atomic<uint64_t> g_totalUnownedNoTableBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_totalFreeCalls[kSiteCount] = {};
+std::atomic<uint64_t> g_totalNullFrees[kSiteCount] = {};
 std::atomic<uint64_t> g_totalFreedBytes[kSiteCount] = {};
 std::atomic<uint64_t> g_totalForeignFrees[kSiteCount] = {};
 std::atomic<uint64_t> g_totalForeignBytes[kSiteCount] = {};
@@ -521,7 +579,15 @@ void* __wrap_realloc(void* ptr, size_t size) {
     return out;
   }
 
-  onFreeSized(ptr, oldSize);
+  // Guarded rather than left to onFreeSized's own null handling, which now
+  // counts free(nullptr) as a wrapped free call. realloc(nullptr, n) IS a
+  // malloc and no free call happened, so routing it through there would
+  // invent one -- the mirror image of the bias this pair of counters was just
+  // fixed for. __wrap_free's null case is a real call and is still counted.
+  if (ptr != nullptr) {
+    onFreeSized(ptr, oldSize);
+  }
+
   onAlloc(out);
   return out;
 }
@@ -548,6 +614,11 @@ AllocTelemetryScope::AllocTelemetryScope(AllocSite kind) {
     tls.ownedAllocs = 0;
     tls.unownedAllocs = 0;
     tls.unownedBytes = 0;
+    tls.unownedFullAllocs = 0;
+    tls.unownedFullBytes = 0;
+    tls.unownedNoTableAllocs = 0;
+    tls.unownedNoTableBytes = 0;
+    tls.nullFrees = 0;
     tls.freeCalls = 0;
     tls.freedBytes = 0;
     tls.diedCalls = 0;
@@ -604,6 +675,15 @@ AllocTelemetryScope::~AllocTelemetryScope() {
                                        std::memory_order_relaxed);
   g_totalUnownedBytes[kind].fetch_add(tls.unownedBytes,
                                       std::memory_order_relaxed);
+  g_totalUnownedFullAllocs[kind].fetch_add(tls.unownedFullAllocs,
+                                           std::memory_order_relaxed);
+  g_totalUnownedFullBytes[kind].fetch_add(tls.unownedFullBytes,
+                                          std::memory_order_relaxed);
+  g_totalUnownedNoTableAllocs[kind].fetch_add(tls.unownedNoTableAllocs,
+                                              std::memory_order_relaxed);
+  g_totalUnownedNoTableBytes[kind].fetch_add(tls.unownedNoTableBytes,
+                                             std::memory_order_relaxed);
+  g_totalNullFrees[kind].fetch_add(tls.nullFrees, std::memory_order_relaxed);
   g_totalFreeCalls[kind].fetch_add(tls.freeCalls, std::memory_order_relaxed);
   g_totalFreedBytes[kind].fetch_add(tls.freedBytes, std::memory_order_relaxed);
   g_totalForeignFrees[kind].fetch_add(
@@ -691,19 +771,44 @@ void DumpScopeKind(int kind, uint64_t loadSuccessfulAllocs) {
           g_maxEscapedBytes[kind].load());
 
   // The identity that makes the split checkable by eye, and the residual that
-  // is not classifiable when the ownership table filled.
+  // could not be classified.
   fprintf(stderr,
           "[alloc-telemetry]     volume: cumulativeBytes(avg=%" PRIu64
           " max=%" PRIu64 " total=%" PRIu64 ") = died %" PRIu64
           " + escaped %" PRIu64 " + unowned %" PRIu64 " (%" PRIu64
-          " allocs)%s\n",
+          " allocs)\n",
           cumulativeTotal / scopes, g_maxCumulativeBytes[kind].load(),
           cumulativeTotal, diedTotal, escapedTotal, unownedBytes,
-          unownedAllocs,
-          unownedAllocs == 0
-              ? ""
-              : "  <-- ownership table filled; raise"
-                " CONWAY_ALLOC_TELEMETRY_TABLE_BITS and re-run");
+          unownedAllocs);
+
+  // The residual's two causes have OPPOSITE remedies, so they get separate
+  // lines rather than one message that is wrong half the time. Printing "raise
+  // the table size" at a run whose table could not be allocated would be
+  // advice to request more of what just failed.
+  const uint64_t unownedFullAllocs = g_totalUnownedFullAllocs[kind].load();
+  const uint64_t unownedNoTableAllocs =
+      g_totalUnownedNoTableAllocs[kind].load();
+
+  if (unownedFullAllocs != 0) {
+    fprintf(stderr,
+            "[alloc-telemetry]     unowned(table-full)=%" PRIu64
+            " allocs %" PRIu64 " B  <-- the ownership table hit its capacity;"
+            " raise CONWAY_ALLOC_TELEMETRY_TABLE_BITS and re-run\n",
+            unownedFullAllocs, g_totalUnownedFullBytes[kind].load());
+  }
+
+  if (unownedNoTableAllocs != 0) {
+    fprintf(stderr,
+            "[alloc-telemetry]     unowned(no-table)=%" PRIu64
+            " allocs %" PRIu64 " B  <-- the per-thread ownership table could"
+            " not be allocated, so lifetime classification is UNAVAILABLE for"
+            " those allocations this run; counts, cumulative bytes and the"
+            " load-wide denominator remain valid. LOWER"
+            " CONWAY_ALLOC_TELEMETRY_TABLE_BITS (or reduce memory pressure)"
+            " and re-run -- raising it asks for the allocation that just"
+            " failed\n",
+            unownedNoTableAllocs, g_totalUnownedNoTableBytes[kind].load());
+  }
 
   // Ownership-tracked, so this is the most bytes the unit's OWN live
   // allocations reached at once. It is not arena capacity -- an arena does not
@@ -721,10 +826,11 @@ void DumpScopeKind(int kind, uint64_t loadSuccessfulAllocs) {
   // releases), not a caveat on the columns above.
   fprintf(stderr,
           "[alloc-telemetry]     frees(calls=%" PRIu64 " bytes=%" PRIu64
-          ") of which foreign(frees=%" PRIu64 " bytes=%" PRIu64
-          ")  [foreign frees are counted, never subtracted]\n",
+          " null=%" PRIu64 ") of which foreign(frees=%" PRIu64 " bytes=%" PRIu64
+          ")  [foreign frees are counted, never subtracted; `calls` excludes"
+          " the null ones, so calls == died + foreign]\n",
           g_totalFreeCalls[kind].load(), g_totalFreedBytes[kind].load(),
-          g_totalForeignFrees[kind].load(),
+          g_totalNullFrees[kind].load(), g_totalForeignFrees[kind].load(),
           g_totalForeignBytes[kind].load());
 
   for (int site = 0; site < kSiteCount; ++site) {
@@ -796,12 +902,15 @@ void DumpAllocTelemetry(const char* label) {
   fprintf(stderr,
           "[alloc-telemetry] %s: load-wide allocator traffic:"
           " allocs(calls=%" PRIu64 " failed=%" PRIu64 " ok=%" PRIu64
-          " bytes=%" PRIu64 ") frees(calls=%" PRIu64 " bytes=%" PRIu64
-          ")  [every wrapped call, in scope or not -- includes"
-          " nondeterministic runtime traffic; see the note in the source]\n",
+          " bytes=%" PRIu64 ") frees(calls=%" PRIu64 " null=%" PRIu64
+          " bytes=%" PRIu64
+          ")  [every wrapped call, in scope or not, including calls that"
+          " allocated or released nothing -- and including nondeterministic"
+          " runtime traffic; see the note in the source]\n",
           label != nullptr ? label : "", loadAllocCalls, loadAllocFailed,
           loadSuccessfulAllocs, g_loadAllocBytes.load(),
-          g_loadFreeCalls.load(), g_loadFreeBytes.load());
+          g_loadFreeCalls.load(), g_loadFreeNull.load(),
+          g_loadFreeBytes.load());
 
   if (scopes == 0) {
     fprintf(stderr, "[alloc-telemetry] %s: no scoped units recorded\n",
@@ -830,6 +939,10 @@ AllocTelemetryKindTotals GetAllocTelemetryKindTotals(AllocSite kind) {
   totals.ownedBytes = g_totalOwnedBytes[at].load();
   totals.unownedAllocs = g_totalUnownedAllocs[at].load();
   totals.unownedBytes = g_totalUnownedBytes[at].load();
+  totals.unownedFullAllocs = g_totalUnownedFullAllocs[at].load();
+  totals.unownedFullBytes = g_totalUnownedFullBytes[at].load();
+  totals.unownedNoTableAllocs = g_totalUnownedNoTableAllocs[at].load();
+  totals.unownedNoTableBytes = g_totalUnownedNoTableBytes[at].load();
   totals.diedCalls = g_totalDiedCalls[at].load();
   totals.diedBytes = g_totalDiedBytes[at].load();
   totals.maxDiedBytes = g_maxDiedBytes[at].load();
@@ -838,6 +951,7 @@ AllocTelemetryKindTotals GetAllocTelemetryKindTotals(AllocSite kind) {
   totals.peakBytesTotal = g_totalPeakBytes[at].load();
   totals.maxPeakBytes = g_maxPeakBytes[at].load();
   totals.freeCalls = g_totalFreeCalls[at].load();
+  totals.nullFrees = g_totalNullFrees[at].load();
   totals.freedBytes = g_totalFreedBytes[at].load();
   totals.foreignFrees = g_totalForeignFrees[at].load();
   totals.foreignBytes = g_totalForeignBytes[at].load();
@@ -867,6 +981,7 @@ AllocTelemetryLoadTotals GetAllocTelemetryLoadTotals() {
   totals.allocFailed = g_loadAllocFailed.load();
   totals.allocBytes = g_loadAllocBytes.load();
   totals.freeCalls = g_loadFreeCalls.load();
+  totals.freeNull = g_loadFreeNull.load();
   totals.freeBytes = g_loadFreeBytes.load();
 
   return totals;
@@ -883,6 +998,7 @@ void ResetAllocTelemetry() {
   g_loadAllocFailed.store(0);
   g_loadAllocBytes.store(0);
   g_loadFreeCalls.store(0);
+  g_loadFreeNull.store(0);
   g_loadFreeBytes.store(0);
 
   for (int kind = 0; kind < kSiteCount; ++kind) {
@@ -903,7 +1019,12 @@ void ResetAllocTelemetry() {
     g_totalOwnedBytes[kind].store(0);
     g_totalUnownedAllocs[kind].store(0);
     g_totalUnownedBytes[kind].store(0);
+    g_totalUnownedFullAllocs[kind].store(0);
+    g_totalUnownedFullBytes[kind].store(0);
+    g_totalUnownedNoTableAllocs[kind].store(0);
+    g_totalUnownedNoTableBytes[kind].store(0);
     g_totalFreeCalls[kind].store(0);
+    g_totalNullFrees[kind].store(0);
     g_totalFreedBytes[kind].store(0);
     g_totalForeignFrees[kind].store(0);
     g_totalForeignBytes[kind].store(0);

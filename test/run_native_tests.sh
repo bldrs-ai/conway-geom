@@ -85,4 +85,27 @@ if ! "${OUT}/alloc_telemetry_test"; then
   STATUS=1
 fi
 
+# Second build of the same source, with the ownership table's own allocation
+# forced to fail. That is a state the wasm build can reach for real (its table
+# comes from __real_malloc under -s ABORTING_MALLOC=0) and one no native
+# harness can provoke without imposing an address-space limit, so the define
+# stubs the allocation and everything downstream of it -- attribution,
+# counters, identities, report -- runs the production path. It has to be its
+# own binary because with no table there is no ownership for the other tests
+# to assert.
+echo "=== alloc_telemetry_test (ownership table unavailable) ==="
+
+"${COMPILER}" -std=c++20 -O1 -DREAL_T_IS_DOUBLE \
+  -DCONWAY_ALLOC_TELEMETRY -DCONWAY_ALLOC_TELEMETRY_TABLE_BITS=8 \
+  -DCONWAY_ALLOC_TELEMETRY_TABLE_ALLOC_ALWAYS_FAILS \
+  "${INCLUDES[@]}" \
+  test/alloc_telemetry_test.cpp \
+  conway_geometry/structures/alloc_telemetry.cpp \
+  -o "${OUT}/alloc_telemetry_no_table_test" \
+  -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
+
+if ! "${OUT}/alloc_telemetry_no_table_test"; then
+  STATUS=1
+fi
+
 exit "${STATUS}"
