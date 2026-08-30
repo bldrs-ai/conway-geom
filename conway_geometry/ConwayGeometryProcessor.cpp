@@ -2249,6 +2249,14 @@ Geometry ConwayGeometryProcessor::getPolygonalFaceSetGeometryPacked(
 
     for ( uint32_t ring = 0; ring < startCount; ++ring ) {
       bounds[ ring ].curve.points.clear();
+
+      // Recycled slots carry the PREVIOUS face's curve state, so every field
+      // a consumer reads has to be reset here, not just the points. Nothing
+      // upstream of this loop sets closedByConstruction today, so this is
+      // currently a no-op - but the moment anything does, a stale true would
+      // silently outlive its geometry and describe the next face's ring.
+      // Found by review on bldrs-ai/conway-geom#195.
+      bounds[ ring ].curve.closedByConstruction = false;
     }
 
     // Same layout ReadIndexedPolygonalFace walks: face_starts[0] is 0

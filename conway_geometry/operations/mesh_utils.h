@@ -6152,23 +6152,25 @@ inline bool tryRibbonLoft(
  * the first point whose answer does not change: from there the caller's pass
  * was already running on a seed of its own.
  *
- * Measured, the case is even plainer than "adjacent": across 859 trim bounds in
- * the three b-spline-carrying regression models, the closing gap is EXACTLY
+ * That argument is about ADJACENCY and holds for any closed loop: the head's
+ * neighbour is one segment away, exactly as every mid-loop point's seed is.
+ *
+ * The corpus happens to give a stronger version of it. Across 859 trim bounds
+ * in the three b-spline-carrying regression models the closing gap is EXACTLY
  * zero in every one - the last point of a trim polyline is bit-identical to the
- * first. So the head and the tail are not merely neighbours, they are the SAME
- * QUERY, and a cold start that disagrees with the continuity-seeded solve of
- * that identical point is self-evidently the wrong one of the two. This pass
- * does not choose between two defensible answers; it removes an inconsistency
- * where one point had two.
+ * first - so head and tail are not merely neighbours but the SAME QUERY, and a
+ * cold start disagreeing with the continuity-seeded solve of that identical
+ * point is self-evidently the wrong one of the two. Worth stating because it
+ * makes the corpus evidence airtight, but it is a BONUS of the duplication
+ * case, not the justification: a loop that closes by adjacency without
+ * repeating its head is served by the adjacency argument alone, which is why
+ * such loops are admitted when their producer flags them.
  *
  * THE CLOSURE GATE IS NOT OPTIONAL. Everything above depends on the last point
  * genuinely neighbouring the first. An OPEN bound - a trim that failed to
  * close, an extraction that dropped its tail - has a tail somewhere unrelated,
  * and seeding the head from it is precisely the cross-sheet failure
- * resetContinuity exists to prevent, arriving by a different door. So the gate
- * measures the closing gap against the loop's own median segment and declines
- * anything that does not look like a closure, leaving those bounds on the cold
- * start they have today.
+ * resetContinuity exists to prevent, arriving by a different door.
  *
  * @return the number of head points rewritten; 0 if the gate declined.
  */
@@ -6201,40 +6203,29 @@ inline size_t reSolveClosedTrimHead(
   // one. No threshold separates the two classes; a coarser mesh walks an open
   // bound through any gate you pick. Found on bldrs-ai/conway#655.
   //
-  // Explicit closure has no such failure mode. Measured, it also costs nothing:
-  // all 859 trim bounds in the three b-spline-carrying regression models close
-  // by EXACT duplication, the last point bit-identical to the first. So the
-  // head and tail are not merely neighbours but the SAME QUERY, and a cold
-  // start that disagrees with the continuity-seeded solve of that identical
-  // point is self-evidently the wrong one of the two - this pass removes an
-  // inconsistency rather than choosing between two defensible answers.
+  // Explicit closure has no such failure mode, and there are exactly two ways
+  // to have it. BOTH are facts rather than measurements:
   //
-  // DELIBERATELY DECLINED: loops that close by ADJACENCY - last point one
-  // sample step from the first, no duplicate. An earlier revision accepted
-  // those, on a proximity test that has since been shown unusable. No corpus
-  // bound exhibits adjacency closure; the case was synthetic, built for a
-  // fixture. If a real producer of it appears, it needs a closure signal from
-  // the front end (where the ORIENTED_EDGEs are still visible and closure is a
-  // topological fact) rather than a geometric guess here.
-  //
-  // The tolerance is float noise, not a proximity budget: head and tail are
-  // multiplied by the same `scaling` and so stay bit-identical through it, but
-  // a few ULP of the coordinate magnitude costs nothing to allow and keeps the
-  // test from depending on that staying true.
-  // Two ways a bound can be known to close, and BOTH are facts rather than
-  // measurements:
-  //
-  //   - the producer says so. A point-list loop is a closed polygon that does
+  //   - the PRODUCER says so. A point-list loop is a closed polygon that does
   //     not repeat its head (IfcCurve::closedByConstruction, set in GetLoop
-  //     where the entity type makes it certain). Without this the whole
-  //     poly-loop producer class - every IFCPOLYLOOP face bound - would be
-  //     declined and silently keep the cold-start error. Found by review on
-  //     bldrs-ai/conway-geom#195; it is the negative answer to "is there a
-  //     front-end closure signal", namely that the producer knows and simply
-  //     was not encoding it.
+  //     and passed across the wasm boundary by createSimpleBound3D's callers).
+  //     Without this the whole poly-loop producer class would be declined and
+  //     silently keep the cold-start error. Found by review on
+  //     bldrs-ai/conway-geom#195; it is the answer to "is there a front-end
+  //     closure signal", namely that the producer knows and was not encoding
+  //     it. Such a loop need not repeat its head, so it is served by the
+  //     adjacency argument in the doc comment above, not by "same query".
   //
-  //   - the points say so, by repeating the head as the tail. This is how every
-  //     one of the 859 edge-loop trim bounds in the regression corpus arrives.
+  //   - the POINTS say so, by repeating the head as the tail. This is how all
+  //     859 edge-loop trim bounds in the regression corpus arrive.
+  //
+  // MEASURED REACH, so the balance here is not overstated: instrumented across
+  // the corpus, all 859 bounds arriving at this pass are of the second kind
+  // (gap exactly zero, flag false), and createSimpleBound3D is not called at
+  // all. So the flagged branch is live code with zero corpus reach - kept
+  // because dropping it re-opens the latent defect review found twice, not
+  // because anything here exercises it. A regression model whose b-spline
+  // faces carry point-list bounds would be the thing that covers it.
   //
   // The tolerance below is float noise, not a proximity budget: head and tail
   // take the same `scaling` multiplication and stay bit-identical through it,

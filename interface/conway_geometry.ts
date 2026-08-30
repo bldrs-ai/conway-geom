@@ -778,6 +778,43 @@ export class ConwayGeometry {
   }
 
   /**
+   * The optimised raw-array bound path, for point-list loops.
+   *
+   * This wrapper exists to make `closedByConstruction` a REQUIRED argument,
+   * because nothing else in the stack will catch a caller that omits it:
+   * embind does no arity check on a non-overloaded binding,
+   * `_embind_register_bool` converts a missing argument to `false` silently,
+   * and ConwayGeomWasm.d.ts types the module as `any`. A four-argument call
+   * against the five-argument native function therefore builds clean, runs
+   * clean, and silently drops closure - restoring the cold-start seam error
+   * this parameter was added to fix, with no diagnostic anywhere.
+   *
+   * So callers must route through here rather than reaching for
+   * `wasmModule.createSimpleBound3D` directly. See bldrs-ai/conway-geom#195.
+   *
+   * @param verticesArray pointer to the packed vertex array in wasm memory
+   * @param length number of vertices in that array
+   * @param orientation bound orientation; false reverses the point order
+   * @param type 0 for an outer bound, 1 for an inner bound
+   * @param closedByConstruction whether the entity this loop came from is
+   *   topologically closed. This is a fact the CALLER holds and the native
+   *   side cannot recover from a bare vertex array - a poly loop is closed and
+   *   does not repeat its head. Passing `false` means "not stated", which
+   *   leaves the bound on its cold start; it does not mean "measured open".
+   * @return {Bound3DObject}
+   */
+  createSimpleBound3D(
+      verticesArray: number,
+      length: number,
+      orientation: boolean,
+      type: number,
+      closedByConstruction: boolean): Bound3DObject {
+    const result = this.wasmModule.createSimpleBound3D(
+        verticesArray, length, orientation, type, closedByConstruction)
+    return result
+  }
+
+  /**
    *
    * @param parameters ParamsGetHalfspaceSolid parsed from data model
    * @return {GeometryObject}

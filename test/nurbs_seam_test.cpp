@@ -1121,30 +1121,40 @@ void testClosedPointListLoopIsAccepted() {
  * The raw-array producer's closure composition.
  *
  * createSimpleBound3D (conway-api.cpp) is the optimised path extractFace uses
- * for point-list loops. It sets
+ * for point-list loops. Its closure is `pointListLoopClosure( callerSaysClosed,
+ * points )`, and BOTH halves matter for different reasons:
  *
- *     curve.closedByConstruction =
- *       callerSaysClosed && pointListLoopIsClosedPolygon( points );
+ *   - the caller's word is REQUIRED because a raw vertex array carries no
+ *     entity type. Deriving closure inside would make the function assert
+ *     something about every future caller it cannot know.
  *
- * and both halves of that AND matter. The caller's word is required because a
- * raw vertex array carries no entity type - deriving closure inside would make
- * the function assert something about every future caller it cannot know. The
- * predicate is required because a caller saying "closed" about a one- or
- * two-point array is still wrong: a VERTEX_LOOP cannot enclose anything.
+ *   - the predicate is a DEGENERACY FILTER, not a check on the caller. A
+ *     one-point VERTEX_LOOP is a perfectly legitimate thing to hand over and
+ *     to call closed - it is the degenerate loop at a pole - but it encloses
+ *     nothing, so it must not reach a consumer that treats it as a polygon.
  *
  * Missed in the first audit of this family, which fixed GetLoop and stopped -
- * review on conway-geom#195 found this second producer. The composition is
- * pinned here so a third would have to break a test rather than be discovered.
+ * review on conway-geom#195 found this second producer. A later pass of that
+ * review then found this test VACUOUS: it re-implemented the AND in a local
+ * lambda, so deleting the composition from production left it green. The
+ * composition now lives in pointListLoopClosure (ConwayCurve.h) and the
+ * producer calls it, so this exercises the shipped code rather than a copy.
+ *
+ * Red-proven by weakening the real helper, not by reading: dropping its
+ * `callerDeclaresClosed &&` fails check 2, and dropping the predicate call
+ * fails check 3.
  *
  * COVERAGE LIMIT, same as the GetLoop case: conway-api.cpp needs embind and the
  * standalone tests link nothing, so the entry point itself is not exercised -
- * only the rule it composes and the gate that consumes the result.
+ * only the helper it delegates to and the gate that consumes the result. A
+ * caller passing the wrong argument, or none, is not catchable here at all;
+ * that is what the required parameter on the TypeScript wrapper is for.
  */
 void testRawArrayProducerClosureComposition() {
 
   printf( "=== raw-array producer closure composition ===\n" );
 
-  using conway::geometry::pointListLoopIsClosedPolygon;
+  using conway::geometry::pointListLoopClosure;
 
   const std::vector< glm::dvec3 > polygon = {
     glm::dvec3( 0.0, 0.0, 0.0 ),
@@ -1154,20 +1164,14 @@ void testRawArrayProducerClosureComposition() {
 
   const std::vector< glm::dvec3 > vertexLoop = { glm::dvec3( 0.0, 0.0, 0.0 ) };
 
-  // The composition createSimpleBound3D applies.
-  auto compose = []( bool callerSaysClosed, const std::vector< glm::dvec3 >& p ) {
-
-    return callerSaysClosed && pointListLoopIsClosedPolygon( p );
-  };
-
-  check( compose( true, polygon ),
+  check( pointListLoopClosure( true, polygon ),
          "a poly loop the caller calls closed is flagged closed" );
 
-  check( !compose( false, polygon ),
+  check( !pointListLoopClosure( false, polygon ),
          "the caller's word is required - geometry alone does not flag it" );
 
-  check( !compose( true, vertexLoop ),
-         "a one-point vertex loop is not flagged even if the caller says closed" );
+  check( !pointListLoopClosure( true, vertexLoop ),
+         "a one-point vertex loop is filtered out as degenerate" );
 }
 
 /**

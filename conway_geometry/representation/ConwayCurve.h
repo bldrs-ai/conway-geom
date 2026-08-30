@@ -69,4 +69,30 @@ inline bool pointListLoopIsClosedPolygon(
   return points.size() >= 3;
 }
 
+/**
+ * The closure a raw-array point-list producer should record: the caller's
+ * declaration, narrowed by what the points can actually support.
+ *
+ * `callerDeclaresClosed` is the topological fact, which only the caller has -
+ * it knows the entity it read. This function cannot recover that fact and does
+ * not try; a false here means "not stated", not "measured open".
+ *
+ * The conjunction is a DEGENERACY FILTER, not a check on the caller's honesty.
+ * A one-point VERTEX_LOOP is a legitimate thing for a caller to hand over and
+ * to describe as closed - it is the degenerate loop at a sphere pole - but it
+ * encloses nothing, so downstream consumers must not treat it as a polygon.
+ *
+ * Lives here, called by createSimpleBound3D, rather than being spelled out at
+ * that call site, because conway-api.cpp needs embind and so cannot be linked
+ * into the standalone tests. Inlining this composition into the producer left
+ * it untestable, and the test that claimed to cover it re-implemented it
+ * instead - found by review on bldrs-ai/conway-geom#195.
+ */
+inline bool pointListLoopClosure(
+    bool                             callerDeclaresClosed,
+    const std::vector< glm::dvec3 >& points ) {
+
+  return callerDeclaresClosed && pointListLoopIsClosedPolygon( points );
+}
+
 }  // namespace conway::geometry
