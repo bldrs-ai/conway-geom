@@ -61,4 +61,51 @@ for source in test/*_test.cpp; do
   fi
 done
 
+# The allocation instrument is the one test here that cannot be a
+# link-nothing translation unit: it is the --wrap hooks that are under test, so
+# it needs alloc_telemetry.cpp compiled alongside it, the compile gate defined,
+# and the same four --wrap flags genie.lua adds for the opt-in wasm build.
+# GNU ld honours --wrap identically to wasm-ld, so this runs natively.
+#
+# TABLE_BITS=8 shrinks the per-thread ownership table from 2^18 slots to 2^8,
+# which is what puts its overflow behaviour inside reach of a unit test instead
+# of only a 200 MB model. The test restates that number and the 7/8 load limit
+# to assert an exact owned/unowned split, so the two must be changed together.
+echo "=== alloc_telemetry_test ==="
+
+"${COMPILER}" -std=c++20 -O1 -DREAL_T_IS_DOUBLE \
+  -DCONWAY_ALLOC_TELEMETRY -DCONWAY_ALLOC_TELEMETRY_TABLE_BITS=8 \
+  "${INCLUDES[@]}" \
+  test/alloc_telemetry_test.cpp \
+  conway_geometry/structures/alloc_telemetry.cpp \
+  -o "${OUT}/alloc_telemetry_test" \
+  -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
+
+if ! "${OUT}/alloc_telemetry_test"; then
+  STATUS=1
+fi
+
+# Second build of the same source, with the ownership table's own allocation
+# forced to fail. That is a state the wasm build can reach for real (its table
+# comes from __real_malloc under -s ABORTING_MALLOC=0) and one no native
+# harness can provoke without imposing an address-space limit, so the define
+# stubs the allocation and everything downstream of it -- attribution,
+# counters, identities, report -- runs the production path. It has to be its
+# own binary because with no table there is no ownership for the other tests
+# to assert.
+echo "=== alloc_telemetry_test (ownership table unavailable) ==="
+
+"${COMPILER}" -std=c++20 -O1 -DREAL_T_IS_DOUBLE \
+  -DCONWAY_ALLOC_TELEMETRY -DCONWAY_ALLOC_TELEMETRY_TABLE_BITS=8 \
+  -DCONWAY_ALLOC_TELEMETRY_TABLE_ALLOC_ALWAYS_FAILS \
+  "${INCLUDES[@]}" \
+  test/alloc_telemetry_test.cpp \
+  conway_geometry/structures/alloc_telemetry.cpp \
+  -o "${OUT}/alloc_telemetry_no_table_test" \
+  -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free
+
+if ! "${OUT}/alloc_telemetry_no_table_test"; then
+  STATUS=1
+fi
+
 exit "${STATUS}"
