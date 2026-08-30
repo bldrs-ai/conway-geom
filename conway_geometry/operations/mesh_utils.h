@@ -3134,7 +3134,29 @@ inline void TriangulateConicalSurface(
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
     relativeDeflectionSquared( mesh, representationExtent ) );
 
-  appendMeshToGeometry( mesh, geometry, sameSense );
+  // Analytic shading normals (bldrs-ai/conway#667). The surface above places a
+  // point at radius `radius + dz * sinSemiAngle`, so the generator runs along
+  // (radial, sinSemiAngle) and the outward normal along (radial, -sinSemiAngle)
+  // — the same relation the trimmed path derives from its fitted `slope`.
+  appendMeshToGeometry(
+    mesh,
+    geometry,
+    sameSense,
+    [&]( const ParameterVertex& vertex ) {
+
+      glm::dvec3 delta  = vertex.point - cent;
+      glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
+      double     length = glm::length( radial );
+
+      // On the axis (the apex), where the normal is undefined. Radius-relative
+      // so a millimetre cone and a metre cone behave alike.
+      if ( length < fabs( radius ) * 1e-9 ) {
+
+        return glm::dvec3( 0.0, 0.0, 0.0 );
+      }
+
+      return ( radial / length ) - vecZ * sinSemiAngle;
+    } );
 }
 
 // TODO: review and simplify
@@ -3522,7 +3544,26 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
     mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
     relativeDeflectionSquared( mesh, representationExtent ) );
 
-  appendMeshToGeometry( mesh, geometry, sameSense );
+  // Analytic shading normals (bldrs-ai/conway#667): a cylinder's outward normal
+  // is the radial direction from its axis, matching the trimmed path's lambda.
+  appendMeshToGeometry(
+    mesh,
+    geometry,
+    sameSense,
+    [&]( const ParameterVertex& vertex ) {
+
+      glm::dvec3 delta  = vertex.point - cent;
+      glm::dvec3 radial = delta - vecZ * glm::dot( delta, vecZ );
+
+      // Degenerate only if a vertex sits exactly on the axis, which a point
+      // genuinely on the cylinder cannot.
+      if ( glm::length( radial ) < radius * 1e-9 ) {
+
+        return glm::dvec3( 0.0, 0.0, 0.0 );
+      }
+
+      return radial;
+    } );
 }
 
 // TODO: review and simplify
@@ -6898,7 +6939,18 @@ inline void TriangulateBspline(Geometry &geometry,
       // bound points arrive in") stays true if that ever changes.
       relativeDeflectionSquared( mesh, representationExtent * scaling ) );
 
-    appendMeshToGeometry( mesh, geometry, !surface.sameSense );
+    // Analytic shading normals (bldrs-ai/conway#667). A B-spline's normal is a
+    // function of the parameters, not of the position — which is why the
+    // callback takes the whole vertex: `.uv` is the only place that survives
+    // tessellation.
+    appendMeshToGeometry(
+      mesh,
+      geometry,
+      !surface.sameSense,
+      [&bSplineInverseEvaluation]( const ParameterVertex& vertex ) {
+
+        return bSplineInverseEvaluation.evaluator.normal( vertex.uv.x, vertex.uv.y );
+      } );
 
   //  printf( "Tesselated BSpline Surface with %zu triangles\n", mesh.triangles.size() );
 

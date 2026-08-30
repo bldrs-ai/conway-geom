@@ -132,6 +132,37 @@ struct RationalSurfaceEvaluator {
       std::nextafter( lastKnot, -std::numeric_limits< double >::infinity() ) : u;
   }
 
+  /**
+   * Outward surface normal at (u, v), from the first partial derivatives.
+   *
+   * No fast path: this is called once per triangle corner at emission time,
+   * not inside the refinement loop, so it goes straight to tinynurbs rather
+   * than duplicating the stack-allocated basis evaluation. Returns a zero
+   * vector at a degenerate point — a collapsed pole, where the two partials
+   * are parallel and the cross product vanishes — which the caller reads as
+   * "no analytic normal here" (bldrs-ai/conway#667).
+   *
+   * @param u Surface parameter u.
+   * @param v Surface parameter v.
+   * @return The normal, not normalized, or zero where it is undefined.
+   */
+  glm::dvec3 normal( double u, double v ) const {
+
+    glm::dvec3 result = tinynurbs::surfaceNormal(
+      surface_,
+      clampBelowLastKnot( surface_.degree_u, surface_.knots_u, u ),
+      clampBelowLastKnot( surface_.degree_v, surface_.knots_v, v ) );
+
+    if ( !std::isfinite( result.x ) ||
+         !std::isfinite( result.y ) ||
+         !std::isfinite( result.z ) ) {
+
+      return glm::dvec3( 0.0 );
+    }
+
+    return result;
+  }
+
   /** Point on the surface, matching tinynurbs::surfacePoint( rational ). */
   glm::dvec3 point( double u, double v ) const {
 

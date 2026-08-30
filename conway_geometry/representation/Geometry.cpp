@@ -36,6 +36,14 @@ void Geometry::ReverseFace( uint32_t index ) {
 
   std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
 
+  // Corner normals are indexed by corner position, so reversing the winding has
+  // to carry them along or corner 0 would read the normal of the old corner 2 —
+  // and they have to be NEGATED, because this API exists to invert the face's
+  // outward direction, not to renumber its corners. Leaving them alone would
+  // shade a reversed analytic face against its own winding, and Reify() prefers
+  // the analytic vector, so the flipped face normal would not save it.
+  ReverseCornerNormals( index );
+
   if ( bvh.has_value() ) {
 
     bvh->clearDipoles();
@@ -48,7 +56,16 @@ void Geometry::ReverseFaces() {
 
     std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
   }
-  
+
+  // Same reordering AND negation as ReverseFace, for the same reason.
+  if ( !corner_normals.empty() ) {
+
+    for ( uint32_t index = 0, end = static_cast< uint32_t >( triangles.size() ); index < end; ++index ) {
+
+      ReverseCornerNormals( index );
+    }
+  }
+
   if ( bvh.has_value() ) {
 
     bvh->clearDipoles();
@@ -179,6 +196,72 @@ void Geometry::Reify( const glm::dvec3& offset ) {
 
   double cosineCutoff = cos( SMOOTHING_GROUP_ANGLE );
 
+  bool hasAnalyticNormals = !corner_normals.empty();
+
+  /*
+   * The shading normal for one triangle corner: the analytic surface normal the
+   * tessellator recorded, when there is one, and otherwise the triangle's own
+   * face normal exactly as before.
+   *
+   * This one substitution is the whole of the bldrs-ai/conway#667 fix. The
+   * grouping below is greedy — every candidate is compared against the FIRST
+   * triangle's normal, never against the running average — so its result
+   * depends on triangle order, and a single near-degenerate sliver whose face
+   * normal points anywhere can capture or exclude a whole fan. Along a trimmed
+   * face's boundary row, where the constrained edge forces exactly such
+   * slivers, that produced a normal error that cycled 0..64 degrees once per
+   * trim-polyline segment: the reported "regular, broken dark line". Feeding
+   * the analytic normal in instead removes the guess at the source — a sliver's
+   * SURFACE normal is still correct even when its face normal is garbage, and
+   * every normal within one smooth face agrees to within a rounding error, so
+   * the grouping stops depending on order at all. Creases still split, because
+   * two faces meeting at an edge genuinely disagree by the dihedral angle.
+   *
+   * Note the two return paths differ in magnitude on purpose: the fallback
+   * returns the UNNORMALIZED cross product, so the accumulation below stays
+   * area-weighted and byte-identical to the previous behaviour for every
+   * geometry with no analytic normals. The analytic path returns a unit vector,
+   * giving each contributing corner equal say — which is what we want when a
+   * sliver's area would otherwise erase a correct normal.
+   *
+   * Because the two magnitudes mean different things, they must never be summed
+   * into one accumulator: a unit vector added to an area-weighted one is
+   * neither, and the mix is scale-dependent, since only one of the two terms
+   * carries area units. So the choice below is made once for a whole local
+   * smoothing group, not per corner — see the two-attempt loop.
+   */
+  auto hasAnalyticCorner =
+    [&]( uint32_t triangleIndex, uint32_t vertexInTriangle ) -> bool {
+
+      if ( !hasAnalyticNormals ) {
+
+        return false;
+      }
+
+      const glm::vec3& analytic =
+        corner_normals[ ( triangleIndex * 3 ) + vertexInTriangle ];
+
+      return analytic.x != 0.0f || analytic.y != 0.0f || analytic.z != 0.0f;
+    };
+
+  auto cornerShadingNormal =
+    [&]( uint32_t triangleIndex, uint32_t vertexInTriangle, bool analyticMode ) -> glm::dvec3 {
+
+      if ( analyticMode && hasAnalyticCorner( triangleIndex, vertexInTriangle ) ) {
+
+        return glm::normalize(
+          glm::dvec3( corner_normals[ ( triangleIndex * 3 ) + vertexInTriangle ] ) );
+      }
+
+      return faceNormals[ triangleIndex ];
+    };
+
+  // Corners merged into the group being built, as offsets into indexData_.
+  // Held rather than written straight through, because a group that turns out
+  // to be mixed is discarded and rebuilt on the face-normal path; declared out
+  // here so the allocation is made once for the whole reification.
+  std::vector< uint32_t > groupMembers;
+
   // Greedy vertex smoothing.
   for ( uint32_t vertexIndex = 0; vertexIndex < vertexCount; ++vertexIndex ) {
 
@@ -204,12 +287,98 @@ void Geometry::Reify( const glm::dvec3& offset ) {
       floatVertexData_.push_back( static_cast< float >( vertex.y - offset.y ) );
       floatVertexData_.push_back( static_cast< float >( vertex.z - offset.z ) );
 
-      const glm::dvec3& normal     = faceNormals[ triangleIndex ];
-      double            doubleArea = glm::length( normal );
-
       indexData_[ indexDataOffset ] = outputVertexIndex;
 
-      if ( doubleArea == 0 || isnan( doubleArea ) ) {
+      /*
+       * Build the local smoothing group, in a mode chosen for the WHOLE group.
+       *
+       * At a welded vertex where an analytic face meets an uncovered one — a
+       * cylinder running into a swept or boolean surface, say — a per-corner
+       * choice would sum unit analytic normals with unnormalized area-weighted
+       * face normals in a single accumulator. That result is neither semantics
+       * and, because only the fallback term carries area units, it changes with
+       * the model's scale. So when a group in analytic mode turns out to
+       * include even one corner without an analytic normal, the whole group is
+       * discarded and rebuilt on the face-normal path: that corner's answer is
+       * then exactly the pre-#667 one, which is the right thing to degrade to.
+       *
+       * At most two attempts: the second runs with analyticMode false, which
+       * cannot report a mix.
+       */
+      bool       analyticMode = hasAnalyticCorner( triangleIndex, vertexInTriangle );
+      bool       degenerate   = false;
+      glm::dvec3 accumulator( 0.0 );
+
+      for ( int attempt = 0; attempt < 2; ++attempt ) {
+
+        groupMembers.clear();
+
+        glm::dvec3 normal     = cornerShadingNormal( triangleIndex, vertexInTriangle, analyticMode );
+        double     doubleArea = glm::length( normal );
+
+        if ( doubleArea == 0 || isnan( doubleArea ) ) {
+
+          degenerate = true;
+          break;
+        }
+
+        accumulator = normal;
+
+        bool mixedGroup = false;
+
+        // Probe forwards looking for matches within the cutoff angle of this normal greedily.
+        for ( size_t nextTriangleInSpan = triangleInSpan + 1; nextTriangleInSpan < end; ++nextTriangleInSpan ) {
+
+          uint32_t        nextTriangleIndex     = trianglesPerVertex[ nextTriangleInSpan ];
+          const Triangle& nextTriangle          = triangles[ nextTriangleIndex ];
+          uint32_t        vertexInNextTriangle  = nextTriangle.vertexInTriangle( vertexIndex );
+          uint32_t        nextindexDataOffset   = nextTriangleIndex * 3 + vertexInNextTriangle;
+
+          // This has already been merged with another triangle's normal.
+          if ( indexData_[ nextindexDataOffset ] != EMPTY_INDEX ) {
+
+            continue;
+          }
+
+          glm::dvec3 opposingNormal =
+            cornerShadingNormal( nextTriangleIndex, vertexInNextTriangle, analyticMode );
+          double     doubleOpposingArea = glm::length( opposingNormal );
+
+          if ( doubleOpposingArea < DBL_EPSILON || ( doubleOpposingArea * doubleArea ) < DBL_EPSILON ) {
+
+            continue;
+          }
+
+          double cosBetweenNormals = glm::dot( normal, opposingNormal ) / ( doubleOpposingArea * doubleArea );
+
+          if ( cosBetweenNormals < cosineCutoff ) {
+
+            continue;
+          }
+
+          // A corner that JOINS the group and has no analytic normal is what
+          // makes the group mixed — one that fails the cutoff is in a different
+          // group and does not constrain this one's semantics.
+          if ( analyticMode && !hasAnalyticCorner( nextTriangleIndex, vertexInNextTriangle ) ) {
+
+            mixedGroup = true;
+            break;
+          }
+
+          groupMembers.push_back( nextindexDataOffset );
+
+          accumulator += opposingNormal;
+        }
+
+        if ( !mixedGroup ) {
+
+          break;
+        }
+
+        analyticMode = false;
+      }
+
+      if ( degenerate ) {
 
         // Push back a fake normal for this degenerate case.
         floatVertexData_.push_back( 0 );
@@ -220,40 +389,9 @@ void Geometry::Reify( const glm::dvec3& offset ) {
         continue;
       }
 
-      glm::dvec3 accumulator = normal;
+      for ( uint32_t memberOffset : groupMembers ) {
 
-      // Probe forwards looking for matches within the cutoff angle of this normal greedily.
-      for ( size_t nextTriangleInSpan = triangleInSpan + 1; nextTriangleInSpan < end; ++nextTriangleInSpan ) {
-
-        uint32_t        nextTriangleIndex     = trianglesPerVertex[ nextTriangleInSpan ];
-        const Triangle& nextTriangle          = triangles[ nextTriangleIndex ];
-        uint32_t        vertexInNextTriangle  = nextTriangle.vertexInTriangle( vertexIndex );
-        uint32_t        nextindexDataOffset   = nextTriangleIndex * 3 + vertexInNextTriangle;
-
-        // This has already been merged with another triangle's normal.
-        if ( indexData_[ nextindexDataOffset ] != EMPTY_INDEX ) {
-
-          continue;
-        }
-
-        const glm::dvec3& opposingNormal     = faceNormals[ nextTriangleIndex ];
-        double            doubleOpposingArea = glm::length( opposingNormal );
-
-        if ( doubleOpposingArea < DBL_EPSILON || ( doubleOpposingArea * doubleArea ) < DBL_EPSILON ) {
-
-          continue;
-        }
-
-        double cosBetweenNormals = glm::dot( normal, opposingNormal ) / ( doubleOpposingArea * doubleArea );
-
-        if ( cosBetweenNormals < cosineCutoff ) {
-
-          continue;
-        }
-
-        indexData_[ nextindexDataOffset ] = outputVertexIndex;
-
-        accumulator += opposingNormal;
+        indexData_[ memberOffset ] = outputVertexIndex;
       }
 
       // Normal weighted by triangle area.
@@ -347,7 +485,8 @@ void Geometry::AppendWithTransform(
   const Geometry &geom,
   const glm::dmat4x4& transform ) {
 
-  size_t currentVertexCount = vertices.size();
+  size_t currentVertexCount   = vertices.size();
+  size_t currentTriangleCount = triangles.size();
 
   AppendGeometry( geom );
 
@@ -355,6 +494,8 @@ void Geometry::AppendWithTransform(
 
     *where = transform * glm::dvec4( *where, 1 );
   }
+
+  TransformCornerNormalRange( transform, currentTriangleCount, triangles.size() );
 }
 
 void Geometry::AppendWithScalingTransform(
@@ -372,8 +513,17 @@ void Geometry::AppendWithScalingTransform(
   cleanedUp_ = false;
 
   size_t currentVertexCount = vertices.size();
-  
+
   AppendGeometry( geom );
+
+  // The per-axis scale below is applied in `trans`'s own frame rather than as a
+  // single matrix, so there is no normal matrix to rotate the analytic normals
+  // by. Rather than reconstruct one for a path this rare, drop them and let
+  // Reify() fall back — correctness over coverage (bldrs-ai/conway#667).
+  if ( ( scx != 1 || scy != 1 || scz != 1 ) && !corner_normals.empty() ) {
+
+    ClearCornerNormals();
+  }
 
   if (scx != 1 || scy != 1 || scz != 1) {
 
@@ -399,6 +549,13 @@ void Geometry::AppendWithScalingTransform(
 
 void Geometry::Cleanup( bool forSubtract ) {
 
+  // CSG preparation. The boolean that follows clips triangles and synthesises
+  // new ones along the intersection curve, and those have no face to inherit an
+  // analytic normal from — so a CSG result is a fallback geometry by
+  // construction. Dropping them here rather than after the boolean keeps the
+  // invariant simple: nothing downstream of Cleanup has to reason about
+  // partially-valid normals (bldrs-ai/conway#667).
+  ClearCornerNormals();
 
   {
     conway::AllocTagScope weldTag( conway::AllocSite::VertexWeld );
@@ -461,6 +618,29 @@ void Geometry::AppendGeometry( const Geometry &geom ) {
   vertices.insert( vertices.end(), geom.vertices.begin(), geom.vertices.end() );
 
   size_t maxTriangle = triangles.size();
+
+  // Corner normals have to be merged BEFORE the triangle insert below, because
+  // both sides are sized off their own triangle counts. Either side may be
+  // empty (no analytic normals); the missing side contributes zeros so the
+  // result keeps the 3-per-triangle invariant and the un-normalled half simply
+  // falls back to face normals in Reify().
+  if ( !corner_normals.empty() || !geom.corner_normals.empty() ) {
+
+    corner_normals.resize( maxTriangle * 3, glm::vec3( 0.0f ) );
+
+    if ( geom.corner_normals.empty() ) {
+
+      corner_normals.insert(
+        corner_normals.end(), geom.triangles.size() * 3, glm::vec3( 0.0f ) );
+
+    } else {
+
+      corner_normals.insert(
+        corner_normals.end(),
+        geom.corner_normals.begin(),
+        geom.corner_normals.end() );
+    }
+  }
 
   triangles.insert( triangles.end(), geom.triangles.begin(), geom.triangles.end() );
 
@@ -558,7 +738,17 @@ void Geometry::ExtractTriangles( const ParseBuffer& buffer ) {
   }
 
   parse_vector( buffer.range(), triangles );
-  
+
+  // The triangle list is rewritten from the buffer — parse_vector appends, and
+  // the decrement below then renumbers every triangle in it, so this expects to
+  // own the list — while the parsed indices carry no surface information at
+  // all. Either way `corner_normals` stops matching the triangle count, and
+  // this is the other path (with the per-face rollback) that changes
+  // `triangles` outside MakeTriangle/DeleteTriangle. Drop rather than pad:
+  // "no analytic normals" is always a legal answer, a misaligned one is not
+  // (bldrs-ai/conway#667).
+  ClearCornerNormals();
+
   for ( Triangle& triangle : triangles ) {
 
     --triangle.vertices[ 0 ];
@@ -618,6 +808,11 @@ void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin )
     vertex = ( ( vertex - origin ) * scale ) + origin;
   }
 
+  // A per-axis rescale shears normals unless they are pushed through the
+  // inverse scale; a zero component makes that undefined outright. Not worth
+  // reconstructing here — fall back.
+  ClearCornerNormals();
+
   ClearReification();
 
   if ( bvh.has_value() ) {
@@ -645,11 +840,27 @@ void Geometry::ApplyTransform( const glm::dmat4& transform ) {
     vertex = t;
   }
 
-  if ( glm::determinant( transform ) < 0 ) {
+  TransformCornerNormalRange( transform, 0, triangles.size() );
+
+  // The mirroring invariant, stated once on TransformMirrors: a mirroring
+  // transform leaves the winding normal opposed to the transformed surface
+  // normal, and reversing the winding — not negating the normals — is what puts
+  // them back in agreement.
+  if ( TransformMirrors( transform ) ) {
 
     for ( Triangle& triangle : triangles ) {
 
       std::swap( triangle.vertices[ 0 ], triangle.vertices[ 2 ] );
+    }
+
+    // Same corner-order argument as ReverseFace: the winding flip above
+    // renumbers corners 0 and 2, so their normals have to move with them.
+    if ( !corner_normals.empty() ) {
+
+      for ( size_t index = 0, end = triangles.size(); index < end; ++index ) {
+
+        std::swap( corner_normals[ index * 3 ], corner_normals[ ( index * 3 ) + 2 ] );
+      }
     }
 
     if ( hasConnectivity_ ) {

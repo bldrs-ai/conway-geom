@@ -31,6 +31,35 @@ constexpr size_t byteSize(const std::vector<T> &data) {
   return data.size() * sizeof(T);
 }
 
+/**
+ * Does baking `transform` into a triangle's positions reverse its winding?
+ *
+ * THE MIRRORING INVARIANT, stated once because two places have to agree and a
+ * sign error in either is invisible until something renders inside-out:
+ *
+ *   For a transform M, the winding normal of the transformed triangle is
+ *   det(M) * M^-T n, while a surface normal carried alongside transforms by the
+ *   normal matrix M^-T alone. When det(M) < 0 the two therefore end up
+ *   OPPOSED. The fix is to reverse the winding — swap two corners — which flips
+ *   the winding normal back into agreement. The normals themselves are NOT
+ *   negated: they are still the outward direction of the same surface, and
+ *   negating them as well would put the geometry inside-out instead.
+ *
+ * Both sites that bake a transform into positions follow that rule:
+ * Geometry::ApplyTransform (swapping corners 0 and 2 of every triangle, and
+ * reordering the corner normals to match) and the GLB writer's per-component
+ * append (emitting each index triple reversed). This is deliberately NOT the
+ * same operation as Geometry::ReverseFace, which exists to invert a face's
+ * outward direction and therefore DOES negate — see ReverseCornerNormals.
+ *
+ * @param transform The transform being baked into positions.
+ * @return true when the transform reverses winding.
+ */
+inline bool TransformMirrors( const glm::dmat4& transform ) {
+
+  return glm::determinant( glm::dmat3( transform ) ) < 0.0;
+}
+
 
 struct Geometry {
 
@@ -39,6 +68,26 @@ struct Geometry {
   std::vector< TriangleEdges >             triangle_edges;
   std::vector< Edge >                      edges;
   std::unordered_map< uint64_t, uint32_t > edge_map;
+
+  /**
+   * Per-triangle-corner analytic surface normals, three per triangle in the
+   * corner order of `triangles`, in this geometry's own space.
+   *
+   * INVARIANT: either empty, or exactly `3 * triangles.size()` long. Every
+   * mutator that changes the triangle list either maintains that (MakeTriangle
+   * appends zeros, DeleteTriangle mirrors the swap-and-pop, ReverseFace mirrors
+   * the corner swap) or clears the whole array to fall back — see the
+   * per-function notes. A ZERO vector at a corner means "no analytic normal
+   * here"; Reify() falls back to the triangle's face normal for that corner, so
+   * a partially-populated geometry is legal and degrades locally.
+   *
+   * Why corners rather than vertices: the weld merges the coincident vertices
+   * of two faces that meet at an edge, so a per-vertex array could only hold
+   * one of the two faces' normals. Corners survive the weld with their face
+   * identity intact, which is what makes the crease split fall out for free
+   * (bldrs-ai/conway#667).
+   */
+  std::vector< glm::vec3 >                 corner_normals;
 
   std::optional< AABBTree > bvh;
   //new additions 0.0.44
@@ -169,9 +218,229 @@ struct Geometry {
 
   uint32_t MakeTriangle( uint32_t a, uint32_t b, uint32_t c );
 
+  /**
+   * Record the analytic surface normals of one triangle's three corners,
+   * activating `corner_normals` on first use (every other corner in the
+   * geometry then reads as zero, i.e. "fall back to the face normal").
+   *
+   * Normals need not be unit length, only correctly directed and non-zero;
+   * Reify() normalizes. Passing a zero vector for a corner leaves that corner
+   * on the face-normal fallback.
+   *
+   * @param triangleIndex Index into `triangles`, as returned by MakeTriangle.
+   * @param n0 Analytic normal at corner 0.
+   * @param n1 Analytic normal at corner 1.
+   * @param n2 Analytic normal at corner 2.
+   */
+  void SetCornerNormals(
+    uint32_t triangleIndex,
+    const glm::vec3& n0,
+    const glm::vec3& n1,
+    const glm::vec3& n2 ) {
+
+    if ( corner_normals.empty() ) {
+
+      // First use: size to the whole triangle list so MakeTriangle's cheap
+      // append keeps the invariant from here on. O(n) once, not per call.
+      corner_normals.resize( triangles.size() * 3, glm::vec3( 0.0f ) );
+    }
+
+    uint32_t base = triangleIndex * 3;
+
+    corner_normals[ base     ] = n0;
+    corner_normals[ base + 1 ] = n1;
+    corner_normals[ base + 2 ] = n2;
+  }
+
+  /**
+   * Drop the analytic normals, returning this geometry to Reify()'s
+   * dihedral-guessing fallback. Called by every operation that invalidates
+   * them — CSG, non-uniform rescale, scaling appends.
+   */
+  void ClearCornerNormals() {
+
+    corner_normals.clear();
+    corner_normals.shrink_to_fit();
+  }
+
+  /**
+   * Mirror a triangle-list swap-and-pop in `corner_normals`. No-op when the
+   * analytic normals are not in use.
+   *
+   * @param from Triangle index being moved (the back of the list).
+   * @param to Triangle index being overwritten.
+   */
+  /**
+   * Rotate the corner normals of triangles in `[fromTriangle, toTriangle)` by a
+   * transform's normal matrix (inverse transpose of the upper-left 3x3), so a
+   * baked placement leaves them pointing outward.
+   *
+   * A singular linear part has no normal matrix; the range is zeroed rather
+   * than filled with NaN, which puts those corners back on the face-normal
+   * fallback.
+   *
+   * @param transform The transform applied to the positions.
+   * @param fromTriangle First triangle in the range.
+   * @param toTriangle One past the last triangle in the range.
+   */
+  void TransformCornerNormalRange(
+    const glm::dmat4& transform,
+    size_t fromTriangle,
+    size_t toTriangle ) {
+
+    if ( corner_normals.empty() || fromTriangle >= toTriangle ) {
+
+      return;
+    }
+
+    glm::dmat3 linear( transform );
+
+    bool singular = std::abs( glm::determinant( linear ) ) < DBL_EPSILON;
+
+    glm::dmat3 normalMatrix =
+      singular ? glm::dmat3( 1.0 ) : glm::transpose( glm::inverse( linear ) );
+
+    for ( size_t corner = fromTriangle * 3, end = toTriangle * 3; corner < end; ++corner ) {
+
+      if ( singular ) {
+
+        corner_normals[ corner ] = glm::vec3( 0.0f );
+        continue;
+      }
+
+      glm::dvec3 rotated = normalMatrix * glm::dvec3( corner_normals[ corner ] );
+
+      corner_normals[ corner ] = glm::vec3( rotated );
+    }
+  }
+
+  /**
+   * Mirror a winding reversal of one triangle in `corner_normals`: corners 0
+   * and 2 swap, and every corner's normal is negated.
+   *
+   * Both halves are needed and they are independent. The swap keeps a normal
+   * with the corner it belongs to; the negation is what makes the face's
+   * shading follow its new outward direction. Reify() prefers the analytic
+   * vector over the face normal, so a reversal that flipped only the winding
+   * would shade the face inside-out (bldrs-ai/conway#667).
+   *
+   * NOT to be used for a mirroring transform: there the normal matrix
+   * (inverse transpose) has already flipped the normals relative to the
+   * winding, so ApplyTransform's corner swap alone is the whole correction —
+   * negating as well would undo it.
+   *
+   * @param index Triangle whose winding was reversed.
+   */
+  void ReverseCornerNormals( uint32_t index ) {
+
+    if ( corner_normals.empty() ) {
+
+      return;
+    }
+
+    uint32_t base = index * 3;
+
+    std::swap( corner_normals[ base ], corner_normals[ base + 2 ] );
+
+    corner_normals[ base     ] = -corner_normals[ base     ];
+    corner_normals[ base + 1 ] = -corner_normals[ base + 1 ];
+    corner_normals[ base + 2 ] = -corner_normals[ base + 2 ];
+  }
+
+  /**
+   * Drop every triangle from `triangleCount` on, keeping `corner_normals` in
+   * step. A no-op when the list is already that short or shorter.
+   *
+   * This is the all-or-nothing rollback a face triangulator that throws needs
+   * (ConwayGeometryProcessor's rollbackFace). It exists as a method rather
+   * than a bare `triangles.resize()` at the call site precisely because the
+   * bare resize is what left the corner normals long: the stale tail slots are
+   * then reused by the NEXT face's triangles, so a fallback-only face inherits
+   * the failed face's analytic normals (bldrs-ai/conway#667).
+   *
+   * @param triangleCount Number of triangles to keep.
+   */
+  void TruncateTriangles( size_t triangleCount ) {
+
+    if ( triangles.size() <= triangleCount ) {
+
+      return;
+    }
+
+    triangles.resize( triangleCount );
+
+    SyncCornerNormalsToTriangles();
+  }
+
+  /**
+   * Restore the 3-per-triangle invariant after the triangle list has been
+   * truncated by something other than DeleteTriangle — today, the per-face
+   * rollback in ConwayGeometryProcessor.
+   *
+   * Truncation only; a caller that GREW the triangle list without going
+   * through MakeTriangle would leave the tail zeroed here, which reads as
+   * "fall back", not as a wrong normal.
+   */
+  void SyncCornerNormalsToTriangles() {
+
+    if ( corner_normals.empty() ) {
+
+      return;
+    }
+
+    corner_normals.resize( triangles.size() * 3, glm::vec3( 0.0f ) );
+  }
+
+  void MoveCornerNormals( uint32_t from, uint32_t to ) {
+
+    if ( corner_normals.empty() ) {
+
+      return;
+    }
+
+    for ( uint32_t corner = 0; corner < 3; ++corner ) {
+
+      corner_normals[ ( to * 3 ) + corner ] = corner_normals[ ( from * 3 ) + corner ];
+    }
+  }
+
   uint32_t MakeEdge( uint32_t v1, uint32_t v2, uint32_t triangleIndex );
 
   void Reify( const glm::dvec3& offset = glm::dvec3( 0 ) );
+
+  /**
+   * The reified vertex stream, interleaved [px, py, pz, nx, ny, nz] per
+   * emitted vertex, reifying first if needed.
+   *
+   * THIS, not GetVertexData(), is what internal C++ must use. GetVertexData()
+   * returns the buffer's address narrowed to `uint32_t` because it is an embind
+   * entry point and wasm pointers are 32 bits; on a 64-bit native build that
+   * value cannot be widened back into the pointer it came from, so a native
+   * caller dereferences a truncated address. Every use inside the library goes
+   * through the typed accessors instead (bldrs-ai/conway#667).
+   *
+   * @return The interleaved stream.
+   */
+  const std::vector< float >& GetVertexStream() {
+
+    Reify( previousReificationOffset_ );
+
+    return floatVertexData_;
+  }
+
+  /**
+   * The reified index stream, three corners per triangle, indexing the vertex
+   * stream above. Same rule as GetVertexStream: internal code uses this rather
+   * than GetIndexData().
+   *
+   * @return The index stream.
+   */
+  const std::vector< uint32_t >& GetIndexStream() {
+
+    Reify( previousReificationOffset_ );
+
+    return indexData_;
+  }
 
   void ClearReification() {
 
@@ -229,6 +498,8 @@ inline void Geometry::Clear() {
 
   vertices.clear();
   triangles.clear();
+
+  ClearCornerNormals();
 
   halfSpace       = false;
   center          = glm::dvec3( 0, 0, 0 );
@@ -290,8 +561,10 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
 
       triangles[ index ]      = triangles.back();
       triangle_edges[ index ] = triangle_edges.back();
+
+      MoveCornerNormals( backIndex, index );
     }
-    
+
     triangle_edges.pop_back();
 
   } else if (
@@ -299,9 +572,13 @@ inline void Geometry::DeleteTriangle( uint32_t index ) {
     index != backIndex ) {
 
     triangles[ index ] = triangles.back();
+
+    MoveCornerNormals( backIndex, index );
   }
 
   triangles.pop_back();
+
+  SyncCornerNormalsToTriangles();
 
   if ( bvh.has_value() ) {
 
@@ -340,6 +617,14 @@ inline uint32_t Geometry::MakeTriangle( uint32_t a, uint32_t b, uint32_t c ) {
   triangle.vertices[ 0 ] = a;
   triangle.vertices[ 1 ] = b;
   triangle.vertices[ 2 ] = c;
+
+  // Keep the corner_normals invariant (3 per triangle) without requiring every
+  // caller to know about it: a triangle appended with no analytic normal gets
+  // three zeros, which Reify() reads as "use the face normal here".
+  if ( !corner_normals.empty() ) {
+
+    corner_normals.insert( corner_normals.end(), 3, glm::vec3( 0.0f ) );
+  }
 
   if ( hasConnectivity_ ) {
 

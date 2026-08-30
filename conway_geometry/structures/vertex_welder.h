@@ -16,6 +16,8 @@ namespace conway::geometry {
     std::unordered_map< glm::dvec3, uint32_t >    exact_hash;
     std::vector< uint32_t >                       remap;
     std::vector< Triangle >                       old_triangles;
+    std::vector< glm::vec3 >                      old_corner_normals;
+    std::vector< glm::vec3 >                      rebuilt_corner_normals;
     std::vector< glm::dvec3 >                     converged;
     std::vector< uint32_t >                       unique_mapping;
     std::vector< glm::dvec3 >                     area_weighted_normals;
@@ -29,6 +31,7 @@ namespace conway::geometry {
       exact_hash.clear();
       remap.resize( toWeld.vertices.size() );
       old_triangles.clear();
+      old_corner_normals.clear();
       spatial_hash.clear();
       converged.clear();
       unique_mapping.clear();
@@ -177,11 +180,36 @@ namespace conway::geometry {
 
       std::swap( old_triangles, toWeld.triangles );
 
+      // The rebuild below drops degenerate triangles, so triangle indices shift
+      // and the analytic corner normals cannot simply be left in place. Swap
+      // them out alongside the triangles and re-push only the survivors, in the
+      // same corner order — i0/i1/i2 are corners 0/1/2 of the source triangle,
+      // so the correspondence is positional (bldrs-ai/conway#667).
+      std::swap( old_corner_normals, toWeld.corner_normals );
+
+      bool hasCornerNormals = !old_corner_normals.empty();
+
+      // Rebuilt separately rather than pushed straight into the geometry:
+      // MakeTriangle maintains the 3-per-triangle invariant itself by appending
+      // zeros whenever the array is non-empty, so writing into it inside the
+      // loop as well would append six entries per triangle from the second one
+      // on. Assigned back once the rebuild is done.
+      rebuilt_corner_normals.clear();
+
+      if ( hasCornerNormals ) {
+
+        rebuilt_corner_normals.reserve( old_corner_normals.size() );
+      }
+
       toWeld.triangle_edges.clear();
       toWeld.edges.clear();
       toWeld.edge_map.clear();
 
-      for ( const Triangle& triangle : old_triangles ) {
+      for ( size_t sourceTriangle = 0, sourceEnd = old_triangles.size();
+        sourceTriangle < sourceEnd;
+        ++sourceTriangle ) {
+
+        const Triangle& triangle = old_triangles[ sourceTriangle ];
 
         uint32_t i0 = remap[ unified.find( triangle.vertices[ 0 ] ) ];
         uint32_t i1 = remap[ unified.find( triangle.vertices[ 1 ] ) ];
@@ -201,6 +229,20 @@ namespace conway::geometry {
         }
 
         toWeld.MakeTriangle( i0, i1, i2 );
+
+        if ( hasCornerNormals ) {
+
+          size_t base = sourceTriangle * 3;
+
+          rebuilt_corner_normals.push_back( old_corner_normals[ base ] );
+          rebuilt_corner_normals.push_back( old_corner_normals[ base + 1 ] );
+          rebuilt_corner_normals.push_back( old_corner_normals[ base + 2 ] );
+        }
+      }
+
+      if ( hasCornerNormals ) {
+
+        toWeld.corner_normals = rebuilt_corner_normals;
       }
 
       if ( outset ) {

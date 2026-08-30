@@ -17,6 +17,7 @@
 
 #include "operations/curve_utils.h"
 #include "operations/geometry_utils.h"
+#include "operations/gltf_stream.h"
 #include "operations/mesh_utils.h"
 #include "representation/Geometry.h"
 #include "Logger.h"
@@ -648,9 +649,13 @@ namespace {
     size_t    vertexCount,
     size_t    triangleCount ) {
 
-    if ( geometry.triangles.size() > triangleCount ) {
-      geometry.triangles.resize( triangleCount );
-    }
+    // Truncates the analytic corner normals with the triangles. A bare
+    // `triangles.resize()` here would leave them long, and the stale tail slots
+    // are then reused by the NEXT face's MakeTriangle calls — which append
+    // zeros at the physical end, past the live range — so a later
+    // fallback-only face would silently inherit the failed face's normals
+    // (bldrs-ai/conway#667).
+    geometry.TruncateTriangles( triangleCount );
 
     if ( geometry.vertices.size() > vertexCount ) {
       geometry.vertices.resize( vertexCount );
@@ -1489,7 +1494,10 @@ ConwayGeometryProcessor::GeometryToGltf(
 
     bool hasFirstPoint = false;
 
-    glm::dvec3 positionBias;
+    // Zero-initialized: a collection whose components hold no reified points
+    // leaves `hasFirstPoint` false, and the draco branch below reads the bias
+    // unconditionally.
+    glm::dvec3 positionBias( 0.0 );
 
     for (conway::geometry::GeometryCollection &geom : geoms) {
 
@@ -1531,117 +1539,188 @@ ConwayGeometryProcessor::GeometryToGltf(
           dracoMeshCompression;
 
       int32_t pos_att_id = -1;
+      int32_t norm_att_id = -1;
       // this internally populates the vertex float array, current storage type
       // is double
       // geom.GetVertexData();
 
+
+      std::string accessorIdIndices;
+      std::string accessorIdPositions;
+      std::string accessorIdNormals;
+      std::string accessorIdUVs;
+
+      uint32_t numPoints = 0;
+      uint32_t numIndices = 0;
+
+      // Sized from the REIFIED stream, not from `vertices` / `triangles`.
+      // Reify() splits a vertex once per smoothing group, so its vertex count
+      // is the emitted one (~1.8x the welded count on a curved model) and its
+      // index buffer is already rebased onto that split set. Reading the raw
+      // arrays here is what left every primitive POSITION-only, which made
+      // three.js flat-shade the whole model — see bldrs-ai/conway#667.
+      for (conway::geometry::Geometry *componentPtr : geom.components) {
+        conway::geometry::Geometry &component = *componentPtr;
+
+        numPoints  += static_cast< uint32_t >(
+            component.GetVertexStream().size() / GLTF_STREAM_STRIDE );
+        numIndices += static_cast< uint32_t >( component.GetIndexStream().size() );
+      }
+
+      // Emptied BY the reification the loop above just forced, which is why
+      // this cannot be folded into the `hasTriangles` check higher up: that one
+      // reads `triangles` before Reify(), and Reify() drops every degenerate and
+      // duplicate-index triangle. A collection made entirely of those arrives
+      // here with triangles and leaves with no points — and the Draco branch
+      // below would then declare no attributes but still dereference
+      // pos_att_id / norm_att_id (bldrs-ai/conway#667).
+      if ( numPoints == 0 || numIndices == 0 ) {
+        continue;
+      }
+
+      std::vector<float> positions;
+      std::vector<float> normals;
+      std::vector<uint32_t> indexData;
+
+      positions.reserve( numPoints * 3 );
+      normals.reserve( numPoints * 3 );
+      indexData.reserve( numIndices );
+
+      std::vector<float> minValues( 3U, std::numeric_limits< float >::max() );
+      std::vector<float> maxValues( 3U, std::numeric_limits< float >::lowest() );
+
+      uint32_t pointOffset = 0;
+      size_t transformCursor = 0;
+
+      for (conway::geometry::Geometry *componentPtr : geom.components) {
+        conway::geometry::Geometry &component = *componentPtr;
+        glm::dmat4 geomTransform =
+            transform * geom.transforms[transformCursor++];
+
+        // Typed accessors, never GetVertexData()/GetIndexData(): those narrow
+        // the buffer address to uint32_t for embind, which a 64-bit native
+        // build cannot widen back into a valid pointer.
+        const std::vector< float >&    vertexStream = component.GetVertexStream();
+        const std::vector< uint32_t >& indexStream  = component.GetIndexStream();
+
+        uint32_t componentPoints =
+            static_cast< uint32_t >( vertexStream.size() / GLTF_STREAM_STRIDE );
+
+        // The bias is the first placed point in the whole chunk, and it is
+        // subtracted exactly once — here — because the node translation adds it
+        // back exactly once. Established before the append so the append can
+        // stay a pure function of its inputs.
+        if ( !hasFirstPoint && componentPoints > 0 ) {
+
+          hasFirstPoint = true;
+          positionBias  = glm::dvec3( geomTransform * glm::dvec4(
+              vertexStream[ 0 ], vertexStream[ 1 ], vertexStream[ 2 ], 1 ) );
+        }
+
+        appendComponentToGltfStream(
+            vertexStream,
+            indexStream,
+            geomTransform,
+            positionBias,
+            pointOffset,
+            positions,
+            normals,
+            indexData );
+
+        pointOffset += componentPoints;
+      }
+
+      const size_t positionCount = positions.size();
+
+      // Accessor min/max properties must be set for vertex position data so
+      // calculate them here. Non-finite values (degenerate upstream geometry)
+      // must be skipped: a NaN here poisons the accessor bounds and makes the
+      // JSON serializer throw mid-manifest, truncating the whole GLB.
+      for (size_t i = 0U, j = 0U; i < positionCount; ++i, j = (i % 3U)) {
+        if (!std::isfinite(positions[i])) {
+          continue;
+        }
+        minValues[j] = std::min(positions[i], minValues[j]);
+        maxValues[j] = std::max(positions[i], maxValues[j]);
+      }
+
+      /*
+       * Draco encoding, from the SAME reified positions and normals the
+       * uncompressed branch writes.
+       *
+       * It used to run before this point and build its mesh from the raw
+       * `vertices` / `triangles` arrays with a POSITION attribute and nothing
+       * else, so a compressed GLB carried no normals at all and stayed
+       * flat-shaded — the #667 defect this change exists to fix, surviving in
+       * the one output path that skipped the new accessors. Moving it down
+       * here is what lets it share the arrays rather than re-derive them, and
+       * the normals ride along for the cost of one more attribute.
+       *
+       * Positions are biased by the first point seen, as before: draco
+       * quantizes POSITION to 14 bits over the attribute's own range, so a
+       * model placed far from the origin would otherwise spend most of that
+       * range on the offset.
+       */
       if (outputDraco) {
+
         dracoMesh.reset(new draco::Mesh());
 
-        // set the number of positions and faces
-        uint32_t numPositions = 0;
-        uint32_t numFaces = 0;
-
-        for ( conway::geometry::Geometry *componentPtr : geom.components ) {
-
-          conway::geometry::Geometry &component = *componentPtr;
-
-          numPositions += component.vertices.size();
-          numFaces     += component.triangles.size();
-        }
-
-        uint32_t numIndices = numFaces * 3;
+        uint32_t numFaces = static_cast< uint32_t >( indexData.size() / 3 );
 
         if (numFaces > 0) {
-          // set number of faces
           dracoMesh->SetNumFaces(numFaces);
-
-          // set number of indices
-          dracoMesh->set_num_points(numIndices);
+          dracoMesh->set_num_points(numFaces * 3);
         }
 
-        // Add attributes if they are present in the input data.
-        if (numPositions > 0) {
-          draco::GeometryAttribute va;
+        if (numPoints > 0) {
+          draco::GeometryAttribute positionAttribute;
 
-          va.set_unique_id(uniqueIdDraco++);
+          positionAttribute.set_unique_id(uniqueIdDraco++);
 
-          va.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
+          positionAttribute.Init(draco::GeometryAttribute::POSITION, nullptr, 3,
                   draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
-          pos_att_id = dracoMesh->AddAttribute(va, false, numPositions);
+          pos_att_id = dracoMesh->AddAttribute(positionAttribute, false, numPoints);
+
+          draco::GeometryAttribute normalAttribute;
+
+          normalAttribute.set_unique_id(uniqueIdDraco++);
+
+          normalAttribute.Init(draco::GeometryAttribute::NORMAL, nullptr, 3,
+                  draco::DT_FLOAT32, false, sizeof(float) * 3, 0);
+          norm_att_id = dracoMesh->AddAttribute(normalAttribute, false, numPoints);
         }
 
-        // populate position attribute
+        for (uint32_t vertex = 0; vertex < numPoints; ++vertex) {
 
-        uint32_t vertexCount = 0;
-        uint32_t totalPoints = 0;
-        uint32_t totalIndices = 0;
+          // Taken as-is. `positions` is ALREADY rebased by positionBias, and
+          // the node translation adds that offset back exactly once, so
+          // subtracting it a second time here would displace the compressed
+          // primitive by -bias relative to every uncompressed one.
+          float positionValue[3] = {
+              positions[vertex * 3],
+              positions[vertex * 3 + 1],
+              positions[vertex * 3 + 2]};
 
-        // populate geometry components position attribute
-        for (uint32_t geometryComponentIndex = 0;
-             geometryComponentIndex < geom.components.size();
-             ++geometryComponentIndex) {
-          Geometry &component = *geom.components[geometryComponentIndex];
-          glm::dmat4 geomTransform =
-              transform * geom.transforms[geometryComponentIndex];
+          dracoMesh->attribute(pos_att_id)
+              ->SetAttributeValue(draco::AttributeValueIndex(vertex), positionValue);
 
-          for ( const glm::dvec3 *where = component.vertices.data(),
-                            *end = where + component.vertices.size();
-               where < end; ++where ) {
-            glm::dvec3 t = glm::dvec3(
-                geomTransform * glm::dvec4( *where, 1) );
+          float normalValue[3] = {
+              normals[vertex * 3], normals[vertex * 3 + 1], normals[vertex * 3 + 2]};
 
-            if ( !hasFirstPoint ) {
+          dracoMesh->attribute(norm_att_id)
+              ->SetAttributeValue(draco::AttributeValueIndex(vertex), normalValue);
+        }
 
-              hasFirstPoint = true;
-              positionBias = t;
-            }
+        // One point per CORNER, mapped to the vertex the index names — the
+        // same identity face mapping as before, now applied to both attributes
+        // so a corner reads its own normal rather than none.
+        for (uint32_t corner = 0, end = numFaces * 3; corner < end; ++corner) {
 
-            t = t - positionBias;
+          const draco::PointIndex pointIndex(corner);
+          const draco::AttributeValueIndex valueIndex(indexData[corner]);
 
-            float vertexVal[3] = {static_cast<float>(t.x),
-                                  static_cast<float>(t.y),
-                                  static_cast<float>(t.z)};
-
-            dracoMesh->attribute( pos_att_id )
-                ->SetAttributeValue( draco::AttributeValueIndex( vertexCount++ ),
-                                    vertexVal );
-          }
-
-          const Triangle *triangles = component.triangles.data();
-
-          // no textures, just map vertices to face indices
-          for (
-            size_t triangleIndex = 0, end = component.triangles.size();
-            triangleIndex < end; 
-            ++triangleIndex ) {
-
-            const Triangle& triangle = triangles[ triangleIndex ];
-
-            uint32_t triangle0 = triangle.vertices[ 0 ] + totalPoints;
-            uint32_t triangle1 = triangle.vertices[ 1 ] + totalPoints;
-            uint32_t triangle2 = triangle.vertices[ 2 ] + totalPoints;
-
-            uint32_t compositeIndiceIndex = totalIndices + triangleIndex * 3;
-
-            const draco::PointIndex vert_id_0(compositeIndiceIndex);
-            const draco::PointIndex vert_id_1(compositeIndiceIndex + 1);
-            const draco::PointIndex vert_id_2(compositeIndiceIndex + 2);
-
-            // map vertex to face index
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_0,
-                                   draco::AttributeValueIndex(triangle0));
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_1,
-                                   draco::AttributeValueIndex(triangle1));
-            dracoMesh->attribute(pos_att_id)
-                ->SetPointMapEntry(vert_id_2,
-                                   draco::AttributeValueIndex(triangle2));
-          }
-
-          totalIndices += static_cast< uint32_t >( component.triangles.size() * 3 );
-          totalPoints  += static_cast< uint32_t >( component.vertices.size() );
+          dracoMesh->attribute(pos_att_id)->SetPointMapEntry(pointIndex, valueIndex);
+          dracoMesh->attribute(norm_att_id)->SetPointMapEntry(pointIndex, valueIndex);
         }
 
         // Add faces with identity mapping between vertex and corner indices.
@@ -1719,93 +1798,12 @@ ConwayGeometryProcessor::GeometryToGltf(
         }
       }
 
-      std::string accessorIdIndices;
-      std::string accessorIdPositions;
-      std::string accessorIdUVs;
-
-      uint32_t numPoints = 0;
-      uint32_t numIndices = 0;
-
-      for (conway::geometry::Geometry *componentPtr : geom.components) {
-        conway::geometry::Geometry &component = *componentPtr;
-
-        numPoints  += static_cast< uint32_t >( component.vertices.size() );
-        numIndices += component.triangles.size() * 3;
-      }
-
-      std::vector<float> positions;
-      std::vector<uint32_t> indexData;
-
-      positions.resize( numPoints * 3 );
-      indexData.reserve( numIndices );
-
-      std::vector<float> minValues( 3U, std::numeric_limits< float >::max() );
-      std::vector<float> maxValues( 3U, std::numeric_limits< float >::lowest() );
-
-      const size_t positionCount = positions.size();
-      float *positionOutputCursor = positions.data();
-
-      uint32_t pointOffset = 0;
-      size_t transformCursor = 0;
-
-      for (conway::geometry::Geometry *componentPtr : geom.components) {
-        conway::geometry::Geometry &component = *componentPtr;
-        glm::dmat4 geomTransform =
-            transform * geom.transforms[transformCursor++];
-
-        for (const glm::dvec3 *where = component.vertices.data(),
-                              *end   = where + component.vertices.size();
-             where < end;
-             ++where ) {
-
-          glm::dvec3 t =
-              glm::dvec3( geomTransform * glm::dvec4( *where, 1 ) );
-
-          if ( !hasFirstPoint ) {
-
-            hasFirstPoint = true;
-            positionBias = glm::dvec3( t );
-          }
-
-          t -= positionBias;
-
-          *(positionOutputCursor++) = (float)t.x;
-          *(positionOutputCursor++) = (float)t.y;
-          *(positionOutputCursor++) = (float)t.z;
-        }
-
-        size_t indexDataOffset = indexData.size();
-
-        indexData.insert(
-          indexData.end(),
-          &component.triangles[ 0 ].vertices[ 0 ],
-          &component.triangles[ component.triangles.size() ].vertices[ 0 ] );
-
-        for (uint32_t *where = indexData.data() + indexDataOffset,
-                      *end = indexData.data() + indexData.size();
-             where < end; where += 3) {
-          where[0] += pointOffset;
-          where[1] += pointOffset;
-          where[2] += pointOffset;
-        }
-
-        pointOffset += component.vertices.size();
-      }
-
-      // Accessor min/max properties must be set for vertex position data so
-      // calculate them here. Non-finite values (degenerate upstream geometry)
-      // must be skipped: a NaN here poisons the accessor bounds and makes the
-      // JSON serializer throw mid-manifest, truncating the whole GLB.
-      for (size_t i = 0U, j = 0U; i < positionCount; ++i, j = (i % 3U)) {
-        if (!std::isfinite(positions[i])) {
-          continue;
-        }
-        minValues[j] = std::min(positions[i], minValues[j]);
-        maxValues[j] = std::max(positions[i], maxValues[j]);
-      }
-
       if (outputDraco) {
         Microsoft::glTF::Accessor positionsAccessor;
+        // Straight from `positions`, which is the frame the Draco attribute is
+        // encoded in — both are rebased by positionBias exactly once, and the
+        // node translation puts that offset back. Biasing these again is the
+        // same mistake as biasing the encoded values again.
         positionsAccessor.min = minValues;
         positionsAccessor.max = maxValues;
         positionsAccessor.count = dracoMesh->num_points();
@@ -1814,6 +1812,18 @@ ConwayGeometryProcessor::GeometryToGltf(
         positionsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
         dracoMeshCompression.attributes.emplace(
             "POSITION", dracoMesh->attribute(pos_att_id)->unique_id());
+
+        // The compressed half of the #667 fix: without this pair — the
+        // accessor and the extension's attribute declaration — a decoder has
+        // no NORMAL to bind the decoded attribute to, and three.js flat-shades
+        // the primitive exactly as it did before the change.
+        Microsoft::glTF::Accessor normalsAccessor;
+        normalsAccessor.count = positionsAccessor.count;
+        normalsAccessor.componentType =
+            Microsoft::glTF::ComponentType::COMPONENT_FLOAT;
+        normalsAccessor.type = Microsoft::glTF::AccessorType::TYPE_VEC3;
+        dracoMeshCompression.attributes.emplace(
+            "NORMAL", dracoMesh->attribute(norm_att_id)->unique_id());
 
         Microsoft::glTF::Accessor indicesAccessor;
         indicesAccessor.count = dracoMesh->num_faces() * 3;
@@ -1824,6 +1834,12 @@ ConwayGeometryProcessor::GeometryToGltf(
         accessorIdPositions =
             document.accessors
                 .Append(positionsAccessor,
+                        Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
+                .id;
+
+        accessorIdNormals =
+            document.accessors
+                .Append(normalsAccessor,
                         Microsoft::glTF::AppendIdPolicy::GenerateOnEmpty)
                 .id;
 
@@ -1843,12 +1859,39 @@ ConwayGeometryProcessor::GeometryToGltf(
 
         // // Copy the Accessor's id - subsequent calls to AddAccessor may
         // // invalidate the returned reference
-        accessorIdIndices =
-            bufferBuilder
-                .AddAccessor(indexData,
-                             {Microsoft::glTF::TYPE_SCALAR,
-                              Microsoft::glTF::COMPONENT_UNSIGNED_INT})
-                .id;
+        //
+        // Narrow the index type when the primitive's vertices fit: u16 halves
+        // the index buffer, which is the larger half of a conway GLB (7.35 MB
+        // of 11.05 MB on the model in bldrs-ai/conway#667), and it is pure
+        // profit — no extension, universally supported. Only a primitive above
+        // 65,535 vertices has to stay on u32.
+        if ( numPoints <= std::numeric_limits< uint16_t >::max() ) {
+
+          std::vector< uint16_t > narrowIndices;
+
+          narrowIndices.reserve( indexData.size() );
+
+          for ( uint32_t index : indexData ) {
+
+            narrowIndices.push_back( static_cast< uint16_t >( index ) );
+          }
+
+          accessorIdIndices =
+              bufferBuilder
+                  .AddAccessor(narrowIndices,
+                               {Microsoft::glTF::TYPE_SCALAR,
+                                Microsoft::glTF::COMPONENT_UNSIGNED_SHORT})
+                  .id;
+
+        } else {
+
+          accessorIdIndices =
+              bufferBuilder
+                  .AddAccessor(indexData,
+                               {Microsoft::glTF::TYPE_SCALAR,
+                                Microsoft::glTF::COMPONENT_UNSIGNED_INT})
+                  .id;
+        }
 
         // Create a BufferView with target ARRAY_BUFFER (as it will reference
         // vertex attribute data)
@@ -1862,6 +1905,16 @@ ConwayGeometryProcessor::GeometryToGltf(
                              {Microsoft::glTF::TYPE_VEC3,
                               Microsoft::glTF::COMPONENT_FLOAT, false,
                               std::move(minValues), std::move(maxValues)})
+                .id;
+
+        bufferBuilder.AddBufferView(
+            Microsoft::glTF::BufferViewTarget::ARRAY_BUFFER);
+
+        accessorIdNormals =
+            bufferBuilder
+                .AddAccessor(normals,
+                             {Microsoft::glTF::TYPE_VEC3,
+                              Microsoft::glTF::COMPONENT_FLOAT})
                 .id;
       }
 
@@ -1895,6 +1948,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
+        meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_NORMAL] =
+            accessorIdNormals;
 
         dracoMeshCompression.bufferViewId = bufferView.id;
 
@@ -1904,6 +1959,8 @@ ConwayGeometryProcessor::GeometryToGltf(
         meshPrimitive.indicesAccessorId = accessorIdIndices;
         meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_POSITION] =
             accessorIdPositions;
+        meshPrimitive.attributes[Microsoft::glTF::ACCESSOR_NORMAL] =
+            accessorIdNormals;
       }
 
       mesh.primitives.push_back(std::move(meshPrimitive));
