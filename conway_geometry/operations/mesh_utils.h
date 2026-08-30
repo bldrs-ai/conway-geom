@@ -3937,6 +3937,12 @@ inline void TriangulateExtrusion(Geometry &geometry,
   refineAndAppend( mesh );
 }
 
+// Side of the refinement lattice the wrong-basin escape lays over a small
+// neighbourhood of the best coarse grid sample. 16 was measured; the escape's
+// job is only to land in the right BASIN, after which the descent converges,
+// so resolution past that buys nothing. See the escape in operator().
+constexpr size_t REFINE_SIDE         = 16;
+constexpr double REFINE_SIDE_D       = static_cast< double >( REFINE_SIDE );
 constexpr size_t INVERSE_GRID_SIDE   = 8.0; 
 constexpr double INVERSE_GRID_SIZE_D = static_cast< double >( INVERSE_GRID_SIDE );
 constexpr double INVERSE_GRID_FACTOR = 1.0 / ( INVERSE_GRID_SIZE_D - 1.0 );
@@ -4012,6 +4018,10 @@ struct RationalNurbsInverseMethod {
 
   glm::dvec2 min_extent;
   glm::dvec2 max_extent;
+
+  // Set per bound by boundSeverityToChord; zero disables the wrong-basin
+  // escape in operator().
+  double chordSeverity_ = 0.0;
 
   /** Convergence target for the solve, scaled to this surface's extent. */
   double convergence_error;
@@ -4293,6 +4303,43 @@ struct RationalNurbsInverseMethod {
    *                     target at the MIN_INVERSE_ERROR floor, which is what
    *                     a zero-extent face gets from the grid path too.
    */
+  /**
+   * Arm the wrong-basin escape below with the trim loop's own sampling scale.
+   *
+   * `medianChord` is the median 3D distance between CONSECUTIVE points of the
+   * bound being inverted. It is the scale that decides whether a misplaced uv
+   * matters: a point whose solved uv reproduces it within one chord cannot
+   * reorder the boundary polyline, while one displaced by more than a chord
+   * can - and reordering is precisely what turns a bad solve into a
+   * self-intersecting uv chart that earcut then triangulates inside out
+   * (bldrs-ai/conway#642).
+   *
+   * DERIVED, not chosen. Measured over all 843 single-bound b-spline faces in
+   * the regression corpus (74,838 boundary points), residual/medianChord
+   * separates the classes: 0.21% of points on undamaged faces exceed 1.0 and
+   * none exceed 3.0, against 5.5% and 1.0% on damaged ones. At the 0.3 used
+   * below, 18 of the 19 wrong-basin faces are caught while 33 of 810 clean
+   * faces trip it, and 1,847 of 74,838 points (2.5%) are refined.
+   *
+   * The overlap is deliberate and costs only time. This gate decides WHERE TO
+   * SPEND WORK, not what to believe: the refinement below is accepted only on
+   * a strictly lower final residual, so a clean face tripping the gate does
+   * extra evaluations and keeps its existing answer. Recall is what matters
+   * here; precision only buys speed.
+   *
+   * Left at zero the escape never fires, which is what every caller that does
+   * not set it gets.
+   *
+   * @param medianChord Median 3D spacing of consecutive bound points, in the
+   *                    same (post-`scaling`) units the points are inverted
+   *                    in. Zero or non-finite disables the escape.
+   */
+  void boundSeverityToChord( double medianChord ) {
+
+    chordSeverity_ =
+      ( std::isfinite( medianChord ) && medianChord > 0.0 ) ? medianChord : 0.0;
+  }
+
   void boundConvergenceToTrim( double trimDiagonal ) {
 
     convergence_error =
@@ -4376,20 +4423,28 @@ struct RationalNurbsInverseMethod {
     // unrelated candidate is simply further away and loses the comparison.
     // That reasoning is wrong, and it is wrong in the one way the retry
     // below cannot cover - see resetContinuity().
+    // Kept in scope past the comparison, because the retry below descends from
+    // it whether or not it won here - see the symmetric retry.
+    glm::dvec2 continuityGuess( 0.0 );
+    glm::dvec3 continuityPoint( 0.0 );
+    double     continuityDistance2 = DBL_MAX;
+
     if ( hasPreviousSolution_ ) {
 
-      glm::dvec3 previousPoint =
+      continuityGuess = previousSolution_;
+
+      continuityPoint =
         evaluator.point( previousSolution_.x, previousSolution_.y );
 
-      glm::dvec3 deltaP = previousPoint - point;
+      glm::dvec3 deltaP = continuityPoint - point;
 
-      double distance2 = glm::dot( deltaP, deltaP );
+      continuityDistance2 = glm::dot( deltaP, deltaP );
 
-      if ( distance2 < minDistance2 ) {
+      if ( continuityDistance2 < minDistance2 ) {
 
-        bestGuess          = previousSolution_;
-        bestPoint          = previousPoint;
-        minDistance2       = distance2;
+        bestGuess          = continuityGuess;
+        bestPoint          = continuityPoint;
+        minDistance2       = continuityDistance2;
         usedContinuitySeed = true;
       }
     }
@@ -4431,6 +4486,159 @@ struct RationalNurbsInverseMethod {
 
         solution        = gridSolution;
         solvedDistance2 = gridSolvedDistance2;
+      }
+    }
+
+    // The MIRROR of that retry: the grid seed won the comparison above and
+    // still did not converge, so descend from the continuity candidate that
+    // lost it, and keep whichever ended nearer.
+    //
+    // Without this the choose-on-outcome rule is one-directional, and the
+    // direction it omits is the one a self-near surface actually needs. The
+    // comparison above is nearest-in-3D, which stops discriminating exactly
+    // where two sheets of the surface pass close: on the four
+    // bldrs-ai/conway#642 faces the previous boundary point's uv sits one
+    // local CHORD away in 3D, while a neighbouring turn of the same ribbon
+    // passes CLOSER than that. So the correct seed loses on distance, the
+    // grid's wrong-sheet sample is taken, and the retry above - gated on
+    // `usedContinuitySeed` - never runs.
+    //
+    // Measured on those faces, after the escape below is already in place:
+    // 14 boundary points survive with residuals of 0.86-1.00, which is
+    // 6.0-9.1% of face extent, against a dense-scan true minimum of 2e-6 to
+    // 3e-3 (0.00002-0.023%) - the solver is 300x to 400,000x off an
+    // answer that exists. On all 14 the continuity candidate loses the
+    // comparison because the local chord there is 0.97-2.75, three to eight
+    // times the face's own median chord, while the wrong sheet sits at
+    // 0.86-1.39. Descending from that rejected candidate recovers the true
+    // minimum on 28 of 28 probes (both neighbours of all 14 points).
+    //
+    // Same accept rule as every other tier here - strictly lower FINAL
+    // residual, never seed distance - so a candidate that descends somewhere
+    // worse costs one descent and changes nothing. That matters for the case
+    // this cannot distinguish up front: if the previous point itself solved
+    // badly, its uv is a bad seed, and the residual comparison is what
+    // refuses it.
+    //
+    // Cost is bounded the same way the retry above is: only a non-converged
+    // solve, and only one that did not already take the continuity seed.
+    else if ( !usedContinuitySeed &&
+              continuityDistance2 < DBL_MAX &&
+              solvedDistance2 > convergence_error * convergence_error ) {
+
+      double     continuitySolvedDistance2 = 0.0;
+      glm::dvec2 continuitySolution        =
+        solveFromSeed( point, continuityGuess, continuityPoint,
+                       continuityDistance2, continuitySolvedDistance2 );
+
+      if ( continuitySolvedDistance2 < solvedDistance2 ) {
+
+        solution        = continuitySolution;
+        solvedDistance2 = continuitySolvedDistance2;
+      }
+    }
+
+    // THIRD TIER: the wrong-basin escape.
+    //
+    // Both seeds above can be in the SAME wrong basin, and when they are, the
+    // retry's residual comparison has nothing good to choose between. That is
+    // not hypothetical - on the four bldrs-ai/conway#642 faces the 8x8 grid
+    // spans a v domain of ~72, so its samples sit ~10.4 apart in v while the
+    // correct uv is ~11.4 away: barely more than one cell, and on a surface
+    // that passes near itself the nearest sample belongs to a NEIGHBOURING
+    // sheet. Gauss-Newton is a local method, so it converges inside that
+    // sheet and reports a converged-looking answer that is simply wrong.
+    //
+    // Measured on the regression corpus, over the 491 boundary points whose
+    // residual exceeds this gate:
+    //
+    //   re-seed from the far-side good neighbour   18.5% recovered
+    //   pure grid seed, continuity reset            0.0% recovered
+    //   the points are genuinely off-surface        refuted: a dense scan
+    //                                               beat the solver by
+    //                                               20-5000x on 19/19 faces
+    //
+    // So SEEDING is not the lever and the points are invertible; the grid's
+    // RESOLUTION is the lever. This refines a small neighbourhood of the best
+    // coarse sample and re-descends from it. Two spans are tried because the
+    // #642 answer sits right at the one-cell boundary: +-1 cell wins across
+    // the corpus (69.6% of gated points brought under the gate, against the
+    // 71.2% a global 256x256 scan reaches) while +-2 wins on #642's faces
+    // (68.7% improved against 45.8%). Trying both and keeping the lower final
+    // residual is the same choose-on-outcome rule the retry above uses, and
+    // for the same reason: a nearer seed does not imply a nearer answer.
+    //
+    // Refine-then-DESCEND rather than scan-for-an-answer: on #642's faces the
+    // median residual falls 8.74e-01 -> 2.29e-03, which is 49x better than
+    // the 256x256 scan's own floor. The scan only has to land in the right
+    // basin; the descent does the rest.
+    //
+    // Cost is gated twice - only a non-converged solve, and only one whose
+    // residual exceeds boundSeverityToChord's threshold - so 829 of 848
+    // corpus faces never enter it.
+    if ( chordSeverity_ > 0.0 ) {
+
+      const double severity = 0.3 * chordSeverity_;
+
+      if ( solvedDistance2 > severity * severity ) {
+
+        glm::dvec2 coarseUv    = gridGuess;
+        glm::dvec3 coarsePoint = gridPoint;
+        double     coarseD2    = gridDistance2;
+
+        const glm::dvec2 cell =
+          ( max_extent - min_extent ) / ( INVERSE_GRID_SIZE_D - 1.0 );
+
+        for ( double span : { 1.0, 2.0 } ) {
+
+          glm::dvec2 seedUv    = coarseUv;
+          glm::dvec3 seedPoint = coarsePoint;
+          double     seedD2    = coarseD2;
+
+          for ( size_t a = 0; a <= REFINE_SIDE; ++a ) {
+
+            const double u =
+              coarseUv.x +
+              cell.x * span * ( ( 2.0 * double( a ) / REFINE_SIDE_D ) - 1.0 );
+
+            if ( u < min_extent.x || u > max_extent.x ) {
+              continue;
+            }
+
+            for ( size_t b = 0; b <= REFINE_SIDE; ++b ) {
+
+              const double v =
+                coarseUv.y +
+                cell.y * span * ( ( 2.0 * double( b ) / REFINE_SIDE_D ) - 1.0 );
+
+              if ( v < min_extent.y || v > max_extent.y ) {
+                continue;
+              }
+
+              const glm::dvec3 candidate = evaluator.point( u, v );
+              const glm::dvec3 delta     = candidate - point;
+              const double     distance2 = glm::dot( delta, delta );
+
+              if ( distance2 < seedD2 ) {
+                seedD2    = distance2;
+                seedUv    = glm::dvec2( u, v );
+                seedPoint = candidate;
+              }
+            }
+          }
+
+          double refinedDistance2 = 0.0;
+
+          const glm::dvec2 refined =
+            solveFromSeed( point, seedUv, seedPoint, seedD2, refinedDistance2 );
+
+          // Accept ONLY on a strictly lower final residual. This is what
+          // makes a false trigger cost time rather than correctness.
+          if ( refinedDistance2 < solvedDistance2 ) {
+            solution        = refined;
+            solvedDistance2 = refinedDistance2;
+          }
+        }
       }
     }
 
@@ -6388,6 +6596,43 @@ inline void TriangulateBspline(Geometry &geometry,
       // Each bound is its own ordered polyline; the continuity seed is only
       // meaningful within one. See RationalNurbsInverseMethod::resetContinuity.
       bSplineInverseEvaluation.resetContinuity();
+
+      // Arm the wrong-basin escape with THIS bound's sampling scale.
+      //
+      // Per bound, not per face: the escape's threshold is about whether a
+      // misplaced uv can reorder the polyline being inverted, and an inner
+      // trim loop can be sampled an order of magnitude finer than the outer
+      // one. Costs one pass over the same points the projection loop walks
+      // next, and no extra inversion - the same bargain
+      // boundConvergenceToTrim makes above.
+      {
+        const std::vector< glm::dvec3 >& boundPoints = bounds[ i ].curve.points;
+
+        if ( boundPoints.size() >= 2 ) {
+
+          std::vector< double > chords;
+          chords.reserve( boundPoints.size() - 1 );
+
+          for ( size_t j = 1; j < boundPoints.size(); ++j ) {
+            // `scaling` multiplies every point in the projection loop below,
+            // so the chord has to carry it too or the threshold lands in the
+            // wrong units - the same trap relativeDeflectionSquared's caller
+            // documents.
+            chords.push_back(
+              glm::distance( boundPoints[ j ], boundPoints[ j - 1 ] ) * scaling );
+          }
+
+          std::nth_element( chords.begin(),
+                            chords.begin() + chords.size() / 2,
+                            chords.end() );
+
+          bSplineInverseEvaluation.boundSeverityToChord(
+            chords[ chords.size() / 2 ] );
+
+        } else {
+          bSplineInverseEvaluation.boundSeverityToChord( 0.0 );
+        }
+      }
 
       const uint32_t firstVertex =
         static_cast< uint32_t >( mesh.vertices.size() );
