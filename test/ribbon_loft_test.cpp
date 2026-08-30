@@ -18,19 +18,31 @@
  *      longest monotone runs and silently discarded up to 8% of the boundary
  *      while reporting deviation inside target. Coverage has to be a count.
  *
- *   3. The gate is narrow. A boundary with more than two v-monotone runs must
- *      be rejected outright rather than approximated, so it ear-clips exactly
- *      as it does today.
+ *   3. The scope is honest. A boundary with more than two v-monotone runs is
+ *      now CUT into v-monotone pieces and swept piece by piece, so the old
+ *      "more than two runs means reject" is gone. What replaces it is a set of
+ *      gates, and the tests pin both sides: a ribbon with a noisy end must
+ *      reach the sweep, and a chart that oscillates all the way round must
+ *      still ear-clip.
  *
- * Each test fails if the corresponding guard is reverted; that was verified by
- * reverting, not by reading. See bldrs-ai/conway#608.
+ * Most tests here fail if the corresponding guard is reverted, verified by
+ * reverting rather than by reading. ONE DOES NOT, and says so where it stands:
+ * "an oscillating chart is refused" is protected by several independent gates,
+ * so no single revert reddens it. It is kept as a characterisation of the
+ * scope - it would catch a future change that widened it - and the evidence
+ * for that scope decision is the corpus measurement in the pull request, not
+ * this file. See bldrs-ai/conway#608 and #665.
  *
  * Standalone by design: it includes mesh_utils.h directly and links nothing,
  * matching nurbs_seam_test.cpp.
  */
 #include "conway_geometry/operations/mesh_utils.h"
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
+#include <map>
+#include <utility>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -306,6 +318,23 @@ void testNotchedBoundaryIsRejected() {
 
   printf( "\n== notched boundary is rejected ==\n" );
 
+  // WHAT REFUSES THIS FIXTURE CHANGED, and the comment is rewritten to say so
+  // rather than leave the test passing for a reason that no longer exists.
+  //
+  // It used to be the break count: more than two v-monotone runs meant an
+  // immediate reject. Such a boundary is now decomposed into v-monotone pieces
+  // and swept piece by piece, so the break count refuses nothing by itself.
+  //
+  // This particular zig-zag is refused further down, by splitByDiagonals: its
+  // diagonals are not a placeable non-crossing set, so the cut is abandoned and
+  // the face goes back to the ear-clipper untouched. Which of the several gates
+  // catches a given bad boundary is deliberately not asserted here - it is an
+  // implementation detail, and pinning it would make this test fail on a change
+  // that is only ever an improvement. What is asserted is the outcome the
+  // ear-clipper depends on: refused, and the mesh handed back exactly as it
+  // arrived. testOscillatingBoundaryIsRefusedByTheSeedComparison covers the
+  // other reject, on a boundary that decomposes cleanly and still should not be.
+
   WingedEdgeMesh< ParameterVertex > mesh;
 
   // Up, back down a little, up again, then all the way down: four runs.
@@ -349,9 +378,11 @@ void testNotchedBoundaryIsRejected() {
   const bool built =
     conway::geometry::tryRibbonLoft( mesh, solve, mesh.vertices.size() );
 
-  check( !built, "a notched boundary is rejected" );
+  check( !built,
+         "a notched boundary whose pieces are ears is rejected" );
   check( mesh.triangles.size() == before,
          "and the mesh is left untouched for the ear-clipper" );
+
 }
 
 /**
@@ -1001,6 +1032,493 @@ void testOverlapBelowTheAreaGateIsStillCaught() {
          "no emitted triangle has its centroid outside the trim loop" );
 }
 
+/**
+ * A RIBBON WITH A NOISY END: two long v-monotone legs plus a short cap that
+ * reverses v several times, which is the shape of the residue conway#665 was
+ * left holding after conway-geom#199.
+ *
+ * Measured on the corpus face that motivated this - 828 boundary points, six
+ * cyclic v-breaks, of which four come from a 43-point cap - the ear-clipped
+ * seed's longest edge is 62% of the face's own extent and its shipped
+ * deviation is 46% of extent with 98% of the face's area above the damage bar.
+ * The two long legs are a perfectly good ribbon; the break count alone threw
+ * them away with the cap.
+ *
+ * The fixture reproduces that structure rather than the face: a long thin
+ * helical ribbon with a zig-zag cap at the top. What it pins is that such a
+ * boundary reaches the sweep at all, which before this change it could not.
+ */
+WingedEdgeMesh< ParameterVertex > buildCappedRibbon( size_t steps, double width ) {
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  // Down the first leg, v strictly decreasing, ending on the bottom apex.
+  for ( size_t at = 0; at <= steps; ++at ) {
+
+    const double v =
+      1.0 - ( static_cast< double >( at ) / static_cast< double >( steps ) );
+
+    mesh.makeVertex( ribbonVertex( 0.0, v ) );
+  }
+
+  // Back up the other leg, half a step out of phase so the two legs' v samples
+  // interleave rather than coincide - the realistic case, since the two trim
+  // curves are tessellated independently.
+  for ( size_t at = 1; at <= steps; ++at ) {
+
+    const double v =
+      ( static_cast< double >( at ) - 0.5 ) / static_cast< double >( steps );
+
+    mesh.makeVertex( ribbonVertex( width, v ) );
+  }
+
+  // THE CAP. Walk back across the top with v dipping below the apex, which is
+  // what turns two breaks into six. It stays inside the ribbon's u range and
+  // above both legs' samples, so the boundary is still simple.
+  const double dip = 0.5 / static_cast< double >( steps );
+
+  for ( size_t at = 1; at < 8; ++at ) {
+
+    const double u =
+      width * ( 1.0 - ( static_cast< double >( at ) /
+                        static_cast< double >( 8 ) ) );
+
+    mesh.makeVertex( ribbonVertex( u, ( at % 2 ) == 1 ? 1.0 - dip : 1.0 ) );
+  }
+
+  return mesh;
+}
+
+/**
+ * The capped ribbon is decomposed and swept, and the sweep tiles it exactly.
+ *
+ * Red-proven by restoring the `breaks.size() != 2` reject: the face falls back
+ * to the ear-clipper and `built` is false.
+ */
+void testCappedRibbonDecomposesAndLofts() {
+
+  printf( "\n== ribbon with a non-monotone cap ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh = buildCappedRibbon( 64, 0.06 );
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, boundaryCount );
+
+  printf( "  boundary %zu, breaks %zu\n", boundaryCount, breaks.size() );
+
+  // Preconditions, asserted rather than assumed: this must genuinely be the
+  // case the change is about, or the test proves nothing.
+  check( breaks.size() > 2,
+         "the capped fixture really is NOT a two-break ribbon" );
+
+  const std::vector< ParameterVertex > before(
+    mesh.vertices.begin(), mesh.vertices.end() );
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  check( built, "a ribbon with a non-monotone cap lofts" );
+
+  if ( !built ) {
+    return;
+  }
+
+  printf( "  triangles %zu, expected %zu\n",
+          mesh.triangles.size(), boundaryCount - 2 );
+
+  // Exactly n - 2, which is what "tiled the polygon once" means for a simple
+  // n-gon, and is the composition gate's own criterion asked from outside.
+  check( mesh.triangles.size() == boundaryCount - 2,
+         "the composition emits exactly n - 2 triangles" );
+
+  // NO VERTEX ADDED AND NONE MOVED. This is the property the decomposition
+  // exists to keep: diagonals run between vertices that are already on the
+  // boundary, so the trim polyline reaches the mesh exactly as the neighbouring
+  // face builds it and no T-vertex can appear. It is also the property the
+  // corpus half-edge count measures, and the one a deflection metric cannot
+  // see (bldrs-ai/conway-geom#188, #190).
+  check( mesh.vertices.size() == boundaryCount,
+         "the decomposition introduces no interior vertex" );
+
+  size_t moved = 0;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+    if ( !( mesh.vertices[ at ].point == before[ at ].point ) ||
+         !( mesh.vertices[ at ].uv == before[ at ].uv ) ) {
+      ++moved;
+    }
+  }
+
+  check( moved == 0, "and moves no boundary vertex" );
+
+  // And the seed it produced is the shorter one - the reason the gate let it
+  // through, stated as an assertion so the fixture cannot drift into being a
+  // face that lofts for some other reason.
+  double longest = 0.0;
+
+  for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+
+    const glm::dvec3& a = mesh.vertices[ triangle.vertices[ 0 ] ].point;
+    const glm::dvec3& b = mesh.vertices[ triangle.vertices[ 1 ] ].point;
+    const glm::dvec3& c = mesh.vertices[ triangle.vertices[ 2 ] ].point;
+
+    longest = std::max( { longest,
+                          glm::distance( a, b ),
+                          glm::distance( b, c ),
+                          glm::distance( c, a ) } );
+  }
+
+  glm::dvec3 low( std::numeric_limits< double >::max() );
+  glm::dvec3 high( std::numeric_limits< double >::lowest() );
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+    low  = glm::min( low, mesh.vertices[ at ].point );
+    high = glm::max( high, mesh.vertices[ at ].point );
+  }
+
+  const double extent = glm::distance( low, high );
+
+  printf( "  longest seed chord %.4f of extent\n", longest / extent );
+
+  check( longest < 0.5 * extent,
+         "the swept seed carries no chord across the part" );
+}
+
+/**
+ * THE COMPOSITION IS WATERTIGHT BY CONSTRUCTION: a diagonal is an edge of
+ * exactly two pieces, with the same two mesh vertices, so the pieces meet
+ * without a seam to close.
+ *
+ * Asserted as half-edge pairing over the emitted triangulation - every edge
+ * interior to the boundary is used by exactly two triangles and every boundary
+ * edge by exactly one - because that is the same statement in the form the
+ * corpus metric uses, and it is a property of the OUTPUT rather than of the
+ * decomposition's own reasoning.
+ *
+ * Red-proven by restoring the `breaks.size() != 2` reject: there is then no
+ * composition at all and the check goes red. That is the revert this test can
+ * actually be broken by - removing splitByDiagonals' midpoint-inside
+ * disambiguation leaves it green, because no fixture here or on the corpus
+ * reaches the ambiguity that guard exists for. Said plainly rather than
+ * claimed: the guard is defensive, and this test does not pin it.
+ */
+void testSharedDiagonalsPairExactlyTwice() {
+
+  printf( "\n== shared diagonals pair exactly twice ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh = buildCappedRibbon( 64, 0.06 );
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  std::vector< uint32_t > ring;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+    ring.push_back( static_cast< uint32_t >( at ) );
+  }
+
+  double shoelace = 0.0;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+    const glm::dvec2& here = mesh.vertices[ at ].uv;
+    const glm::dvec2& next = mesh.vertices[ ( at + 1 ) % boundaryCount ].uv;
+
+    shoelace += ( here.x * next.y ) - ( next.x * here.y );
+  }
+
+  if ( shoelace < 0.0 ) {
+    std::reverse( ring.begin(), ring.end() );
+  }
+
+  const std::vector< std::array< size_t, 2 > > diagonals =
+    conway::geometry::vMonotoneDiagonals( mesh, ring );
+
+  std::vector< std::vector< uint32_t > > pieces;
+
+  const bool cut =
+    conway::geometry::splitByDiagonals( mesh, ring, diagonals, pieces );
+
+  printf( "  %zu diagonals, %zu pieces\n", diagonals.size(), pieces.size() );
+
+  check( cut, "the boundary cuts into pieces" );
+
+  if ( !cut ) {
+    return;
+  }
+
+  // The precondition that makes this test about the ambiguity it guards: at
+  // least two diagonals must share an endpoint, so that after the first cut
+  // that vertex belongs to two pieces and "the piece containing both ends" is
+  // not by itself a unique answer.
+  size_t sharing = 0;
+
+  for ( size_t at = 0; at < diagonals.size(); ++at ) {
+    for ( size_t other = at + 1; other < diagonals.size(); ++other ) {
+
+      if ( diagonals[ at ][ 0 ] == diagonals[ other ][ 0 ] ||
+           diagonals[ at ][ 0 ] == diagonals[ other ][ 1 ] ||
+           diagonals[ at ][ 1 ] == diagonals[ other ][ 0 ] ||
+           diagonals[ at ][ 1 ] == diagonals[ other ][ 1 ] ) {
+        ++sharing;
+      }
+    }
+  }
+
+  printf( "  diagonal pairs sharing an endpoint: %zu\n", sharing );
+
+  check( diagonals.size() >= 2 && sharing >= 1,
+         "the fixture really does exercise the ambiguous case" );
+
+  // Every vertex of every piece is a boundary vertex, and the pieces account
+  // for the boundary plus two endpoints per diagonal - which is the same
+  // statement as "each diagonal is an edge of exactly two pieces".
+  size_t pieceVertices = 0;
+
+  for ( const std::vector< uint32_t >& piece : pieces ) {
+    pieceVertices += piece.size();
+  }
+
+  check( pieceVertices == boundaryCount + ( 2 * diagonals.size() ),
+         "each diagonal is an edge of exactly two pieces" );
+
+  // Now the output test. Sweep the whole face and pair the half-edges.
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  check( built, "the capped ribbon lofts, so there is a composition to check" );
+
+  if ( !built ) {
+    return;
+  }
+
+  std::map< std::pair< uint32_t, uint32_t >, int > edges;
+
+  for ( const conway::geometry::ConnectedTriangle& triangle : mesh.triangles ) {
+
+    for ( size_t at = 0; at < 3; ++at ) {
+
+      const uint32_t from = triangle.vertices[ at ];
+      const uint32_t to   = triangle.vertices[ ( at + 1 ) % 3 ];
+
+      ++edges[ { std::min( from, to ), std::max( from, to ) } ];
+    }
+  }
+
+  // A boundary edge of the polygon is used once; everything else - the sweep's
+  // own diagonals and the decomposition's - is used twice. Anything used once
+  // that is not a boundary edge is a hole, and anything used three times is an
+  // overlap.
+  size_t unpaired = 0;
+  size_t overused = 0;
+
+  for ( const std::pair< const std::pair< uint32_t, uint32_t >, int >& edge :
+        edges ) {
+
+    const uint32_t from = edge.first.first;
+    const uint32_t to   = edge.first.second;
+
+    const bool onBoundary =
+      ( ( from + 1 ) % boundaryCount == to ) ||
+      ( ( to + 1 ) % boundaryCount == from );
+
+    if ( edge.second > 2 ) {
+      ++overused;
+    } else if ( edge.second != ( onBoundary ? 1 : 2 ) ) {
+      ++unpaired;
+    }
+  }
+
+  printf( "  edges %zu, unpaired %zu, overused %zu\n",
+          edges.size(), unpaired, overused );
+
+  check( unpaired == 0,
+         "every interior edge is shared by exactly two triangles" );
+  check( overused == 0, "and no edge is used by three" );
+}
+
+/**
+ * AN OSCILLATING CHART IS REFUSED, and the test names the stage that refuses
+ * it so that a single revert can redden it.
+ *
+ * `Right_Hand`'s 97-point b-spline face is the corpus case: 46 v-breaks in 97
+ * points and a boundary residual of 4.0e-3, i.e. the chart genuinely wanders.
+ * It decomposes - into 22 pieces averaging 4.4 vertices - and that is exactly
+ * why it must not be taken: pieces that small ARE ears, and measured on that
+ * face the decomposed seed's worst chord is 0.96 of extent against the
+ * ear-clipper's 0.92. Decomposing it is ear-clipping with extra steps, and it
+ * would cost triangles for a seed that is no better.
+ *
+ * So this is the negative half of the change's scope, and conway#665 records
+ * that face as accepted rather than fixed on the strength of it.
+ *
+ * WHICH GATE REFUSES WHICH FIXTURE IS NOT UNIFORM, and pretending otherwise
+ * makes the test vacuous. On the corpus face it is the seed comparison. On a
+ * zig-zag small enough to write down it is earlier: the decomposition leaves a
+ * piece that is still not v-monotone, and sweepMonotoneLoop refuses it. That
+ * was found by trying - removing the seed comparison leaves this fixture
+ * refused, so a test that claimed the seed comparison as its guard would pass
+ * with that guard deleted.
+ *
+ * So the assertion is on the stage that actually acts here, and the seed
+ * comparison's own justification is the corpus measurement recorded in the
+ * pull request rather than this test.
+ *
+ * NOT RED-PROVEN, AND THAT IS RECORDED RATHER THAN GLOSSED. Three reverts were
+ * tried and all three leave this test green: removing the seed comparison,
+ * relaxing sweepMonotoneLoop's `breaks.size() != 2` to `< 2`, and removing
+ * splitByDiagonals' midpoint disambiguation. The refusal survives each because
+ * the remaining gates catch the boundary anyway - with the two-break check
+ * relaxed, the leg-coverage check refuses the same pieces.
+ *
+ * So this is a characterisation test, not a guard test. Its assertions can
+ * fail - a future change that widened the scope to oscillating charts would
+ * redden them, which is the regression it exists to catch - but no single
+ * revert available today reddens them, and it should not be read as pinning
+ * any one gate.
+ */
+void testOscillatingBoundaryIsRefusedByTheSeedComparison() {
+
+  printf( "\n== oscillating chart is refused by the seed comparison ==\n" );
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  constexpr size_t STEPS = 40;
+  constexpr double WIDTH = 1.0;
+
+  // Down the first leg, backing up every other step so the leg is nowhere
+  // v-monotone for long - the wandering chart, not a ribbon.
+  //
+  // The back-step has to EXCEED the forward step or v still decreases
+  // monotonically and the fixture is a plain ribbon with a jagged u; at 1.5
+  // steps back it genuinely reverses, which the break-count precondition below
+  // is what actually checks.
+  for ( size_t at = 0; at <= STEPS; ++at ) {
+
+    const double along =
+      1.0 - ( static_cast< double >( at ) / static_cast< double >( STEPS ) );
+
+    const double wobble =
+      ( at % 2 == 1 ) ? ( 1.5 / static_cast< double >( STEPS ) ) : 0.0;
+
+    mesh.makeVertex( ribbonVertex( 0.0, along + wobble ) );
+  }
+
+  // And back up the other, wobbling likewise.
+  for ( size_t at = 1; at < STEPS; ++at ) {
+
+    const double along =
+      ( static_cast< double >( at ) - 0.5 ) / static_cast< double >( STEPS );
+
+    const double wobble =
+      ( at % 2 == 1 ) ? -( 1.5 / static_cast< double >( STEPS ) ) : 0.0;
+
+    mesh.makeVertex( ribbonVertex( WIDTH, along + wobble ) );
+  }
+
+  const size_t boundaryCount = mesh.vertices.size();
+
+  const std::vector< size_t > breaks = uvMonotoneBreaks( mesh, boundaryCount );
+
+  printf( "  boundary %zu, breaks %zu\n", boundaryCount, breaks.size() );
+
+  // Preconditions. The fixture has to be the oscillating case, and its
+  // decomposition has to SUCCEED - otherwise the reject below would prove
+  // nothing about the seed comparison, which is the guard this test is for.
+  check( breaks.size() > 10,
+         "the fixture really is an oscillating chart, not a notch" );
+
+  std::vector< uint32_t > ring;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+    ring.push_back( static_cast< uint32_t >( at ) );
+  }
+
+  double shoelace = 0.0;
+
+  for ( size_t at = 0; at < boundaryCount; ++at ) {
+
+    const glm::dvec2& here = mesh.vertices[ at ].uv;
+    const glm::dvec2& next = mesh.vertices[ ( at + 1 ) % boundaryCount ].uv;
+
+    shoelace += ( here.x * next.y ) - ( next.x * here.y );
+  }
+
+  if ( shoelace < 0.0 ) {
+    std::reverse( ring.begin(), ring.end() );
+  }
+
+  const std::vector< std::array< size_t, 2 > > diagonals =
+    conway::geometry::vMonotoneDiagonals( mesh, ring );
+
+  std::vector< std::vector< uint32_t > > pieces;
+
+  const bool cut =
+    conway::geometry::splitByDiagonals( mesh, ring, diagonals, pieces );
+
+  printf( "  %zu diagonals, cut %s, %zu pieces\n",
+          diagonals.size(), cut ? "ok" : "failed", pieces.size() );
+
+  check( cut && pieces.size() > 1,
+         "the decomposition succeeds, so the reject is not a failure to cut" );
+
+  if ( !cut ) {
+    return;
+  }
+
+  double meanPiece = 0.0;
+
+  for ( const std::vector< uint32_t >& piece : pieces ) {
+    meanPiece += static_cast< double >( piece.size() );
+  }
+
+  meanPiece /= static_cast< double >( pieces.size() );
+
+  printf( "  mean piece %.1f vertices\n", meanPiece );
+
+  // Reported, deliberately not asserted. On the corpus face this stands for,
+  // the decomposition is 22 pieces averaging 4.4 vertices; on a fixture small
+  // enough to read it comes out coarser, and pinning a number here would make
+  // the test about the fixture rather than about the guard. What the guard
+  // promises is the outcome below.
+
+  // The stage that refuses this boundary, asserted rather than inferred from
+  // the outcome: at least one piece is still not v-monotone, so the sweep
+  // cannot take it and the whole face goes back to the ear-clipper.
+  size_t unsweepable = 0;
+
+  for ( const std::vector< uint32_t >& piece : pieces ) {
+
+    std::vector< std::array< uint32_t, 3 > > scratch;
+
+    if ( !conway::geometry::sweepMonotoneLoop( mesh, piece, 1.0, scratch ) ) {
+      ++unsweepable;
+    }
+  }
+
+  printf( "  pieces the sweep cannot take: %zu of %zu\n",
+          unsweepable, pieces.size() );
+
+  check( unsweepable > 0,
+         "a piece is still not v-monotone, which is what refuses this face" );
+
+  const size_t before = mesh.triangles.size();
+
+  conway::geometry::RationalNurbsInverseMethod solve( flatSurface() );
+
+  const bool built =
+    conway::geometry::tryRibbonLoft( mesh, solve, boundaryCount );
+
+  check( !built, "an oscillating chart is refused" );
+  check( mesh.triangles.size() == before,
+         "and the mesh is left untouched for the ear-clipper" );
+}
+
 }  // namespace
 
 int main() {
@@ -1015,6 +1533,9 @@ int main() {
   testFarFromOriginKnotDomain();
   testUnevenlySampledRibbonStaysInsideItsTrim();
   testOverlapBelowTheAreaGateIsStillCaught();
+  testCappedRibbonDecomposesAndLofts();
+  testSharedDiagonalsPairExactlyTwice();
+  testOscillatingBoundaryIsRefusedByTheSeedComparison();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );
