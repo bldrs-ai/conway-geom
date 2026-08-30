@@ -1118,6 +1118,59 @@ void testClosedPointListLoopIsAccepted() {
 }
 
 /**
+ * The raw-array producer's closure composition.
+ *
+ * createSimpleBound3D (conway-api.cpp) is the optimised path extractFace uses
+ * for point-list loops. It sets
+ *
+ *     curve.closedByConstruction =
+ *       callerSaysClosed && pointListLoopIsClosedPolygon( points );
+ *
+ * and both halves of that AND matter. The caller's word is required because a
+ * raw vertex array carries no entity type - deriving closure inside would make
+ * the function assert something about every future caller it cannot know. The
+ * predicate is required because a caller saying "closed" about a one- or
+ * two-point array is still wrong: a VERTEX_LOOP cannot enclose anything.
+ *
+ * Missed in the first audit of this family, which fixed GetLoop and stopped -
+ * review on conway-geom#195 found this second producer. The composition is
+ * pinned here so a third would have to break a test rather than be discovered.
+ *
+ * COVERAGE LIMIT, same as the GetLoop case: conway-api.cpp needs embind and the
+ * standalone tests link nothing, so the entry point itself is not exercised -
+ * only the rule it composes and the gate that consumes the result.
+ */
+void testRawArrayProducerClosureComposition() {
+
+  printf( "=== raw-array producer closure composition ===\n" );
+
+  using conway::geometry::pointListLoopIsClosedPolygon;
+
+  const std::vector< glm::dvec3 > polygon = {
+    glm::dvec3( 0.0, 0.0, 0.0 ),
+    glm::dvec3( 1.0, 0.0, 0.0 ),
+    glm::dvec3( 1.0, 1.0, 0.0 ),
+    glm::dvec3( 0.0, 1.0, 0.0 ) };
+
+  const std::vector< glm::dvec3 > vertexLoop = { glm::dvec3( 0.0, 0.0, 0.0 ) };
+
+  // The composition createSimpleBound3D applies.
+  auto compose = []( bool callerSaysClosed, const std::vector< glm::dvec3 >& p ) {
+
+    return callerSaysClosed && pointListLoopIsClosedPolygon( p );
+  };
+
+  check( compose( true, polygon ),
+         "a poly loop the caller calls closed is flagged closed" );
+
+  check( !compose( false, polygon ),
+         "the caller's word is required - geometry alone does not flag it" );
+
+  check( !compose( true, vertexLoop ),
+         "a one-point vertex loop is not flagged even if the caller says closed" );
+}
+
+/**
  * End-to-end through TriangulateBspline: the head fix reaches the mesh.
  *
  * The other tests here exercise the solver. This one drives the production
@@ -1266,6 +1319,7 @@ int main() {
   testClosedTrimHeadIsNotColdStarted();
   testOpenBoundIsNotReSeeded();
   testClosedPointListLoopIsAccepted();
+  testRawArrayProducerClosureComposition();
   testHeadFixReachesTheEmittedMesh();
 
   testWideStepAcrossSeamKeepsArmijoSound();

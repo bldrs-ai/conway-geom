@@ -333,9 +333,22 @@ std::vector<glm::dvec3> createVertexVector(uintptr_t verticesArray_,
   return vec;
 }
 
-conway::geometry::IfcBound3D createSimpleBound3D(uintptr_t verticesArray_, size_t length, bool orientation, uint32_t type) {
+/**
+ * The optimised raw-array bound path, used by extractFace for point-list loops.
+ *
+ * `closedByConstruction` is supplied by the CALLER rather than derived here.
+ * Both call sites today are inside a poly-loop branch, where closure is a fact
+ * about the entity, and deriving it here instead would make this function
+ * assert something about every future caller that it cannot know. That is the
+ * mistake this parameter exists to avoid: closure is stated, never measured or
+ * assumed. See IfcCurve::closedByConstruction and bldrs-ai/conway-geom#195.
+ */
+conway::geometry::IfcBound3D createSimpleBound3D(uintptr_t verticesArray_, size_t length, bool orientation, uint32_t type, bool closedByConstruction) {
   conway::geometry::IfcCurve curve;
   curve.points = createVertexVector(verticesArray_, length);
+  curve.closedByConstruction =
+    closedByConstruction &&
+    conway::geometry::pointListLoopIsClosedPolygon( curve.points );
 
   conway::geometry::IfcBound3D bounds3D;
   bounds3D.curve = curve;
