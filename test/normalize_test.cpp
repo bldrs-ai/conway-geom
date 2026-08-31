@@ -486,6 +486,57 @@ void transformEndsTheNormalizedState() {
     "and it actually shifted, rather than only reporting" );
 }
 
+/**
+ * ApplyRescale's copy of the reset transformEndsTheNormalizedState pins for
+ * ApplyTransform, just above. ApplyRescale has the identical shape — it
+ * mutates every vertex about `origin` — but is not embind-exposed (its only
+ * callers today are tests), which is why nothing else here would have caught
+ * a missing reset.
+ *
+ * Fails with the reset at the end of ApplyRescale removed: the second call
+ * short-circuits and returns the pre-rescale centre.
+ */
+void rescaleEndsTheNormalizedState() {
+
+  printf( "\n=== baking a rescale ends the normalized state ===\n" );
+
+  Geometry geometry = makeBox( GEOREF );
+
+  glm::dvec3 first = geometry.Normalize();
+
+  check( near( first, GEOREF, 1e-6 ), "the first call centres the box" );
+
+  // A scale factor and an origin off the (now zero) centre, so the rescale
+  // moves the centre rather than merely resizing the box about it in place.
+  const glm::dvec3 SCALE( 2.0, 2.0, 2.0 );
+  const glm::dvec3 RESCALE_ORIGIN( 50.0, 0.0, 0.0 );
+
+  // ApplyRescale maps `vertex` to `(vertex - origin) * scale + origin`; the
+  // box's post-normalize centre is the origin (0,0,0), so this is where its
+  // image lands. Derived from SCALE and RESCALE_ORIGIN rather than written
+  // out, so changing either above moves this with it.
+  const glm::dvec3 NEW_CENTRE =
+    ( ( glm::dvec3( 0.0 ) - RESCALE_ORIGIN ) * SCALE ) + RESCALE_ORIGIN;
+
+  geometry.ApplyRescale( SCALE, RESCALE_ORIGIN );
+
+  check(
+    near( geometry.GetAABB().centre(), NEW_CENTRE, 1e-9 ),
+    "the rescale moved it off its centre" );
+
+  glm::dvec3 second = geometry.Normalize();
+
+  check( near( second, NEW_CENTRE, 1e-9 ), "so the next call reports where it now is" );
+
+  check(
+    !near( second, first, 1.0 ),
+    "and not the centre the pre-rescale frame had" );
+
+  check(
+    near( geometry.GetAABB().centre(), glm::dvec3( 0.0 ), 1e-9 ),
+    "and it actually shifted, rather than only reporting" );
+}
+
 }  // namespace
 
 int main() {
@@ -498,6 +549,7 @@ int main() {
   emptyGeometryReportsZero();
   clearDropsDerivedState();
   transformEndsTheNormalizedState();
+  rescaleEndsTheNormalizedState();
 
   if ( failures > 0 ) {
 
