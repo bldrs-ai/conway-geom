@@ -589,19 +589,76 @@ void Geometry::Cleanup( bool forSubtract ) {
 
 glm::dvec3 Geometry::Normalize() {
 
-  glm::dvec3 centre = GetAABB().centre();
- 
-  if ( !normalized_ ) {
+  // Idempotent, and the SAME answer every time: a second call must hand back
+  // the centre the first call subtracted, not the current (near-zero) AABB
+  // centre of the already-shifted vertices. Callers compose
+  // `placement * translate( centre )` against those vertices, and one IFC
+  // representation map body is one native geometry walked once per instancing
+  // product — serving a fresh, near-zero centre to the later walks would
+  // collapse every instance after the first onto the coordination origin
+  // (bldrs-ai/conway#308, bldrs-ai/conway#680).
+  if ( normalized_ ) {
 
-    for ( glm::dvec3& vertex : vertices ) {
-
-      vertex -= centre;
-    }
-
-    normalized_ = true;
+    return normalizedCentre_;
   }
 
-  return center;
+  // An empty geometry's AABB is the inverted default box, whose centre() is
+  // -inf on every axis. There is nothing to shift and no centre to report, so
+  // report zero rather than handing a caller an infinity to bake into a
+  // transform.
+  if ( vertices.empty() ) {
+
+    return glm::dvec3( 0.0 );
+  }
+
+  // Measured BEFORE the bvh.reset() below, and that order is load-bearing:
+  // GetAABB() serves bvh->bounds() whenever a BVH exists, so dropping the tree
+  // first would change what is being measured (to the vertex-scan fallback,
+  // which is the same box today, but only by luck of the two agreeing).
+  glm::dvec3 centre = GetAABB().centre();
+
+  for ( glm::dvec3& vertex : vertices ) {
+
+    vertex -= centre;
+  }
+
+  // The shift invalidates everything cached FROM the absolute vertex
+  // positions, and both of these are read back by callers who never see the
+  // shift happen:
+  //
+  //  - the reification. Reify() early-returns on isReified_, so without this
+  //    GetVertexData() keeps serving the pre-shift float32 buffer — the raw
+  //    georeferenced coordinates this whole function exists to get out of
+  //    float32 (bldrs-ai/conway#680: at ~2.6e6 m an f32 ULP is ~0.25 m, which
+  //    is visible jitter in the viewer). ClearReification() drops isReified_,
+  //    so the next GetVertexData()/GetVertexStream() rebuilds from the shifted
+  //    vertices.
+  //  - the BVH, whose node boxes are absolute positions; a surviving tree
+  //    would make GetAABB() keep reporting the pre-shift box. AppendGeometry
+  //    resets it for the same reason.
+  //
+  // What deliberately survives, because a pure translation does not touch it:
+  // the connectivity (edges and triangle_edges store vertex INDICES only), the
+  // analytic corner normals (directions), cleanedUp_ (the weld's topology is
+  // translation-invariant), and previousReificationOffset_ — that last one is
+  // the caller's own frame bookkeeping, added back by the caller's offset
+  // matrix, so re-reifying through it stays consistent: the caller's
+  // `translate( offset ) * ( vertex - centre - offset )` is still
+  // `vertex - centre`.
+  //
+  // The half-space plane fields (halfSpaceOrigin and the three axes) are NOT
+  // translation-invariant, and are deliberately left alone: they are CSG
+  // operand state, consumed while a boolean is evaluated and gone by the time
+  // the result is handed out to the one caller of this function (the embind
+  // `normalize` binding). A half-space that ever did reach here would need its
+  // origin moved with the vertices, the way ApplyTransform moves it.
+  ClearReification();
+  bvh.reset();
+
+  normalizedCentre_ = centre;
+  normalized_       = true;
+
+  return centre;
 }
 
 void Geometry::AppendGeometry( const Geometry &geom ) {

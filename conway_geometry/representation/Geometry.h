@@ -93,7 +93,6 @@ struct Geometry {
   //new additions 0.0.44
   bool halfSpace = false;
 
-  glm::dvec3 center          = glm::dvec3(0,0,0);
   glm::dvec3 halfSpaceX      = glm::dvec3(1, 0, 0);
   glm::dvec3 halfSpaceY      = glm::dvec3(0, 1, 0);
   glm::dvec3 halfSpaceZ      = glm::dvec3(0, 0, 1);
@@ -139,6 +138,27 @@ struct Geometry {
   uint32_t GetVertexDataSize();
   uint32_t GetIndexData();
   uint32_t GetIndexDataSize();
+
+  /**
+   * Shift the vertices so they are centred on their own AABB centre, and
+   * return the centre that was subtracted — the term a caller has to put back
+   * into the placement (`placement * translate( centre )`) to keep the world
+   * position it had.
+   *
+   * Idempotent: the shift happens once, and every later call returns the same
+   * centre the first one subtracted (see the note in the definition for why
+   * that, and not the shifted geometry's current centre, is the contract).
+   * Zero for an empty geometry.
+   *
+   * The point of the shift is precision, not placement: on a georeferenced
+   * model whose national-grid coordinates are baked into the geometry rather
+   * than the placements, the vertices reach ~2.6e6 m, where a float32 ULP is
+   * ~0.25 m — visible jitter once the reified f32 buffer is on the GPU. So the
+   * shift is only worth anything if the DERIVED state goes with it; the
+   * definition lists what is dropped and what survives (bldrs-ai/conway#680).
+   *
+   * @return The subtracted centre.
+   */
   glm::dvec3 Normalize();
   uint32_t GetVertexCount() const { return static_cast< uint32_t >( vertices.size() ); }
   uint32_t GetTriangleCount() const { return static_cast< uint32_t >( triangles.size() ); }
@@ -461,6 +481,18 @@ struct Geometry {
   bool cleanedUp_       = false;
   bool normalized_      = false;
 
+  /**
+   * The centre Normalize() subtracted from the vertices, meaningful only while
+   * `normalized_` is set — it is what every later Normalize() call reports, so
+   * repeated calls place the geometry consistently.
+   *
+   * Replaces a public `center` member that nothing ever wrote and that
+   * `Normalize()` returned by name collision with its own local `centre`,
+   * handing every caller (0,0,0) (bldrs-ai/conway#680). Private and purposeful
+   * so that particular silence cannot come back.
+   */
+  glm::dvec3 normalizedCentre_ = glm::dvec3( 0 );
+
   glm::dvec3 previousReificationOffset_ = glm::dvec3( 0 );
 
   std::vector< float >    floatVertexData_;
@@ -501,8 +533,17 @@ inline void Geometry::Clear() {
 
   ClearCornerNormals();
 
+  // The vertices this reification and this centre describe are gone, and both
+  // are read back without a caller seeing the clear: GetVertexData() serves
+  // floatVertexData_ whenever isReified_ is set, and Normalize() short-circuits
+  // on normalized_. Same failure this file's #680 fix removed from Normalize(),
+  // one function over.
+  ClearReification();
+
+  normalized_       = false;
+  normalizedCentre_ = glm::dvec3( 0 );
+
   halfSpace       = false;
-  center          = glm::dvec3( 0, 0, 0 );
   halfSpaceX      = glm::dvec3( 1, 0, 0 );
   halfSpaceY      = glm::dvec3( 0, 1, 0 );
   halfSpaceZ      = glm::dvec3( 0, 0, 1 );
