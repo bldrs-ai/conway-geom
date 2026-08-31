@@ -934,6 +934,16 @@ void Geometry::ApplyTransform( const glm::dmat4& transform ) {
   ClearReification();
   bvh.reset();
   cleanedUp_ = false;
+
+  // Baking a placement into the positions moves the geometry off the centre
+  // Normalize() put it on, and leaves `normalizedCentre_` describing a frame
+  // that no longer exists. Clearing the flag is what makes the next
+  // Normalize() measure and shift again rather than short-circuit on a stale
+  // centre — the same reset AppendGeometry does, for the same reason, and it
+  // matters more here because both this and `normalize` are embind entry
+  // points that a caller can interleave.
+  normalized_       = false;
+  normalizedCentre_ = glm::dvec3( 0 );
 }
 
 }  // namespace conway::geometry

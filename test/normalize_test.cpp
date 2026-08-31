@@ -39,18 +39,26 @@ void AABBTree::applyRescale( const glm::dvec3&, const glm::dvec3& ) {}
  * pulls in the CSG headers).
  *
  * Only bounds() is exercised here, and only for what GetAABB() does with it:
- * serve the tree's root box in preference to scanning the vertices. A root box
- * covering every vertex is exactly that, and it is what makes a BVH that
- * SURVIVED the normalize shift observable — it keeps reporting the pre-shift
- * box while the vertices have moved.
+ * serve the tree's root box in preference to scanning the vertices. That makes
+ * a BVH which SURVIVED the normalize shift observable — it keeps reporting the
+ * pre-shift box while the vertices have moved.
+ *
+ * The root unions TRIANGLE-REFERENCED vertices only, which is what the real
+ * builder does (it boxes triangles, not the vertex array) and is not a detail
+ * that can be skipped here: it is the only thing that makes the tree's answer
+ * DIFFER from GetAABB()'s vertex-scan fallback, and a test where the two agree
+ * cannot pin the ordering inside Normalize().
  */
 AABBTree::AABBTree( const Geometry& mesh, double ) {
 
   box3 root;
 
-  for ( const glm::dvec3& vertex : mesh.vertices ) {
+  for ( const Triangle& triangle : mesh.triangles ) {
 
-    root.merge( vertex );
+    for ( uint32_t corner = 0; corner < 3; ++corner ) {
+
+      root.merge( mesh.vertices[ triangle.vertices[ corner ] ] );
+    }
   }
 
   boxes_.push_back( root );
@@ -273,12 +281,18 @@ void dropsThePreShiftReification() {
 
 /**
  * A BVH built before the shift is dropped, so GetAABB() stops reporting the
- * pre-shift box.
+ * pre-shift box — and the centre is measured from that tree BEFORE it goes.
+ *
+ * The orphan vertex is what gives the ordering claim teeth. GetAABB() has two
+ * answers: `bvh->bounds()` (triangle-referenced vertices only) and the
+ * vertex-scan fallback (every vertex, orphan included). With a box alone the
+ * two agree and a reordered Normalize() would measure the same centre either
+ * way; one vertex outside the box that no triangle references separates them
+ * by 495 m on x.
  *
  * Fails with the bvh.reset() removed: the post-normalize AABB centre is still
- * GEOREF, because GetAABB() prefers bvh->bounds() over scanning the vertices.
- * The ordering inside Normalize() is pinned here too — the centre has to be
- * measured before the tree is dropped.
+ * the pre-shift one. Fails with the measurement moved after the reset: the
+ * centre comes back as the orphan-inclusive one.
  */
 void dropsTheStaleBvh() {
 
@@ -286,13 +300,22 @@ void dropsTheStaleBvh() {
 
   Geometry geometry = makeBox( GEOREF );
 
+  // Referenced by no triangle, so it is in the vertex scan and not in the tree.
+  const glm::dvec3 ORPHAN = GEOREF + glm::dvec3( 1000.0, 0.0, 0.0 );
+
+  geometry.MakeVertex( ORPHAN );
+
+  // Where the vertex-scan fallback would put the centre: midway between the
+  // box's -x face and the orphan.
+  const glm::dvec3 SCAN_CENTRE = GEOREF + glm::dvec3( 495.0, 0.0, 0.0 );
+
   geometry.MakeBVH();
 
   check( geometry.bvh.has_value(), "the geometry has a BVH going in" );
 
   check(
     near( geometry.GetAABB().centre(), GEOREF, 1e-6 ),
-    "which is what GetAABB() is reading" );
+    "which is what GetAABB() is reading, and it excludes the orphan vertex" );
 
   glm::dvec3 centre = geometry.Normalize();
 
@@ -300,11 +323,15 @@ void dropsTheStaleBvh() {
     near( centre, GEOREF, 1e-6 ),
     "the centre was measured from the tree, before it was dropped" );
 
+  check(
+    !near( centre, SCAN_CENTRE, 1.0 ),
+    "and not from the vertex scan the reset would have fallen back to" );
+
   check( !geometry.bvh.has_value(), "the stale tree is gone" );
 
   check(
-    near( geometry.GetAABB().centre(), glm::dvec3( 0.0 ), 1e-9 ),
-    "so GetAABB() reports the shifted box" );
+    near( geometry.GetAABB().centre(), SCAN_CENTRE - GEOREF, 1e-9 ),
+    "so GetAABB() reports the shifted box, scanned rather than served stale" );
 }
 
 /**
@@ -386,10 +413,16 @@ void clearDropsDerivedState() {
   refilled.Normalize();
   refilled.Clear();
 
+  // Refilled at a DIFFERENT centre on purpose. Refilling at GEOREF would make
+  // this pass with Clear()'s resets reverted — the short-circuit would return
+  // the remembered GEOREF, which is also the right answer for the new
+  // contents, so the assertion could not tell the two apart.
+  const glm::dvec3 MOVED = GEOREF + glm::dvec3( 500.0, -500.0, 0.0 );
+
   for ( uint32_t vertex = 0; vertex < 8; ++vertex ) {
 
     refilled.MakeVertex(
-      GEOREF +
+      MOVED +
       glm::dvec3(
         ( vertex & 1 ) ? HALF_EXTENT : -HALF_EXTENT,
         ( vertex & 2 ) ? HALF_EXTENT : -HALF_EXTENT,
@@ -397,8 +430,54 @@ void clearDropsDerivedState() {
   }
 
   check(
-    near( refilled.Normalize(), GEOREF, 1e-6 ),
-    "and normalizes again from scratch, rather than short-circuiting on the old flag" );
+    near( refilled.Normalize(), MOVED, 1e-6 ),
+    "and normalizes again from scratch, reporting the new contents' centre "
+    "rather than short-circuiting on the old flag" );
+}
+
+/**
+ * Baking a transform into the positions ends the normalized state, so the next
+ * Normalize() measures the geometry where it now is.
+ *
+ * `applyTransform` and `normalize` are both embind entry points, so a caller
+ * can interleave them freely. Fails with the reset at the end of
+ * ApplyTransform removed: the second call short-circuits and returns the
+ * pre-transform centre — which, unlike the old (0,0,0), looks entirely
+ * plausible at the call site.
+ */
+void transformEndsTheNormalizedState() {
+
+  printf( "\n=== baking a transform ends the normalized state ===\n" );
+
+  Geometry geometry = makeBox( GEOREF );
+
+  glm::dvec3 first = geometry.Normalize();
+
+  check( near( first, GEOREF, 1e-6 ), "the first call centres the box" );
+
+  const glm::dvec3 OFFSET( 100.0, 200.0, 300.0 );
+
+  glm::dmat4 translation( 1.0 );
+
+  translation[ 3 ] = glm::dvec4( OFFSET, 1.0 );
+
+  geometry.ApplyTransform( translation );
+
+  check(
+    near( geometry.GetAABB().centre(), OFFSET, 1e-9 ),
+    "the transform moved it off its centre" );
+
+  glm::dvec3 second = geometry.Normalize();
+
+  check( near( second, OFFSET, 1e-9 ), "so the next call reports where it now is" );
+
+  check(
+    !near( second, first, 1.0 ),
+    "and not the centre the pre-transform frame had" );
+
+  check(
+    near( geometry.GetAABB().centre(), glm::dvec3( 0.0 ), 1e-9 ),
+    "and it actually shifted, rather than only reporting" );
 }
 
 }  // namespace
@@ -412,6 +491,7 @@ int main() {
   secondCallRepeatsTheFirstCentre();
   emptyGeometryReportsZero();
   clearDropsDerivedState();
+  transformEndsTheNormalizedState();
 
   if ( failures > 0 ) {
 
