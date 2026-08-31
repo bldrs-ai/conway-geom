@@ -2912,8 +2912,11 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
         double xx = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
         double yy = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
         startDegrees = VectorToAngle2D(xx, yy);
-        xx = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
-        yy = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
+        // Was re-reading trim1 here, so start/end were always equal and every
+        // 2D Cartesian-trimmed circle degenerated to a zero-length arc
+        // (bldrs-ai/test-models#20 driveway curve).
+        xx = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x - placement[2].x;
+        yy = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y - placement[2].y;
         endDegrees = VectorToAngle2D(xx, yy);
 
         startOffset = 1;
