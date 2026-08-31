@@ -879,6 +879,13 @@ void Geometry::ApplyRescale( const glm::dvec3& scale, const glm::dvec3& origin )
 
   bvh.reset();
   cleanedUp_ = false;
+
+  // Same reset as ApplyTransform, for the same reason: this moves every
+  // vertex about `origin`, so a `normalizedCentre_` from before the rescale
+  // is stale, and Normalize()'s idempotent contract requires the next call
+  // to measure and shift again rather than short-circuit on it.
+  normalized_       = false;
+  normalizedCentre_ = glm::dvec3( 0 );
 }
 
 void Geometry::ApplyTransform( const glm::dmat4& transform ) {
