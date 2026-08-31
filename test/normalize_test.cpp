@@ -30,7 +30,9 @@
 
 namespace conway::geometry {
 
-// Referenced by ApplyRescale, which none of these tests call.
+// Referenced by ApplyRescale, whose bvh branch none of these tests exercise
+// (it is only taken when a BVH exists, and none of the ApplyRescale calls
+// here build one first).
 void AABBTree::applyRescale( const glm::dvec3&, const glm::dvec3& ) {}
 
 /**
