@@ -300,14 +300,20 @@ void dropsTheStaleBvh() {
 
   Geometry geometry = makeBox( GEOREF );
 
-  // Referenced by no triangle, so it is in the vertex scan and not in the tree.
-  const glm::dvec3 ORPHAN = GEOREF + glm::dvec3( 1000.0, 0.0, 0.0 );
+  // Referenced by no triangle, so it lands in the vertex scan and not in the
+  // tree.
+  constexpr double ORPHAN_X_OFFSET = 1000.0;
+
+  const glm::dvec3 ORPHAN = GEOREF + glm::dvec3( ORPHAN_X_OFFSET, 0.0, 0.0 );
 
   geometry.MakeVertex( ORPHAN );
 
   // Where the vertex-scan fallback would put the centre: midway between the
-  // box's -x face and the orphan.
-  const glm::dvec3 SCAN_CENTRE = GEOREF + glm::dvec3( 495.0, 0.0, 0.0 );
+  // box's -x face and the orphan. Derived from the two constants that decide
+  // it rather than written out, so moving the orphan or resizing the box
+  // breaks this loudly instead of leaving a stale number that still passes.
+  const glm::dvec3 SCAN_CENTRE =
+    GEOREF + glm::dvec3( ( ORPHAN_X_OFFSET - HALF_EXTENT ) * 0.5, 0.0, 0.0 );
 
   geometry.MakeBVH();
 
