@@ -2909,12 +2909,34 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
       if (parameters.dimensions == 2)
       {
         glm::dmat3 placement = parameters.axis2Placement2D;
-        double xx = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
-        double yy = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
-        startDegrees = VectorToAngle2D(xx, yy);
-        xx = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
-        yy = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
-        endDegrees = VectorToAngle2D(xx, yy);
+        // Was re-reading trim1 here, so start/end were always equal and every
+        // 2D Cartesian-trimmed circle degenerated to a zero-length arc
+        // (bldrs-ai/test-models#20 driveway curve).
+        double xxS = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
+        double yyS = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
+        double xxE = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x - placement[2].x;
+        double yyE = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y - placement[2].y;
+
+        // These xx/yy are geometric positions in the un-rotated (byPos)
+        // frame below (the sampling loop's dmat[0]/dmat[1] are forced to
+        // identity when byPos is set, so only translation was removed
+        // here, deliberately keeping this in the same frame). But the
+        // sampler walks the *parametric* angle t of (x, y) =
+        // (r1 cos t, r2 sin t), and a point's polar angle only equals t
+        // when r1 == r2. For an eccentric ellipse, scale each component
+        // by its semi-axis before the angle so the trimmed span matches
+        // what the sampler will actually walk — mirrors getAP214Circle's
+        // equivalent fix (bldrs-ai/test-models#45). Skipped for a true
+        // circle so its digest stays bit-identical to the driveway fix.
+        if ( radius1 != radius2 && radius1 != 0.0 && radius2 != 0.0 ) {
+          xxS /= radius1;
+          yyS /= radius2;
+          xxE /= radius1;
+          yyE /= radius2;
+        }
+
+        startDegrees = VectorToAngle2D(xxS, yyS);
+        endDegrees = VectorToAngle2D(xxE, yyE);
 
         startOffset = 1;
         endOffset = -1;
