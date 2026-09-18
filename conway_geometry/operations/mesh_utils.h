@@ -7511,11 +7511,17 @@ inline size_t reSolveClosedTrimHead(
  *
  * WHAT IS NOT GUESSED. The period is the knot domain. The closure is tested
  * by evaluating the two ends of that domain against each other. The strip is
- * recognised from the rings' own net parameter change. Anything that does not
- * match - one wrapping ring, three, two wrapping the same way, a hole that
- * does not land inside, a cut that crosses the boundary - returns false and
- * the caller ear-clips exactly as it does today, so an unfamiliar spelling
- * degrades to current behaviour rather than to a guess.
+ * recognised from the rings' own net parameter change, which is a reading of
+ * the loop only while each unwrap step is unambiguous and the rim repeats its
+ * first point as its last - both required rather than assumed. Anything that
+ * does not match - an unwrap step past a quarter period, a rim that closes by
+ * adjacency instead of by repetition, one wrapping ring, three, two wrapping
+ * the same way, a hole that does not land inside, a cut that crosses the
+ * boundary - returns false and the caller ear-clips exactly as it does today,
+ * so an unfamiliar spelling degrades to current behaviour rather than to a
+ * guess. Every one of those refusals is taken before anything the caller owns
+ * is touched: the rings are unwrapped into a copy, and the one vertex this
+ * adds to the mesh is added in the commit section and nowhere earlier.
  *
  * Note `solve.closedU_` is deliberately NOT the gate. It compares control row
  * 0 with row n-1, which is the CLAMPED spelling of a closed surface; the two
@@ -7585,6 +7591,33 @@ inline bool tryPeriodicUStrip(
   std::vector< uint32_t > ringOffset( ringCount, 0 );
   std::vector< double >   netDelta( ringCount, 0.0 );
 
+  // Nearest-image unwrapping picks the lift of each step that moves least, and
+  // that choice is only a fact when the runner-up is decisively further. A step
+  // read as d could equally be d - P or d + P, so the reading is determined
+  // only while |d| is comfortably under half a period; at |d| = P/2 the two
+  // images are equidistant and the lift is a coin toss.
+  //
+  // A NET-DELTA GATE DOES NOT CATCH A WRONG LIFT, because two of them cancel.
+  // A coarse rim that genuinely advances +0.6P, later retreats -0.6P and
+  // completes its period in small steps is read as -0.4P then +0.4P: each step
+  // is off by a full period, the two errors sum to zero, and `netDelta` still
+  // measures exactly +P. The strip is then built round a boundary routed
+  // through a part of the chart the face never visits - potentially
+  // self-intersecting - and the cut-crossing check below cannot see it, because
+  // that only tests the two SYNTHESIZED cut edges against the rings, never a
+  // ring against itself. Found by review on bldrs-ai/conway-geom#207.
+  //
+  // So the ambiguity is refused where it is visible, at the step. A quarter
+  // period is the threshold because it is the ratio, not the angle, that makes
+  // the reading a fact: at |d| <= P/4 the discarded image is at least 3P/4
+  // away, three times further than the one taken. Measured on the two faces
+  // that reach this path in the corpus (`Right_Hand.step` #19218 and #19215),
+  // the largest step of any of their seven rings is 0.0908 P - a factor of 2.75
+  // inside the gate - so nothing that works today is close to it.
+  constexpr double MAX_UNWRAP_STEP_FRACTION = 0.25;
+
+  const double maxUnwrapStep = period * MAX_UNWRAP_STEP_FRACTION;
+
   {
     uint32_t offset = 0;
 
@@ -7605,6 +7638,10 @@ inline bool tryPeriodicUStrip(
 
         points[ at ][ 0 ] +=
           period * std::round( ( previous - points[ at ][ 0 ] ) / period );
+
+        if ( std::abs( points[ at ][ 0 ] - previous ) > maxUnwrapStep ) {
+          return false;
+        }
       }
 
       netDelta[ ring ] = points.back()[ 0 ] - points.front()[ 0 ];
@@ -7656,6 +7693,56 @@ inline bool tryPeriodicUStrip(
   // rims of two different strips, or a spelling this does not understand.
   if ( ( netDelta[ chainAIndex ] > 0.0 ) == ( netDelta[ chainBIndex ] > 0.0 ) ) {
     return false;
+  }
+
+  // A RIM MUST REPEAT ITS FIRST POINT AS ITS LAST. `netDelta` is head-to-tail
+  // over the SAMPLED points, so it is the loop's full winding only when the
+  // closing edge tail -> head is degenerate. A loop closed by adjacency
+  // instead - a point-list bound, which is a closed polygon that does NOT
+  // repeat its head (IfcCurve::closedByConstruction, GetLoop) - leaves that
+  // edge carrying real motion, and the two failures are opposite:
+  //
+  //   - at ordinary sampling the rim measures P - P/n and is REFUSED, which
+  //     is merely a missed opportunity;
+  //   - past ~1000 samples P/n falls inside `periodSlack` and the rim is
+  //     ACCEPTED, which is not, because the whole construction below rests on
+  //     rawA.front() and rawA.back() being ONE 3D POINT a period apart. That
+  //     is what makes the two cut edges periodic copies of one segment, and
+  //     therefore what makes them weld in Geometry::Reify. Distinct endpoints
+  //     weld nothing and leave the strip open along the cut.
+  //
+  // Tested on the points rather than on the producer's flag: the flag says a
+  // loop is closed, not how it is spelled, and it is the spelling this needs.
+  // Both rims of both corpus faces measure a gap of exactly zero - head and
+  // tail are the same extracted point pushed twice - so the tolerance below is
+  // float noise, not a proximity budget, and the same shape
+  // reSolveClosedTrimHead uses for the same question. Found by review on
+  // bldrs-ai/conway-geom#207.
+  for ( const size_t rim : { chainAIndex, chainBIndex } ) {
+
+    const uint32_t first = ringOffset[ rim ];
+    const uint32_t last  =
+      first + static_cast< uint32_t >( rings[ rim ].size() ) - 1;
+
+    double maxMagnitude = 0.0;
+
+    for ( uint32_t at = first; at <= last; ++at ) {
+
+      const glm::dvec3& point = mesh.vertices[ at ].point;
+
+      maxMagnitude =
+        std::max( maxMagnitude,
+                  std::max( std::abs( point.x ),
+                            std::max( std::abs( point.y ),
+                                      std::abs( point.z ) ) ) );
+    }
+
+    if ( glm::distance( mesh.vertices[ first ].point,
+                        mesh.vertices[ last ].point ) >
+           ( 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) ) {
+
+      return false;
+    }
   }
 
   // Is the surface actually closed at those two ends? Asked of the surface by
@@ -7757,16 +7844,30 @@ inline bool tryPeriodicUStrip(
   // Close the rotated chain on a DUPLICATE of its opening vertex: same point,
   // uv one period on. Duplicating is what keeps any one mesh vertex from
   // having to carry two parameter values; Geometry::Reify welds it away again.
+  //
+  // RECORDED, NOT CREATED. Two gates still stand between here and the commit
+  // section - hole containment, and either cut crossing any ring - and a
+  // refusal at one of them has to leave the caller the mesh it was handed.
+  // Calling mesh.makeVertex here and then returning false left behind a vertex
+  // referenced by no triangle, carrying a uv one period outside the chart;
+  // measured as growth in mesh.vertices.size() across a call that returned
+  // false. `ADVANCED_FACE #19215` of `Right_Hand.step` reaches this point and
+  // then refuses, so that was a live leak on the corpus, not a latent one.
+  // Found by review on bldrs-ai/conway-geom#207.
+  constexpr uint32_t PENDING_DUPLICATE = std::numeric_limits< uint32_t >::max();
+
+  const glm::dvec3 duplicatePoint = mesh.vertices[ chainVertices.front() ].point;
+
+  glm::dvec2 duplicateUv( 0.0 );
+
   {
     const Point closing = { chain.front()[ 0 ] + netDelta[ chainBIndex ],
                             chain.front()[ 1 ] };
 
-    const glm::dvec3 openingPoint = mesh.vertices[ chainVertices.front() ].point;
+    duplicateUv = glm::dvec2( closing[ 0 ], closing[ 1 ] );
 
     chain.push_back( closing );
-    chainVertices.push_back(
-      mesh.makeVertex(
-        { openingPoint, glm::dvec2( closing[ 0 ], closing[ 1 ] ) } ) );
+    chainVertices.push_back( PENDING_DUPLICATE );
   }
 
   // Outer polygon: A in its own direction, then B in its own direction. The
@@ -7918,7 +8019,14 @@ inline bool tryPeriodicUStrip(
   }
 
   // Commit. Past this point nothing may fail, because the mesh uv are being
-  // rewritten into the cut chart the indices above were chosen in.
+  // rewritten into the cut chart the indices above were chosen in - and this
+  // is where the chain's closing duplicate is finally added to the mesh, for
+  // the reason recorded at PENDING_DUPLICATE above. It is the last entry of
+  // ring 0 by construction: ring 0 is chain A followed by the rotated chain B,
+  // and the duplicate is what closes chain B.
+  rewrittenVertices[ 0 ].back() =
+    mesh.makeVertex( { duplicatePoint, duplicateUv } );
+
   flatToVertex.clear();
 
   for ( size_t ring = 0; ring < rewritten.size(); ++ring ) {

@@ -47,7 +47,8 @@ for source in test/*_test.cpp; do
     test/nurbs_seam_test.cpp | test/ribbon_loft_test.cpp | \
     test/spherical_trim_test.cpp | test/inverse_wrong_sheet_test.cpp | \
     test/corner_normals_test.cpp | test/gltf_stream_test.cpp | \
-    test/normalize_test.cpp | test/outer_bound_order_test.cpp ) ;;
+    test/normalize_test.cpp | test/outer_bound_order_test.cpp | \
+    test/periodic_u_strip_test.cpp ) ;;
     * ) continue ;;
   esac
 
