@@ -7509,29 +7509,42 @@ inline size_t reSolveClosedTrimHead(
  * are ordinary holes, translated by whole periods into the strip's window,
  * where earcut bridges them normally.
  *
- * WHAT IS NOT GUESSED. The period is the knot domain. The closure is tested
- * by evaluating the two ends of that domain against each other. The strip is
- * recognised from the rings' own net parameter change, which is a reading of
- * the loop only while each unwrap step is unambiguous and the rim repeats its
- * first point as its last - both required rather than assumed. Anything that
- * does not match - an unwrap step past a quarter period, a rim that closes by
+ * WHAT IS NOT GUESSED. The period is the knot domain. The closure is taken
+ * from the file's own declaration and then checked numerically, per knot span
+ * - see the closure gate below for why five global probes were not a test of
+ * it. The strip is recognised from the rings' own net parameter change, which
+ * is a reading of the loop only while each unwrap step is unambiguous and the
+ * rim repeats its first point as its last - both required rather than
+ * assumed. Anything that does not match - a surface the file does not
+ * declare closed, an unwrap step past a quarter period, a rim that closes by
  * adjacency instead of by repetition, one wrapping ring, three, two wrapping
- * the same way, a hole that does not land inside, a cut that crosses the
- * boundary - returns false and the caller ear-clips exactly as it does today,
- * so an unfamiliar spelling degrades to current behaviour rather than to a
- * guess. Every one of those refusals is taken before anything the caller owns
- * is touched: the rings are unwrapped into a copy, and the one vertex this
- * adds to the mesh is added in the commit section and nowhere earlier.
+ * the same way, a hole that does not land inside, a cut or a ring's own
+ * closing edge that crosses the boundary - returns false and the caller
+ * ear-clips exactly as it does today, so an unfamiliar spelling degrades to
+ * current behaviour rather than to a guess. Every one of those refusals is
+ * taken before anything the caller owns is touched: the rings are unwrapped
+ * into a copy, and the one vertex this adds to the mesh is added in the
+ * commit section and nowhere earlier.
  *
- * Note `solve.closedU_` is deliberately NOT the gate. It compares control row
- * 0 with row n-1, which is the CLAMPED spelling of a closed surface; the two
- * AmazingHand surfaces that need this path (`#160`, `#166`) are the PERIODIC
- * spelling, where the first `degree` rows repeat as the last `degree` rows
- * and rows 0 and n-1 differ - by 2.33mm and 1.35mm respectively. Both declare
- * `u_closed = .T.` in the file and both are closed. Evaluating the domain
- * ends covers either spelling; widening `closedU_` itself would also move the
- * seam crossing in solveFromSeed and tryFullCoverageSeamGrid, so it is left
- * alone here.
+ * TWO DIFFERENT THINGS ARE CALLED "closed in u", and only one of them is a
+ * gate here:
+ *
+ *   - `BSpline::ClosedU` - `declaredClosedU` below - is the file's own
+ *     `u_closed` attribute, carried to native by the extractor. It is a
+ *     topological declaration by the authoring system, and it reads `.T.` for
+ *     every surface this path exists to fix. It IS the gate, taken first.
+ *   - `solve.closedU_` is DERIVED, by comparing control row 0 with row n-1.
+ *     That is the CLAMPED spelling of a closed surface, so it reads false for
+ *     the PERIODIC spelling, where the first `degree` rows repeat as the last
+ *     `degree` rows and rows 0 and n-1 differ - by 2.33mm and 1.35mm on the
+ *     two AmazingHand surfaces that need this path (`#160`, `#166`), both of
+ *     which declare `u_closed = .T.` and are closed. That is
+ *     bldrs-ai/conway#709. Gating on it would refuse every face this fixes,
+ *     and widening it would also move the seam crossing in solveFromSeed and
+ *     tryFullCoverageSeamGrid, so it is left alone here.
+ *
+ * The declaration is belt; the numerical check below is braces, for a file
+ * that declares a closure it does not have.
  *
  * @param mesh              The face mesh, holding the projected boundary
  *                          vertices in ring order as its first entries. Their
@@ -7539,6 +7552,9 @@ inline size_t reSolveClosedTrimHead(
  *                          is what keeps the refinement downstream consistent
  *                          across the cut.
  * @param surface           The NURBS surface, for its knot domain and closure.
+ * @param declaredClosedU   The file's own `u_closed` for this surface. See
+ *                          the two-things note above: this is the declared
+ *                          topology, NOT the derived `closedU_`.
  * @param uvBoundaryValues  The projected rings, rewritten to
  *                          { outer, holes... } on success.
  * @param flatToVertex      Filled on success with the mesh vertex index behind
@@ -7552,12 +7568,24 @@ inline size_t reSolveClosedTrimHead(
 inline bool tryPeriodicUStrip(
     WingedEdgeMesh< ParameterVertex >&                     mesh,
     const tinynurbs::RationalSurface3d&                    surface,
+    bool                                                   declaredClosedU,
     std::vector< std::vector< std::array< double, 2 > > >& uvBoundaryValues,
     std::vector< uint32_t >&                               flatToVertex,
     double&                                                periodOut,
     double&                                                uMinOut ) {
 
   using Point = std::array< double, 2 >;
+
+  // The file said so. Everything this builds - the cut, the two edges that
+  // have to be periodic copies of one another, the whole-period translation
+  // of the holes - is a consequence of the surface being closed in u, and no
+  // amount of sampling makes a surface closed that its author did not close.
+  // Taken first because it is the cheapest refusal and the most authoritative
+  // one. See the note above on which "closed in u" this is: the declared
+  // `u_closed`, not the derived `closedU_` of bldrs-ai/conway#709.
+  if ( !declaredClosedU ) {
+    return false;
+  }
 
   const size_t ringCount = uvBoundaryValues.size();
 
@@ -7745,10 +7773,11 @@ inline bool tryPeriodicUStrip(
     }
   }
 
-  // Is the surface actually closed at those two ends? Asked of the surface by
-  // evaluation, so it holds for the clamped and the periodic spelling alike.
-  // The tolerance is the relative one closedU_ already uses, against the
-  // control net's own extent, so no new constant enters.
+  // Does the surface KEEP the closure it declares? Asked of the surface by
+  // evaluation, so it holds for the clamped and the periodic spelling alike -
+  // which is the whole reason this is not `closedU_`. The tolerance is the
+  // relative one closedU_ already uses, against the control net's own extent,
+  // so no new constant enters.
   {
     glm::dvec3 gridMin( std::numeric_limits< double >::max() );
     glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
@@ -7765,22 +7794,63 @@ inline bool tryPeriodicUStrip(
       std::max( MIN_INVERSE_ERROR,
                 glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
 
-    const double vMin = surface.knots_v[ degreeV ];
-    const double vMax = surface.knots_v[ surface.knots_v.size() - 1 - degreeV ];
+    // PER KNOT SPAN, AND ENOUGH SAMPLES IN EACH TO SETTLE THE SPAN.
+    //
+    // This was five probes spread over the whole v domain, which is not a
+    // test of closure at all: the two u-end isocurves are splines, so they
+    // can agree at any five chosen parameters and part company between them.
+    // A degree-1 surface with eight v knot spans does it exactly - make the
+    // two end control rows agree at the four spans the probes land on and
+    // differ at the four they do not, and five equal readings certify an open
+    // surface as closed. The strip is then built, its two cut edges are
+    // evaluated a period apart but land on DIFFERENT 3D curves, nothing welds
+    // in Geometry::Reify, and the face ships with an open seam. Found by
+    // review on bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+    //
+    // WHY THIS SAMPLE COUNT IS SUFFICIENT, not merely larger. Write the two
+    // isocurves as A0/W0 and A1/W1, where A and W are the homogeneous
+    // numerator and the weight denominator. Both are splines of degree
+    // `degreeV` over `knots_v`, so ON ONE KNOT SPAN both are polynomials of
+    // degree at most `degreeV`. The curves coincide on that span exactly when
+    // A0*W1 - A1*W0 vanishes there - weights are positive, so no denominator
+    // is zero - and that difference is a polynomial of degree at most
+    // 2*degreeV. A polynomial of degree at most d that vanishes at d + 1
+    // distinct points is identically zero, so 2*degreeV + 1 readings settle
+    // the span, and every span together settles the domain. Five global
+    // probes have no such argument behind them at any degree.
+    //
+    // In floating point this is a bound rather than a proof - agreement at
+    // the nodes bounds the difference between them by the nodes' Lebesgue
+    // constant, which for this many uniform nodes at these degrees is a small
+    // factor, not an order of magnitude. That is the honest claim: a
+    // degree-counting argument with a bounded numerical gap, where before
+    // there was no argument.
+    const size_t closureSamples = std::max< size_t >( 2, ( 2 * degreeV ) + 1 );
 
-    constexpr size_t CLOSURE_SAMPLES = 5;
+    for ( size_t span = degreeV;
+          span + degreeV + 1 < surface.knots_v.size();
+          ++span ) {
 
-    for ( size_t at = 0; at < CLOSURE_SAMPLES; ++at ) {
+      const double spanMin = surface.knots_v[ span ];
+      const double spanMax = surface.knots_v[ span + 1 ];
 
-      const double v =
-        vMin + ( ( vMax - vMin ) * static_cast< double >( at ) /
-                 static_cast< double >( CLOSURE_SAMPLES - 1 ) );
+      // A repeated knot is an empty span and carries no polynomial piece.
+      if ( !( spanMax > spanMin ) ) {
+        continue;
+      }
 
-      if ( glm::distance( tinynurbs::surfacePoint( surface, uMin, v ),
-                          tinynurbs::surfacePoint( surface, uMax, v ) ) >
-             closureTolerance ) {
+      for ( size_t at = 0; at < closureSamples; ++at ) {
 
-        return false;
+        const double v =
+          spanMin + ( ( spanMax - spanMin ) * static_cast< double >( at ) /
+                      static_cast< double >( closureSamples - 1 ) );
+
+        if ( glm::distance( tinynurbs::surfacePoint( surface, uMin, v ),
+                            tinynurbs::surfacePoint( surface, uMax, v ) ) >
+               closureTolerance ) {
+
+          return false;
+        }
       }
     }
   }
@@ -8006,11 +8076,35 @@ inline bool tryPeriodicUStrip(
     const Point backFrom = built.back();
     const Point backTo   = built.front();
 
+    // EVERY segment, including the one no ring lists: a closed polygon's
+    // `back() -> front()`. A point-list bound does not repeat its head
+    // (IfcCurve::closedByConstruction, GetLoop), so for such a ring that edge
+    // is real boundary and was the one edge this never looked at. The
+    // net-delta gate does not cover it: a hole is admitted whenever its
+    // head-to-tail u change is within `periodSlack`, which is exactly what a
+    // finely sampled ring has - its closing edge is then SHORT IN U, i.e.
+    // near-parallel to the cut, which is the orientation most likely to cross
+    // it rather than the least. Measured: a four-point hole listing
+    // (0.9996, 0.40) (0.90, 0.90) (1.05, 0.90) (1.0004, 0.45) against a cut at
+    // u = 1 is ACCEPTED without this, and REFUSED the moment the same ring
+    // repeats its head so that the crossing edge is listed. Found by review on
+    // bldrs-ai/conway-geom#207.
+    //
+    // Ring 0 needs no special case. Its closing edge IS `backFrom -> backTo`,
+    // one of the two cuts, so the pair of tests it adds are a cut against
+    // itself - which the orientation test already answers with a
+    // shared-endpoint zero, never a crossing - and the two cuts against each
+    // other, which are one period apart in u while each spans a fraction of
+    // one. A hole that
+    // does repeat its head adds a zero-length edge, and a degenerate segment
+    // puts both orientation products at zero, so it cannot report a crossing
+    // either.
     for ( const std::vector< Point >& ring : rewritten ) {
-      for ( size_t at = 0; at + 1 < ring.size(); ++at ) {
+      for ( size_t at = 0, from = ring.size() - 1; at < ring.size();
+            from = at++ ) {
 
-        if ( crosses( cutFrom, cutTo, ring[ at ], ring[ at + 1 ] ) ||
-             crosses( backFrom, backTo, ring[ at ], ring[ at + 1 ] ) ) {
+        if ( crosses( cutFrom, cutTo, ring[ from ], ring[ at ] ) ||
+             crosses( backFrom, backTo, ring[ from ], ring[ at ] ) ) {
 
           return false;
         }
@@ -8299,7 +8393,8 @@ inline void TriangulateBspline(Geometry &geometry,
     const bool builtPeriodicStrip =
       bounds.size() > 1 &&
       tryPeriodicUStrip(
-        mesh, srf, uvBoundaryValues, stripFlatToVertex, stripPeriod, stripUMin );
+        mesh, srf, surface.BSplineSurface.ClosedU, uvBoundaryValues,
+        stripFlatToVertex, stripPeriod, stripUMin );
 
     // Refinement and shading evaluate at the mesh's own uv, and the cut chart
     // puts some of those one period outside the surface's knot domain. Wrap

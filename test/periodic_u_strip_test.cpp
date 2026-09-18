@@ -25,7 +25,23 @@
  *      through chart the face never visits. The cut-crossing check cannot see
  *      it: that tests only the two synthesized cuts against the rings.
  *
- *   3. A LATE REFUSAL THAT MUTATES. The chain's closing duplicate was added
+ *   3. A HOLE'S IMPLICIT CLOSING SEGMENT. The cut-crossing gate walked each
+ *      ring's LISTED segments, which for a point-list bound - one that does
+ *      not repeat its head - leaves `back() -> front()` untested. The
+ *      net-delta gate does not cover it either: an ordinary ring is admitted
+ *      whenever its head-to-tail u change is within periodSlack, which is
+ *      exactly what a finely sampled ring has, so its closing edge is short in
+ *      u, near-parallel to the cut, and in the best orientation to cross it.
+ *      A hole crossing the cut is handed to earcut as a hole crossing the
+ *      outer polygon.
+ *
+ *   4. FIVE PROBES ARE NOT A CLOSURE TEST. The two u-end isocurves are
+ *      splines; they can agree at any five chosen v and part company between
+ *      them. A degree-1 surface with eight v knot spans does it exactly. The
+ *      gate now takes the file's own `u_closed` declaration first, and checks
+ *      it per knot span with enough samples to settle each span's polynomial.
+ *
+ *   5. A LATE REFUSAL THAT MUTATES. The chain's closing duplicate was added
  *      with mesh.makeVertex before the hole-containment and cut-crossing gates
  *      had run, so refusing at either left an extra vertex referenced by no
  *      triangle. This is not latent: `ADVANCED_FACE #19215` of
@@ -41,6 +57,8 @@
  * The surface is synthetic and minimal on purpose: a degree-1 tube whose last
  * control row IS its first, which is closed in u by evaluation - the only
  * property of the surface tryPeriodicUStrip reads, besides its knot domain.
+ * `makeSplitSeamTube` is the same tube with more v knot spans and a seam that
+ * only closes on the spans the old five probes landed on.
  *
  * Standalone by design: it includes mesh_utils.h directly and links nothing but
  * the Logger stubs below, matching outer_bound_order_test.cpp.
@@ -132,6 +150,88 @@ tinynurbs::RationalSurface3d makeClosedTube() {
   return surface;
 }
 
+/** v knot spans in `makeSplitSeamTube`: eight, at 0, 1/8 ... 1. */
+constexpr size_t SPLIT_SEAM_SPANS = 8;
+
+/** How far the split seam opens, in model units. Far above closureTolerance. */
+constexpr double SPLIT_SEAM_GAP = 1.0;
+
+/**
+ * The same tube, with eight v knot spans instead of one and a seam that closes
+ * only at EVEN v control columns - which is to say, only at v = 0, 0.25, 0.5,
+ * 0.75 and 1.
+ *
+ * That is exactly the set of parameters the old five-probe closure gate read,
+ * so it certified this surface closed. It is not: at every odd column the last
+ * u control row stands SPLIT_SEAM_GAP further out than the first, and the two
+ * u-end isocurves - degree-1 polylines through those columns - are a full
+ * SPLIT_SEAM_GAP apart there. A strip built on it has cut edges that land on
+ * different 3D curves and weld to nothing.
+ */
+tinynurbs::RationalSurface3d makeSplitSeamTube() {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  const size_t rows    = TUBE_SEGMENTS + 1;
+  const size_t columns = SPLIT_SEAM_SPANS + 1;
+
+  std::vector< glm::dvec3 > control;
+
+  control.reserve( rows * columns );
+
+  for ( size_t row = 0; row < rows; ++row ) {
+
+    const double angle =
+      TWO_PI * ( static_cast< double >( row % TUBE_SEGMENTS ) /
+                 static_cast< double >( TUBE_SEGMENTS ) );
+
+    for ( size_t column = 0; column < columns; ++column ) {
+
+      const double v =
+        static_cast< double >( column ) /
+        static_cast< double >( SPLIT_SEAM_SPANS );
+
+      // Only the CLOSING row moves, and only where the five probes did not
+      // look. Row 0 is untouched, so the seam is shut at every even column.
+      const double radius =
+        ( row == TUBE_SEGMENTS && ( column % 2 ) == 1 ) ?
+          ( TUBE_RADIUS + SPLIT_SEAM_GAP ) : TUBE_RADIUS;
+
+      control.push_back( { radius * std::cos( angle ),
+                           radius * std::sin( angle ),
+                           TUBE_HEIGHT * v } );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( rows, columns, control );
+  surface.weights =
+    tinynurbs::array2( rows, columns,
+                       std::vector< double >( rows * columns, 1.0 ) );
+
+  surface.knots_u.push_back( 0.0 );
+
+  for ( size_t at = 0; at <= TUBE_SEGMENTS; ++at ) {
+    surface.knots_u.push_back( static_cast< double >( at ) /
+                               static_cast< double >( TUBE_SEGMENTS ) );
+  }
+
+  surface.knots_u.push_back( 1.0 );
+
+  surface.knots_v.push_back( 0.0 );
+
+  for ( size_t at = 0; at <= SPLIT_SEAM_SPANS; ++at ) {
+    surface.knots_v.push_back( static_cast< double >( at ) /
+                               static_cast< double >( SPLIT_SEAM_SPANS ) );
+  }
+
+  surface.knots_v.push_back( 1.0 );
+
+  return surface;
+}
+
 /** The tube point a (u, v) names, with u taken as a fraction of the period. */
 glm::dvec3 tubePoint( double u, double v ) {
 
@@ -157,6 +257,11 @@ struct RingSpec {
   // so a four-sample ring encloses area. Rims leave it at zero: their shape in
   // v is not what any gate under test reads.
   double                halfHeight = 0.0;
+
+  // When non-empty this IS the ring, verbatim, and everything above is
+  // ignored. A ring whose shape in BOTH parameters is the point of the test
+  // cannot be spelled as `us` at one v.
+  std::vector< std::array< double, 2 > > explicitPoints;
 };
 
 /** A rim going once round the tube, evenly, in the given direction. */
@@ -216,6 +321,19 @@ Built build( const std::vector< RingSpec >& specs ) {
 
     std::vector< std::array< double, 2 > > ring;
 
+    if ( !spec.explicitPoints.empty() ) {
+
+      for ( const std::array< double, 2 >& point : spec.explicitPoints ) {
+
+        ring.push_back( point );
+        built.mesh.makeVertex( { tubePoint( point[ 0 ], point[ 1 ] ),
+                                 glm::dvec2( point[ 0 ], point[ 1 ] ) } );
+      }
+
+      built.rings.push_back( std::move( ring ) );
+      continue;
+    }
+
     const size_t count = spec.us.size();
 
     for ( size_t at = 0; at <= count; ++at ) {
@@ -258,7 +376,8 @@ struct Outcome {
   size_t vertexGrowth;
 };
 
-Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface ) {
+Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface,
+             bool declaredClosedU = true ) {
 
   std::vector< uint32_t > flatToVertex;
 
@@ -269,7 +388,8 @@ Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface ) {
 
   const bool built =
     conway::geometry::tryPeriodicUStrip(
-      state.mesh, surface, state.rings, flatToVertex, period, uMin );
+      state.mesh, surface, declaredClosedU, state.rings, flatToVertex, period,
+      uMin );
 
   return { built, state.mesh.vertices.size() - before };
 }
@@ -382,6 +502,133 @@ int main() {
     check( !outcome.built, "a hole outside the strip refuses the face" );
     check( outcome.vertexGrowth == 0,
            "a refusal after the chain is built adds no vertex" );
+  }
+
+  printf( "=== the declared u_closed is the first gate ===\n" );
+
+  {
+    // The same two rims on the same closed tube, with the file declaring the
+    // surface OPEN in u. Nothing this builds - the cut, the two edges that have
+    // to be periodic copies of one another - means anything on a surface whose
+    // author did not close it, so the declaration is read before any of it.
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ) } );
+
+    const Outcome outcome = run( state, surface, false );
+
+    check( !outcome.built,
+           "a surface the file does not declare closed in u is refused" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== five probes were not a closure test ===\n" );
+
+  {
+    const tinynurbs::RationalSurface3d split = makeSplitSeamTube();
+
+    // The five parameters the old gate read, spread over the whole v domain.
+    double worstProbe = 0.0;
+
+    for ( size_t at = 0; at < 5; ++at ) {
+
+      const double v = static_cast< double >( at ) / 4.0;
+
+      worstProbe =
+        std::max( worstProbe,
+                  glm::distance( tinynurbs::surfacePoint( split, 0.0, v ),
+                                 tinynurbs::surfacePoint( split, 1.0, v ) ) );
+    }
+
+    check( worstProbe == 0.0,
+           "the split-seam tube closes EXACTLY at the five parameters the old "
+           "gate read" );
+
+    // One span in, where no probe landed.
+    check( glm::distance( tinynurbs::surfacePoint( split, 0.0, 0.125 ),
+                          tinynurbs::surfacePoint( split, 1.0, 0.125 ) ) >
+             ( SPLIT_SEAM_GAP * 0.5 ),
+           "and stands a seam gap apart between them, so it is not closed" );
+
+    // Declared closed - a file that says .T. about a surface that is not. This
+    // is what the numerical half of the gate is for. RED on the reviewed
+    // revision, which built the strip.
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ) } );
+
+    const Outcome outcome = run( state, split );
+
+    check( !outcome.built,
+           "a surface that closes only where the old probes landed is "
+           "refused" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== a hole's implicit closing segment crosses the cut ===\n" );
+
+  {
+    // A four-point hole that does NOT repeat its head, so its closing segment
+    // (1.0004, 0.45) -> (0.9996, 0.40) is not listed. That segment crosses the
+    // cut at u = 1 between the two rims; none of the listed three does, because
+    // the one that reaches over the cut does so at v = 0.9, clear of the cut's
+    // own span. Its head-to-tail u change is 8e-4 of a period, inside
+    // periodSlack, so the net-delta gate reads it as an ordinary ring and the
+    // centroid lands inside the strip. RED on the reviewed revision, which
+    // built the strip and handed earcut a hole crossing its outer polygon.
+    RingSpec hole;
+
+    hole.explicitPoints = { { 0.9996, 0.40 },
+                            { 0.90,   0.90 },
+                            { 1.05,   0.90 },
+                            { 1.0004, 0.45 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           hole } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "a hole whose unlisted closing segment crosses the cut is refused" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  {
+    // The SAME ring, with its head repeated so the crossing segment is listed.
+    // Refused on both revisions - which is what isolates the mechanism above:
+    // the geometry did not change, only whether the gate could see it.
+    RingSpec hole;
+
+    hole.explicitPoints = { { 0.9996, 0.40 },
+                            { 0.90,   0.90 },
+                            { 1.05,   0.90 },
+                            { 1.0004, 0.45 },
+                            { 0.9996, 0.40 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           hole } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "the same hole with its head repeated is refused by the listed "
+           "segment" );
+  }
+
+  {
+    // And an ordinary hole that crosses nothing still builds, so the wider walk
+    // did not simply refuse everything. A ring that repeats its head adds a
+    // zero-length closing segment; a degenerate segment cannot report a
+    // crossing, and this is what says so.
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           smallRing( 0.5, 0.5, 0.05 ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built, "a hole inside the strip still builds the strip" );
+    check( outcome.vertexGrowth == 1,
+           "and still adds exactly one vertex" );
   }
 
   printf( failures == 0 ? "PASS\n" : "FAIL (%d)\n", failures );

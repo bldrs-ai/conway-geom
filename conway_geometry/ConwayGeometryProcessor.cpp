@@ -971,6 +971,10 @@ IfcSurface ConwayGeometryProcessor::GetSurface(const ParamsGetSurface& parameter
     surface.BSplineSurface.UDegree = parameters.Udegree;
     surface.BSplineSurface.VDegree = parameters.Vdegree;
     surface.BSplineSurface.ControlPoints = parameters.ctrolPts;
+    // Carried like every other declared attribute; this branch was the one
+    // that dropped them, and tryPeriodicUStrip now reads ClosedU.
+    surface.BSplineSurface.ClosedU = parameters.closedU;
+    surface.BSplineSurface.ClosedV = parameters.closedV;
     surface.BSplineSurface.UMultiplicity = parameters.UMultiplicity;
     surface.BSplineSurface.VMultiplicity = parameters.VMultiplicity;
 

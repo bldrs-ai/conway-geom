@@ -79,8 +79,11 @@ struct BSpline {
   bool Active = false;
   double UDegree;
   double VDegree;
-  bool ClosedU;
-  bool ClosedV;
+  // Defaulted, not left indeterminate: tryPeriodicUStrip gates on ClosedU, and
+  // the surface is default-constructed by every GetSurface branch before the
+  // producer fills it in. An unset bool read as a gate is a coin toss per call.
+  bool ClosedU = false;
+  bool ClosedV = false;
   std::string CurveType;
   std::vector<std::vector<double>> Weights;
   std::vector<std::vector<glm::dvec3>> ControlPoints;
