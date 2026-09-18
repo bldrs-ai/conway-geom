@@ -961,6 +961,52 @@ int main() {
            "with no triangle spanning half a period" );
   }
 
+  printf( "=== a boundary that touches itself without crossing ===\n" );
+
+  {
+    // Codex 4049291629 on bldrs-ai/conway-geom#207 attacked the cut search's
+    // crossing test for detecting only PROPER crossings: a candidate cut that
+    // touched a boundary vertex, or ran collinear along a boundary segment,
+    // made the rewritten polygon self-touching, and earcut has no answer for
+    // one. There is no candidate cut any more and no polygon is built, so the
+    // question that remains is what a self-touching BOUNDARY does here.
+    //
+    // It is a legal constraint configuration. A hole whose corner sits exactly
+    // on the lower rim shares that vertex with it after the 1e-9 weld, and the
+    // parity peel gives the region those edges bound - pinched at the contact,
+    // which is what the input says. Nothing is dropped and nothing is paved:
+    // the band minus the hole, to nine digits. Measured rather than argued,
+    // because "CDT does not need a simple polygon" is the claim the whole
+    // change rests on and a touching contact is where it is least obvious.
+    RingSpec touching;
+
+    // The rims sit at v = 0.25 and v = 0.75; this hole's bottom edge lies ON
+    // the lower rim, sharing two of its sample points exactly.
+    touching.explicitPoints = { { 5.0 / 24.0, 0.25 }, { 7.0 / 24.0, 0.25 },
+                                { 7.0 / 24.0, 0.45 }, { 5.0 / 24.0, 0.45 },
+                                { 5.0 / 24.0, 0.25 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           touching } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built, "a hole touching a rim without crossing it builds" );
+
+    check( worstLiftedSpan( state, outcome ) < 0.5,
+           "with no triangle spanning half a period" );
+
+    // The hole is carved, not ignored: the band less the 2/24-wide, 0.2-tall
+    // patch it takes out of it. Both are exact on the 24-gon.
+    const double removed =
+      2.0 * 2.0 * TUBE_RADIUS * std::sin( TWO_PI / 48.0 ) * TUBE_HEIGHT * 0.20;
+
+    check( std::abs( emittedArea( state, outcome ) -
+                     ( bandArea( 24 ) - removed ) ) < ( bandArea( 24 ) * 1e-9 ),
+           "and exactly that hole is missing from the band" );
+  }
+
   printf( "=== a boundary that winds but does not bound a strip is refused ===\n" );
 
   {
