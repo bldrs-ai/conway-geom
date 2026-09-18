@@ -2888,8 +2888,6 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   double startDegrees = 0;
   double endDegrees = 360;
 
-  bool byPos = false;
-
   int startOffset   = 0;
   int endOffset     = 0;
   bool isTrimmed360 = false;
@@ -2900,34 +2898,53 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
       IfcTrimmingPreference::PARAMETER) {
       startDegrees = parameters.paramsGetIfcTrimmedCurve.trim1Double;
       endDegrees = parameters.paramsGetIfcTrimmedCurve.trim2Double;
-      
+
     }
     else
     {
-      byPos = true;
-
       if (parameters.dimensions == 2)
       {
         glm::dmat3 placement = parameters.axis2Placement2D;
+        glm::dvec2 vecX = placement[0];
+        glm::dvec2 vecY = placement[1];
+
         // Was re-reading trim1 here, so start/end were always equal and every
         // 2D Cartesian-trimmed circle degenerated to a zero-length arc
         // (bldrs-ai/test-models#20 driveway curve).
-        double xxS = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x;
-        double yyS = parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y;
-        double xxE = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x - placement[2].x;
-        double yyE = parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y - placement[2].y;
+        glm::dvec2 v1(parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.x - placement[2].x,
+                      parameters.paramsGetIfcTrimmedCurve.trim1Cartesian2D.y - placement[2].y);
+        glm::dvec2 v2(parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.x - placement[2].x,
+                      parameters.paramsGetIfcTrimmedCurve.trim2Cartesian2D.y - placement[2].y);
 
-        // These xx/yy are geometric positions in the un-rotated (byPos)
-        // frame below (the sampling loop's dmat[0]/dmat[1] are forced to
-        // identity when byPos is set, so only translation was removed
-        // here, deliberately keeping this in the same frame). But the
-        // sampler walks the *parametric* angle t of (x, y) =
-        // (r1 cos t, r2 sin t), and a point's polar angle only equals t
-        // when r1 == r2. For an eccentric ellipse, scale each component
-        // by its semi-axis before the angle so the trimmed span matches
-        // what the sampler will actually walk — mirrors getAP214Circle's
-        // equivalent fix (bldrs-ai/test-models#45). Skipped for a true
-        // circle so its digest stays bit-identical to the driveway fix.
+        // Project onto the placement's own (rotated) axes, mirroring the
+        // 3D branch below (glm::dot against vecX/vecY) rather than only
+        // subtracting the translation — the sampling loop must walk the
+        // *parametric* angle t of (x, y) = (r1 cos t, r2 sin t) in this
+        // same rotated frame, so the two have to agree (bldrs-ai/conway-geom#205).
+        // For a true CIRCLE this is provably equivalent to the previous
+        // translation-only computation: a placement rotation is a phase
+        // shift of a circle's parametric angle, and the sampler below
+        // applies the *same* placement to the sampled point, so the shift
+        // introduced here is exactly undone there. That is what kept every
+        // circle (including the driveway's non-axis-aligned RefDirections,
+        // #1170/#1181) bit-identical through this change. For an eccentric
+        // ellipse (radius1 != radius2) the shift is NOT undone by a scale
+        // along fixed axes, which is why the previous translation-only
+        // frame broke under rotation while the circle case cancelled.
+        double xxS = glm::dot(vecX, v1);
+        double yyS = glm::dot(vecY, v1);
+        double xxE = glm::dot(vecX, v2);
+        double yyE = glm::dot(vecY, v2);
+
+        // The projected xx/yy above are geometric positions in the
+        // placement's local (rotated) frame. The sampler walks the
+        // *parametric* angle t of (x, y) = (r1 cos t, r2 sin t), and a
+        // point's polar angle only equals t when r1 == r2. For an
+        // eccentric ellipse, scale each component by its semi-axis before
+        // the angle so the trimmed span matches what the sampler will
+        // actually walk — mirrors getAP214Circle's equivalent fix
+        // (bldrs-ai/test-models#45). Skipped for a true circle so its
+        // digest stays bit-identical to the driveway fix.
         if ( radius1 != radius2 && radius1 != 0.0 && radius2 != 0.0 ) {
           xxS /= radius1;
           yyS /= radius2;
@@ -3064,13 +3081,19 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
       glm::dvec2 vec(0);
       vec[0] = radius1 * std::cos(angle);
       vec[1] = radius2 * std::sin(angle); // not sure why we need this, but we apparently do
+      // byPos used to force dmat[0]/dmat[1] to identity here ("If trimming
+      // by points no rotation is required"), on the assumption that the
+      // trim-angle computation above was also unrotated. It no longer is
+      // (bldrs-ai/conway-geom#205): xxS/yyS/xxE/yyE are now the trim
+      // points projected into the placement's own rotated frame, so
+      // `vec` above is a point in that same rotated frame and must be
+      // carried through the real placement transform, not identity, to
+      // land back in world space. Using the actual placement here is
+      // what makes an eccentric ellipse under a rotated placement come
+      // out correct; for a circle it is provably a no-op relative to the
+      // previous identity-forced path (see the comment above the
+      // trim-angle projection), so every circle's digest is unchanged.
       glm::dmat3 dmat = parameters.axis2Placement2D;
-      // If trimming by points no rotation is required
-      if (byPos)
-      {
-        dmat[0] = glm::dvec3(1.0, 0.0, 0.0); // Assigning [1, 0, 0] to the X vector
-        dmat[1] = glm::dvec3(0.0, 1.0, 0.0); // Assigning [0, 1, 0] to the Y vector
-      }
       glm::dvec2 pos = dmat * glm::dvec3(vec, 1);
       curve.Add2d(pos);
     }
@@ -3085,7 +3108,7 @@ conway::geometry::IfcCurve ConwayGeometryProcessor::getIfcCircle(
   }
 
   // without a trim, we close the circle
-  if ( !parameters.paramsGetIfcTrimmedCurve.trimExists ) 
+  if ( !parameters.paramsGetIfcTrimmedCurve.trimExists )
   {
     if (parameters.dimensions == 2) {
       curve.Add2d(curve.points[startIndex]);
