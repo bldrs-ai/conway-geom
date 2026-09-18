@@ -35,6 +35,8 @@
 #include <math.h>
 #include <algorithm>
 #include <cmath>
+#include <numeric>
+#include <vector>
 
 namespace conway::geometry {
 
@@ -750,6 +752,70 @@ inline bool GetBasisFromCoplanarPoints(std::vector<glm::dvec3> &points,
   return false;
 }
 
+/**
+ * Position of the bound that declared itself the face's OUTER boundary, or
+ * `bounds.size()` when none of them did.
+ *
+ * WHY EVERY EARCUT SITE NEEDS THIS. mapbox::earcut takes ring 0 of the
+ * polygon it is handed as the outer boundary and every ring after it as a
+ * hole - that is the library's contract, not something the caller can express
+ * any other way. `bounds` arrives in the order the exporter wrote the face's
+ * loops, and that order carries no such promise: Onshape's AP242 writer lists
+ * hole loops first on some faces. Feed those in arrival order and a hole is
+ * ear-clipped as the outline, so the face emits a patch the size of that hole
+ * where its real surface should be, with no error logged anywhere.
+ * See bldrs-ai/test-models#65.
+ *
+ * Which bound is outer is a topological fact the front end decides (STEP's
+ * FACE_OUTER_BOUND, or - for the exporters that emit none at all - the
+ * largest loop, tagged there); this only reads the answer back off
+ * IfcBound3D::type.
+ */
+inline size_t outerBoundIndex( const std::vector< IfcBound3D >& bounds ) {
+
+  for ( size_t where = 0; where < bounds.size(); ++where ) {
+
+    if ( bounds[ where ].type == IfcBoundType::OUTERBOUND ) {
+      return where;
+    }
+  }
+
+  return bounds.size();
+}
+
+/**
+ * The order to hand `bounds` to earcut, as indices into `bounds`: the
+ * OUTERBOUND-typed bound first, everything else in declaration order.
+ *
+ * The same permutation TriangulateBounds applies in place with
+ * `std::swap( bounds[ 0 ], bounds[ outerIndex ] )` - deliberately the same,
+ * not merely equivalent, so the planar and parametric paths order a given
+ * face's rings identically. Expressed as indices because the parametric
+ * triangulators hold `bounds` by const reference and have no business
+ * mutating their caller's array.
+ *
+ * Identity when no bound is typed OUTERBOUND, and identity when the outer one
+ * is already first. That second case is the common one, and it is what keeps
+ * this off the output of every face that was not already broken: a no-op
+ * permutation emits the same vertices in the same order, so digests only move
+ * for faces that actually had their outer loop listed late.
+ */
+inline std::vector< size_t > outerBoundFirstOrder(
+    const std::vector< IfcBound3D >& bounds ) {
+
+  std::vector< size_t > order( bounds.size() );
+
+  std::iota( order.begin(), order.end(), static_cast< size_t >( 0 ) );
+
+  const size_t outerIndex = outerBoundIndex( bounds );
+
+  if ( outerIndex < bounds.size() ) {
+    std::swap( order[ 0 ], order[ outerIndex ] );
+  }
+
+  return order;
+}
+
 inline void TriangulateBounds(Geometry &geometry,
                               std::vector<IfcBound3D> &bounds) {
   if (bounds.size() == 1 && bounds[0].curve.points.size() == 3) {
@@ -791,16 +857,11 @@ inline void TriangulateBounds(Geometry &geometry,
 
     // if more than one bound
     if (bounds.size() > 1) {
-        // locate the outer bound index
-      int outerIndex = -1;
-      for (size_t i = 0; i < bounds.size(); i++) {
-        if (bounds[i].type == IfcBoundType::OUTERBOUND) {
-          outerIndex = i;
-          break;
-        }
-      }
+      // locate the outer bound index - see outerBoundIndex for why earcut
+      // cannot be handed the bounds in the order the file declared them
+      const size_t outerIndex = outerBoundIndex( bounds );
 
-      if (outerIndex == -1) {
+      if (outerIndex >= bounds.size()) {
         Logger::logWarning( "Expected outer bound, using fallback tesselation." );
       } else {
         // swap the outer bound to the first position

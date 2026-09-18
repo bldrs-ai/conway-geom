@@ -3104,6 +3104,22 @@ inline void TriangulateConicalSurface(
   // r indicates the level of subdivision, currently 3 you can increase it to
   // 5
 
+  // Ring 0 is earcut's outer boundary (see outerBoundFirstOrder), and this
+  // path is deliberately NOT given the OUTERBOUND-typed reorder the b-spline
+  // path takes. It does not feed the rings in arrival order in the first
+  // place: `outsideMostBoundaries` above is a max-heap on each loop's largest
+  // radius, which is the quantity this (dx, dy) / maxR projection nests by, so
+  // the ring that is outermost in the plane earcut is about to see already
+  // goes first. Imposing the declared type on top would replace a
+  // projection-aware order with a topological one, and the two need not agree:
+  // the type says which loop is outer on the SURFACE, not which encloses the
+  // others once the cone is flattened axially.
+  //
+  // Audited against bldrs-ai/test-models#65, where 43 of the 173 faces that
+  // list their outer bound late are conical and none is damaged. Measured,
+  // every one of those 43 lists a ZERO-EXTENT loop first, and this path drops
+  // an empty bound outright above, so there was never a ring to clip as the
+  // outline.
   std::vector<uint32_t> indices;
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
@@ -3512,6 +3528,15 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
 #endif
 
+  // Ring 0 is earcut's outer boundary (see outerBoundFirstOrder), and as on
+  // the cone this path already orders its rings geometrically rather than by
+  // arrival: `outsideMostBoundaries` is a max-heap on each loop's largest
+  // axial z, which is what this annulus projection nests by. Audited for
+  // bldrs-ai/test-models#65 and deliberately left alone - imposing the
+  // OUTERBOUND-typed swap the b-spline path takes would override a
+  // projection-aware order with a topological one, and on this model the 13
+  // misordered cylindrical faces show no damage under the order it already
+  // uses.
   std::vector<uint32_t> indices;
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
@@ -7194,6 +7219,11 @@ inline bool tryRibbonLoft(
 
       std::vector< uint32_t > ears;
 
+      // One ring, so earcut's ring-0-is-the-outline contract is satisfied by
+      // construction and the OUTERBOUND reorder the b-spline path takes has
+      // nothing to reorder: tryRibbonLoft is only ever called under
+      // `bounds.size() == 1`, and `outline` is built from that single bound's
+      // welded boundary. Audited for bldrs-ai/test-models#65.
       {
         conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
         ears = mapbox::earcut< uint32_t >( outline );
@@ -7549,7 +7579,16 @@ inline void TriangulateBspline(Geometry &geometry,
     conway::ScratchArenaScope arenaScope;
     WingedEdgeMesh< ParameterVertex > mesh{ conway::ThreadScratchResource() };
 
-    for ( size_t i = 0; i < bounds.size(); ++i ) {
+    // Ring 0 is earcut's outer boundary and the rest are holes, so the
+    // face's own OUTERBOUND has to be the first ring fed in - the bounds
+    // arrive in the exporter's declaration order, which is not that order.
+    // See outerBoundFirstOrder (geometry_utils.h) for the full contract and
+    // what feeding a hole first costs. Identity permutation, and therefore a
+    // no-op on vertex order, for every face whose outer bound is already
+    // first.
+    const std::vector< size_t > boundOrder = outerBoundFirstOrder( bounds );
+
+    for ( const size_t i : boundOrder ) {
 
       std::vector<Point> points;
 
