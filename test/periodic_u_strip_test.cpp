@@ -262,6 +262,16 @@ struct RingSpec {
   // ignored. A ring whose shape in BOTH parameters is the point of the test
   // cannot be spelled as `us` at one v.
   std::vector< std::array< double, 2 > > explicitPoints;
+
+  // When non-empty, one more entry is appended carrying THIS uv and the HEAD'S
+  // 3D POINT. That is a closed loop whose two ends are one point the inverse
+  // solve answered twice and disagreed about - which is what
+  // `ADVANCED_FACE #19215`'s seam-straddling hole is: head ( 0.933400,
+  // 0.124924 ) against tail ( 0.936026, 0.125770 ) for one point, 0.0026 of a
+  // period apart. Spelled as an override because nothing derived from a uv can
+  // express it: the two ends have to disagree in uv while agreeing exactly in
+  // 3D.
+  std::vector< std::array< double, 2 > > tailUv;
 };
 
 /** A rim going once round the tube, evenly, in the given direction. */
@@ -328,6 +338,15 @@ Built build( const std::vector< RingSpec >& specs ) {
         ring.push_back( point );
         built.mesh.makeVertex( { tubePoint( point[ 0 ], point[ 1 ] ),
                                  glm::dvec2( point[ 0 ], point[ 1 ] ) } );
+      }
+
+      if ( !spec.tailUv.empty() ) {
+
+        ring.push_back( spec.tailUv.front() );
+        built.mesh.makeVertex(
+          { tubePoint( spec.explicitPoints.front()[ 0 ],
+                       spec.explicitPoints.front()[ 1 ] ),
+            glm::dvec2( spec.tailUv.front()[ 0 ], spec.tailUv.front()[ 1 ] ) } );
       }
 
       built.rings.push_back( std::move( ring ) );
@@ -629,6 +648,125 @@ int main() {
     check( outcome.built, "a hole inside the strip still builds the strip" );
     check( outcome.vertexGrowth == 1,
            "and still adds exactly one vertex" );
+  }
+
+
+  printf( "=== a ring whose two ends disagree in uv is still an ordinary ring ===\n" );
+
+  {
+    // The two ends are ONE 3D point the solve answered twice, 0.003 of a period
+    // apart in u - three times the 1e-3 periodSlack this used to measure
+    // against, and the reading that refused `ADVANCED_FACE #19215` outright
+    // once its seam-straddling hole stopped being clamped flat. A ring that
+    // closes on its own head winds a whole number of periods, so the winding is
+    // ROUNDED rather than measured. RED before that change.
+    RingSpec hole;
+
+    hole.explicitPoints = { { 0.45, 0.45 }, { 0.55, 0.45 },
+                            { 0.55, 0.55 }, { 0.45, 0.55 } };
+    hole.tailUv         = { { 0.453, 0.4508 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           hole } );
+
+    const size_t head = 50;
+    const size_t tail = state.mesh.vertices.size() - 1;
+
+    check( state.mesh.vertices[ head ].point ==
+             state.mesh.vertices[ tail ].point,
+           "the hole's two ends are the same 3D point" );
+
+    check( std::abs( state.rings[ 2 ].back()[ 0 ] -
+                     state.rings[ 2 ].front()[ 0 ] ) > 0.001,
+           "and disagree in u by more than the old fixed slack" );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built,
+           "the strip is built anyway - the winding rounds to zero" );
+    check( outcome.vertexGrowth == 1, "and still adds exactly one vertex" );
+  }
+
+  {
+    // The rounding is bounded, not unbounded: a ring whose ends disagree by
+    // 0.3 of a period is not decisively any winding - the same quarter-period
+    // margin the unwrap step demands - and is still refused. Characterisation
+    // on the old revision, which refused it for being outside 1e-3.
+    RingSpec hole;
+
+    hole.explicitPoints = { { 0.45, 0.45 }, { 0.55, 0.45 },
+                            { 0.55, 0.55 }, { 0.45, 0.55 } };
+    hole.tailUv         = { { 0.75, 0.4508 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ),
+                           evenRim( 24, 0.75, false, true ),
+                           hole } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "a ring whose ends disagree by 0.3 of a period is refused" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== the shortest cut is not the only cut tried ===\n" );
+
+  {
+    // A rim that is not u-monotone: it runs forward along v = 0.90, dips to
+    // v ~ 0.50 while overshooting the seam to u = 1.04, comes back to u = 0.94,
+    // and finishes at u = 1.00. Net winding is exactly one period and its two
+    // ends are one point, so it is a rim - but its excursion straddles u = 1.00
+    // at v ~ 0.49, which is precisely where the SHORTEST cut runs.
+    //
+    // That is `ADVANCED_FACE #19215`'s shape: a 213-point rim advancing 141
+    // steps and retreating 71 over 1.066 periods, whose shortest cut is crossed
+    // by the rim's own segment and exactly one of whose 60 candidate cuts
+    // crosses nothing. RED before the candidate search.
+    RingSpec wandering;
+
+    wandering.explicitPoints = { { 0.00, 0.90 }, { 0.20, 0.90 }, { 0.40, 0.90 },
+                                 { 0.60, 0.90 }, { 0.75, 0.90 }, { 0.85, 0.70 },
+                                 { 0.95, 0.50 }, { 0.04, 0.48 }, { 0.94, 0.52 },
+                                 { 0.96, 0.70 }, { 0.00, 0.90 } };
+
+    Built state = build( { wandering, evenRim( 24, 0.10, false, true ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built,
+           "a strip whose shortest cut is crossed is built on a longer one" );
+    check( outcome.vertexGrowth == 1, "and still adds exactly one vertex" );
+  }
+
+  {
+    // The search does not bypass the gates it is searching against. The same
+    // wandering rim, with a hole whose centroid is inside the strip but one of
+    // whose corners reaches out through the top rim: refused at every
+    // candidate, and the mesh left exactly as it was handed over.
+    RingSpec wandering;
+
+    wandering.explicitPoints = { { 0.00, 0.90 }, { 0.20, 0.90 }, { 0.40, 0.90 },
+                                 { 0.60, 0.90 }, { 0.75, 0.90 }, { 0.85, 0.70 },
+                                 { 0.95, 0.50 }, { 0.04, 0.48 }, { 0.94, 0.52 },
+                                 { 0.96, 0.70 }, { 0.00, 0.90 } };
+
+    RingSpec reachingOut;
+
+    // Centroid v = 0.60, inside; the third corner stands at v = 0.95, above the
+    // top rim at v = 0.90.
+    reachingOut.explicitPoints = { { 0.45, 0.45 }, { 0.55, 0.45 },
+                                   { 0.55, 0.95 }, { 0.45, 0.55 },
+                                   { 0.45, 0.45 } };
+
+    Built state = build( { wandering, evenRim( 24, 0.10, false, true ),
+                           reachingOut } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "a hole that reaches out through a rim is refused at every cut" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
   printf( failures == 0 ? "PASS\n" : "FAIL (%d)\n", failures );

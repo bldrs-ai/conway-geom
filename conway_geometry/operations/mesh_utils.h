@@ -4255,45 +4255,68 @@ struct RationalNurbsInverseMethod {
         MIN_INVERSE_ERROR,
         glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
 
-    // Closure, from the control grid rather than by sampling: a b-spline
-    // surface is closed in a parameter exactly when the first and last rows
-    // (columns) of control points define the SAME curve, and that is a
-    // property of the definition rather than a measurement of it.
+    // Closure, from the surface's DEFINITION rather than by sampling it: a
+    // b-spline surface is closed in a parameter exactly when the two
+    // isocurves at the ends of that parameter's domain are the SAME curve.
     //
-    // On a RATIONAL surface the Cartesian control points alone do not settle
-    // that. The endpoint curves share this surface's knot vector and degree,
-    // so with control points P and weights w they are
+    // Those two isocurves are rational curves in the OTHER parameter, over
+    // that parameter's own knot vector and degree, and their control points
+    // and weights are fixed combinations of this surface's control grid,
+    // weighted by the closed parameter's basis evaluated at the domain end:
     //
-    //   C( t ) = sum_j N_j( t ) w_j P_j / sum_j N_j( t ) w_j
+    //   W( j ) = sum_k N_k( uEnd ) w_kj
+    //   R( j ) = sum_k N_k( uEnd ) w_kj P_kj / W( j )
     //
-    // and two rows of coincident P with DIFFERENT w are different rational
-    // curves - they agree only where the basis is interpolating, i.e. at the
-    // ends. Comparing P alone therefore asserts more than it checks, and
-    // getting it wrong is not cosmetic: closedU_/closedV_ now gate two
-    // separate paths - the seam crossing in solveFromSeed and the
-    // full-coverage grid in tryFullCoverageSeamGrid - so a false positive
-    // makes the descent wrap across a genuine geometric discontinuity and
-    // return the wrong branch. Weights are compared as well.
+    // A b-spline basis is linearly independent over its own domain, so two
+    // curves sharing a knot vector and a degree are identical exactly when
+    // their ( R, W ) agree. This stays a property of the definition rather
+    // than a measurement of it - nothing is sampled, and no new constant
+    // enters.
+    //
+    // WHY NOT ROW 0 AGAINST ROW n-1, which is what this was. That is only the
+    // CLAMPED spelling of closure. Under the PERIODIC spelling the wrap
+    // repeats leading control rows as trailing ones, so rows 0 and n-1 are
+    // genuinely different points: 2.33mm apart on
+    // `B_SPLINE_SURFACE_WITH_KNOTS #160` and 1.35mm on `#166`
+    // (Right_Hand.step), both of which declare `u_closed = .T.` and both of
+    // which are closed to the last bit when asked by evaluation. Reading
+    // false there was bldrs-ai/conway#709, and the clamp it left in
+    // domainRepresentative collapsed 27 of the 53 points of a seam-straddling
+    // hole onto the domain floor - bldrs-ai/conway#710.
+    //
+    // Counting REPEATED ROWS instead, as conway#709 suggested, does not fix
+    // it either: `#160` repeats `degree` = 3 rows and `#166` repeats 2,
+    // because every one of `#166`'s u knots has multiplicity 2 and the
+    // surface is only C^1 across the wrap. There is no fixed row count to
+    // compare, which is why the test is over the basis and not over the grid.
+    //
+    // On the clamped spelling the basis at the domain ends is ( 1, 0, ... )
+    // and ( ..., 0, 1 ), so R and W collapse to the single end row and this
+    // is EXACTLY the comparison it replaces - no clamped surface changes its
+    // reading.
+    //
+    // Getting this wrong is not cosmetic: closedU_/closedV_ gate the wrap in
+    // domainRepresentative, the seam crossing in seamContinuousSolution, the
+    // wide-step displacement in trialDisplacement, and the seam-axis choice
+    // in tryFullCoverageSeamGrid - so a false positive makes the descent wrap
+    // across a genuine geometric discontinuity and return the wrong branch.
+    // Weights are therefore compared as well.
     //
     // The weight test is RELATIVE, against the same RELATIVE_INVERSE_ERROR
     // the distance tolerance below is built from, because a weight is
     // dimensionless and cannot be judged against a length. No new constant
     // enters.
     //
-    // Equal ( P, w ) is sufficient for the curves to coincide; it is not
-    // necessary, because scaling a whole row of weights by a common factor
+    // Equal ( R, W ) is sufficient for the curves to coincide; it is not
+    // necessary, because scaling a whole end row's weights by a common factor
     // leaves the rational curve unchanged. That direction is deliberately not
     // chased: the test errs toward "not closed", which costs a face nothing
-    // more than the behaviour it had before either path existed.
+    // more than the behaviour it had before any of those paths existed. See
+    // testClosureRequiresMatchingWeights in test/nurbs_seam_test.cpp, which
+    // pins it.
     //
     // "Coincide" is judged at the same tolerance the solve uses to call two
     // points the same point, so no new constant is introduced there either.
-    // On the surface this was written for the rows are bitwise equal - the
-    // seam of `B_SPLINE_SURFACE_WITH_KNOTS #1553` matches to 0.0 across all
-    // 84 columns, and its weights match to 0.0 as well - but an exporter that
-    // round-trips through floats needs the slack, and a surface that is
-    // merely NEAR closed is one where the wrap below would be rejected by its
-    // own residual test anyway.
     const double closureTolerance =
       std::max( MIN_INVERSE_ERROR,
                 glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
@@ -4305,6 +4328,11 @@ struct RationalNurbsInverseMethod {
     // polynomial, so every weight is 1 and the weight test is vacuous.
     const bool haveWeights =
       surface.weights.rows() == rows && surface.weights.cols() == cols;
+
+    const auto weightAt =
+      [ & ]( size_t row, size_t col ) {
+        return haveWeights ? surface.weights( row, col ) : 1.0;
+      };
 
     const auto sameWeight =
       [ & ]( double left, double right ) {
@@ -4318,41 +4346,102 @@ struct RationalNurbsInverseMethod {
                  RELATIVE_INVERSE_ERROR;
       };
 
-    if ( rows > 1 && cols > 0 ) {
+    // Is the surface closed in `axis` - 0 for u, 1 for v - by the end-isocurve
+    // test above? `degreeU`/`degreeV` are the ctor's OWN degrees, already
+    // corrected for the two-knot degenerate case, so this reads the same
+    // domain min_extent/max_extent were built from.
+    const auto closedOnAxis =
+      [ & ]( int axis ) {
 
-      closedU_ = true;
+        const std::vector< double >& knots =
+          axis == 0 ? srf.knots_u : srf.knots_v;
 
-      for ( size_t col = 0; col < cols; ++col ) {
+        const size_t degree = axis == 0 ? degreeU : degreeV;
 
-        if ( glm::distance( surface.control_points( 0, col ),
-                            surface.control_points( rows - 1, col ) ) >
-               closureTolerance ||
-             !sameWeight( haveWeights ? surface.weights( 0, col ) : 1.0,
-                          haveWeights ? surface.weights( rows - 1, col ) : 1.0 ) ) {
+        // Control points ALONG the axis being tested, and ACROSS it - the
+        // isocurve nets run across.
+        const size_t along  = axis == 0 ? rows : cols;
+        const size_t across = axis == 0 ? cols : rows;
 
-          closedU_ = false;
-          break;
+        if ( along < 2 || across < 1 ) {
+          return false;
         }
-      }
-    }
 
-    if ( cols > 1 && rows > 0 ) {
-
-      closedV_ = true;
-
-      for ( size_t row = 0; row < rows; ++row ) {
-
-        if ( glm::distance( surface.control_points( row, 0 ),
-                            surface.control_points( row, cols - 1 ) ) >
-               closureTolerance ||
-             !sameWeight( haveWeights ? surface.weights( row, 0 ) : 1.0,
-                          haveWeights ? surface.weights( row, cols - 1 ) : 1.0 ) ) {
-
-          closedV_ = false;
-          break;
+        // A knot vector that does not match the control count is a malformed
+        // surface; findSpan's window would read outside the grid. Callers
+        // gate on tinynurbs::surfaceIsValid, so this is the direct-construction
+        // path only - it fails safe rather than guessing.
+        if ( knots.size() != along + degree + 1 ) {
+          return false;
         }
-      }
-    }
+
+        const double lo = min_extent[ axis ];
+        const double hi = max_extent[ axis ];
+
+        if ( !( hi > lo ) ) {
+          return false;
+        }
+
+        const int spanLo = RationalSurfaceEvaluator::findSpan( degree, knots, lo );
+        const int spanHi = RationalSurfaceEvaluator::findSpan( degree, knots, hi );
+
+        const std::vector< double > basisLo =
+          tinynurbs::bsplineBasis( static_cast< unsigned int >( degree ),
+                                   spanLo, knots, lo );
+        const std::vector< double > basisHi =
+          tinynurbs::bsplineBasis( static_cast< unsigned int >( degree ),
+                                   spanHi, knots, hi );
+
+        for ( size_t at = 0; at < across; ++at ) {
+
+          glm::dvec3 homogeneousLo( 0.0 );
+          glm::dvec3 homogeneousHi( 0.0 );
+
+          double weightLo = 0.0;
+          double weightHi = 0.0;
+
+          for ( size_t k = 0; k <= degree; ++k ) {
+
+            const size_t indexLo =
+              static_cast< size_t >( spanLo ) - degree + k;
+            const size_t indexHi =
+              static_cast< size_t >( spanHi ) - degree + k;
+
+            const size_t rowLo = axis == 0 ? indexLo : at;
+            const size_t colLo = axis == 0 ? at : indexLo;
+            const size_t rowHi = axis == 0 ? indexHi : at;
+            const size_t colHi = axis == 0 ? at : indexHi;
+
+            const double scaledLo = basisLo[ k ] * weightAt( rowLo, colLo );
+            const double scaledHi = basisHi[ k ] * weightAt( rowHi, colHi );
+
+            homogeneousLo += scaledLo * surface.control_points( rowLo, colLo );
+            homogeneousHi += scaledHi * surface.control_points( rowHi, colHi );
+
+            weightLo += scaledLo;
+            weightHi += scaledHi;
+          }
+
+          // A NURBS weight denominator is positive wherever the surface is
+          // defined. A zero or negative one here means the surface is not
+          // evaluable at that domain end, and an unevaluable end cannot be
+          // shown to coincide with anything.
+          if ( !( weightLo > 0.0 ) || !( weightHi > 0.0 ) ) {
+            return false;
+          }
+
+          if ( glm::distance( homogeneousLo / weightLo,
+                              homogeneousHi / weightHi ) > closureTolerance ||
+               !sameWeight( weightLo, weightHi ) ) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+    closedU_ = closedOnAxis( 0 );
+    closedV_ = closedOnAxis( 1 );
 
   }
 
@@ -7533,15 +7622,15 @@ inline size_t reSolveClosedTrimHead(
  *     `u_closed` attribute, carried to native by the extractor. It is a
  *     topological declaration by the authoring system, and it reads `.T.` for
  *     every surface this path exists to fix. It IS the gate, taken first.
- *   - `solve.closedU_` is DERIVED, by comparing control row 0 with row n-1.
- *     That is the CLAMPED spelling of a closed surface, so it reads false for
- *     the PERIODIC spelling, where the first `degree` rows repeat as the last
- *     `degree` rows and rows 0 and n-1 differ - by 2.33mm and 1.35mm on the
- *     two AmazingHand surfaces that need this path (`#160`, `#166`), both of
- *     which declare `u_closed = .T.` and are closed. That is
- *     bldrs-ai/conway#709. Gating on it would refuse every face this fixes,
- *     and widening it would also move the seam crossing in solveFromSeed and
- *     tryFullCoverageSeamGrid, so it is left alone here.
+ *   - `solve.closedU_` is DERIVED, by comparing the two isocurves at the ends
+ *     of the u domain. It agrees with the declaration on every surface that
+ *     reaches this path, and it is deliberately NOT the gate: a derived
+ *     reading is a measurement of the surface, and what this builds - the cut,
+ *     the two edges that have to be periodic copies of one another - is a
+ *     consequence of the author's topology. (It used to compare control row 0
+ *     with row n-1, which is only the CLAMPED spelling and read false for the
+ *     periodic one; that was bldrs-ai/conway#709, and it is fixed at the
+ *     reading rather than worked around here.)
  *
  * The declaration is belt; the numerical check below is braces, for a file
  * that declares a closure it does not have.
@@ -7582,7 +7671,7 @@ inline bool tryPeriodicUStrip(
   // amount of sampling makes a surface closed that its author did not close.
   // Taken first because it is the cheapest refusal and the most authoritative
   // one. See the note above on which "closed in u" this is: the declared
-  // `u_closed`, not the derived `closedU_` of bldrs-ai/conway#709.
+  // `u_closed`, not the derived `closedU_`.
   if ( !declaredClosedU ) {
     return false;
   }
@@ -7680,11 +7769,103 @@ inline bool tryPeriodicUStrip(
     }
   }
 
+  // Does this ring's last point repeat its first, as one 3D point pushed
+  // twice? That is what makes the ring a closed curve on the surface rather
+  // than a chain that merely gets back near where it started, and the two
+  // readings below both rest on it.
+  //
+  // The tolerance is float noise, not a proximity budget - the same shape
+  // reSolveClosedTrimHead uses for the same question, scaled by the ring's own
+  // magnitude because a coordinate far from the origin carries its ULPs with
+  // it.
+  const auto closesOnItsHead =
+    [ & ]( size_t ring ) {
+
+      const uint32_t first = ringOffset[ ring ];
+      const uint32_t last  =
+        first + static_cast< uint32_t >( rings[ ring ].size() ) - 1;
+
+      double maxMagnitude = 0.0;
+
+      for ( uint32_t at = first; at <= last; ++at ) {
+
+        const glm::dvec3& point = mesh.vertices[ at ].point;
+
+        maxMagnitude =
+          std::max( maxMagnitude,
+                    std::max( std::abs( point.x ),
+                              std::max( std::abs( point.y ),
+                                        std::abs( point.z ) ) ) );
+      }
+
+      return glm::distance( mesh.vertices[ first ].point,
+                            mesh.vertices[ last ].point ) <=
+             ( 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) );
+    };
+
   // A ring whose net parameter change is one whole period went round the
-  // closure. The slack is the solve's own residual: a loop's head and tail are
+  // closure, and one whose net change is zero is an ordinary ring inside the
+  // chart. The slack is the solve's own residual: a loop's head and tail are
   // the same 3D point inverted twice, and they differ by that error rather
   // than by anything structural.
   const double periodSlack = period * 1e-3;
+
+  // HOW MANY PERIODS A RING WINDS IS READ, NOT MEASURED, where the ring closes
+  // on its own head.
+  //
+  // A ring whose last point IS its first is one closed curve on the surface,
+  // so its net parameter change is an exact whole number of periods. That is
+  // topology; the only open question is which integer. The solve answers the
+  // two ends independently, though, and where the surface is shallow in u it
+  // can return two parameter values that fit the SAME 3D point equally well.
+  // On the seam-straddling hole of `ADVANCED_FACE #19215` (Right_Hand.step)
+  // the head reads ( 0.933400, 0.124924 ) and the tail ( 0.936026, 0.125770 )
+  // for one point - 0.0026 periods apart, against a fixed slack of 1e-3 of a
+  // period. Measured against that slack the ring is neither a ring nor a rim,
+  // the whole face is refused, and it keeps the two dropped rings that the
+  // closure fixes for bldrs-ai/conway#709 and #710 exist to give it back.
+  //
+  // So round, and require the reading to be decisive at the same quarter
+  // period MAX_UNWRAP_STEP_FRACTION already demands of one step - the same
+  // question asked of the accumulated chain rather than of a single link. No
+  // new constant enters, and the measured gap above is 96x inside it.
+  //
+  // ONLY where the ring closes on its head. Without that the winding is not an
+  // integer at all - a loop closed by adjacency leaves its tail one segment
+  // short, so its net change is genuinely P - P/n - and rounding would invent
+  // a closure the points do not have. Those keep the strict reading, and the
+  // rim check further down is what still catches them.
+  const auto ringWinding =
+    [ & ]( size_t ring, double& turns ) {
+
+      const double net = netDelta[ ring ];
+
+      if ( closesOnItsHead( ring ) ) {
+
+        const double rounded = std::round( net / period );
+
+        if ( std::abs( net - ( rounded * period ) ) > maxUnwrapStep ) {
+          return false;
+        }
+
+        turns = rounded;
+        return true;
+      }
+
+      if ( std::abs( std::abs( net ) - period ) <= periodSlack ) {
+
+        turns = net > 0.0 ? 1.0 : -1.0;
+        return true;
+      }
+
+      if ( std::abs( net ) <= periodSlack ) {
+
+        turns = 0.0;
+        return true;
+      }
+
+      return false;
+    };
 
   size_t chainAIndex = ringCount;
   size_t chainBIndex = ringCount;
@@ -7692,15 +7873,22 @@ inline bool tryPeriodicUStrip(
 
   for ( size_t ring = 0; ring < ringCount; ++ring ) {
 
-    if ( std::abs( std::abs( netDelta[ ring ] ) - period ) > periodSlack ) {
+    double turns = 0.0;
 
-      // Whatever is not a rim has to be an ordinary closed ring. A net change
-      // that is neither zero nor a period is a ring this cannot read.
-      if ( std::abs( netDelta[ ring ] ) > periodSlack ) {
-        return false;
-      }
+    // Whatever is not a rim has to be an ordinary closed ring. A net change
+    // that is neither zero nor a period is a ring this cannot read.
+    if ( !ringWinding( ring, turns ) ) {
+      return false;
+    }
 
+    if ( turns == 0.0 ) {
       continue;
+    }
+
+    // A rim that winds the closure more than once is a chart this does not
+    // build - the cut below opens the strip exactly one period wide.
+    if ( std::abs( turns ) != 1.0 ) {
+      return false;
     }
 
     ++wrapped;
@@ -7746,38 +7934,25 @@ inline bool tryPeriodicUStrip(
   // float noise, not a proximity budget, and the same shape
   // reSolveClosedTrimHead uses for the same question. Found by review on
   // bldrs-ai/conway-geom#207.
+  //
+  // `closesOnItsHead` is the same test the winding reading above takes, and a
+  // rim that reaches here without it was classified by the strict slack rather
+  // than by rounding - which is exactly the >1000-sample case in the second
+  // bullet.
   for ( const size_t rim : { chainAIndex, chainBIndex } ) {
 
-    const uint32_t first = ringOffset[ rim ];
-    const uint32_t last  =
-      first + static_cast< uint32_t >( rings[ rim ].size() ) - 1;
-
-    double maxMagnitude = 0.0;
-
-    for ( uint32_t at = first; at <= last; ++at ) {
-
-      const glm::dvec3& point = mesh.vertices[ at ].point;
-
-      maxMagnitude =
-        std::max( maxMagnitude,
-                  std::max( std::abs( point.x ),
-                            std::max( std::abs( point.y ),
-                                      std::abs( point.z ) ) ) );
-    }
-
-    if ( glm::distance( mesh.vertices[ first ].point,
-                        mesh.vertices[ last ].point ) >
-           ( 8.0 * DBL_EPSILON * std::max( maxMagnitude, 1.0 ) ) ) {
-
+    if ( !closesOnItsHead( rim ) ) {
       return false;
     }
   }
 
   // Does the surface KEEP the closure it declares? Asked of the surface by
-  // evaluation, so it holds for the clamped and the periodic spelling alike -
-  // which is the whole reason this is not `closedU_`. The tolerance is the
-  // relative one closedU_ already uses, against the control net's own extent,
-  // so no new constant enters.
+  // evaluation over the whole v domain, which is a strictly stronger
+  // question than the one `closedU_` answers at the domain ends - and
+  // asking it here keeps the gate a property of THIS face's support
+  // surface rather than of a flag set elsewhere. The tolerance is the
+  // relative one closedU_ already uses, against the control net's own
+  // extent, so no new constant enters.
   {
     glm::dvec3 gridMin( std::numeric_limits< double >::max() );
     glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
@@ -7858,14 +8033,308 @@ inline bool tryPeriodicUStrip(
   const std::vector< Point >& rawA = rings[ chainAIndex ];
   const std::vector< Point >& rawB = rings[ chainBIndex ];
 
-  // Cut where the two rims are closest in u, so both cut edges are short and
-  // stand a chance of crossing nothing. B is a cycle - its last point is its
-  // first, one period on - so any of its points can open it; rotating costs
-  // one duplicated vertex carrying the same 3D point at the shifted uv.
+  // WHERE TO CUT. B is a cycle - its last point is its first, one period on -
+  // so any of its points can open it, and rotating costs one duplicated vertex
+  // carrying the same 3D point at the shifted uv. The cut is placed at the
+  // point that makes both cut edges SHORT, because a short edge stands the best
+  // chance of crossing nothing.
+  //
+  // Short is not the same as clean, though, and the two gates at the end of
+  // `attemptCut` - the hole landing inside the strip, and neither cut crossing
+  // any ring - are what decide. On a rim that is not u-monotone the shortest
+  // cut can be one the rim itself wanders back across: `ADVANCED_FACE #19215`
+  // of `Right_Hand.step` has a 213-point rim that advances 141 steps and
+  // retreats 71 over 1.066 periods, and its shortest cut (gap 0.0007 of a
+  // period, at u ~ 0.2206) is crossed by that rim's own segment at v ~ 0.61.
+  // Exactly ONE of its 60 candidate cuts crosses nothing, at gap 0.1539.
+  //
+  // So the candidates are tried SHORTEST FIRST and the first clean one is
+  // taken. This only ever widens what is accepted - the old code tried the
+  // single shortest candidate and refused when it was crossed, which is this
+  // loop stopped after one iteration - and every face that builds today builds
+  // the identical strip, because a clean shortest cut is still chosen first.
+  //
+  // Cost is bounded by |B| attempts, each O(total boundary points), and only on
+  // a face that has already passed every structural gate above. The loop stops
+  // at the first clean cut, so the full |B| passes are paid only by a face that
+  // is about to be refused - which today walks the same points once anyway.
   const double openAt = rawA.back()[ 0 ];
 
-  size_t rotation = 0;
-  double bestGap  = std::numeric_limits< double >::max();
+  // Filled by `attemptCut`, and only read after one has succeeded.
+  std::vector< Point >    chain;
+  std::vector< uint32_t > chainVertices;
+
+  std::vector< std::vector< Point > >    rewritten;
+  std::vector< std::vector< uint32_t > > rewrittenVertices;
+
+  glm::dvec3 duplicatePoint( 0.0 );
+  glm::dvec2 duplicateUv( 0.0 );
+
+  const auto attemptCut =
+    [ & ]( size_t rotation ) {
+
+      const double shiftB =
+        period * std::round( ( openAt - rawB[ rotation ][ 0 ] ) / period );
+
+      // Walk B from `rotation` round to `rotation` again; the wrapped-around tail
+      // carries one more period, so the chain stays monotone through the join.
+      chain.clear();
+      chainVertices.clear();
+
+      chain.reserve( rawB.size() );
+      chainVertices.reserve( rawB.size() );
+
+      for ( size_t step = 0; step + 1 < rawB.size(); ++step ) {
+
+        const size_t at = rotation + step;
+
+        if ( at + 1 < rawB.size() ) {
+
+          chain.push_back( { rawB[ at ][ 0 ] + shiftB, rawB[ at ][ 1 ] } );
+          chainVertices.push_back(
+            ringOffset[ chainBIndex ] + static_cast< uint32_t >( at ) );
+
+        } else {
+
+          const size_t wrappedAt = at - ( rawB.size() - 1 );
+
+          chain.push_back( { rawB[ wrappedAt ][ 0 ] + shiftB + netDelta[ chainBIndex ],
+                             rawB[ wrappedAt ][ 1 ] } );
+          chainVertices.push_back(
+            ringOffset[ chainBIndex ] + static_cast< uint32_t >( wrappedAt ) );
+        }
+      }
+
+      // Close the rotated chain on a DUPLICATE of its opening vertex: same point,
+      // uv one period on. Duplicating is what keeps any one mesh vertex from
+      // having to carry two parameter values; Geometry::Reify welds it away again.
+      //
+      // RECORDED, NOT CREATED. Two gates still stand between here and the commit
+      // section - hole containment, and either cut crossing any ring - and a
+      // refusal at one of them has to leave the caller the mesh it was handed.
+      // Calling mesh.makeVertex here and then returning false left behind a vertex
+      // referenced by no triangle, carrying a uv one period outside the chart;
+      // measured as growth in mesh.vertices.size() across a call that returned
+      // false. `ADVANCED_FACE #19215` of `Right_Hand.step` reaches this point and
+      // then refuses, so that was a live leak on the corpus, not a latent one.
+      // Found by review on bldrs-ai/conway-geom#207.
+      constexpr uint32_t PENDING_DUPLICATE = std::numeric_limits< uint32_t >::max();
+
+      duplicatePoint = mesh.vertices[ chainVertices.front() ].point;
+
+      {
+        const Point closing = { chain.front()[ 0 ] + netDelta[ chainBIndex ],
+                                chain.front()[ 1 ] };
+
+        duplicateUv = glm::dvec2( closing[ 0 ], closing[ 1 ] );
+
+        chain.push_back( closing );
+        chainVertices.push_back( PENDING_DUPLICATE );
+      }
+
+      // Outer polygon: A in its own direction, then B in its own direction. The
+      // cut edges are A.back() -> B.front() and B.back() -> A.front(), which
+      // differ by exactly one period and are therefore the same segment on the
+      // surface.
+      rewritten.clear();
+      rewrittenVertices.clear();
+
+      {
+        std::vector< Point >    outer;
+        std::vector< uint32_t > outerVertices;
+
+        outer.reserve( rawA.size() + chain.size() );
+        outerVertices.reserve( rawA.size() + chain.size() );
+
+        for ( size_t at = 0; at < rawA.size(); ++at ) {
+
+          outer.push_back( rawA[ at ] );
+          outerVertices.push_back(
+            ringOffset[ chainAIndex ] + static_cast< uint32_t >( at ) );
+        }
+
+        for ( size_t at = 0; at < chain.size(); ++at ) {
+
+          outer.push_back( chain[ at ] );
+          outerVertices.push_back( chainVertices[ at ] );
+        }
+
+        rewritten.push_back( std::move( outer ) );
+        rewrittenVertices.push_back( std::move( outerVertices ) );
+      }
+
+      double outerMin = std::numeric_limits< double >::max();
+      double outerMax = std::numeric_limits< double >::lowest();
+
+      for ( const Point& point : rewritten[ 0 ] ) {
+        outerMin = std::min( outerMin, point[ 0 ] );
+        outerMax = std::max( outerMax, point[ 0 ] );
+      }
+
+      const double windowCentre = ( outerMin + outerMax ) * 0.5;
+
+      const auto insideRing =
+        []( const Point& probe, const std::vector< Point >& ring ) {
+
+          bool inside = false;
+
+          for ( size_t a = 0, b = ring.size() - 1; a < ring.size(); b = a++ ) {
+
+            if ( ( ( ring[ a ][ 1 ] > probe[ 1 ] ) !=
+                   ( ring[ b ][ 1 ] > probe[ 1 ] ) ) &&
+                 ( probe[ 0 ] <
+                   ( ( ( ring[ b ][ 0 ] - ring[ a ][ 0 ] ) *
+                       ( probe[ 1 ] - ring[ a ][ 1 ] ) ) /
+                     ( ring[ b ][ 1 ] - ring[ a ][ 1 ] ) ) + ring[ a ][ 0 ] ) ) {
+
+              inside = !inside;
+            }
+          }
+
+          return inside;
+        };
+
+      // Holes: translate each into the strip's window and require it to land
+      // inside. One that does not is a ring this does not understand. The
+      // centroid is the cheap half of that question; every point is checked
+      // after the cut gates below.
+      for ( size_t ring = 0; ring < ringCount; ++ring ) {
+
+        if ( ring == chainAIndex || ring == chainBIndex ) {
+          continue;
+        }
+
+        const std::vector< Point >& points = rings[ ring ];
+
+        double centreU = 0.0;
+        double centreV = 0.0;
+
+        for ( const Point& point : points ) {
+          centreU += point[ 0 ];
+          centreV += point[ 1 ];
+        }
+
+        centreU /= static_cast< double >( points.size() );
+        centreV /= static_cast< double >( points.size() );
+
+        const double shift =
+          period * std::round( ( windowCentre - centreU ) / period );
+
+        if ( !insideRing( { centreU + shift, centreV }, rewritten[ 0 ] ) ) {
+          return false;
+        }
+
+        std::vector< Point >    hole;
+        std::vector< uint32_t > holeVertices;
+
+        hole.reserve( points.size() );
+        holeVertices.reserve( points.size() );
+
+        for ( size_t at = 0; at < points.size(); ++at ) {
+
+          hole.push_back( { points[ at ][ 0 ] + shift, points[ at ][ 1 ] } );
+          holeVertices.push_back(
+            ringOffset[ ring ] + static_cast< uint32_t >( at ) );
+        }
+
+        rewritten.push_back( std::move( hole ) );
+        rewrittenVertices.push_back( std::move( holeVertices ) );
+      }
+
+      // Neither cut may cross the boundary, or the polygon is not simple and
+      // earcut's output would be arbitrary rather than wrong in a named way.
+      // Proper crossings only: the cuts share endpoints with the outer ring, and a
+      // shared endpoint puts an orientation test at exactly zero.
+      {
+        const auto side =
+          []( const Point& a, const Point& b, const Point& c ) {
+
+            const double value = ( ( b[ 0 ] - a[ 0 ] ) * ( c[ 1 ] - a[ 1 ] ) ) -
+                                 ( ( b[ 1 ] - a[ 1 ] ) * ( c[ 0 ] - a[ 0 ] ) );
+
+            return value > 0.0 ? 1 : ( value < 0.0 ? -1 : 0 );
+          };
+
+        const auto crosses =
+          [ & ]( const Point& p0, const Point& p1,
+                 const Point& q0, const Point& q1 ) {
+
+            return ( ( side( p0, p1, q0 ) * side( p0, p1, q1 ) ) < 0 ) &&
+                   ( ( side( q0, q1, p0 ) * side( q0, q1, p1 ) ) < 0 );
+          };
+
+        const std::vector< Point >& built = rewritten[ 0 ];
+
+        const Point cutFrom  = built[ rawA.size() - 1 ];
+        const Point cutTo    = built[ rawA.size() ];
+        const Point backFrom = built.back();
+        const Point backTo   = built.front();
+
+        // EVERY segment, including the one no ring lists: a closed polygon's
+        // `back() -> front()`. A point-list bound does not repeat its head
+        // (IfcCurve::closedByConstruction, GetLoop), so for such a ring that edge
+        // is real boundary and was the one edge this never looked at. The
+        // net-delta gate does not cover it: a hole is admitted whenever its
+        // head-to-tail u change is within `periodSlack`, which is exactly what a
+        // finely sampled ring has - its closing edge is then SHORT IN U, i.e.
+        // near-parallel to the cut, which is the orientation most likely to cross
+        // it rather than the least. Measured: a four-point hole listing
+        // (0.9996, 0.40) (0.90, 0.90) (1.05, 0.90) (1.0004, 0.45) against a cut at
+        // u = 1 is ACCEPTED without this, and REFUSED the moment the same ring
+        // repeats its head so that the crossing edge is listed. Found by review on
+        // bldrs-ai/conway-geom#207.
+        //
+        // Ring 0 needs no special case. Its closing edge IS `backFrom -> backTo`,
+        // one of the two cuts, so the pair of tests it adds are a cut against
+        // itself - which the orientation test already answers with a
+        // shared-endpoint zero, never a crossing - and the two cuts against each
+        // other, which are one period apart in u while each spans a fraction of
+        // one. A hole that
+        // does repeat its head adds a zero-length edge, and a degenerate segment
+        // puts both orientation products at zero, so it cannot report a crossing
+        // either.
+        for ( const std::vector< Point >& ring : rewritten ) {
+          for ( size_t at = 0, from = ring.size() - 1; at < ring.size();
+                from = at++ ) {
+
+            if ( crosses( cutFrom, cutTo, ring[ from ], ring[ at ] ) ||
+                 crosses( backFrom, backTo, ring[ from ], ring[ at ] ) ) {
+
+              return false;
+            }
+          }
+        }
+      }
+
+      // EVERY hole point inside the strip, not just the centroid it was placed
+      // by. A ring whose centroid is inside can still reach out through a rim,
+      // and mapbox::earcut has no answer for a hole that leaves its outer
+      // polygon - the chart is wrong before it runs.
+      //
+      // Spelled out here because it used to be caught incidentally. With one
+      // fixed cut, a hole reaching out through a rim near the seam crossed that
+      // cut and was refused for THAT; with the cut chosen from candidates the
+      // incidental catch is gone, so the containment it was standing in for is
+      // asked directly. Last of the gates because it is the dearest, and the
+      // cheap ones above have already refused most candidates.
+      for ( size_t ring = 1; ring < rewritten.size(); ++ring ) {
+        for ( const Point& point : rewritten[ ring ] ) {
+
+          if ( !insideRing( point, rewritten[ 0 ] ) ) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    };
+
+  // Shortest first. `stable_sort` on the gap alone keeps ties in rotation
+  // order, so the cut chosen is a function of the geometry and not of the
+  // sort's internals.
+  std::vector< std::pair< double, size_t > > candidates;
+
+  candidates.reserve( rawB.size() );
 
   for ( size_t at = 0; at + 1 < rawB.size(); ++at ) {
 
@@ -7873,243 +8342,28 @@ inline bool tryPeriodicUStrip(
       rawB[ at ][ 0 ] +
       ( period * std::round( ( openAt - rawB[ at ][ 0 ] ) / period ) );
 
-    if ( std::abs( shifted - openAt ) < bestGap ) {
-      bestGap  = std::abs( shifted - openAt );
-      rotation = at;
+    candidates.push_back( { std::abs( shifted - openAt ), at } );
+  }
+
+  std::stable_sort(
+    candidates.begin(), candidates.end(),
+    []( const std::pair< double, size_t >& left,
+        const std::pair< double, size_t >& right ) {
+      return left.first < right.first;
+    } );
+
+  bool cutFound = false;
+
+  for ( const std::pair< double, size_t >& candidate : candidates ) {
+
+    if ( attemptCut( candidate.second ) ) {
+      cutFound = true;
+      break;
     }
   }
 
-  const double shiftB =
-    period * std::round( ( openAt - rawB[ rotation ][ 0 ] ) / period );
-
-  // Walk B from `rotation` round to `rotation` again; the wrapped-around tail
-  // carries one more period, so the chain stays monotone through the join.
-  std::vector< Point >    chain;
-  std::vector< uint32_t > chainVertices;
-
-  chain.reserve( rawB.size() );
-  chainVertices.reserve( rawB.size() );
-
-  for ( size_t step = 0; step + 1 < rawB.size(); ++step ) {
-
-    const size_t at = rotation + step;
-
-    if ( at + 1 < rawB.size() ) {
-
-      chain.push_back( { rawB[ at ][ 0 ] + shiftB, rawB[ at ][ 1 ] } );
-      chainVertices.push_back(
-        ringOffset[ chainBIndex ] + static_cast< uint32_t >( at ) );
-
-    } else {
-
-      const size_t wrappedAt = at - ( rawB.size() - 1 );
-
-      chain.push_back( { rawB[ wrappedAt ][ 0 ] + shiftB + netDelta[ chainBIndex ],
-                         rawB[ wrappedAt ][ 1 ] } );
-      chainVertices.push_back(
-        ringOffset[ chainBIndex ] + static_cast< uint32_t >( wrappedAt ) );
-    }
-  }
-
-  // Close the rotated chain on a DUPLICATE of its opening vertex: same point,
-  // uv one period on. Duplicating is what keeps any one mesh vertex from
-  // having to carry two parameter values; Geometry::Reify welds it away again.
-  //
-  // RECORDED, NOT CREATED. Two gates still stand between here and the commit
-  // section - hole containment, and either cut crossing any ring - and a
-  // refusal at one of them has to leave the caller the mesh it was handed.
-  // Calling mesh.makeVertex here and then returning false left behind a vertex
-  // referenced by no triangle, carrying a uv one period outside the chart;
-  // measured as growth in mesh.vertices.size() across a call that returned
-  // false. `ADVANCED_FACE #19215` of `Right_Hand.step` reaches this point and
-  // then refuses, so that was a live leak on the corpus, not a latent one.
-  // Found by review on bldrs-ai/conway-geom#207.
-  constexpr uint32_t PENDING_DUPLICATE = std::numeric_limits< uint32_t >::max();
-
-  const glm::dvec3 duplicatePoint = mesh.vertices[ chainVertices.front() ].point;
-
-  glm::dvec2 duplicateUv( 0.0 );
-
-  {
-    const Point closing = { chain.front()[ 0 ] + netDelta[ chainBIndex ],
-                            chain.front()[ 1 ] };
-
-    duplicateUv = glm::dvec2( closing[ 0 ], closing[ 1 ] );
-
-    chain.push_back( closing );
-    chainVertices.push_back( PENDING_DUPLICATE );
-  }
-
-  // Outer polygon: A in its own direction, then B in its own direction. The
-  // cut edges are A.back() -> B.front() and B.back() -> A.front(), which
-  // differ by exactly one period and are therefore the same segment on the
-  // surface.
-  std::vector< std::vector< Point > >    rewritten;
-  std::vector< std::vector< uint32_t > > rewrittenVertices;
-
-  {
-    std::vector< Point >    outer;
-    std::vector< uint32_t > outerVertices;
-
-    outer.reserve( rawA.size() + chain.size() );
-    outerVertices.reserve( rawA.size() + chain.size() );
-
-    for ( size_t at = 0; at < rawA.size(); ++at ) {
-
-      outer.push_back( rawA[ at ] );
-      outerVertices.push_back(
-        ringOffset[ chainAIndex ] + static_cast< uint32_t >( at ) );
-    }
-
-    for ( size_t at = 0; at < chain.size(); ++at ) {
-
-      outer.push_back( chain[ at ] );
-      outerVertices.push_back( chainVertices[ at ] );
-    }
-
-    rewritten.push_back( std::move( outer ) );
-    rewrittenVertices.push_back( std::move( outerVertices ) );
-  }
-
-  double outerMin = std::numeric_limits< double >::max();
-  double outerMax = std::numeric_limits< double >::lowest();
-
-  for ( const Point& point : rewritten[ 0 ] ) {
-    outerMin = std::min( outerMin, point[ 0 ] );
-    outerMax = std::max( outerMax, point[ 0 ] );
-  }
-
-  const double windowCentre = ( outerMin + outerMax ) * 0.5;
-
-  const auto insideRing =
-    []( const Point& probe, const std::vector< Point >& ring ) {
-
-      bool inside = false;
-
-      for ( size_t a = 0, b = ring.size() - 1; a < ring.size(); b = a++ ) {
-
-        if ( ( ( ring[ a ][ 1 ] > probe[ 1 ] ) !=
-               ( ring[ b ][ 1 ] > probe[ 1 ] ) ) &&
-             ( probe[ 0 ] <
-               ( ( ( ring[ b ][ 0 ] - ring[ a ][ 0 ] ) *
-                   ( probe[ 1 ] - ring[ a ][ 1 ] ) ) /
-                 ( ring[ b ][ 1 ] - ring[ a ][ 1 ] ) ) + ring[ a ][ 0 ] ) ) {
-
-          inside = !inside;
-        }
-      }
-
-      return inside;
-    };
-
-  // Holes: translate each into the strip's window and require it to land
-  // inside. One that does not is a ring this does not understand.
-  for ( size_t ring = 0; ring < ringCount; ++ring ) {
-
-    if ( ring == chainAIndex || ring == chainBIndex ) {
-      continue;
-    }
-
-    const std::vector< Point >& points = rings[ ring ];
-
-    double centreU = 0.0;
-    double centreV = 0.0;
-
-    for ( const Point& point : points ) {
-      centreU += point[ 0 ];
-      centreV += point[ 1 ];
-    }
-
-    centreU /= static_cast< double >( points.size() );
-    centreV /= static_cast< double >( points.size() );
-
-    const double shift =
-      period * std::round( ( windowCentre - centreU ) / period );
-
-    if ( !insideRing( { centreU + shift, centreV }, rewritten[ 0 ] ) ) {
-      return false;
-    }
-
-    std::vector< Point >    hole;
-    std::vector< uint32_t > holeVertices;
-
-    hole.reserve( points.size() );
-    holeVertices.reserve( points.size() );
-
-    for ( size_t at = 0; at < points.size(); ++at ) {
-
-      hole.push_back( { points[ at ][ 0 ] + shift, points[ at ][ 1 ] } );
-      holeVertices.push_back(
-        ringOffset[ ring ] + static_cast< uint32_t >( at ) );
-    }
-
-    rewritten.push_back( std::move( hole ) );
-    rewrittenVertices.push_back( std::move( holeVertices ) );
-  }
-
-  // Neither cut may cross the boundary, or the polygon is not simple and
-  // earcut's output would be arbitrary rather than wrong in a named way.
-  // Proper crossings only: the cuts share endpoints with the outer ring, and a
-  // shared endpoint puts an orientation test at exactly zero.
-  {
-    const auto side =
-      []( const Point& a, const Point& b, const Point& c ) {
-
-        const double value = ( ( b[ 0 ] - a[ 0 ] ) * ( c[ 1 ] - a[ 1 ] ) ) -
-                             ( ( b[ 1 ] - a[ 1 ] ) * ( c[ 0 ] - a[ 0 ] ) );
-
-        return value > 0.0 ? 1 : ( value < 0.0 ? -1 : 0 );
-      };
-
-    const auto crosses =
-      [ & ]( const Point& p0, const Point& p1,
-             const Point& q0, const Point& q1 ) {
-
-        return ( ( side( p0, p1, q0 ) * side( p0, p1, q1 ) ) < 0 ) &&
-               ( ( side( q0, q1, p0 ) * side( q0, q1, p1 ) ) < 0 );
-      };
-
-    const std::vector< Point >& built = rewritten[ 0 ];
-
-    const Point cutFrom  = built[ rawA.size() - 1 ];
-    const Point cutTo    = built[ rawA.size() ];
-    const Point backFrom = built.back();
-    const Point backTo   = built.front();
-
-    // EVERY segment, including the one no ring lists: a closed polygon's
-    // `back() -> front()`. A point-list bound does not repeat its head
-    // (IfcCurve::closedByConstruction, GetLoop), so for such a ring that edge
-    // is real boundary and was the one edge this never looked at. The
-    // net-delta gate does not cover it: a hole is admitted whenever its
-    // head-to-tail u change is within `periodSlack`, which is exactly what a
-    // finely sampled ring has - its closing edge is then SHORT IN U, i.e.
-    // near-parallel to the cut, which is the orientation most likely to cross
-    // it rather than the least. Measured: a four-point hole listing
-    // (0.9996, 0.40) (0.90, 0.90) (1.05, 0.90) (1.0004, 0.45) against a cut at
-    // u = 1 is ACCEPTED without this, and REFUSED the moment the same ring
-    // repeats its head so that the crossing edge is listed. Found by review on
-    // bldrs-ai/conway-geom#207.
-    //
-    // Ring 0 needs no special case. Its closing edge IS `backFrom -> backTo`,
-    // one of the two cuts, so the pair of tests it adds are a cut against
-    // itself - which the orientation test already answers with a
-    // shared-endpoint zero, never a crossing - and the two cuts against each
-    // other, which are one period apart in u while each spans a fraction of
-    // one. A hole that
-    // does repeat its head adds a zero-length edge, and a degenerate segment
-    // puts both orientation products at zero, so it cannot report a crossing
-    // either.
-    for ( const std::vector< Point >& ring : rewritten ) {
-      for ( size_t at = 0, from = ring.size() - 1; at < ring.size();
-            from = at++ ) {
-
-        if ( crosses( cutFrom, cutTo, ring[ from ], ring[ at ] ) ||
-             crosses( backFrom, backTo, ring[ from ], ring[ at ] ) ) {
-
-          return false;
-        }
-      }
-    }
+  if ( !cutFound ) {
+    return false;
   }
 
   // Commit. Past this point nothing may fail, because the mesh uv are being
