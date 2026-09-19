@@ -741,6 +741,224 @@ namespace conway::geometry {
   }
 
   /**
+   * THE BORDER EDGES `tesselate` ABOVE CANNOT TOUCH, REFINED IN PAIRS.
+   *
+   * `addCandidate` skips every `edge.border()`, and it has to: a border edge
+   * carries one triangle, so the four-triangle replacement above has nothing
+   * to build from, and a trim boundary is SHARED with the face on the other
+   * side of it, which this face may not move without opening a crack.
+   *
+   * A periodic chart's seam is neither of those things.
+   * `triangulatePeriodicUChart` cuts the chart open AFTER triangulating it,
+   * by duplicating the vertices two triangles disagree about, so one interior
+   * edge of the chart becomes two mesh edges with one triangle each: border
+   * by the winged-edge reading, interior by the face's own geometry, and
+   * shared with nobody. Left to itself it keeps the triangulation's
+   * coarseness while everything beside it refines, and the single triangle on
+   * each side is subdivided away from it until what is left of it is a sliver
+   * lying on it - measured on `ADVANCED_FACE #19218` of Right_Hand.step as
+   * 6760 of that face's 8320 triangles coming out degenerate, against 4 of
+   * 1848 once the cut is refined first.
+   *
+   * So the two sides are split in LOCKSTEP: the same parameter on both, and
+   * two new vertices carrying a BITWISE-identical position, which is what
+   * keeps `Geometry::Reify`'s weld closing the seam by identity exactly as it
+   * closes the duplicated corners the chart handed over. Splitting one side
+   * alone would leave a T-junction against the other, which is the failure
+   * this is here to avoid rather than to cause.
+   *
+   * THE SPLIT POINT IS EVALUATED ON THE SURFACE, unlike the layout split in
+   * `triangulatePeriodicUChart`, which is placed on the segment it splits
+   * because that segment is a shared trim boundary. The seam is interior:
+   * there is no neighbour holding the other half of it, so there is nothing
+   * to crack against, and following the surface is the whole point of
+   * refining.
+   *
+   * Runs BEFORE `tesselate`, so the interior refinement afterwards sees the
+   * seam at its final density and refines against it; both are handed the
+   * same deflection target, or the seam would be refined to a different
+   * fineness than its own neighbourhood.
+   *
+   * @param seams             Periodic copies of one chart edge, as
+   *                          { a, b, a', b' } with a' the copy of a. Anything
+   *                          that is no longer a pair of distinct
+   *                          single-triangle border edges is skipped, so a
+   *                          stale entry costs nothing.
+   * @param maximumTriangles  The same budget `tesselate` takes, counted the
+   *                          same way: the mesh's current size is subtracted
+   *                          and each split spends two.
+   */
+  template< typename SurfacePointFunction >
+  inline void refineSeamPairs(
+    WingedEdgeMesh< ParameterVertex >& mesh,
+    SurfacePointFunction surface,
+    const std::vector< std::array< uint32_t, 4 > >& seams,
+    int32_t maximumTriangles,
+    double minimumDeflection ) {
+
+    if ( seams.empty() ) {
+      return;
+    }
+
+    maximumTriangles -= static_cast< int32_t >( mesh.triangles.size() );
+
+    // The corners of `triangle` rotated so that ( result[ 0 ], result[ 1 ] )
+    // is the edge ( a, b ) IN THE TRIANGLE'S OWN ORDER, which is what lets
+    // the two halves below be emitted with the winding they replace.
+    const auto orientedCorners =
+      [ & ]( uint32_t triangle, uint32_t a, uint32_t b ) {
+
+        const ConnectedTriangle& face = mesh.triangles[ triangle ];
+
+        for ( uint32_t at = 0; at < 3; ++at ) {
+
+          const uint32_t first  = face.vertices[ at ];
+          const uint32_t second = face.vertices[ ( at + 1 ) % 3 ];
+
+          if ( ( first == a && second == b ) ||
+               ( first == b && second == a ) ) {
+
+            return std::array< uint32_t, 3 >{
+              first, second, face.vertices[ ( at + 2 ) % 3 ] };
+          }
+        }
+
+        return std::array< uint32_t, 3 >{
+          EMPTY_INDEX, EMPTY_INDEX, EMPTY_INDEX };
+      };
+
+    // Breadth-first bisection rather than `tesselate`'s deflection-ordered
+    // heap: the seam is a path, every edge of it is measured against the same
+    // floor, and there is no competition for the budget to arbitrate.
+    std::vector< std::array< uint32_t, 4 > > pending( seams );
+
+    for ( size_t head = 0;
+          head < pending.size() && maximumTriangles > 0;
+          ++head ) {
+
+      const std::array< uint32_t, 4 > seam = pending[ head ];
+
+      const std::optional< uint32_t > edge0 = mesh.getEdge( seam[ 0 ], seam[ 1 ] );
+      const std::optional< uint32_t > edge1 = mesh.getEdge( seam[ 2 ], seam[ 3 ] );
+
+      if ( !edge0.has_value() || !edge1.has_value() ||
+           edge0.value() == edge1.value() ) {
+        continue;
+      }
+
+      const uint32_t triangle0 = mesh.edges[ edge0.value() ].triangles[ 0 ];
+      const uint32_t triangle1 = mesh.edges[ edge1.value() ].triangles[ 0 ];
+
+      // A side that is not a live single-triangle border is not a side this
+      // can split: deleteTriangle() leaves fully detached edges behind
+      // (EMPTY_INDEX in both slots), and makeEdge() lets a non-manifold edge
+      // carry two triangles.
+      if ( !mesh.edges[ edge0.value() ].border() ||
+           !mesh.edges[ edge1.value() ].border() ||
+           triangle0 == EMPTY_INDEX || triangle1 == EMPTY_INDEX ||
+           triangle0 == triangle1 ) {
+        continue;
+      }
+
+      const ParameterVertex& from = mesh.vertices[ seam[ 0 ] ];
+      const ParameterVertex& to   = mesh.vertices[ seam[ 1 ] ];
+
+      const glm::dvec3 averagePoint = ( from.point + to.point ) * 0.5;
+      const glm::dvec2 newUV        = ( from.uv + to.uv ) * 0.5;
+
+      glm::dvec3 newPoint;
+
+      {
+        conway::AllocTagScope surfaceTag( conway::AllocSite::SurfaceEval );
+
+        newPoint = surface( averagePoint, newUV );
+      }
+
+      const glm::dvec3 deltaNewPoint = newPoint - averagePoint;
+
+      const double deflection = glm::dot( deltaNewPoint, deltaNewPoint );
+
+      // The same reading, against the same floor, as addCandidate above.
+      if ( minimumDeflection > deflection ) {
+        continue;
+      }
+
+      // A READING THAT IS NOT ABOUT THE CHORD. Bisection drives the deflection
+      // to zero only when the two ends lie on the surface the callback
+      // describes; when one of them does not, the reading bottoms out at that
+      // disagreement instead, and every further split halves an edge without
+      // ever satisfying the floor. It happens: `triangulatePeriodicUChart`'s
+      // own layout split places its point on the trim SEGMENT rather than on
+      // the surface, because that segment is shared with the neighbouring
+      // face - so a cut that ends on one of those points is anchored at a
+      // vertex the surface does not pass through.
+      //
+      // Refused on the geometry rather than on a depth count. For two ends on
+      // the surface the deflection of their chord is bounded by L*L*k/8 with k
+      // the local curvature, so a deflection past a QUARTER of the chord needs
+      // L > 2/k - a chord longer than the local diameter of curvature, which
+      // two points of the surface do not span. A non-convergent one runs
+      // straight into it instead: as the split points pile up at the surface
+      // point the off-surface end's parameter names, the chord settles at that
+      // end's own distance r from it and the deflection at r/2, which is half
+      // the chord and so eight times over.
+      //
+      // Measured: without this, one cut of a six-sample band in
+      // test/periodic_u_chart_test.cpp spent all 434 of its splits and left
+      // 678 zero-length edges piled on one point. With it the same cut refines
+      // and stops. Nothing in the corpus comes within two orders of magnitude
+      // of the bound - `ADVANCED_FACE #19218`'s cut reads deflection 4.9e-8
+      // against a chord of 1.85e-2, i.e. 1.6e-6 of the way to it.
+      const glm::dvec3 chord = to.point - from.point;
+
+      if ( ( deflection * 16.0 ) >= glm::dot( chord, chord ) ) {
+        continue;
+      }
+
+      // The other side's own midpoint in uv - the same point on the surface,
+      // a whole number of periods away, which is the disagreement the cut
+      // exists to carry.
+      const glm::dvec2 partnerUV =
+        ( mesh.vertices[ seam[ 2 ] ].uv + mesh.vertices[ seam[ 3 ] ].uv ) * 0.5;
+
+      const std::array< uint32_t, 3 > corners0 =
+        orientedCorners( triangle0, seam[ 0 ], seam[ 1 ] );
+      const std::array< uint32_t, 3 > corners1 =
+        orientedCorners( triangle1, seam[ 2 ], seam[ 3 ] );
+
+      if ( corners0[ 0 ] == EMPTY_INDEX || corners1[ 0 ] == EMPTY_INDEX ) {
+        continue;
+      }
+
+      // Read both triangles' corners above, before either is deleted:
+      // deleteTriangle() moves the back triangle into the freed slot, so the
+      // second index and every reference into `triangles` goes stale the
+      // moment the first one goes. Deleting the HIGHER index first is what
+      // keeps the lower one addressable, exactly as tesselate() does it.
+      mesh.deleteTriangle( std::max( triangle0, triangle1 ) );
+      mesh.deleteTriangle( std::min( triangle0, triangle1 ) );
+
+      const uint32_t split0 = mesh.makeVertex( { newPoint, newUV } );
+
+      // BITWISE the same position at the other sheet's uv - the identity weld
+      // the chart's own duplicates rely on, carried to the points this adds.
+      const uint32_t split1 = mesh.makeVertex( { newPoint, partnerUV } );
+
+      mesh.makeTriangle( corners0[ 0 ], split0, corners0[ 2 ] );
+      mesh.makeTriangle( split0, corners0[ 1 ], corners0[ 2 ] );
+      mesh.makeTriangle( corners1[ 0 ], split1, corners1[ 2 ] );
+      mesh.makeTriangle( split1, corners1[ 1 ], corners1[ 2 ] );
+
+      // Both halves, still paired: seam[ 2 ] is the copy of seam[ 0 ] and
+      // split1 of split0, so the correspondence carries down the recursion.
+      pending.push_back( { seam[ 0 ], split0, seam[ 2 ], split1 } );
+      pending.push_back( { split0, seam[ 1 ], split1, seam[ 3 ] } );
+
+      maximumTriangles -= 2;
+    }
+  }
+
+  /**
    * Given a surface where a mid-point can be re-computed as point on the surface,
    * this will take a starting mesh with parameterized vertices and tesselate the internal triangles
    */

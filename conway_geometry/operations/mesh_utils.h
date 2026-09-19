@@ -7761,6 +7761,12 @@ inline size_t reSolveClosedTrimHead(
  *                          returns triangles rather than a polygon for
  *                          earcut.
  * @param trianglesOut      Filled on success with mesh-vertex triples.
+ * @param seamEdgesOut      Filled on success with the emergent seam's edges,
+ *                          as { a, b, a', b' } - one chart edge's two mesh
+ *                          copies. They are BORDER edges, which `tesselate`
+ *                          skips, so the caller refines them in lockstep
+ *                          through `refineSeamPairs` before refining the
+ *                          interior. See the note on the cut above.
  * @param periodOut         The u period, for the caller's evaluation wrap.
  * @param uMinOut           The start of the u domain, likewise.
  * @return True when the chart was triangulated and `trianglesOut` is the
@@ -7773,12 +7779,14 @@ inline bool triangulatePeriodicUChart(
     bool                                                         declaredClosedU,
     const std::vector< std::vector< std::array< double, 2 > > >& uvBoundaryValues,
     std::vector< std::array< uint32_t, 3 > >&                    trianglesOut,
+    std::vector< std::array< uint32_t, 4 > >&                    seamEdgesOut,
     double&                                                      periodOut,
     double&                                                      uMinOut ) {
 
   using Point = std::array< double, 2 >;
 
   trianglesOut.clear();
+  seamEdgesOut.clear();
 
   // The file said so. A periodic chart is a consequence of the surface being
   // closed in u; taken first because it is the cheapest refusal and the most
@@ -8425,6 +8433,109 @@ inline bool triangulatePeriodicUChart(
         copies.at( { c, sheetOf( triangle, 2 ) } ) } );
   }
 
+  // ------------------------------------------------------------------
+  // WHERE THE CUT RUNS, AS PAIRS OF MESH EDGES. Two triangles adjacent in the
+  // triangulation whose shared corners came out on different sheets ARE the
+  // two sides of the cut: the edge between them was one interior edge of the
+  // chart and is two edges of the mesh, each carrying a single triangle -
+  // which is to say a pair of BORDER edges by the winged-edge reading,
+  // although nothing about this face's geometry is a boundary there.
+  //
+  // WHY THE CALLER NEEDS THEM. `tesselate` skips every `edge.border()`
+  // (tesselation_utils.h, addCandidate), and rightly so for a trim boundary,
+  // which is shared with a neighbouring face this one may not move. The cut
+  // is not shared with anything, but it reads identically - so left to
+  // itself it keeps the triangulation's own coarseness while every interior
+  // edge beside it refines, and the one triangle on each side of it is
+  // subdivided away from it until it is a sliver on it. The old cut was short
+  // by construction, having been searched for at the narrowest gap; a cut
+  // chosen by the triangulation is wherever the walk's monodromy falls, so
+  // relocating it here is what exposed the skip. Found by codex 4051389889 on
+  // bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+  //
+  // Measured on Right_Hand.step `ADVANCED_FACE #19218`, whose cut is coarse
+  // enough to refine: with the cut left alone that face spent its whole 32x
+  // budget and 6760 of its 8320 triangles came out degenerate; refining it
+  // first, 4 of 1848 do, and the shipped face goes from 1550 triangles with
+  // 38 degenerate to 1844 with none.
+  //
+  // The two sides always disagree about BOTH shared corners or about
+  // neither, so one comparison settles an adjacency: within a triangle the
+  // sheet difference between two corners is their own nearest-image offset
+  // (that is what the zero-sum reading above makes true), which both
+  // triangles compute from the same two vertices.
+  // ------------------------------------------------------------------
+  const auto keptTriangle =
+    [ & ]( size_t triangle ) {
+
+      const auto [ a, b, c ] = triangulation.triangles[ triangle ].vertices;
+
+      return a != b && b != c && c != a;
+    };
+
+  for ( size_t triangle = 0; triangle < triangleCount; ++triangle ) {
+
+    if ( !keptTriangle( triangle ) ) {
+      continue;
+    }
+
+    const auto& mine = triangulation.triangles[ triangle ].vertices;
+
+    for ( size_t side = 0; side < 3; ++side ) {
+
+      const CDT::TriInd neighbour =
+        triangulation.triangles[ triangle ].neighbors[ side ];
+
+      // Each adjacency once, from its lower triangle.
+      if ( neighbour == CDT::noNeighbor ||
+           static_cast< size_t >( neighbour ) <= triangle ||
+           static_cast< size_t >( neighbour ) >= triangleCount ||
+           !keptTriangle( neighbour ) ) {
+        continue;
+      }
+
+      const auto& theirs = triangulation.triangles[ neighbour ].vertices;
+
+      size_t   sharedMine[ 2 ]   = { 0, 0 };
+      size_t   sharedTheirs[ 2 ] = { 0, 0 };
+      size_t   shared            = 0;
+
+      for ( size_t here = 0; here < 3 && shared < 2; ++here ) {
+        for ( size_t there = 0; there < 3; ++there ) {
+
+          if ( mine[ here ] != theirs[ there ] ) {
+            continue;
+          }
+
+          sharedMine[ shared ]   = here;
+          sharedTheirs[ shared ] = there;
+          ++shared;
+          break;
+        }
+      }
+
+      if ( shared != 2 ) {
+        continue;
+      }
+
+      const long long mineFirst  = sheetOf( triangle, sharedMine[ 0 ] );
+      const long long mineSecond = sheetOf( triangle, sharedMine[ 1 ] );
+
+      const long long theirsFirst  = sheetOf( neighbour, sharedTheirs[ 0 ] );
+      const long long theirsSecond = sheetOf( neighbour, sharedTheirs[ 1 ] );
+
+      if ( mineFirst == theirsFirst ) {
+        continue;
+      }
+
+      seamEdgesOut.push_back(
+        { copies.at( { mine[ sharedMine[ 0 ] ], mineFirst } ),
+          copies.at( { mine[ sharedMine[ 1 ] ], mineSecond } ),
+          copies.at( { theirs[ sharedTheirs[ 0 ] ], theirsFirst } ),
+          copies.at( { theirs[ sharedTheirs[ 1 ] ], theirsSecond } ) } );
+    }
+  }
+
   periodOut = period;
   uMinOut   = uMin;
 
@@ -8674,6 +8785,7 @@ inline void TriangulateBspline(Geometry &geometry,
     // Runs before the two single-bound structured paths because it is the
     // multi-bound case they explicitly exclude.
     std::vector< std::array< uint32_t, 3 > > chartTriangles;
+    std::vector< std::array< uint32_t, 4 > > chartSeamEdges;
 
     double stripPeriod = 0.0;
     double stripUMin   = 0.0;
@@ -8682,7 +8794,7 @@ inline void TriangulateBspline(Geometry &geometry,
       bounds.size() > 1 &&
       triangulatePeriodicUChart(
         mesh, srf, surface.BSplineSurface.ClosedU, uvBoundaryValues,
-        chartTriangles, stripPeriod, stripUMin );
+        chartTriangles, chartSeamEdges, stripPeriod, stripUMin );
 
     // Refinement and shading evaluate at the mesh's own uv, and the lifted
     // chart puts some of those outside the surface's knot domain. Wrap them
@@ -8764,6 +8876,60 @@ inline void TriangulateBspline(Geometry &geometry,
     
   //  printf( "Tesselating BSpline Surface\n" );
 
+    // ONE target for both refinement passes, read once. The seam pass and
+    // `tesselate` have to aim at the same fineness or the seam is refined to
+    // a different density than the interior beside it, which is the defect
+    // the seam pass exists to remove; computing it here rather than at each
+    // call is what makes that true by construction. Identical to the value
+    // `tesselate` read for itself on every face that has no seam, because
+    // nothing between here and there touches the mesh.
+    //
+    // `representationExtent * scaling`, not the raw extent. This is the ONE
+    // triangulator that does not tessellate in the units its bound points
+    // arrive in: the projection loop above multiplies every point by
+    // `scaling` before seeding the mesh, so the mesh's own bounding box -
+    // the other half of the comparison relativeDeflectionSquared makes -
+    // is in post-`scaling` units too. Handing it a raw extent would put a
+    // millimetre-to-metre load's floor 1000x too coarse and a
+    // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
+    // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
+    //
+    // Both front ends pass scaling = 1 today, so this multiply is a no-op
+    // in every shipping path; it is here so the invariant on
+    // ParamsAddFaceToGeometry::representationExtent ("in the units the
+    // bound points arrive in") stays true if that ever changes.
+    const double faceDeflection2 =
+      relativeDeflectionSquared( mesh, representationExtent * scaling );
+
+    // ONE budget for both passes too, read off the triangulation before
+    // either has spent any of it. Both subtract the mesh's current size, so
+    // handing them the same number is what makes the seam pass spend FROM the
+    // face's allowance rather than enlarge it - a face does not get to refine
+    // its interior further for having a seam, and measured on
+    // `ADVANCED_FACE #19215` an allowance enlarged by the seam's own two
+    // triangles bought 62 more degenerate ones in the fan that face's trim
+    // solve already provokes.
+    const int32_t refinementBudget =
+      static_cast< int32_t >( mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION );
+
+    // The periodic chart's emergent seam is a pair of BORDER edges, and
+    // `tesselate` skips those - see refineSeamPairs, which splits the two
+    // sides in lockstep so the cut refines with its neighbourhood instead of
+    // being fanned onto by it.
+    if ( builtPeriodicChart && !builtStructured ) {
+
+      refineSeamPairs(
+        mesh,
+        [&bSplineInverseEvaluation, &wrapChartU](
+          [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {
+          return bSplineInverseEvaluation.evaluator.point(
+            wrapChartU( from.x ), from.y );
+        },
+        chartSeamEdges,
+        refinementBudget,
+        faceDeflection2 );
+    }
+
     // Skipped for the seam grid, which arrives already refined to this same
     // target in parameter space. Running the topological refiner over it does
     // not converge - it spends the whole 32x budget and folds the mesh - see
@@ -8777,22 +8943,8 @@ inline void TriangulateBspline(Geometry &geometry,
         [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {
         return bSplineInverseEvaluation.evaluator.point( wrapChartU( from.x ), from.y );
       },
-      mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      // `representationExtent * scaling`, not the raw extent. This is the ONE
-      // triangulator that does not tessellate in the units its bound points
-      // arrive in: the projection loop above multiplies every point by
-      // `scaling` before seeding the mesh, so the mesh's own bounding box -
-      // the other half of the comparison relativeDeflectionSquared makes -
-      // is in post-`scaling` units too. Handing it a raw extent would put a
-      // millimetre-to-metre load's floor 1000x too coarse and a
-      // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
-      // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
-      //
-      // Both front ends pass scaling = 1 today, so this multiply is a no-op
-      // in every shipping path; it is here so the invariant on
-      // ParamsAddFaceToGeometry::representationExtent ("in the units the
-      // bound points arrive in") stays true if that ever changes.
-      relativeDeflectionSquared( mesh, representationExtent * scaling ) );
+      refinementBudget,
+      faceDeflection2 );
 
     // Analytic shading normals (bldrs-ai/conway#667). A B-spline's normal is a
     // function of the parameters, not of the position — which is why the

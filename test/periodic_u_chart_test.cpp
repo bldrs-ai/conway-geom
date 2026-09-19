@@ -73,6 +73,7 @@
 
 #include <array>
 #include <limits>
+#include <map>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -107,6 +108,8 @@ constexpr double TUBE_HEIGHT = 20.0;
 constexpr size_t TUBE_SEGMENTS = 12;
 
 constexpr double TWO_PI = 6.283185307179586;
+
+constexpr double CONST_PI_TEST = 3.141592653589793;
 
 /**
  * A degree-1 tube, closed in u because its last control row IS its first, with
@@ -404,6 +407,7 @@ struct Outcome {
   bool                                     built;
   size_t                                   vertexGrowth;
   std::vector< std::array< uint32_t, 3 > > triangles;
+  std::vector< std::array< uint32_t, 4 > > seamEdges;
   double                                   period;
   double                                   uMin;
 };
@@ -412,6 +416,7 @@ Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface,
              bool declaredClosedU = true ) {
 
   std::vector< std::array< uint32_t, 3 > > triangles;
+  std::vector< std::array< uint32_t, 4 > > seamEdges;
 
   double period = 0.0;
   double uMin   = 0.0;
@@ -421,10 +426,10 @@ Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface,
   const bool built =
     conway::geometry::triangulatePeriodicUChart(
       state.mesh, surface, declaredClosedU, state.rings,
-      triangles, period, uMin );
+      triangles, seamEdges, period, uMin );
 
   return { built, state.mesh.vertices.size() - before, std::move( triangles ),
-           period, uMin };
+           std::move( seamEdges ), period, uMin };
 }
 
 /**
@@ -512,6 +517,74 @@ Growth classifyGrowth( const Built& state, size_t boundaryCount ) {
   }
 
   return growth;
+}
+
+
+/**
+ * The tube with a radius that bulges in v.
+ *
+ * `refineSeamPairs` is handed THIS and not `tubePoint`, because the test
+ * tube is ruled in v: a cut runs from one rim to the other at nearly constant
+ * u, so its chord lies exactly ON the flat tube and the deflection reading is
+ * zero however coarse the cut is. Nothing would split, and a refinement test
+ * that cannot make anything split pins nothing. The bulge is the smallest
+ * change that gives a radial chord something to deviate from; the chart gates
+ * above still read the flat tube, which is the surface they are about.
+ *
+ * THE BULGE VANISHES AT THE TWO RIMS the cases below use, so every boundary
+ * vertex the chart hands over lies exactly on this surface too. A surface
+ * that disagreed with its own boundary would make the deflection reading
+ * bottom out at that disagreement instead of at zero, and the refinement
+ * would subdivide until it ran out of budget - which is a property of the
+ * mismatch and not of the pass under test.
+ */
+constexpr double BULGE_RIM_LOW  = 0.2;
+constexpr double BULGE_RIM_HIGH = 0.8;
+
+glm::dvec3 bulgedTubePoint( double u, double v ) {
+
+  const double angle = TWO_PI * u;
+
+  const double alongBand =
+    ( v - BULGE_RIM_LOW ) / ( BULGE_RIM_HIGH - BULGE_RIM_LOW );
+
+  const double radius =
+    TUBE_RADIUS * ( 1.0 + ( 0.1 * std::sin( CONST_PI_TEST * alongBand ) ) );
+
+  return { radius * std::cos( angle ), radius * std::sin( angle ),
+           TUBE_HEIGHT * v };
+}
+
+/** Border edges of `mesh`, keyed by their two endpoint POSITIONS. */
+std::map< std::array< double, 6 >, size_t > borderEdgesByPosition(
+    const WingedEdgeMesh< ParameterVertex >& mesh ) {
+
+  std::map< std::array< double, 6 >, size_t > keys;
+
+  for ( const conway::geometry::Edge& edge : mesh.edges ) {
+
+    // A fully detached edge is neither a border nor an interior edge: it is
+    // what deleteTriangle() leaves behind when both its triangles go.
+    if ( edge.triangles[ 0 ] == conway::geometry::EMPTY_INDEX ||
+         !edge.border() ) {
+      continue;
+    }
+
+    const glm::dvec3& first  = mesh.vertices[ edge.vertices[ 0 ] ].point;
+    const glm::dvec3& second = mesh.vertices[ edge.vertices[ 1 ] ].point;
+
+    std::array< double, 3 > low  = { first.x, first.y, first.z };
+    std::array< double, 3 > high = { second.x, second.y, second.z };
+
+    if ( high < low ) {
+      std::swap( low, high );
+    }
+
+    ++keys[ { low[ 0 ], low[ 1 ], low[ 2 ],
+              high[ 0 ], high[ 1 ], high[ 2 ] } ];
+  }
+
+  return keys;
 }
 
 }  // namespace
@@ -1194,6 +1267,246 @@ int main() {
     check( !crossingOutcome.built,
            "a hole reaching out through a rim is refused, as it was before" );
     check( crossingOutcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== the cut is reported, and it is a pair of border edges ===\n" );
+
+  {
+    // A coarse band: six samples a rim, so the cut across it is long enough
+    // for a refinement to have something to do.
+    Built state = build( { evenRim( 6, BULGE_RIM_LOW, true, true ),
+                           evenRim( 6, BULGE_RIM_HIGH, false, true ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built, "the coarse band is triangulated" );
+    check( !outcome.seamEdges.empty(),
+           "and the chart says where the cut runs" );
+
+    for ( const std::array< uint32_t, 3 >& triangle : outcome.triangles ) {
+      state.mesh.makeTriangle( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] );
+    }
+
+    // THE PROPERTY THE FINDING IS ABOUT. Each side of the cut carries one
+    // triangle, so `edge.border()` is true of both - and `tesselate` skips
+    // every border edge, which is why the cut cannot refine by itself.
+    size_t borderBoth  = 0;
+    size_t bitwiseCopy = 0;
+
+    for ( const std::array< uint32_t, 4 >& seam : outcome.seamEdges ) {
+
+      const std::optional< uint32_t > first =
+        state.mesh.getEdge( seam[ 0 ], seam[ 1 ] );
+      const std::optional< uint32_t > second =
+        state.mesh.getEdge( seam[ 2 ], seam[ 3 ] );
+
+      if ( first.has_value() && second.has_value() &&
+           state.mesh.edges[ first.value() ].border() &&
+           state.mesh.edges[ second.value() ].border() ) {
+        ++borderBoth;
+      }
+
+      // The partner carries the SAME 3D point - bitwise - a whole number of
+      // periods away in u, which is what welds the cut in Geometry::Reify.
+      const bool positionsMatch =
+        state.mesh.vertices[ seam[ 0 ] ].point ==
+          state.mesh.vertices[ seam[ 2 ] ].point &&
+        state.mesh.vertices[ seam[ 1 ] ].point ==
+          state.mesh.vertices[ seam[ 3 ] ].point;
+
+      const double firstShift =
+        state.mesh.vertices[ seam[ 2 ] ].uv.x -
+        state.mesh.vertices[ seam[ 0 ] ].uv.x;
+
+      if ( positionsMatch &&
+           std::abs( firstShift -
+                     ( outcome.period *
+                       std::round( firstShift / outcome.period ) ) ) < 1e-12 &&
+           firstShift != 0.0 ) {
+        ++bitwiseCopy;
+      }
+    }
+
+    check( borderBoth == outcome.seamEdges.size(),
+           "every edge of the cut is a border edge on both sides, which is "
+           "what tesselate skips" );
+    check( bitwiseCopy == outcome.seamEdges.size(),
+           "and the two sides are bitwise the same point, a whole period "
+           "apart in u" );
+  }
+
+  printf( "=== the cut refines on both sides at once ===\n" );
+
+  {
+    Built state = build( { evenRim( 6, BULGE_RIM_LOW, true, true ),
+                           evenRim( 6, BULGE_RIM_HIGH, false, true ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built, "the coarse band is triangulated" );
+
+    for ( const std::array< uint32_t, 3 >& triangle : outcome.triangles ) {
+      state.mesh.makeTriangle( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] );
+    }
+
+    const std::map< std::array< double, 6 >, size_t > before =
+      borderEdgesByPosition( state.mesh );
+
+    size_t trimBefore = 0;
+    size_t cutBefore  = 0;
+
+    for ( const auto& entry : before ) {
+      ( entry.second == 1 ? trimBefore : cutBefore ) += 1;
+    }
+
+    const size_t trianglesBefore = state.mesh.triangles.size();
+    const size_t verticesBefore  = state.mesh.vertices.size();
+
+    // A floor far below the bulge, so the cut is refined to it rather than
+    // stopping on the first reading.
+    constexpr double FLOOR = 1e-6;
+
+    conway::geometry::refineSeamPairs(
+      state.mesh,
+      []( const glm::dvec3&, const glm::dvec2& uv ) {
+        return bulgedTubePoint( uv.x, uv.y );
+      },
+      outcome.seamEdges,
+      static_cast< int32_t >( state.mesh.triangles.size() * 32 ),
+      FLOOR );
+
+    const size_t splits =
+      ( state.mesh.triangles.size() - trianglesBefore ) / 2;
+
+    check( splits > 0, "the cut is split" );
+
+    // Each split is TWO triangles and TWO vertices - one of each per side -
+    // which is the lockstep stated as arithmetic.
+    check( state.mesh.triangles.size() - trianglesBefore == splits * 2 &&
+           state.mesh.vertices.size() - verticesBefore == splits * 2,
+           "adding one triangle and one vertex to each side, never to one" );
+
+    size_t pairedNewVertices = 0;
+
+    for ( size_t at = verticesBefore; at < state.mesh.vertices.size(); ++at ) {
+      for ( size_t other = verticesBefore;
+            other < state.mesh.vertices.size();
+            ++other ) {
+
+        if ( other != at &&
+             state.mesh.vertices[ at ].point ==
+               state.mesh.vertices[ other ].point ) {
+
+          ++pairedNewVertices;
+          break;
+        }
+      }
+    }
+
+    check( pairedNewVertices == splits * 2,
+           "and every point it adds is bitwise the same on both sides, so "
+           "Reify welds the refined cut as it welded the coarse one" );
+
+    // THE CUT IS STILL CLOSED. Every border edge of the cut still has exactly
+    // one partner carrying the same two positions; the trim boundary, which
+    // has no partner and must not be touched, is unchanged in count.
+    const std::map< std::array< double, 6 >, size_t > after =
+      borderEdgesByPosition( state.mesh );
+
+    size_t trimAfter   = 0;
+    size_t cutAfter    = 0;
+    size_t unpairedCut = 0;
+
+    for ( const auto& entry : after ) {
+
+      if ( entry.second == 1 ) {
+        ++trimAfter;
+      } else if ( entry.second == 2 ) {
+        ++cutAfter;
+      } else {
+        ++unpairedCut;
+      }
+    }
+
+    check( unpairedCut == 0,
+           "no border edge of the refined mesh is anything but a trim "
+           "segment or one half of a cut pair" );
+    check( cutAfter == cutBefore + splits,
+           "the cut gains exactly one paired edge per split" );
+    check( trimAfter == trimBefore,
+           "and the trim boundary, which is shared with the neighbouring "
+           "face, is not touched" );
+
+    // THE SPLIT POINT IS ON THE SURFACE, not on the chord it replaces. That
+    // is the opposite of the layout split above, and for the opposite
+    // reason: the cut is interior to this face, so no neighbour holds the
+    // other half of it and there is nothing to crack against.
+    size_t onSurface = 0;
+    size_t offChord  = 0;
+
+    for ( size_t at = verticesBefore; at < state.mesh.vertices.size(); ++at ) {
+
+      const ParameterVertex& added = state.mesh.vertices[ at ];
+
+      if ( glm::distance( added.point,
+                          bulgedTubePoint( added.uv.x, added.uv.y ) ) < 1e-12 ) {
+        ++onSurface;
+      }
+    }
+
+    for ( const std::array< uint32_t, 4 >& seam : outcome.seamEdges ) {
+
+      const glm::dvec3 chordMid =
+        ( state.mesh.vertices[ seam[ 0 ] ].point +
+          state.mesh.vertices[ seam[ 1 ] ].point ) * 0.5;
+
+      for ( size_t at = verticesBefore;
+            at < state.mesh.vertices.size();
+            ++at ) {
+
+        if ( glm::distance( state.mesh.vertices[ at ].point, chordMid ) >
+               1e-9 ) {
+          continue;
+        }
+
+        ++offChord;
+      }
+    }
+
+    check( onSurface == splits * 2,
+           "every point the refinement adds lies on the surface" );
+    check( offChord == 0,
+           "and none of them is the chord midpoint the coarse cut ran "
+           "through" );
+  }
+
+  printf( "=== a mesh with no cut is not touched ===\n" );
+
+  {
+    Built state = build( { evenRim( 6, BULGE_RIM_LOW, true, true ),
+                           evenRim( 6, BULGE_RIM_HIGH, false, true ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    for ( const std::array< uint32_t, 3 >& triangle : outcome.triangles ) {
+      state.mesh.makeTriangle( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] );
+    }
+
+    const size_t triangles = state.mesh.triangles.size();
+    const size_t vertices  = state.mesh.vertices.size();
+
+    conway::geometry::refineSeamPairs(
+      state.mesh,
+      []( const glm::dvec3&, const glm::dvec2& uv ) {
+        return bulgedTubePoint( uv.x, uv.y );
+      },
+      {},
+      static_cast< int32_t >( state.mesh.triangles.size() * 32 ),
+      1e-6 );
+
+    check( state.mesh.triangles.size() == triangles &&
+           state.mesh.vertices.size() == vertices,
+           "an empty seam list leaves the mesh exactly as it was" );
   }
 
   printf( failures == 0 ? "PASS\n" : "FAIL (%d)\n", failures );
