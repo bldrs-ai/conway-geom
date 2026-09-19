@@ -160,6 +160,105 @@ tinynurbs::RationalSurface3d makeClosedTube() {
   return surface;
 }
 
+/**
+ * THE SURFACE A STEP CAN REDUCE THE WRONG WAY ON, and the reason the
+ * nearest-image reduction needs confirming against something.
+ *
+ * A closed degree-1 prism whose cross-section is the rectangle
+ * [-10, 10] x [0, 6], with its four corners at u = 0, 0.8, 0.9 and 0.95 of
+ * the period. Nothing is odd about it except the knot spacing, which no
+ * exporter is obliged to make uniform: the long bottom edge occupies 0.8 of
+ * the u period and the other three share the remaining 0.2.
+ *
+ * WHY THAT MATTERS. The bottom edge is STRAIGHT in 3D, so a trim curve
+ * running along it is sampled EXACTLY by its two endpoints - a tessellator
+ * has no reason to put a point in the middle of a straight line. The
+ * resulting polyline is a perfect representation of the boundary, and its one
+ * segment steps +0.80 of a period. Reduced to its nearest image that reads
+ * -0.20, which is a route round the OTHER three sides, and every gate that
+ * reads only u is content: -0.20 is well inside
+ * MAX_DECISIVE_IMAGE_STEP_FRACTION.
+ *
+ * On the tube above the same spelling would be a coarse sampling of a curved
+ * rim, and the short route would be the honest reading of it. Here the chord
+ * lies ON the surface, the long route is the one it draws, and the two
+ * readings are a 0.80-period band against a 0.20-period sliver of one.
+ */
+constexpr double PRISM_HALF_WIDTH = 10.0;
+constexpr double PRISM_DEPTH      = 6.0;
+
+/** The prism's profile corners, as fractions of the u period. */
+constexpr double PRISM_CORNER_U[ 5 ] = { 0.0, 0.8, 0.9, 0.95, 1.0 };
+
+tinynurbs::RationalSurface3d makeFlatSidedPrism() {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  const glm::dvec2 corners[ 5 ] = {
+    {  PRISM_HALF_WIDTH, 0.0 },
+    { -PRISM_HALF_WIDTH, 0.0 },
+    { -PRISM_HALF_WIDTH, PRISM_DEPTH },
+    {  PRISM_HALF_WIDTH, PRISM_DEPTH },
+    {  PRISM_HALF_WIDTH, 0.0 } };
+
+  std::vector< glm::dvec3 > control;
+
+  control.reserve( 10 );
+
+  for ( size_t row = 0; row < 5; ++row ) {
+
+    control.push_back( { corners[ row ].x, corners[ row ].y, 0.0 } );
+    control.push_back( { corners[ row ].x, corners[ row ].y, TUBE_HEIGHT } );
+  }
+
+  surface.control_points = tinynurbs::array2( 5, 2, control );
+  surface.weights =
+    tinynurbs::array2( 5, 2, std::vector< double >( 10, 1.0 ) );
+
+  // Degree 1, five control rows: the clamped knot vector repeats the two ends
+  // and carries the corner parameters between them.
+  surface.knots_u = { PRISM_CORNER_U[ 0 ], PRISM_CORNER_U[ 0 ],
+                      PRISM_CORNER_U[ 1 ], PRISM_CORNER_U[ 2 ],
+                      PRISM_CORNER_U[ 3 ],
+                      PRISM_CORNER_U[ 4 ], PRISM_CORNER_U[ 4 ] };
+
+  surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
+
+  return surface;
+}
+
+/** The prism point a (u, v) names, by the same linear interpolation. */
+glm::dvec3 prismPoint( double u, double v ) {
+
+  const double wrapped = u - std::floor( u );
+
+  size_t corner = 0;
+
+  while ( corner < 3 && wrapped >= PRISM_CORNER_U[ corner + 1 ] ) {
+    ++corner;
+  }
+
+  const double fraction =
+    ( wrapped - PRISM_CORNER_U[ corner ] ) /
+    ( PRISM_CORNER_U[ corner + 1 ] - PRISM_CORNER_U[ corner ] );
+
+  const glm::dvec2 profile[ 5 ] = {
+    {  PRISM_HALF_WIDTH, 0.0 },
+    { -PRISM_HALF_WIDTH, 0.0 },
+    { -PRISM_HALF_WIDTH, PRISM_DEPTH },
+    {  PRISM_HALF_WIDTH, PRISM_DEPTH },
+    {  PRISM_HALF_WIDTH, 0.0 } };
+
+  const glm::dvec2 at =
+    profile[ corner ] +
+    ( ( profile[ corner + 1 ] - profile[ corner ] ) * fraction );
+
+  return { at.x, at.y, TUBE_HEIGHT * v };
+}
+
 /** v knot spans in `makeSplitSeamTube`: eight, at 0, 1/8 ... 1. */
 constexpr size_t SPLIT_SEAM_SPANS = 8;
 
@@ -333,7 +432,10 @@ struct Built {
  * rather than a degenerate segment; rims are at one v, which is all the gates
  * under test read.
  */
-Built build( const std::vector< RingSpec >& specs ) {
+using PointOfUv = glm::dvec3 ( * )( double, double );
+
+Built build( const std::vector< RingSpec >& specs,
+             PointOfUv                      point = tubePoint ) {
 
   Built built;
 
@@ -343,19 +445,21 @@ Built build( const std::vector< RingSpec >& specs ) {
 
     if ( !spec.explicitPoints.empty() ) {
 
-      for ( const std::array< double, 2 >& point : spec.explicitPoints ) {
+      for ( const std::array< double, 2 >& explicitPoint :
+              spec.explicitPoints ) {
 
-        ring.push_back( point );
-        built.mesh.makeVertex( { tubePoint( point[ 0 ], point[ 1 ] ),
-                                 glm::dvec2( point[ 0 ], point[ 1 ] ) } );
+        ring.push_back( explicitPoint );
+        built.mesh.makeVertex(
+          { point( explicitPoint[ 0 ], explicitPoint[ 1 ] ),
+            glm::dvec2( explicitPoint[ 0 ], explicitPoint[ 1 ] ) } );
       }
 
       if ( !spec.tailUv.empty() ) {
 
         ring.push_back( spec.tailUv.front() );
         built.mesh.makeVertex(
-          { tubePoint( spec.explicitPoints.front()[ 0 ],
-                       spec.explicitPoints.front()[ 1 ] ),
+          { point( spec.explicitPoints.front()[ 0 ],
+                   spec.explicitPoints.front()[ 1 ] ),
             glm::dvec2( spec.tailUv.front()[ 0 ], spec.tailUv.front()[ 1 ] ) } );
       }
 
@@ -376,7 +480,7 @@ Built build( const std::vector< RingSpec >& specs ) {
         // The SAME sample again: same uv, same point, bit-identical.
         ring.push_back( ring.front() );
         built.mesh.makeVertex(
-          { tubePoint( ring.front()[ 0 ], ring.front()[ 1 ] ),
+          { point( ring.front()[ 0 ], ring.front()[ 1 ] ),
             glm::dvec2( ring.front()[ 0 ], ring.front()[ 1 ] ) } );
         break;
       }
@@ -388,7 +492,7 @@ Built build( const std::vector< RingSpec >& specs ) {
                                    : spec.v + spec.halfHeight );
 
       ring.push_back( { spec.us[ at ], v } );
-      built.mesh.makeVertex( { tubePoint( spec.us[ at ], v ),
+      built.mesh.makeVertex( { point( spec.us[ at ], v ),
                                glm::dvec2( spec.us[ at ], v ) } );
     }
 
@@ -1613,6 +1717,94 @@ int main() {
            "a rim stepping 0.40 of a period is refused, because that is what "
            "a reversed 0.60 reduces to" );
     check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== a step that reduced the wrong way is refused ===\n" );
+
+  {
+    // CODEX 4051991542 ON bldrs-ai/conway-geom#207 AND bldrs-ai/conway#711:
+    // the decisive-step bound is necessary and not sufficient, because a LARGE
+    // true step can reduce INTO the decisive band. A rim stepping +0.80 of a
+    // period reads as -0.20, every later reading takes that -0.20 as fact, and
+    // the three post-hoc refusals on the triangulation's own output cannot
+    // recover a route that was discarded before the triangulation was built.
+    //
+    // THE FACE THIS IS SPELLED ON is the prism's side wall - two rims, each
+    // sampled twelve times, which read correctly - with a SLOT cut along its
+    // straight bottom face. The slot spans u from 0.05 to 0.75, and because
+    // the face it lies on is flat its two long edges are represented exactly
+    // by their endpoints: a tessellator has no reason to put a point in the
+    // middle of a straight line. So the polyline is not coarse, it is the
+    // slot, and its long edge steps +0.70 of a period.
+    //
+    // MEASURED AGAINST THE HEADER BEFORE THE ROUTE CONFIRMATION, this face
+    // BUILDS: 49 triangles and 476.29 of area, with CDT adding no vertex
+    // (nothing intersects), the kept triangles one connected component (the
+    // misread slot is a box inside the band, not a second island) and every
+    // triangle's offsets summing to zero. All three post-hoc refusals pass on
+    // a face whose slot covers 0.30 of the period where the boundary it was
+    // handed describes one covering 0.70 - 0.40 of a period of slot paved
+    // over. That is codex's claim, and it is right.
+    //
+    // WHAT THE ROUTE READING SEES. The +0.70 image runs along the flat face,
+    // so its surface image IS the chord: length 17.50, which is the chord's
+    // own length and the floor no route can go under. The -0.30 image leaves
+    // the bottom face for the right, top and left ones and measures 29.93. The
+    // reduction is not the shortest route, so it is not the route the chord
+    // stands for, and the face is refused. The caller ear-clips, as it does
+    // today.
+    const tinynurbs::RationalSurface3d prism = makeFlatSidedPrism();
+
+    RingSpec slot;
+
+    slot.explicitPoints = { { 0.05, 0.45 }, { 0.75, 0.45 },
+                            { 0.75, 0.55 }, { 0.05, 0.55 } };
+
+    Built state = build( { evenRim( 12, 0.20, true, true ),
+                           evenRim( 12, 0.80, false, true ), slot },
+                         prismPoint );
+
+    const size_t boundary = state.mesh.vertices.size();
+    const Outcome outcome = run( state, prism );
+
+    check( !outcome.built,
+           "a segment whose nearest image is not the route its own chord "
+           "draws is refused, though the image reads decisively" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+    check( boundary == state.mesh.vertices.size(),
+           "leaving the caller exactly the boundary it handed over" );
+  }
+
+  printf( "=== the same face, sampled so the reduction IS the route ===\n" );
+
+  {
+    // THE CONTROL THE REFUSAL ABOVE NEEDS, or it would be indistinguishable
+    // from refusing the prism outright. Same surface, same band, same slot -
+    // only the slot's two long edges carry one more sample each, so no step
+    // exceeds 0.35 of a period and every one of them IS the shortest route.
+    // Measured: each half of the slot edge reads 8.75, its own chord exactly,
+    // against 34.77 for the nearest rival image. Nothing about the surface
+    // changed; what changed is that the polyline no longer needs a route the
+    // reduction cannot reach.
+    const tinynurbs::RationalSurface3d prism = makeFlatSidedPrism();
+
+    RingSpec slot;
+
+    slot.explicitPoints = { { 0.05, 0.45 }, { 0.40, 0.45 }, { 0.75, 0.45 },
+                            { 0.75, 0.55 }, { 0.40, 0.55 }, { 0.05, 0.55 } };
+
+    Built state = build( { evenRim( 12, 0.20, true, true ),
+                           evenRim( 12, 0.80, false, true ), slot },
+                         prismPoint );
+
+    const Outcome outcome = run( state, prism );
+
+    check( outcome.built,
+           "the same band, sampled so every step's nearest image is the route "
+           "its chord draws, is triangulated" );
+    check( worstLiftedSpan( state, outcome ) < 0.5,
+           "with no triangle spanning half a period" );
+    check( emittedArea( state, outcome ) > 0.0, "and it emits area" );
   }
 
   printf( "=== the coarsest legitimate rim still builds ===\n" );

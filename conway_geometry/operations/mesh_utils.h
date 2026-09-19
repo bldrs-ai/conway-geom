@@ -84,13 +84,18 @@ constexpr double MAX_CHART_CHORD_FRACTION = 1.0 / 12.0;
  *
  * 3/8 is the middle of that band. Nothing in the corpus is near it.
  *
- * NOT a gate that can be made complete, and it is not claimed to be: a
+ * NECESSARY AND NOT SUFFICIENT, which is why it no longer stands alone. A
  * segment spanning 0.80 of a period reduces to -0.20 and reads as decisive
- * while being just as wrong. Nothing recoverable from u alone separates the
- * two - see the header note on triangulatePeriodicUChart - and the three
- * post-hoc refusals on the triangulation's own output are what stand behind
- * it. What this removes is the range in which the construction KNOWS it is
- * guessing and proceeds anyway.
+ * while being just as wrong, so a step reading 0.20P may be a disguised
+ * 0.80P and refining only the steps that LOOK ambiguous refines the wrong
+ * ones. Nothing recoverable from the two samples separates those spellings -
+ * the surface is P-periodic in u, so both put the samples at the same two 3D
+ * points - and the route lives in what runs between them.
+ * triangulatePeriodicUChart reads it there: see the route confirmation in
+ * that function, which walks every candidate image across the surface and
+ * keeps the reduction only when it is the one the emitted segment
+ * represents. What this bound still does, and what it is kept for, is remove
+ * the range in which the reduction carries nothing for that walk to confirm.
  *
  * Measured over the 13 smoke models and 14 more of the corpus: five faces
  * reach the reading, thirteen rings between them, and the widest step of any
@@ -7779,15 +7784,60 @@ inline size_t reSolveClosedTrimHead(
  * A boundary that genuinely wraps then goes to earcut, which is the sliver
  * and the dropped ring this path exists to prevent.
  *
- * NO THRESHOLD CLOSES IT. Routing an ambiguous step - one reduced to near
- * half a period - conservatively to the CDT narrows the hole but does not
- * shut it, because the reduction is lossy in both directions: the true steps
- * +0.80P, +0.10P, +0.05P, +0.05P also sum to one turn, and every one of them
- * reduces to a magnitude of 0.20P or less, under any threshold worth having.
- * The measurement says the same thing from the other side - the largest
- * nearest-image step in the models measured is 0.2689 of a period, on
- * Equiptment_UltrasoundProbe.step, so a P/4 gate would already be firing on
- * real data and a gate that fires is not a gate with headroom.
+ * NO THRESHOLD ON u CLOSES IT, SO THE ROUTE IS READ FROM THE SURFACE. The
+ * reduction is lossy in both directions: the true steps +0.80P, +0.10P,
+ * +0.05P, +0.05P also sum to one turn, and every one of them reduces to a
+ * magnitude of 0.20P or less, under any threshold worth having - so a step
+ * that READS decisive may be a large one that reduced into the decisive
+ * band, and narrowing the band refines the wrong steps. The measurement says
+ * the same thing from the other side: the largest nearest-image step in the
+ * models measured is 0.2689 of a period, on Equiptment_UltrasoundProbe.step,
+ * so a P/4 gate would already be firing on real data.
+ *
+ * AND NO READING OF THE TWO SAMPLES CLOSES IT EITHER, which is arithmetic
+ * rather than a gap in the readings tried. The surface is P-periodic in u -
+ * the gate above has just established that by evaluation - so S(u + P, v) IS
+ * S(u, v). The spellings +0.80P and -0.20P put the two samples at the SAME
+ * two 3D points, at the same separation, with the same chord between them;
+ * every quantity computable from the pair is identical under both, and a 3D
+ * bound on |du| would have to come from the length of the path BETWEEN them,
+ * which no pair of endpoints carries. Found by codex 4051991542 on
+ * bldrs-ai/conway-geom#207 and bldrs-ai/conway#711, with a constructed face
+ * that passes all three post-hoc refusals below while covering a 0.20-period
+ * sector of a band that wraps.
+ *
+ * SO THE PART BETWEEN THE SAMPLES IS WHERE THIS READS. Each candidate image
+ * is a ROUTE - a path in (u, v) from one sample to the other - and the
+ * routes differ, wildly, in where the surface carries them: the reduced one
+ * crosses a 0.20-period sector, its neighbour crosses the other 0.80. The
+ * emitted mesh draws the segment as one straight 3D chord, and that chord is
+ * also what the face on the other side of the trim edge keeps, so the route
+ * this face means is the one that chord stands for. A straight line is the
+ * SHORTEST path between its ends, so the route it stands for is the shortest
+ * one: each candidate's image is walked - at the layout's own chord bound,
+ * which is the resolution the layout will draw it at - its length measured,
+ * and the nearest image kept only when its image is the shortest. A
+ * comparison and not a tolerance: nothing is measured against a number, and
+ * the face is refused when any other image travels no further than the
+ * reduction does.
+ *
+ * THE TRIM CURVE WOULD BE THE STRONGER EVIDENCE AND IS NOT AVAILABLE HERE.
+ * Bisecting a curve segment halves its true step, and recursion until every
+ * sub-step is decisive would settle the route outright rather than reading
+ * it off a chord. The curve does not survive the call chain: createBound3D
+ * and createSimpleBound3D (conway-api.cpp) take a flat vertex array across
+ * the wasm boundary, so a polyline and its closure flag are the whole of
+ * what reaches TriangulateBspline. The chord is what this face ships, what
+ * its neighbour shares and what every consumer downstream reads as the
+ * boundary, so it is the thing this confirms the layout against.
+ *
+ * A DISAGREEMENT REFUSES THE FACE rather than relaying it out on the winning
+ * route. Laying out a step of 0.80P means splitting it into ten layout
+ * pieces and emitting every one of them into the shared boundary, which is
+ * the T-junction the layout split below exists to avoid; refusing keeps
+ * every accepted step inside MAX_DECISIVE_IMAGE_STEP_FRACTION of a period,
+ * and that is what lets the layout split stay layout-only. The caller
+ * ear-clips, which is exactly what it does today.
  *
  * So the reading is gone and every declared-closed-u multi-bound face comes
  * here. The cost is that a boundary which does not wrap is triangulated by
@@ -8005,6 +8055,139 @@ inline bool triangulatePeriodicUChart(
                closureTolerance ) {
 
           return false;
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // IS THE NEAREST IMAGE THE ROUTE THIS BOUNDARY TAKES? Asked of the surface,
+  // segment by segment, because it cannot be asked of the two samples - see
+  // the header note: they are the same two 3D points under every spelling.
+  //
+  // Runs AFTER the closure gate, which is what makes wrapping a u back into
+  // the knot domain an identity on the surface rather than a guess about it.
+  // ------------------------------------------------------------------
+  {
+    const auto wrappedU =
+      [ uMin, period ]( double u ) {
+
+        const double offset = std::fmod( u - uMin, period );
+
+        return uMin + ( offset < 0.0 ? offset + period : offset );
+      };
+
+    // How long the surface image of one candidate route is, walked at
+    // MAX_CHART_CHORD_FRACTION of a period - the spacing the layout itself
+    // will draw the route at, so the walk measures what the layout draws.
+    //
+    // LENGTH, AND NOT DISTANCE FROM THE CHORD, which was the first reading
+    // tried and is not a reading at all. The furthest a route strays is a
+    // SUPREMUM, so a route that sweeps a superset of another's u range
+    // inherits its worst point and the two TIE - measured on the slot case
+    // below, where the -0.30 image and the -2.30 image both read 6.128825,
+    // to every digit. A tie is not evidence and a comparison that produces
+    // them decides faces by their last bit.
+    //
+    // Length has neither problem. Every candidate ends where the others do,
+    // the chord is the straight line between those two points, and so NO
+    // route can be shorter than the chord: the chord's own length is the
+    // floor, and a route that lies ON the chord attains it and cannot be
+    // beaten. And an image that travels further reads as travelling further,
+    // where a supremum saturates at the surface's own extent.
+    //
+    // Under-sampling can only UNDER-state a length, and a long route is the
+    // one with more to miss between probes - which makes an alternative look
+    // better than it is, and pushes this toward refusing rather than toward
+    // laying out a route it has not confirmed.
+    //
+    // `ceiling` stops a walk early, and does so EXACTLY rather than
+    // approximately: a running length only grows, so once it has passed the
+    // reading it is being compared against, no remaining piece can bring it
+    // back. That is the property the distance-from-chord reading did not
+    // have, and it is what makes the alternatives - which are a period or two
+    // long, and so the whole cost of this - stop after a piece or two.
+    const auto routeLength =
+      [ & ]( const Point& from, const Point& to, double step,
+             double ceiling ) {
+
+        const size_t pieces =
+          std::max< size_t >(
+            2, static_cast< size_t >(
+                 std::ceil( std::abs( step ) /
+                            ( period * MAX_CHART_CHORD_FRACTION ) ) ) );
+
+        glm::dvec3 previous =
+          tinynurbs::surfacePoint( surface, wrappedU( from[ 0 ] ), from[ 1 ] );
+
+        double total = 0.0;
+
+        for ( size_t at = 1; at <= pieces; ++at ) {
+
+          const double fraction =
+            static_cast< double >( at ) / static_cast< double >( pieces );
+
+          const glm::dvec3 on =
+            tinynurbs::surfacePoint(
+              surface,
+              wrappedU( from[ 0 ] + ( step * fraction ) ),
+              from[ 1 ] + ( ( to[ 1 ] - from[ 1 ] ) * fraction ) );
+
+          total   += glm::distance( previous, on );
+          previous = on;
+
+          if ( total > ceiling ) {
+            break;
+          }
+        }
+
+        return total;
+      };
+
+    // Two turns either side. One turn is the ambiguity the reduction leaves
+    // and is the one the cases pin; the second is carried because the
+    // argument for stopping at the first - that a second turn re-traverses
+    // the closure and so cannot come out shorter - is an argument about the
+    // surface rather than a measurement of it, and it is the kind of argument
+    // this file has been wrong about before.
+    //
+    // NO CASE CAN PIN THE SECOND TURN ON ITS OWN, and that is the argument
+    // for carrying it rather than against it: a route that wraps twice would
+    // have to be the SHORTEST image to be chosen, which needs a closure whose
+    // second circuit costs nothing. If such a surface exists this reads it;
+    // if it does not, the cost is the early stop's first piece.
+    constexpr int ROUTE_IMAGE_TURNS = 2;
+
+    for ( const std::vector< Point >& ring : uvBoundaryValues ) {
+
+      for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
+
+        const Point& from = ring[ at ];
+        const Point& to   = ring[ ( at + 1 ) % count ];
+
+        double nearest = to[ 0 ] - from[ 0 ];
+
+        nearest -= period * std::round( nearest / period );
+
+        const double nearestLength =
+          routeLength( from, to, nearest,
+                       std::numeric_limits< double >::max() );
+
+        for ( int turns = -ROUTE_IMAGE_TURNS; turns <= ROUTE_IMAGE_TURNS;
+              ++turns ) {
+
+          if ( turns == 0 ) {
+            continue;
+          }
+
+          const double other =
+            nearest + ( period * static_cast< double >( turns ) );
+
+          if ( routeLength( from, to, other, nearestLength ) <=
+                 nearestLength ) {
+
+            return false;
+          }
         }
       }
     }
