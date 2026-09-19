@@ -8202,6 +8202,8 @@ inline bool triangulatePeriodicUChart(
       return periodOffset[ triangle ] + cornerOffset( triangle, corner );
     };
 
+  size_t components = 0;
+
   {
     std::vector< size_t > pending;
 
@@ -8210,6 +8212,8 @@ inline bool triangulatePeriodicUChart(
       if ( visited[ seed ] ) {
         continue;
       }
+
+      ++components;
 
       visited[ seed ]     = 1;
       periodOffset[ seed ] = 0;
@@ -8269,6 +8273,42 @@ inline bool triangulatePeriodicUChart(
         }
       }
     }
+  }
+
+  // ------------------------------------------------------------------
+  // ONE REGION, WHICH IS WHAT THE LIFT IS DEFINED OVER. The walk above is
+  // breadth-first over adjacency, and its monodromy argument is a statement
+  // about ONE component: inside a component each triangle's sheet is fixed by
+  // its neighbour's, and going round the annulus the offsets advance by one.
+  // Across components nothing relates the sheets - every new seed starts again
+  // at zero - so a second component is not another part of this face, it is a
+  // second face this function has invented.
+  //
+  // THIS IS THE READING THE VERTEX-GROWTH CHECK CANNOT BE. That one catches
+  // constraints that INTERSECT, because `TryResolve` has to add a vertex to
+  // resolve them. An inner bound lying wholly outside the band intersects
+  // nothing: `eraseOuterTrianglesAndHoles` reads it as one more parity island,
+  // keeps its interior, adds no vertex, and the face ships with the stray
+  // loop's area welded onto it. Review on bldrs-ai/conway-geom#207 and
+  // bldrs-ai/conway#711 asked precisely whether an invalid input could reach a
+  // wrong-but-DEFINED triangulation without growing the vertex set; it can,
+  // and this is the reading that says so.
+  //
+  // WHY A COMPONENT COUNT AND NOT A CONTAINMENT TEST. The cut construction
+  // gated every candidate hole against the rims - point-in-polygon per hole
+  // per rim point, re-derived per face - and that is the gate this redesign
+  // deleted on purpose. This asks nothing about any individual bound. It is a
+  // counter on the adjacency the lift already walks, so it costs nothing new,
+  // and like the other two refusals it reads the OUTPUT rather than the
+  // input's spelling. It is SUFFICIENT rather than merely cheaper because a
+  // face is one connected region by definition - an `ADVANCED_FACE`'s bounds
+  // delimit a single face of a shell - so one component is not a heuristic
+  // about this corpus, it is the definition, and every way of getting more
+  // than one (a stray bound, a bound outside the band, a band severed by a
+  // hole that spans it) is a face this path must not emit.
+  // ------------------------------------------------------------------
+  if ( components != 1 ) {
+    return false;
   }
 
   // Which sheets does each welded vertex end up on? One is the ordinary case;

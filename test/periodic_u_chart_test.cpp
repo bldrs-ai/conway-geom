@@ -1020,11 +1020,19 @@ int main() {
     //
     // Read off the triangulation rather than argued: a triangle spans less
     // than half a period exactly when its three pairwise nearest-image offsets
-    // sum to zero, and a triangle containing the origin cannot. Confirmed to
-    // be THIS check that refuses, by instrumenting it - it is a state the
-    // construction produces, not a defense against one it cannot.
-    Built state = build( { evenRim( 24, 0.25, true, true ),
-                           smallRing( 0.5, 0.75, 0.05 ) } );
+    // sum to zero, and a triangle containing the origin cannot.
+    //
+    // THE HOLE IS INSIDE THE RIM, not outside it, and that is load-bearing
+    // rather than incidental. Spelled the other way round - the wrapping rim
+    // at the LOW v and the hole above it - the hole lands outside the rim's
+    // circle in the annulus layout, the kept set is two parity islands, and
+    // the CONNECTIVITY refusal fires first; the case would still be refused
+    // and would pin nothing about this reading. Here the hole sits inside the
+    // rim, the kept region is one component, and the only thing left to refuse
+    // it is the well-posedness sum. Confirmed by red proof: disabling the
+    // well-posedness reading alone makes this case build.
+    Built state = build( { evenRim( 24, 0.75, true, true ),
+                           smallRing( 0.5, 0.25, 0.05 ) } );
 
     const Outcome outcome = run( state, surface );
 
@@ -1034,37 +1042,75 @@ int main() {
     check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
-  printf( "=== a bound clear of every other bound is its own island ===\n" );
+  printf( "=== a bound clear of every other bound is refused ===\n" );
 
   {
-    // CHARACTERISATION, and a genuine change. This used to be refused by hole
-    // containment: a ring at v = 4.0 is nowhere near the band between the rims.
-    // `eraseOuterTrianglesAndHoles` decides interior by parity, and a closed
-    // loop in the chart has an interior, so it is now triangulated as its own
-    // patch. That is the same semantics triangulateUnwrappedLoops has shipped
-    // with on the cylinder and cone paths. Recorded, not gated: no reading of
-    // the input can tell a stray bound from a legitimate disjoint one, and the
-    // gate that used to try cost more than it caught.
+    // THE THIRD POST-HOC READING, and the hole the other two leave. A ring at
+    // v = 4.0 is nowhere near the band between the rims, so it intersects
+    // nothing and `TryResolve` adds no vertex to resolve anything - the
+    // vertex-growth check sees a clean input. `eraseOuterTrianglesAndHoles`
+    // decides interior by parity, a closed loop in the chart has an interior,
+    // and the face would ship with that loop's area welded onto it: a
+    // WRONG-BUT-DEFINED triangulation reached without growing the vertex set.
+    //
+    // This file used to CHARACTERISE that outcome - "its own island ... adds
+    // area rather than inverting what was kept" - which is a defect written
+    // down as a feature. Codex 4051389899 on bldrs-ai/conway-geom#207 read it
+    // that way and was right to. The reading that refuses it is the lift's
+    // own: the breadth-first walk is defined over one connected component, a
+    // stray bound is a second, and a face is one connected region by
+    // definition.
     Built banded = build( { evenRim( 24, 0.25, true, true ),
                             evenRim( 24, 0.75, false, true ) } );
 
     const Outcome bandedOutcome = run( banded, surface );
 
+    check( bandedOutcome.built, "the band alone still builds" );
+
     Built strayed = build( { evenRim( 24, 0.25, true, true ),
                              evenRim( 24, 0.75, false, true ),
                              smallRing( 0.5, 4.0, 0.05 ) } );
 
+    const size_t boundary = strayed.mesh.vertices.size();
     const Outcome strayedOutcome = run( strayed, surface );
 
-    check( strayedOutcome.built,
-           "a bound clear of the band is triangulated rather than refused" );
+    check( !strayedOutcome.built,
+           "a bound clear of the band is refused, not welded on as extra "
+           "area" );
+    check( strayedOutcome.vertexGrowth == 0, "and the mesh is untouched" );
+    check( boundary == strayed.mesh.vertices.size(),
+           "leaving the caller exactly the boundary it handed over, to "
+           "ear-clip" );
+  }
 
-    check( strayedOutcome.triangles.size() > bandedOutcome.triangles.size(),
-           "as extra triangles, not as a replacement for the band" );
+  printf( "=== a stray bound is not caught by the vertex-growth reading ===\n" );
 
-    check( emittedArea( strayed, strayedOutcome ) >
-             emittedArea( banded, bandedOutcome ),
-           "and it adds area rather than inverting what was kept" );
+  {
+    // WHY THE COMPONENT COUNT IS NOT REDUNDANT. The same stray-bound input,
+    // asserted against the OTHER reading: it must be the connectivity refusal
+    // that fires and not the vertex-growth one, or the new check is pinning
+    // nothing. A ring at v = 4.0 crosses no other constraint, so CDT resolves
+    // nothing and the vertex set comes back exactly as it went in.
+    //
+    // Read by asking the same question of a case that DOES intersect: a hole
+    // reaching out through a rim grows the vertex set and is refused by the
+    // older reading. Both refuse; only one of them can refuse the stray
+    // bound, and this pins which.
+    RingSpec reaching;
+
+    reaching.explicitPoints = { { 0.40, 0.50 }, { 0.60, 0.50 },
+                                { 0.60, 0.10 }, { 0.40, 0.10 },
+                                { 0.40, 0.50 } };
+
+    Built crossing = build( { evenRim( 24, 0.25, true, true ),
+                              evenRim( 24, 0.75, false, true ),
+                              reaching } );
+
+    const Outcome crossingOutcome = run( crossing, surface );
+
+    check( !crossingOutcome.built,
+           "a hole reaching out through a rim is refused, as it was before" );
+    check( crossingOutcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
   printf( failures == 0 ? "PASS\n" : "FAIL (%d)\n", failures );
