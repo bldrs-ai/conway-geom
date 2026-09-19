@@ -35,20 +35,28 @@ constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
 
 /**
  * The widest arc of the u period one segment of a periodic chart's boundary
- * may span in the annulus layout before triangulatePeriodicUChart subdivides
- * it. 1/12 of a period is 30 degrees.
+ * may span in the annulus layout before triangulatePeriodicUChart splits it
+ * FOR THE LAYOUT. 1/12 of a period is 30 degrees.
  *
- * NOT a tolerance and not a gate: nothing is refused for exceeding it, the
- * segment is split at its uv midpoint and the surface evaluated there. The
- * hazard it removes is that a chord at radius r spanning dTheta dips to
- * r * cos( dTheta / 2 ), so a wide enough one passes UNDER the inner rim in
- * the layout though not in (u, v) - measured on a synthetic 0.8-period span,
- * the kept area exceeded the annulus and 0.14 of it was paved across the
- * inner rim with no diagnostic. That failure sets in somewhere near 0.27 of a
- * period, so this sits a factor of ~3 inside it; the widest segment anywhere
- * in the corpus is 0.0398 of a period, so nothing there subdivides at all.
+ * NOT a tolerance and not a gate: nothing is refused for exceeding it. The
+ * hazard it removes is that the layout draws a boundary segment as a straight
+ * chord, and a chord at radius r spanning dTheta dips to r * cos( dTheta / 2 )
+ * - so a wide enough one crosses a neighbouring ring in 2D though not in
+ * (u, v), and the chart is then triangulated over the wrong arrangement.
+ * Measured on this file's own cases: a rim that wanders back over itself
+ * comes back from CDT with resolved intersections, and a hole whose lower
+ * edge lies along a rim splits off a lens the parity peel keeps as a second
+ * component. Both are refusals of a face that is perfectly well formed in
+ * (u, v).
+ *
+ * The split point is placed ON THE SEGMENT IT SPLITS, in 3D - see
+ * triangulatePeriodicUChart - so it refines the LAYOUT and not the boundary.
+ * Measured on the corpus, the widest segment of any ring of any of the three
+ * faces that reach here is 0.0398 of a period (14.3 degrees), against a
+ * threshold of 30, so nothing in the corpus splits at all.
  */
 constexpr double MAX_CHART_CHORD_FRACTION = 1.0 / 12.0;
+
 
 
 // TODO: review and simplify
@@ -7655,33 +7663,56 @@ inline size_t reSolveClosedTrimHead(
  * position, so `welder.weld( *this, DBL_EPSILON )` closes it by identity
  * rather than by periodicity.
  *
- * TWO THINGS ARE BUILT IN RATHER THAN GATED, because both are failures the
- * construction can cause and therefore the construction's job to prevent:
+
+ * THE LAYOUT IS REFINED; THE BOUNDARY IS NOT. A segment wider than
+ * MAX_CHART_CHORD_FRACTION of the period is split, because the layout draws
+ * it as a straight chord and a wide chord cuts across its neighbours - two
+ * of this file's own cases are refused outright without the split, a rim
+ * that wanders back over itself (CDT resolves intersections that are not
+ * there in (u, v)) and a hole lying along a rim (the lens between the two
+ * spellings of the same contact becomes a second parity component).
  *
- *   - CHORD SUBDIVISION. The polar layout distorts long chords: a segment at
- *     radius r spanning dTheta dips to r * cos( dTheta / 2 ), and far enough
- *     in it crosses the inner rim in 2D though not in (u, v). Measured on a
- *     synthetic 0.8-period span, the kept area EXCEEDED the annulus and 0.14
- *     of it was paved across the inner rim, silently. Any layout segment
- *     spanning more than MAX_CHART_CHORD_FRACTION of the period is therefore
- *     subdivided at its uv midpoint, evaluated on the surface. This is
- *     constructive: it does not refuse anything, and it does not move the
- *     boundary in (u, v) at all - the boundary polygon is already defined as
- *     uv-linear between trim samples, and the added point is on that same
- *     line. Measured on the corpus, the widest segment of any ring of any of
- *     the three faces that reach here is 0.0398 of a period (14.3 degrees),
- *     against a threshold of 30, so nothing in the corpus subdivides.
+ * THE SPLIT POINT USED TO BE EVALUATED ON THIS FACE'S SURFACE, and that was
+ * a defect: the trim segment is SHARED with the face on the other side of
+ * that edge, which keeps the original endpoint-to-endpoint edge. A point
+ * pulled onto this surface is generally not on that straight edge, so the
+ * two faces disagree about where the boundary runs - `Geometry::Reify` welds
+ * vertices and cannot split the neighbour's edge, leaving a T-junction AND a
+ * geometric crack. The file's own test pinned the disagreement as a feature:
+ * a four-sample rim was asserted to come out a TWELVE-gon. Found by codex
+ * 4051389895 on bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
  *
- *   - THE VALIDITY SIGNAL. CDT RESOLVES invalid input rather than rejecting
- *     it: handed overlapping rings at the production 1e-9 weld it came back
- *     with `TryResolve` having added vertices and area paved into a hole -
- *     defined, wrong, and silent. Those added vertices have no world-space
- *     lift, which `triangulateUnwrappedLoops` handles per triangle by
- *     skipping them (mesh_utils.h, the cdtWorld.size() test). Here it is a
- *     WHOLE-FACE refusal instead: `triangulation.vertices.size()` growing
- *     past the input set means the rings this was handed intersect, and one
- *     post-hoc reading of the triangulation's own output stands in for the
- *     containment and crossing gates the cut needed.
+ * So the point is placed on the SEGMENT instead - the linear interpolation
+ * of the two endpoints' own mesh positions, which is exactly the edge the
+ * neighbour has. The emitted face then spans precisely the boundary polyline
+ * it was handed (this file measures a four-sample rim's area as the 4-gon
+ * band's, not the 12-gon's), no crack is possible because the added point is
+ * ON the neighbour's edge, and the refinement that makes the face accurate
+ * is `tesselate` afterwards, which splits interior edges only and so cannot
+ * move a shared boundary either.
+ *
+ * WHAT REMAINS is a T-junction: the neighbour has one edge where this face
+ * has two. That cannot be closed from here. Coordinating the split with the
+ * shared trim tessellation would have to happen where the curve is
+ * tessellated, since the criterion is THIS face's u period and the
+ * neighbour - a plane, say - cannot compute it. It is bounded: the split
+ * fires only on a boundary already sampled coarser than 30 degrees of the
+ * closure, and never anywhere in the corpus.
+ *
+ * THE VALIDITY SIGNAL is built in rather than gated, because it is a failure
+ * the construction can cause and therefore the construction's job to catch.
+ * CDT RESOLVES invalid input rather than rejecting it: handed overlapping
+ * rings at the production 1e-9 weld it came back with `TryResolve` having
+ * added vertices and area paved into a hole - defined, wrong, and silent.
+ * Those added vertices have no world-space lift, which
+ * `triangulateUnwrappedLoops` handles per triangle by skipping them
+ * (mesh_utils.h, the cdtWorld.size() test). Here it is a WHOLE-FACE refusal
+ * instead: `triangulation.vertices.size()` growing past the input set means
+ * the rings this was handed intersect, and one post-hoc reading of the
+ * triangulation's own output stands in for the containment and crossing
+ * gates the cut needed. It does not stand in for ALL of them - a bound that
+ * intersects nothing is invisible to it, which is what the component count
+ * after the lift answers.
  *
  * WHAT IS STILL GATED, AND WHY EACH IS A FACT ABOUT THE SURFACE RATHER THAN
  * ABOUT A CONSTRUCTION:
@@ -7713,7 +7744,7 @@ inline size_t reSolveClosedTrimHead(
  *     it is fixed at the reading rather than worked around here.)
  *
  * NOTHING TOUCHES THE MESH BEFORE THE COMMIT SECTION. Every refusal above it
- * has to leave the caller exactly the mesh it was handed, so subdivision
+ * has to leave the caller exactly the mesh it was handed, so layout split
  * points are recorded and materialized at the end rather than created where
  * they are computed - the same defect, and the same remedy, as the chain
  * duplicate that leaked one vertex per refused call on the corpus.
@@ -7729,7 +7760,6 @@ inline size_t reSolveClosedTrimHead(
  *                          predecessor this rewrites no rings, because it
  *                          returns triangles rather than a polygon for
  *                          earcut.
- * @param surfacePointAt    (u, v) -> world, for subdivision points.
  * @param trianglesOut      Filled on success with mesh-vertex triples.
  * @param periodOut         The u period, for the caller's evaluation wrap.
  * @param uMinOut           The start of the u domain, likewise.
@@ -7737,13 +7767,11 @@ inline size_t reSolveClosedTrimHead(
  *         face; false on any refusal, with the mesh untouched and the caller
  *         ear-clipping exactly as it does today.
  */
-template< typename SurfacePointFunction >
 inline bool triangulatePeriodicUChart(
     WingedEdgeMesh< ParameterVertex >&                           mesh,
     const tinynurbs::RationalSurface3d&                          surface,
     bool                                                         declaredClosedU,
     const std::vector< std::vector< std::array< double, 2 > > >& uvBoundaryValues,
-    SurfacePointFunction                                         surfacePointAt,
     std::vector< std::array< uint32_t, 3 > >&                    trianglesOut,
     double&                                                      periodOut,
     double&                                                      uMinOut ) {
@@ -7915,10 +7943,10 @@ inline bool triangulatePeriodicUChart(
   }
 
   // ------------------------------------------------------------------
-  // The chart points: every ring point, plus whatever chord subdivision
-  // adds. RECORDED, NOT CREATED - `meshVertex` is EMPTY_INDEX for a point
-  // this function invented, and those become mesh vertices only in the
-  // commit section, so every refusal below leaves the mesh as it was.
+  // The chart points: every ring point, plus whatever the layout split adds.
+  // RECORDED, NOT CREATED - `meshVertex` is EMPTY_INDEX for a point this
+  // function invented, and those become mesh vertices only in the commit
+  // section, so every refusal below leaves the mesh as it was.
   // ------------------------------------------------------------------
   struct ChartPoint {
     double     u;
@@ -7927,30 +7955,13 @@ inline bool triangulatePeriodicUChart(
     glm::dvec3 world;
   };
 
-  std::vector< ChartPoint >          chartPoints;
+  std::vector< ChartPoint >            chartPoints;
   std::vector< std::vector< size_t > > chartRings;
 
   chartPoints.reserve( totalPoints );
   chartRings.reserve( ringCount );
 
   const double maxChordStep = period * MAX_CHART_CHORD_FRACTION;
-
-  // A subdivision point's u is computed on the segment's UNWRAPPED span, which
-  // for a segment crossing the seam runs outside the knot domain - the second
-  // rim of a tube sampled backwards produces u = -1/12 of a period. Evaluating
-  // the surface there is not periodic continuation, it is extrapolation off
-  // the end of the first knot span, and it returns a point that is not on the
-  // surface at all: measured on a four-sample rim, the emitted band came out
-  // 7.2% too large. The chart keeps the unwrapped u - that is what the layout
-  // and the lift are in - and only the EVALUATION is wrapped, which is the
-  // same identity `wrapChartU` applies downstream for the same reason.
-  const auto wrapForEvaluation =
-    [ uMin, period ]( double u ) {
-
-      const double offset = std::fmod( u - uMin, period );
-
-      return uMin + ( offset < 0.0 ? offset + period : offset );
-    };
 
   {
     uint32_t flat = 0;
@@ -7963,8 +7974,10 @@ inline bool triangulatePeriodicUChart(
 
       for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
 
+        const size_t next = ( at + 1 ) % count;
+
         const Point& from = ring[ at ];
-        const Point& to   = ring[ ( at + 1 ) % count ];
+        const Point& to   = ring[ next ];
 
         indices.push_back( chartPoints.size() );
         chartPoints.push_back(
@@ -7984,6 +7997,16 @@ inline bool triangulatePeriodicUChart(
 
         const double deltaV = to[ 1 ] - from[ 1 ];
 
+        // The two ends of THIS segment, as the caller already has them. The
+        // split point is interpolated between these and nothing else - see
+        // the header comment: the segment is shared with the face on the
+        // other side of this edge, so the only position that cannot open a
+        // crack against it is a position on the segment.
+        const glm::dvec3& fromWorld =
+          mesh.vertices[ flat + static_cast< uint32_t >( at ) ].point;
+        const glm::dvec3& toWorld =
+          mesh.vertices[ flat + static_cast< uint32_t >( next ) ].point;
+
         const size_t pieces =
           static_cast< size_t >(
             std::ceil( std::abs( deltaU ) / maxChordStep ) );
@@ -7999,7 +8022,7 @@ inline bool triangulatePeriodicUChart(
           indices.push_back( chartPoints.size() );
           chartPoints.push_back(
             { midU, midV, EMPTY_INDEX,
-              surfacePointAt( wrapForEvaluation( midU ), midV ) } );
+              fromWorld + ( ( toWorld - fromWorld ) * fraction ) } );
         }
       }
 
@@ -8356,9 +8379,9 @@ inline bool triangulatePeriodicUChart(
 
     ChartPoint& source = chartPoints[ cdtSource[ welded ] ];
 
-    // A subdivision point becomes a mesh vertex here and nowhere earlier, and
-    // only if a kept triangle actually uses it - a point whose triangles were
-    // all erased costs the caller nothing.
+    // A layout split point becomes a mesh vertex here and nowhere earlier,
+    // and only if a kept triangle actually uses it - a point whose triangles
+    // were all erased costs the caller nothing.
     if ( source.meshVertex == EMPTY_INDEX ) {
       source.meshVertex =
         mesh.makeVertex( { source.world, glm::dvec2( source.u, source.v ) } );
@@ -8659,10 +8682,6 @@ inline void TriangulateBspline(Geometry &geometry,
       bounds.size() > 1 &&
       triangulatePeriodicUChart(
         mesh, srf, surface.BSplineSurface.ClosedU, uvBoundaryValues,
-        [ &bSplineInverseEvaluation ]( double u, double v ) {
-
-          return bSplineInverseEvaluation.evaluator.point( u, v );
-        },
         chartTriangles, stripPeriod, stripUMin );
 
     // Refinement and shading evaluate at the mesh's own uv, and the lifted

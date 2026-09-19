@@ -421,10 +421,6 @@ Outcome run( Built& state, const tinynurbs::RationalSurface3d& surface,
   const bool built =
     conway::geometry::triangulatePeriodicUChart(
       state.mesh, surface, declaredClosedU, state.rings,
-      [ &surface ]( double u, double v ) {
-
-        return tinynurbs::surfacePoint( surface, u, v );
-      },
       triangles, period, uMin );
 
   return { built, state.mesh.vertices.size() - before, std::move( triangles ),
@@ -925,15 +921,25 @@ int main() {
     check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
-  printf( "=== chord subdivision keeps a coarse rim off the inner rim ===\n" );
+  printf( "=== a coarse rim keeps the boundary its neighbour has ===\n" );
 
   {
-    // BUILT IN, NOT GATED. The polar layout distorts long chords: a segment at
-    // radius r spanning dTheta dips to r * cos( dTheta / 2 ). A four-sample rim
-    // steps a quarter period - 90 degrees - so without subdivision its chords
-    // dip to 0.707 of their radius, well inside the inner rim, and the CDT
-    // triangulates a shape that is not the band. With MAX_CHART_CHORD_FRACTION
-    // at 1/12 each of those steps becomes three, and the area comes out right.
+    // THE LAYOUT IS REFINED; THE BOUNDARY IS NOT. A four-sample rim steps a
+    // quarter period, past the 30-degree threshold, so the layout splits each
+    // step into three. Those split points used to be EVALUATED ON THE
+    // SURFACE, and this test used to pin the consequence as a feature: "the
+    // emitted area is the subdivided band's, exactly" - the 12-gon's, where
+    // the boundary handed over was a 4-gon. That is a face-local rewrite of a
+    // SHARED trim segment, so the face on the other side of that edge keeps
+    // the 4-gon and the two disagree by the sagitta. Codex 4051389895 on
+    // bldrs-ai/conway-geom#207 read the test as demonstrating the mismatch,
+    // which is exactly what it was doing.
+    //
+    // The split point is now the linear interpolation of the segment's own
+    // two endpoints, so it lies ON the edge the neighbour kept: the split is
+    // invisible in 3D, the emitted area is the 4-gon band's to the last
+    // digit, and no crack is geometrically possible. What remains is a
+    // T-junction, which cannot be closed from inside this function.
     Built state = build( { evenRim( 4, 0.25, true, true ),
                            evenRim( 4, 0.75, false, true ) } );
 
@@ -945,20 +951,95 @@ int main() {
     const Growth growth = classifyGrowth( state, boundary );
 
     check( growth.introduced > 0,
-           "and subdivision introduced points, because 90 degrees is past the "
+           "and the layout still splits it, because 90 degrees is past the "
            "threshold" );
 
-    // The band the subdivided boundary bounds is the 12-gon's, not the
-    // 4-gon's: a quarter-period step splits into three 30-degree ones and the
-    // added points are evaluated ON the tube, at the twelfths that are its
-    // control rows. Exact, because those land on the prism's own corners.
-
-    check( std::abs( emittedArea( state, outcome ) - bandArea( 12 ) ) <
-             ( bandArea( 12 ) * 1e-9 ),
-           "and the emitted area is the subdivided band's, exactly" );
+    check( std::abs( emittedArea( state, outcome ) - bandArea( 4 ) ) <
+             ( bandArea( 4 ) * 1e-9 ),
+           "but the emitted area is the boundary polyline's own, exactly - "
+           "the 4-gon band, not the 12-gon's" );
 
     check( worstLiftedSpan( state, outcome ) < 0.5,
            "with no triangle spanning half a period" );
+  }
+
+  printf( "=== every split point lies on the segment it splits ===\n" );
+
+  {
+    // THE PROPERTY THE AREA ASSERTION IS A CONSEQUENCE OF, stated directly
+    // and over a boundary whose segments are not all the same length: every
+    // vertex this function invents must be collinear with - and between - the
+    // two boundary vertices of the segment it came from, because that segment
+    // is the neighbouring face's edge. Read off the mesh rather than the
+    // chart: any introduced vertex must lie on SOME boundary segment.
+    Built state = build( { evenRim( 5, 0.25, true, true ),
+                           evenRim( 3, 0.75, false, true ) } );
+
+    const size_t boundary = state.mesh.vertices.size();
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built, "a band with two differently sampled rims builds" );
+
+    size_t introduced = 0;
+    size_t onSegment  = 0;
+
+    for ( size_t at = boundary; at < state.mesh.vertices.size(); ++at ) {
+
+      const glm::dvec3& point = state.mesh.vertices[ at ].point;
+
+      bool duplicate = false;
+
+      for ( size_t other = 0; other < boundary && !duplicate; ++other ) {
+        duplicate = state.mesh.vertices[ other ].point == point;
+      }
+
+      if ( duplicate ) {
+        continue;
+      }
+
+      ++introduced;
+
+      // Against every segment of every ring: collinear, and strictly between.
+      for ( const std::vector< std::array< double, 2 > >& ring : state.rings ) {
+
+        const size_t count = ring.size();
+
+        for ( size_t step = 0; step < count; ++step ) {
+
+          const glm::dvec3 a =
+            tubePoint( ring[ step ][ 0 ], ring[ step ][ 1 ] );
+          const glm::dvec3 b =
+            tubePoint( ring[ ( step + 1 ) % count ][ 0 ],
+                       ring[ ( step + 1 ) % count ][ 1 ] );
+
+          const glm::dvec3 along = b - a;
+          const double     length2 = glm::dot( along, along );
+
+          if ( length2 == 0.0 ) {
+            continue;
+          }
+
+          const double t = glm::dot( point - a, along ) / length2;
+
+          if ( t <= 0.0 || t >= 1.0 ) {
+            continue;
+          }
+
+          if ( glm::distance( point, a + ( along * t ) ) <
+                 ( TUBE_RADIUS * 1e-12 ) ) {
+
+            ++onSegment;
+            step  = count;
+            break;
+          }
+        }
+      }
+    }
+
+    check( introduced > 0, "and the layout splits at least one of its steps" );
+    check( introduced == onSegment,
+           "with every invented vertex lying on the boundary segment it came "
+           "from, which is the edge the neighbouring face keeps" );
   }
 
   printf( "=== a boundary that touches itself without crossing ===\n" );
@@ -980,10 +1061,12 @@ int main() {
     // change rests on and a touching contact is where it is least obvious.
     RingSpec touching;
 
-    // The rims sit at v = 0.25 and v = 0.75; this hole's bottom edge lies ON
-    // the lower rim, sharing two of its sample points exactly.
-    touching.explicitPoints = { { 5.0 / 24.0, 0.25 }, { 7.0 / 24.0, 0.25 },
-                                { 7.0 / 24.0, 0.45 }, { 5.0 / 24.0, 0.45 },
+    // The rims sit at v = 0.25 and v = 0.75; this hole's bottom edge IS one
+    // segment of the lower rim, sharing both of its endpoints exactly. One
+    // segment rather than two, so that no step here is wide enough for the
+    // layout split and the contact is the only thing under test.
+    touching.explicitPoints = { { 5.0 / 24.0, 0.25 }, { 6.0 / 24.0, 0.25 },
+                                { 6.0 / 24.0, 0.45 }, { 5.0 / 24.0, 0.45 },
                                 { 5.0 / 24.0, 0.25 } };
 
     Built state = build( { evenRim( 24, 0.25, true, true ),
@@ -997,10 +1080,10 @@ int main() {
     check( worstLiftedSpan( state, outcome ) < 0.5,
            "with no triangle spanning half a period" );
 
-    // The hole is carved, not ignored: the band less the 2/24-wide, 0.2-tall
+    // The hole is carved, not ignored: the band less the 1/24-wide, 0.2-tall
     // patch it takes out of it. Both are exact on the 24-gon.
     const double removed =
-      2.0 * 2.0 * TUBE_RADIUS * std::sin( TWO_PI / 48.0 ) * TUBE_HEIGHT * 0.20;
+      2.0 * TUBE_RADIUS * std::sin( TWO_PI / 48.0 ) * TUBE_HEIGHT * 0.20;
 
     check( std::abs( emittedArea( state, outcome ) -
                      ( bandArea( 24 ) - removed ) ) < ( bandArea( 24 ) * 1e-9 ),
