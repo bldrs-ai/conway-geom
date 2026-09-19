@@ -1316,6 +1316,247 @@ void testHeadFixReachesTheEmittedMesh() {
          "the emitted area covers the ribbon" );
 }
 
+// ---------------------------------------------------------------------------
+
+/**
+ * A tube closed in u in the PERIODIC (unclamped) spelling: the first `degree`
+ * control rows are repeated as the last `degree`, over a uniform knot vector
+ * that runs past the domain at both ends.
+ *
+ * That is how `B_SPLINE_SURFACE_WITH_KNOTS #160` and `#166` of
+ * `Right_Hand.step` (Pollen Robotics AmazingHand, Onshape AP242) spell their
+ * closure, and under it control rows 0 and n-1 are genuinely different points -
+ * which is exactly what the clamped row-0-against-row-n-1 test misreads
+ * (bldrs-ai/conway#709).
+ *
+ * The control polygon is a regular octagon rather than the rational circle used
+ * above, because the periodic spelling wants a single repeating pattern of
+ * control rows; the surface it sweeps is a rounded octagonal tube, which is
+ * closed in u and smooth, and closure is the only property under test.
+ */
+tinynurbs::RationalSurface3d makePeriodicClosedTube( double radius,
+                                                     double height ) {
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 1;
+
+  constexpr size_t AROUND = 8;
+
+  const size_t degree = 2;
+  const size_t rows   = AROUND + degree;
+  const size_t cols   = 2;
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( size_t row = 0; row < rows; ++row ) {
+
+    // The wrap is a modulus, so the repeated rows are BIT-identical to the
+    // ones they repeat - closure here is a property of the spelling, not an
+    // approximation of it.
+    const double angle =
+      2.0 * PI * ( static_cast< double >( row % AROUND ) /
+                   static_cast< double >( AROUND ) );
+
+    for ( size_t col = 0; col < cols; ++col ) {
+
+      points.push_back( glm::dvec3( radius * std::cos( angle ),
+                                    radius * std::sin( angle ),
+                                    col == 0 ? 0.0 : height ) );
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( rows, cols, points );
+  surface.weights        = tinynurbs::array2( rows, cols, weights );
+
+  // Uniform and UNCLAMPED: rows + degree + 1 knots at 0, 1, 2 ... so the valid
+  // domain is [ knots[ degree ], knots[ rows ] ] = [ 2, 10 ] and the knot
+  // vector runs outside it at both ends.
+  for ( size_t at = 0; at <= rows + degree; ++at ) {
+    surface.knots_u.push_back( static_cast< double >( at ) );
+  }
+
+  surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
+
+  return surface;
+}
+
+/**
+ * The periodic spelling of closure is detected (bldrs-ai/conway#709).
+ *
+ * Three checks, in the order that makes the fourth one mean something: the
+ * surface really is closed by evaluation, its end control rows really are
+ * different points so the clamped test cannot see that closure, and
+ * `closedU_` reports it anyway.
+ */
+void testPeriodicSpellingIsDetectedAsClosed() {
+
+  printf( "closure detection reads the periodic spelling too\n" );
+
+  tinynurbs::RationalSurface3d surface = makePeriodicClosedTube( 10.0, 20.0 );
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  const double uMin = solve.min_extent.x;
+  const double uMax = solve.max_extent.x;
+
+  double endGap = 0.0;
+
+  for ( size_t at = 0; at <= 16; ++at ) {
+
+    const double v = static_cast< double >( at ) / 16.0;
+
+    endGap = std::max( endGap,
+                       glm::distance( solve.evaluator.point( uMin, v ),
+                                      solve.evaluator.point( uMax, v ) ) );
+  }
+
+  printf( "      uDomain=[%.1f, %.1f]  |S(uMin,v) - S(uMax,v)| max = %.3e\n",
+          uMin, uMax, endGap );
+
+  check( endGap < 1e-9,
+         "the surface is closed in u by evaluation at the domain ends" );
+
+  const size_t rows = surface.control_points.rows();
+
+  double clampedGap = 0.0;
+
+  for ( size_t col = 0; col < surface.control_points.cols(); ++col ) {
+
+    clampedGap =
+      std::max( clampedGap,
+                glm::distance( surface.control_points( 0, col ),
+                               surface.control_points( rows - 1, col ) ) );
+  }
+
+  printf( "      control row 0 against row %zu: %.4f\n", rows - 1, clampedGap );
+
+  check( clampedGap > 1.0,
+         "control rows 0 and n-1 are DIFFERENT points, so the clamped test "
+         "cannot see this closure" );
+
+  check( solve.closedU_,
+         "the periodic spelling is read as closed in u" );
+
+  check( !solve.closedV_,
+         "and the open v parameter is still read as open" );
+}
+
+/**
+ * Detecting the periodic spelling ARMS the descent's closed-axis behaviour
+ * (bldrs-ai/conway#710).
+ *
+ * `closedU_` is not a label. Three places read it, and each of them treats a
+ * step off the end of the domain as a seam crossing rather than as a wall:
+ * `domainRepresentative` wraps instead of clamping, `seamContinuousSolution`
+ * re-expresses a uv on the branch continuous with the previous point, and
+ * `trialDisplacement` measures the requested step rather than the truncated
+ * one. Clamping is what collapsed 27 of the 53 points of `ADVANCED_FACE
+ * #19215`'s seam-straddling hole onto u = 0.000000 exactly.
+ *
+ * `trialDisplacement` is the one of the three that is reachable from here, and
+ * it is the same flag on the same surface, so it is what this asserts: on the
+ * periodic tube the descent now measures the step it asked for.
+ *
+ * The polyline walk below is a CHARACTERISATION, not a pin - it passes on both
+ * revisions. `operator()` retries from the grid seed and keeps the better
+ * residual, and on a tube this uniform the grid is a good enough seed that the
+ * retry rescues every clamped query. Reproducing the clamp end to end needs the
+ * shape #19215 actually has, and that is pinned in
+ * test/periodic_u_strip_test.cpp instead. It earns its place here by being the
+ * assertion that would catch a wrap that moved a query onto the wrong sheet -
+ * every answer still has to reproduce its own 3D point.
+ */
+void testPeriodicSpellingArmsTheClosedAxisDescent() {
+
+  printf( "the periodic spelling arms the descent's closed-axis behaviour\n" );
+
+  tinynurbs::RationalSurface3d surface = makePeriodicClosedTube( 10.0, 20.0 );
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  const double uMin   = solve.min_extent.x;
+  const double uMax   = solve.max_extent.x;
+  const double period = uMax - uMin;
+
+  // Half a period of the loop, centred on the seam: the walk starts a quarter
+  // period before uMax, crosses it, and ends a quarter period past uMin.
+  //
+  // Sampled at step CENTRES, so no sample lands exactly on the seam. A point
+  // that IS the seam has two exact preimages, uMin and uMax, and returning
+  // either is right - it would read as a domain-end answer without being a
+  // clamped one, and the assertion below would be about the wrong thing.
+  constexpr size_t STEPS = 40;
+
+  std::vector< glm::dvec3 > walk;
+
+  for ( size_t at = 0; at < STEPS; ++at ) {
+
+    const double along =
+      ( uMax - ( period * 0.25 ) ) +
+      ( period * 0.5 * ( static_cast< double >( at ) + 0.5 ) /
+        static_cast< double >( STEPS ) );
+
+    // Past uMax the same 3D point is named by along - period, which is what
+    // makes this one continuous curve on the surface rather than two.
+    const double u = along > uMax ? along - period : along;
+
+    walk.push_back( solve.evaluator.point( u, 0.5 ) );
+  }
+
+  // The descent asked to step one tenth of a period past uMax. On a closed
+  // axis that request IS what happened - it crossed the seam - so it is what
+  // the Armijo trial has to measure; on an axis read as open the step was
+  // truncated by the clamp and the displacement is zero.
+  {
+    const glm::dvec2 from( uMax - ( period * 0.02 ), 0.5 );
+    const glm::dvec2 requested( period * 0.1, 0.0 );
+    const glm::dvec2 landed( uMax, 0.5 );
+
+    const glm::dvec2 displacement =
+      solve.trialDisplacement( from, landed, requested );
+
+    printf( "      trialDisplacement u = %.6f, requested %.6f, clamped %.6f\n",
+            displacement.x, requested.x, from.x - landed.x );
+
+    check( displacement.x == requested.x,
+           "the descent measures the step it requested across the seam" );
+  }
+
+  solve.resetContinuity();
+
+  size_t atDomainEnd = 0;
+  double worstResidual = 0.0;
+
+  for ( const glm::dvec3& point : walk ) {
+
+    const glm::dvec2 uv = solve( point );
+
+    if ( uv.x == uMin || uv.x == uMax ) {
+      ++atDomainEnd;
+    }
+
+    worstResidual =
+      std::max( worstResidual,
+                glm::distance( solve.evaluator.point( uv.x, uv.y ), point ) );
+  }
+
+  printf( "      %zu of %zu points returned a domain end; worst residual %.3e "
+          "against a target of %.3e\n",
+          atDomainEnd, walk.size(), worstResidual, solve.convergence_error );
+
+  check( atDomainEnd == 0,
+         "no point of a seam-crossing polyline returns a domain end" );
+
+  // The solve's own target, not a tolerance of this test's choosing. A clamped
+  // answer misses it by orders of magnitude: it is the seed, unmoved.
+  check( worstResidual <= solve.convergence_error,
+         "and every returned uv reproduces its own 3D point" );
+}
+
 }  // namespace
 
 int main() {
@@ -1331,6 +1572,9 @@ int main() {
   testDescentNeverWorsensFromItsSeed();
   testGridRejectsAmbiguousSeamAxis();
   testGridRequiresIsoparametricChart();
+
+  testPeriodicSpellingIsDetectedAsClosed();
+  testPeriodicSpellingArmsTheClosedAxisDescent();
 
   if ( failures != 0 ) {
     printf( "\n%d check(s) failed\n", failures );

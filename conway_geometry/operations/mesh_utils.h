@@ -33,6 +33,82 @@ namespace conway::geometry {
 
 constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
 
+/**
+ * The widest arc of the u period one segment of a periodic chart's boundary
+ * may span in the annulus layout before triangulatePeriodicUChart splits it
+ * FOR THE LAYOUT. 1/12 of a period is 30 degrees.
+ *
+ * NOT a tolerance and not a gate: nothing is refused for exceeding it. The
+ * hazard it removes is that the layout draws a boundary segment as a straight
+ * chord, and a chord at radius r spanning dTheta dips to r * cos( dTheta / 2 )
+ * - so a wide enough one crosses a neighbouring ring in 2D though not in
+ * (u, v), and the chart is then triangulated over the wrong arrangement.
+ * Measured on this file's own cases: a rim that wanders back over itself
+ * comes back from CDT with resolved intersections, and a hole whose lower
+ * edge lies along a rim splits off a lens the parity peel keeps as a second
+ * component. Both are refusals of a face that is perfectly well formed in
+ * (u, v).
+ *
+ * The split point NEVER REACHES THE MESH - see the anchoring in
+ * triangulatePeriodicUChart, which puts the triangles round a split point
+ * back on the boundary sample it was interpolated from. So this refines the
+ * LAYOUT and nothing else: the face emits exactly the boundary polyline it
+ * was handed, which is also the one the neighbouring face keeps.
+ * Measured on the corpus, the widest segment of any ring of any of the three
+ * faces that reach here is 0.0398 of a period (14.3 degrees), against a
+ * threshold of 30, so nothing in the corpus splits at all.
+ */
+constexpr double MAX_CHART_CHORD_FRACTION = 1.0 / 12.0;
+
+/**
+ * The widest step in u, as a fraction of the period, from which
+ * triangulatePeriodicUChart will read a boundary at all.
+ *
+ * EVERY READING THAT PATH TAKES OF A BOUNDARY IS A NEAREST-IMAGE ONE: a
+ * consecutive pair of samples is assumed to be adjacent on the surface, so a
+ * step is reduced by `step - period * round( step / period )`. That
+ * reduction is a guess, and past half a period it is worth nothing - a
+ * segment genuinely spanning 0.60 of a period reduces to -0.40, which
+ * REVERSES its direction, and a layout drawn from a reversed segment is a
+ * chart the face never visits. A face carrying a step that wide is therefore
+ * REFUSED here and ear-clipped exactly as it is today, rather than laid out
+ * from a reduction that cannot be trusted.
+ *
+ * WHERE 3/8 COMES FROM, which is a placement and not a tolerance. The band it
+ * has to sit in is closed at both ends by facts:
+ *
+ *   - P/3 is the floor. The coarsest closed rim there is has THREE samples,
+ *     and its steps are exactly a third of a period; this file's own
+ *     three-sample rim case is one. A bound at or below P/3 refuses a
+ *     legitimate shape, and floating point puts that rim's steps an ulp
+ *     either side of P/3, so the floor has to be cleared rather than met.
+ *   - P/2 is the ceiling. There the two images are equidistant and the
+ *     reduction carries no information whatever.
+ *
+ * 3/8 is the middle of that band. Nothing in the corpus is near it.
+ *
+ * NECESSARY AND NOT SUFFICIENT, which is why it no longer stands alone. A
+ * segment spanning 0.80 of a period reduces to -0.20 and reads as decisive
+ * while being just as wrong, so a step reading 0.20P may be a disguised
+ * 0.80P and refining only the steps that LOOK ambiguous refines the wrong
+ * ones. Nothing recoverable from the two samples separates those spellings -
+ * the surface is P-periodic in u, so both put the samples at the same two 3D
+ * points - and the route lives in what runs between them.
+ * triangulatePeriodicUChart reads it there: see the route confirmation in
+ * that function, which walks every candidate image across the surface and
+ * keeps the reduction only when it is the one the emitted segment
+ * represents. What this bound still does, and what it is kept for, is remove
+ * the range in which the reduction carries nothing for that walk to confirm.
+ *
+ * Measured over the 13 smoke models and 14 more of the corpus: five faces
+ * reach the reading, thirteen rings between them, and the widest step of any
+ * of them is 0.2689 of a period (Equiptment_UltrasoundProbe.step), 0.72 of
+ * this bound and 0.81 of the floor below it. A quarter of a period - the
+ * first bound tried - would already be refusing two of those five faces.
+ */
+constexpr double MAX_DECISIVE_IMAGE_STEP_FRACTION = 3.0 / 8.0;
+
+
 
 // TODO: review and simplify
 // ---------------------------------------------------------------------------
@@ -3104,6 +3180,22 @@ inline void TriangulateConicalSurface(
   // r indicates the level of subdivision, currently 3 you can increase it to
   // 5
 
+  // Ring 0 is earcut's outer boundary (see outerBoundFirstOrder), and this
+  // path is deliberately NOT given the OUTERBOUND-typed reorder the b-spline
+  // path takes. It does not feed the rings in arrival order in the first
+  // place: `outsideMostBoundaries` above is a max-heap on each loop's largest
+  // radius, which is the quantity this (dx, dy) / maxR projection nests by, so
+  // the ring that is outermost in the plane earcut is about to see already
+  // goes first. Imposing the declared type on top would replace a
+  // projection-aware order with a topological one, and the two need not agree:
+  // the type says which loop is outer on the SURFACE, not which encloses the
+  // others once the cone is flattened axially.
+  //
+  // Audited against bldrs-ai/test-models#65, where 43 of the 173 faces that
+  // list their outer bound late are conical and none is damaged. Measured,
+  // every one of those 43 lists a ZERO-EXTENT loop first, and this path drops
+  // an empty bound outright above, so there was never a ring to clip as the
+  // outline.
   std::vector<uint32_t> indices;
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
@@ -3512,6 +3604,15 @@ inline void TriangulateCylindricalSurface(Geometry &geometry,
 
 #endif
 
+  // Ring 0 is earcut's outer boundary (see outerBoundFirstOrder), and as on
+  // the cone this path already orders its rings geometrically rather than by
+  // arrival: `outsideMostBoundaries` is a max-heap on each loop's largest
+  // axial z, which is what this annulus projection nests by. Audited for
+  // bldrs-ai/test-models#65 and deliberately left alone - imposing the
+  // OUTERBOUND-typed swap the b-spline path takes would override a
+  // projection-aware order with a topological one, and on this model the 13
+  // misordered cylindrical faces show no damage under the order it already
+  // uses.
   std::vector<uint32_t> indices;
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
@@ -4230,45 +4331,68 @@ struct RationalNurbsInverseMethod {
         MIN_INVERSE_ERROR,
         glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
 
-    // Closure, from the control grid rather than by sampling: a b-spline
-    // surface is closed in a parameter exactly when the first and last rows
-    // (columns) of control points define the SAME curve, and that is a
-    // property of the definition rather than a measurement of it.
+    // Closure, from the surface's DEFINITION rather than by sampling it: a
+    // b-spline surface is closed in a parameter exactly when the two
+    // isocurves at the ends of that parameter's domain are the SAME curve.
     //
-    // On a RATIONAL surface the Cartesian control points alone do not settle
-    // that. The endpoint curves share this surface's knot vector and degree,
-    // so with control points P and weights w they are
+    // Those two isocurves are rational curves in the OTHER parameter, over
+    // that parameter's own knot vector and degree, and their control points
+    // and weights are fixed combinations of this surface's control grid,
+    // weighted by the closed parameter's basis evaluated at the domain end:
     //
-    //   C( t ) = sum_j N_j( t ) w_j P_j / sum_j N_j( t ) w_j
+    //   W( j ) = sum_k N_k( uEnd ) w_kj
+    //   R( j ) = sum_k N_k( uEnd ) w_kj P_kj / W( j )
     //
-    // and two rows of coincident P with DIFFERENT w are different rational
-    // curves - they agree only where the basis is interpolating, i.e. at the
-    // ends. Comparing P alone therefore asserts more than it checks, and
-    // getting it wrong is not cosmetic: closedU_/closedV_ now gate two
-    // separate paths - the seam crossing in solveFromSeed and the
-    // full-coverage grid in tryFullCoverageSeamGrid - so a false positive
-    // makes the descent wrap across a genuine geometric discontinuity and
-    // return the wrong branch. Weights are compared as well.
+    // A b-spline basis is linearly independent over its own domain, so two
+    // curves sharing a knot vector and a degree are identical exactly when
+    // their ( R, W ) agree. This stays a property of the definition rather
+    // than a measurement of it - nothing is sampled, and no new constant
+    // enters.
+    //
+    // WHY NOT ROW 0 AGAINST ROW n-1, which is what this was. That is only the
+    // CLAMPED spelling of closure. Under the PERIODIC spelling the wrap
+    // repeats leading control rows as trailing ones, so rows 0 and n-1 are
+    // genuinely different points: 2.33mm apart on
+    // `B_SPLINE_SURFACE_WITH_KNOTS #160` and 1.35mm on `#166`
+    // (Right_Hand.step), both of which declare `u_closed = .T.` and both of
+    // which are closed to the last bit when asked by evaluation. Reading
+    // false there was bldrs-ai/conway#709, and the clamp it left in
+    // domainRepresentative collapsed 27 of the 53 points of a seam-straddling
+    // hole onto the domain floor - bldrs-ai/conway#710.
+    //
+    // Counting REPEATED ROWS instead, as conway#709 suggested, does not fix
+    // it either: `#160` repeats `degree` = 3 rows and `#166` repeats 2,
+    // because every one of `#166`'s u knots has multiplicity 2 and the
+    // surface is only C^1 across the wrap. There is no fixed row count to
+    // compare, which is why the test is over the basis and not over the grid.
+    //
+    // On the clamped spelling the basis at the domain ends is ( 1, 0, ... )
+    // and ( ..., 0, 1 ), so R and W collapse to the single end row and this
+    // is EXACTLY the comparison it replaces - no clamped surface changes its
+    // reading.
+    //
+    // Getting this wrong is not cosmetic: closedU_/closedV_ gate the wrap in
+    // domainRepresentative, the seam crossing in seamContinuousSolution, the
+    // wide-step displacement in trialDisplacement, and the seam-axis choice
+    // in tryFullCoverageSeamGrid - so a false positive makes the descent wrap
+    // across a genuine geometric discontinuity and return the wrong branch.
+    // Weights are therefore compared as well.
     //
     // The weight test is RELATIVE, against the same RELATIVE_INVERSE_ERROR
     // the distance tolerance below is built from, because a weight is
     // dimensionless and cannot be judged against a length. No new constant
     // enters.
     //
-    // Equal ( P, w ) is sufficient for the curves to coincide; it is not
-    // necessary, because scaling a whole row of weights by a common factor
+    // Equal ( R, W ) is sufficient for the curves to coincide; it is not
+    // necessary, because scaling a whole end row's weights by a common factor
     // leaves the rational curve unchanged. That direction is deliberately not
     // chased: the test errs toward "not closed", which costs a face nothing
-    // more than the behaviour it had before either path existed.
+    // more than the behaviour it had before any of those paths existed. See
+    // testClosureRequiresMatchingWeights in test/nurbs_seam_test.cpp, which
+    // pins it.
     //
     // "Coincide" is judged at the same tolerance the solve uses to call two
     // points the same point, so no new constant is introduced there either.
-    // On the surface this was written for the rows are bitwise equal - the
-    // seam of `B_SPLINE_SURFACE_WITH_KNOTS #1553` matches to 0.0 across all
-    // 84 columns, and its weights match to 0.0 as well - but an exporter that
-    // round-trips through floats needs the slack, and a surface that is
-    // merely NEAR closed is one where the wrap below would be rejected by its
-    // own residual test anyway.
     const double closureTolerance =
       std::max( MIN_INVERSE_ERROR,
                 glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
@@ -4280,6 +4404,11 @@ struct RationalNurbsInverseMethod {
     // polynomial, so every weight is 1 and the weight test is vacuous.
     const bool haveWeights =
       surface.weights.rows() == rows && surface.weights.cols() == cols;
+
+    const auto weightAt =
+      [ & ]( size_t row, size_t col ) {
+        return haveWeights ? surface.weights( row, col ) : 1.0;
+      };
 
     const auto sameWeight =
       [ & ]( double left, double right ) {
@@ -4293,41 +4422,102 @@ struct RationalNurbsInverseMethod {
                  RELATIVE_INVERSE_ERROR;
       };
 
-    if ( rows > 1 && cols > 0 ) {
+    // Is the surface closed in `axis` - 0 for u, 1 for v - by the end-isocurve
+    // test above? `degreeU`/`degreeV` are the ctor's OWN degrees, already
+    // corrected for the two-knot degenerate case, so this reads the same
+    // domain min_extent/max_extent were built from.
+    const auto closedOnAxis =
+      [ & ]( int axis ) {
 
-      closedU_ = true;
+        const std::vector< double >& knots =
+          axis == 0 ? srf.knots_u : srf.knots_v;
 
-      for ( size_t col = 0; col < cols; ++col ) {
+        const size_t degree = axis == 0 ? degreeU : degreeV;
 
-        if ( glm::distance( surface.control_points( 0, col ),
-                            surface.control_points( rows - 1, col ) ) >
-               closureTolerance ||
-             !sameWeight( haveWeights ? surface.weights( 0, col ) : 1.0,
-                          haveWeights ? surface.weights( rows - 1, col ) : 1.0 ) ) {
+        // Control points ALONG the axis being tested, and ACROSS it - the
+        // isocurve nets run across.
+        const size_t along  = axis == 0 ? rows : cols;
+        const size_t across = axis == 0 ? cols : rows;
 
-          closedU_ = false;
-          break;
+        if ( along < 2 || across < 1 ) {
+          return false;
         }
-      }
-    }
 
-    if ( cols > 1 && rows > 0 ) {
-
-      closedV_ = true;
-
-      for ( size_t row = 0; row < rows; ++row ) {
-
-        if ( glm::distance( surface.control_points( row, 0 ),
-                            surface.control_points( row, cols - 1 ) ) >
-               closureTolerance ||
-             !sameWeight( haveWeights ? surface.weights( row, 0 ) : 1.0,
-                          haveWeights ? surface.weights( row, cols - 1 ) : 1.0 ) ) {
-
-          closedV_ = false;
-          break;
+        // A knot vector that does not match the control count is a malformed
+        // surface; findSpan's window would read outside the grid. Callers
+        // gate on tinynurbs::surfaceIsValid, so this is the direct-construction
+        // path only - it fails safe rather than guessing.
+        if ( knots.size() != along + degree + 1 ) {
+          return false;
         }
-      }
-    }
+
+        const double lo = min_extent[ axis ];
+        const double hi = max_extent[ axis ];
+
+        if ( !( hi > lo ) ) {
+          return false;
+        }
+
+        const int spanLo = RationalSurfaceEvaluator::findSpan( degree, knots, lo );
+        const int spanHi = RationalSurfaceEvaluator::findSpan( degree, knots, hi );
+
+        const std::vector< double > basisLo =
+          tinynurbs::bsplineBasis( static_cast< unsigned int >( degree ),
+                                   spanLo, knots, lo );
+        const std::vector< double > basisHi =
+          tinynurbs::bsplineBasis( static_cast< unsigned int >( degree ),
+                                   spanHi, knots, hi );
+
+        for ( size_t at = 0; at < across; ++at ) {
+
+          glm::dvec3 homogeneousLo( 0.0 );
+          glm::dvec3 homogeneousHi( 0.0 );
+
+          double weightLo = 0.0;
+          double weightHi = 0.0;
+
+          for ( size_t k = 0; k <= degree; ++k ) {
+
+            const size_t indexLo =
+              static_cast< size_t >( spanLo ) - degree + k;
+            const size_t indexHi =
+              static_cast< size_t >( spanHi ) - degree + k;
+
+            const size_t rowLo = axis == 0 ? indexLo : at;
+            const size_t colLo = axis == 0 ? at : indexLo;
+            const size_t rowHi = axis == 0 ? indexHi : at;
+            const size_t colHi = axis == 0 ? at : indexHi;
+
+            const double scaledLo = basisLo[ k ] * weightAt( rowLo, colLo );
+            const double scaledHi = basisHi[ k ] * weightAt( rowHi, colHi );
+
+            homogeneousLo += scaledLo * surface.control_points( rowLo, colLo );
+            homogeneousHi += scaledHi * surface.control_points( rowHi, colHi );
+
+            weightLo += scaledLo;
+            weightHi += scaledHi;
+          }
+
+          // A NURBS weight denominator is positive wherever the surface is
+          // defined. A zero or negative one here means the surface is not
+          // evaluable at that domain end, and an unevaluable end cannot be
+          // shown to coincide with anything.
+          if ( !( weightLo > 0.0 ) || !( weightHi > 0.0 ) ) {
+            return false;
+          }
+
+          if ( glm::distance( homogeneousLo / weightLo,
+                              homogeneousHi / weightHi ) > closureTolerance ||
+               !sameWeight( weightLo, weightHi ) ) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+    closedU_ = closedOnAxis( 0 );
+    closedV_ = closedOnAxis( 1 );
 
   }
 
@@ -7194,6 +7384,11 @@ inline bool tryRibbonLoft(
 
       std::vector< uint32_t > ears;
 
+      // One ring, so earcut's ring-0-is-the-outline contract is satisfied by
+      // construction and the OUTERBOUND reorder the b-spline path takes has
+      // nothing to reorder: tryRibbonLoft is only ever called under
+      // `bounds.size() == 1`, and `outline` is built from that single bound's
+      // welded boundary. Audited for bldrs-ai/test-models#65.
       {
         conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
         ears = mapbox::earcut< uint32_t >( outline );
@@ -7437,6 +7632,1349 @@ inline size_t reSolveClosedTrimHead(
   return rewritten;
 }
 
+/**
+ * A trimmed face on a surface CLOSED IN U whose boundary wraps that closure
+ * has no representation as one outer ring with holes nested inside it, which
+ * is the only shape `mapbox::earcut` accepts. This triangulates it where it
+ * actually lives - in the periodic chart - and hands the caller triangles
+ * indexed into its own mesh.
+ *
+ * WHAT GOES WRONG WITHOUT IT. The inverse solve returns u inside the
+ * surface's own parameter domain, so a trim loop that runs all the way round
+ * the closure comes back as a u-MONOTONE CHAIN spanning one full period with
+ * a single modular jump in it. As a plane polygon that chain is a sliver: the
+ * sweep, plus one long chord back across the whole chart. Measured on
+ * `ADVANCED_FACE #19218` of `Right_Hand.step` (Pollen Robotics AmazingHand,
+ * solid #19715 `Proximal_Shell`), whose four bounds are two such rims and two
+ * genuine circular holes:
+ *
+ *   ring 0  u 0.0000, 0.9860, 0.9719 ... 0.0002   v ~ 0.95   the top rim
+ *   ring 3  u 0.0000, 0.0360 ... 0.9602, 0.0000   v ~ 0.08   the bottom rim
+ *   ring 1  u [0.194, 0.276]  v [0.432, 0.568]               a real hole
+ *   ring 2  u [0.724, 0.806]  v [0.432, 0.568]               a real hole
+ *
+ * Rings 1, 2 and 3 all lie OUTSIDE the sliver ring 0 makes, so
+ * `findHoleBridge` finds no outer segment to bridge to, and `eliminateHole`
+ * returns having linked nothing - mapbox::earcut DROPS a hole it cannot
+ * bridge, silently and with no error. That face emitted 63 triangles from 256
+ * boundary points, using ring 0's points and not one point of any other ring;
+ * the shell it belongs to came out with negative signed volume.
+ *
+ * WHAT THIS BUILDS, AND WHY THERE IS NO CUT IN IT. The predecessor of this
+ * function cut the periodic annulus open into a simple polygon, because
+ * earcut needs one. Everything expensive about that construction was the
+ * validation it needed: the cut had to be placed where it crossed no ring,
+ * the holes had to be translated into the cut window and proved to land
+ * inside it, the rims had to be classified and proved to wrap in opposite
+ * directions, and each of those readings needed its own refusal. Across three
+ * review rounds on bldrs-ai/conway-geom#207, eight findings were the same
+ * shape - a gate that assumed a reading it had not taken - and each fix added
+ * a gate the next round found insufficient.
+ *
+ * A constrained Delaunay triangulation needs no simple polygon. It takes a
+ * bag of closed loops with no outer/inner distinction, and
+ * `CDT::eraseOuterTrianglesAndHoles` decides interior from exterior by parity
+ * depth-peeling - no seeds, no winding rule, no containment test. So the
+ * rings go in as they are, laid out in the ANNULUS chart
+ * `(1 + phi) * (cos theta, sin theta)` that `triangulateUnwrappedLoops`
+ * already uses for the wrapping case, and which has no cut to place, cross or
+ * validate. That layout is not new here: the cylinder side face with two rims
+ * ships on it today.
+ *
+ * WHAT THE CUT WAS STILL DOING, AND WHAT REPLACES IT. The cut was
+ * load-bearing twice. The second job was the refinement downstream: sphere,
+ * torus and cylinder refine through the `WingedEdgeMesh< glm::dvec3 >`
+ * overload of `tesselate`, which midpoints in WORLD space and re-projects, so
+ * a seam-spanning triangle is inert there - but `TriangulateBspline` refines
+ * through the `ParameterVertex` overload, whose
+ * `glm::dvec2 newUV = ( v0.uv + v1.uv ) * 0.5` puts the midpoint of an edge
+ * spanning u ~ uMax and u ~ uMin in the MIDDLE of the chart, on the opposite
+ * side of the surface, and the mesh folds.
+ *
+ * So the chart is still cut - but afterwards, by the triangulation, rather
+ * than before it by a search. Once the triangles exist, a breadth-first walk
+ * of their adjacency gives each triangle a period offset, each vertex is
+ * lifted by its triangle's offset, and any vertex two triangles disagree
+ * about is duplicated. That cut cannot cross anything, because it is made of
+ * edges the triangulation already drew, and there is nothing to validate
+ * because it was not chosen.
+ *
+ * It is also well-posed geometrically rather than by tolerance. A triangle
+ * that does not contain the origin lies in a closed half-plane through it, so
+ * its angular span is at most pi and the nearest-image lift of its three
+ * corners is determined; the origin sits inside the inner rim, which
+ * `eraseOuterTrianglesAndHoles` erases. That is stated below as arithmetic -
+ * the three pairwise nearest-image offsets of a triangle sum to zero - and
+ * checked, once, on the triangulation's own output.
+ *
+ * THE EMERGENT SEAM WELDS MORE STRONGLY THAN THE CUT DID. The old cut's two
+ * edges were periodic copies of one segment, and welded in `Geometry::Reify`
+ * only because the surface really was closed in u, evaluated a period apart.
+ * A duplicate made here carries a BITWISE COPY of its original's world
+ * position, so `welder.weld( *this, DBL_EPSILON )` closes it by identity
+ * rather than by periodicity.
+ *
+
+ * THE LAYOUT IS REFINED; THE BOUNDARY IS NOT. A segment wider than
+ * MAX_CHART_CHORD_FRACTION of the period is split, because the layout draws
+ * it as a straight chord and a wide chord cuts across its neighbours - two
+ * of this file's own cases are refused outright without the split, a rim
+ * that wanders back over itself (CDT resolves intersections that are not
+ * there in (u, v)) and a hole lying along a rim (the lens between the two
+ * spellings of the same contact becomes a second parity component).
+ *
+ * THE SPLIT POINT IS NOT A POINT OF THE FACE, and two rounds of review were
+ * spent discovering it. It was first EVALUATED ON THIS FACE'S SURFACE, which
+ * put it off the straight trim segment the neighbouring face keeps: a
+ * T-junction AND a geometric crack, with the file's own test pinning the
+ * disagreement as a feature (a four-sample rim asserted to come out a
+ * TWELVE-gon). Codex 4051389895. It was then interpolated along the segment,
+ * which removed the crack - the area is the 4-gon band's again - and left the
+ * T-junction, documented here as unfixable from inside this function. Codex
+ * 4051991546 read that and answered it: `Reify` welds coincident vertices and
+ * cannot match A-M or M-B to the neighbour's A-B, so every split that fires
+ * still makes two single-sided edges, and the split has to stay LAYOUT-ONLY.
+ *
+ * It does. The split points go into the CDT, where the layout needs them, and
+ * a triangle corner that lands on one is put back on the boundary sample it
+ * was interpolated from before anything is emitted - see the anchoring below,
+ * which is exact rather than approximate because a split point is collinear
+ * with its segment's ends in the chart and in 3D, and because the route
+ * reading above leaves it nearer to its anchor than half a period. The
+ * emitted face's border
+ * edges are the boundary polyline's own segments and the emergent seam, and
+ * nothing else; this file asserts that directly, over a boundary whose
+ * segments are not all the same length.
+ *
+ * THE VALIDITY SIGNAL is built in rather than gated, because it is a failure
+ * the construction can cause and therefore the construction's job to catch.
+ * CDT RESOLVES invalid input rather than rejecting it: handed overlapping
+ * rings at the production 1e-9 weld it came back with `TryResolve` having
+ * added vertices and area paved into a hole - defined, wrong, and silent.
+ * Those added vertices have no world-space lift, which
+ * `triangulateUnwrappedLoops` handles per triangle by skipping them
+ * (mesh_utils.h, the cdtWorld.size() test). Here it is a WHOLE-FACE refusal
+ * instead: `triangulation.vertices.size()` growing past the input set means
+ * the rings this was handed intersect, and one post-hoc reading of the
+ * triangulation's own output stands in for the containment and crossing
+ * gates the cut needed. It does not stand in for ALL of them - a bound that
+ * intersects nothing is invisible to it, which is what the component count
+ * after the lift answers.
+ *
+ * WHAT IS STILL GATED, AND WHY EACH IS A FACT ABOUT THE SURFACE RATHER THAN
+ * ABOUT A CONSTRUCTION:
+ *
+ *   - `declaredClosedU`, the file's own `u_closed`. A periodic chart is a
+ *     consequence of the author's topology, and no amount of sampling makes a
+ *     surface closed that its author did not close. See the two-things note
+ *     below on which "closed in u" this is.
+ *   - the per-knot-span closure check, unchanged: does the surface KEEP the
+ *     closure it declares, asked by evaluation with enough samples per span
+ *     to settle each span's polynomial.
+ *
+ * AND WHAT IS NO LONGER GATED: whether the boundary actually WRAPS that
+ * closure. That reading summed each ring's steps taken to their nearest
+ * periodic image and, when no ring netted a turn, handed the face to earcut
+ * as the cheaper triangulator. It was defended as costing only speed when it
+ * misread. That defence is wrong, and codex 4051389902 on
+ * bldrs-ai/conway-geom#207 showed why: the lifted steps +0.60P, -0.10P,
+ * +0.49P, +0.01P sum to one turn and can spell a simple rim by varying v, but
+ * nearest-image reduction turns the first into -0.40P and the sum into zero.
+ * A boundary that genuinely wraps then goes to earcut, which is the sliver
+ * and the dropped ring this path exists to prevent.
+ *
+ * NO THRESHOLD ON u CLOSES IT, SO THE ROUTE IS READ FROM THE SURFACE. The
+ * reduction is lossy in both directions: the true steps +0.80P, +0.10P,
+ * +0.05P, +0.05P also sum to one turn, and every one of them reduces to a
+ * magnitude of 0.20P or less, under any threshold worth having - so a step
+ * that READS decisive may be a large one that reduced into the decisive
+ * band, and narrowing the band refines the wrong steps. The measurement says
+ * the same thing from the other side: the largest nearest-image step in the
+ * models measured is 0.2689 of a period, on Equiptment_UltrasoundProbe.step,
+ * so a P/4 gate would already be firing on real data.
+ *
+ * AND NO READING OF THE TWO SAMPLES CLOSES IT EITHER, which is arithmetic
+ * rather than a gap in the readings tried. The surface is P-periodic in u -
+ * the gate above has just established that by evaluation - so S(u + P, v) IS
+ * S(u, v). The spellings +0.80P and -0.20P put the two samples at the SAME
+ * two 3D points, at the same separation, with the same chord between them;
+ * every quantity computable from the pair is identical under both, and a 3D
+ * bound on |du| would have to come from the length of the path BETWEEN them,
+ * which no pair of endpoints carries. Found by codex 4051991542 on
+ * bldrs-ai/conway-geom#207 and bldrs-ai/conway#711, with a constructed face
+ * that passes all three post-hoc refusals below while covering a 0.20-period
+ * sector of a band that wraps.
+ *
+ * SO THE PART BETWEEN THE SAMPLES IS WHERE THIS READS. Each candidate image
+ * is a ROUTE - a path in (u, v) from one sample to the other - and the
+ * routes differ, wildly, in where the surface carries them: the reduced one
+ * crosses a 0.20-period sector, its neighbour crosses the other 0.80. The
+ * emitted mesh draws the segment as one straight 3D chord, and that chord is
+ * also what the face on the other side of the trim edge keeps, so the route
+ * this face means is the one that chord stands for. A straight line is the
+ * SHORTEST path between its ends, so the route it stands for is the shortest
+ * one: each candidate's image is walked - at the layout's own chord bound,
+ * which is the resolution the layout will draw it at - its length measured,
+ * and the nearest image kept only when its image is the shortest. A
+ * comparison and not a tolerance: nothing is measured against a number, and
+ * the face is refused when any other image travels no further than the
+ * reduction does.
+ *
+ * THE TRIM CURVE WOULD BE THE STRONGER EVIDENCE AND IS NOT AVAILABLE HERE.
+ * Bisecting a curve segment halves its true step, and recursion until every
+ * sub-step is decisive would settle the route outright rather than reading
+ * it off a chord. The curve does not survive the call chain: createBound3D
+ * and createSimpleBound3D (conway-api.cpp) take a flat vertex array across
+ * the wasm boundary, so a polyline and its closure flag are the whole of
+ * what reaches TriangulateBspline. The chord is what this face ships, what
+ * its neighbour shares and what every consumer downstream reads as the
+ * boundary, so it is the thing this confirms the layout against.
+ *
+ * A DISAGREEMENT REFUSES THE FACE rather than relaying it out on the winning
+ * route. Laying out a step of 0.80P means splitting it into ten layout
+ * pieces and emitting every one of them into the shared boundary, which is
+ * the T-junction the layout split below exists to avoid; refusing keeps
+ * every accepted step inside MAX_DECISIVE_IMAGE_STEP_FRACTION of a period,
+ * and that is what lets the layout split stay layout-only. The caller
+ * ear-clips, which is exactly what it does today.
+ *
+ * So the reading is gone and every declared-closed-u multi-bound face comes
+ * here. The cost is that a boundary which does not wrap is triangulated by
+ * CDT rather than ear-clipped; the three refusals below are unchanged, so a
+ * face this cannot handle still falls back to exactly today's ear-clipping.
+ * Measured across the 13 smoke models and 14 more from the corpus, FIVE faces
+ * reach this point and all five wrap - the reading never once returned false,
+ * so removing it changes nothing that was measured.
+ *
+ * TWO DIFFERENT THINGS ARE CALLED "closed in u", and only one of them is a
+ * gate here:
+ *
+ *   - `BSpline::ClosedU` - `declaredClosedU` below - is the file's own
+ *     `u_closed` attribute, carried to native by the extractor. It is a
+ *     topological declaration by the authoring system, and it reads `.T.` for
+ *     every surface this path exists to fix. It IS the gate, taken first.
+ *   - `solve.closedU_` is DERIVED, by comparing the two isocurves at the ends
+ *     of the u domain. It agrees with the declaration on every surface that
+ *     reaches this path, and it is deliberately NOT the gate. (It used to
+ *     compare control row 0 with row n-1, which is only the CLAMPED spelling
+ *     and read false for the periodic one; that was bldrs-ai/conway#709, and
+ *     it is fixed at the reading rather than worked around here.)
+ *
+ * NOTHING TOUCHES THE MESH BEFORE THE COMMIT SECTION. Every refusal above it
+ * has to leave the caller exactly the mesh it was handed, so layout split
+ * points are recorded and materialized at the end rather than created where
+ * they are computed - the same defect, and the same remedy, as the chain
+ * duplicate that leaked one vertex per refused call on the corpus.
+ *
+ * @param mesh              The face mesh, holding the projected boundary
+ *                          vertices in ring order as its first entries. On
+ *                          success their `uv` are rewritten to the lifted
+ *                          values, which is what keeps the `ParameterVertex`
+ *                          refinement consistent across the emergent seam.
+ * @param surface           The NURBS surface, for its knot domain and closure.
+ * @param declaredClosedU   The file's own `u_closed` for this surface.
+ * @param uvBoundaryValues  The projected rings. Read-only: unlike its
+ *                          predecessor this rewrites no rings, because it
+ *                          returns triangles rather than a polygon for
+ *                          earcut.
+ * @param trianglesOut      Filled on success with mesh-vertex triples.
+ * @param seamEdgesOut      Filled on success with the emergent seam's edges,
+ *                          as { a, b, a', b' } - one chart edge's two mesh
+ *                          copies. They are BORDER edges, which `tesselate`
+ *                          skips, so the caller refines them in lockstep
+ *                          through `refineSeamPairs` before refining the
+ *                          interior. See the note on the cut above.
+ * @param periodOut         The u period, for the caller's evaluation wrap.
+ * @param uMinOut           The start of the u domain, likewise.
+ * @return True when the chart was triangulated and `trianglesOut` is the
+ *         face; false on any refusal, with the mesh untouched and the caller
+ *         ear-clipping exactly as it does today.
+ */
+inline bool triangulatePeriodicUChart(
+    WingedEdgeMesh< ParameterVertex >&                           mesh,
+    const tinynurbs::RationalSurface3d&                          surface,
+    bool                                                         declaredClosedU,
+    const std::vector< std::vector< std::array< double, 2 > > >& uvBoundaryValues,
+    std::vector< std::array< uint32_t, 3 > >&                    trianglesOut,
+    std::vector< std::array< uint32_t, 4 > >&                    seamEdgesOut,
+    double&                                                      periodOut,
+    double&                                                      uMinOut ) {
+
+  using Point = std::array< double, 2 >;
+
+  trianglesOut.clear();
+  seamEdgesOut.clear();
+
+  // The file said so. A periodic chart is a consequence of the surface being
+  // closed in u; taken first because it is the cheapest refusal and the most
+  // authoritative one.
+  if ( !declaredClosedU ) {
+    return false;
+  }
+
+  const size_t ringCount = uvBoundaryValues.size();
+
+  if ( ringCount < 2 ) {
+    return false;
+  }
+
+  const size_t degreeU = surface.degree_u;
+  const size_t degreeV = surface.degree_v;
+
+  if ( surface.knots_u.size() < ( 2 * degreeU ) + 2 ||
+       surface.knots_v.size() < ( 2 * degreeV ) + 2 ) {
+    return false;
+  }
+
+  const double uMin   = surface.knots_u[ degreeU ];
+  const double uMax   = surface.knots_u[ surface.knots_u.size() - 1 - degreeU ];
+  const double period = uMax - uMin;
+
+  if ( !( period > 0.0 ) ) {
+    return false;
+  }
+
+  // THERE IS NO WINDING READING HERE ANY MORE. See the header note: it asked
+  // whether the boundary wraps the closure, to send a boundary that does not
+  // to earcut as the cheaper triangulator, and it could not be made sound.
+  //
+  // What IS read of the steps is whether their nearest-image reduction - the
+  // one assumption every later reading of this boundary rests on - is
+  // decisive at all. See MAX_DECISIVE_IMAGE_STEP_FRACTION: past a third of a
+  // period the reduction can reverse a segment's direction, and a layout
+  // drawn from a reversed segment is a chart the face never visits. Refused,
+  // which leaves the caller ear-clipping exactly as it does today.
+  size_t totalPoints = 0;
+
+  const double maxDecisiveStep = period * MAX_DECISIVE_IMAGE_STEP_FRACTION;
+
+  for ( const std::vector< Point >& ring : uvBoundaryValues ) {
+
+    if ( ring.size() < 3 ) {
+      return false;
+    }
+
+    totalPoints += ring.size();
+
+    for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
+
+      const double step =
+        ring[ ( at + 1 ) % count ][ 0 ] - ring[ at ][ 0 ];
+
+      if ( std::abs( step - ( period * std::round( step / period ) ) ) >
+             maxDecisiveStep ) {
+
+        return false;
+      }
+    }
+  }
+
+  // The caller's contract: every ring point is a mesh vertex, in ring order,
+  // from vertex 0.
+  if ( totalPoints > mesh.vertices.size() ) {
+    return false;
+  }
+
+  // Does the surface KEEP the closure it declares? Asked of the surface by
+  // evaluation over the whole v domain, which is a strictly stronger
+  // question than the one `closedU_` answers at the domain ends - and
+  // asking it here keeps the gate a property of THIS face's support
+  // surface rather than of a flag set elsewhere. The tolerance is the
+  // relative one closedU_ already uses, against the control net's own
+  // extent, so no new constant enters.
+  {
+    glm::dvec3 gridMin( std::numeric_limits< double >::max() );
+    glm::dvec3 gridMax( std::numeric_limits< double >::lowest() );
+
+    for ( size_t row = 0; row < surface.control_points.rows(); ++row ) {
+      for ( size_t col = 0; col < surface.control_points.cols(); ++col ) {
+
+        gridMin = glm::min( gridMin, surface.control_points( row, col ) );
+        gridMax = glm::max( gridMax, surface.control_points( row, col ) );
+      }
+    }
+
+    const double closureTolerance =
+      std::max( MIN_INVERSE_ERROR,
+                glm::distance( gridMin, gridMax ) * RELATIVE_INVERSE_ERROR );
+
+    // PER KNOT SPAN, AND ENOUGH SAMPLES IN EACH TO SETTLE THE SPAN.
+    //
+    // This was five probes spread over the whole v domain, which is not a
+    // test of closure at all: the two u-end isocurves are splines, so they
+    // can agree at any five chosen parameters and part company between them.
+    // A degree-1 surface with eight v knot spans does it exactly - make the
+    // two end control rows agree at the four spans the probes land on and
+    // differ at the four they do not, and five equal readings certify an open
+    // surface as closed. The chart is then triangulated, its emergent seam is
+    // welded across two positions that are NOT one point on the surface, and
+    // the face ships with an open seam. Found by review on
+    // bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+    //
+    // WHY THIS SAMPLE COUNT IS SUFFICIENT, not merely larger. Write the two
+    // isocurves as A0/W0 and A1/W1, where A and W are the homogeneous
+    // numerator and the weight denominator. Both are splines of degree
+    // `degreeV` over `knots_v`, so ON ONE KNOT SPAN both are polynomials of
+    // degree at most `degreeV`. The curves coincide on that span exactly when
+    // A0*W1 - A1*W0 vanishes there - weights are positive, so no denominator
+    // is zero - and that difference is a polynomial of degree at most
+    // 2*degreeV. A polynomial of degree at most d that vanishes at d + 1
+    // distinct points is identically zero, so 2*degreeV + 1 readings settle
+    // the span, and every span together settles the domain. Five global
+    // probes have no such argument behind them at any degree.
+    //
+    // In floating point this is a bound rather than a proof - agreement at
+    // the nodes bounds the difference between them by the nodes' Lebesgue
+    // constant, which for this many uniform nodes at these degrees is a small
+    // factor, not an order of magnitude. That is the honest claim: a
+    // degree-counting argument with a bounded numerical gap, where before
+    // there was no argument.
+    const size_t closureSamples = std::max< size_t >( 2, ( 2 * degreeV ) + 1 );
+
+    for ( size_t span = degreeV;
+          span + degreeV + 1 < surface.knots_v.size();
+          ++span ) {
+
+      const double spanMin = surface.knots_v[ span ];
+      const double spanMax = surface.knots_v[ span + 1 ];
+
+      // A repeated knot is an empty span and carries no polynomial piece.
+      if ( !( spanMax > spanMin ) ) {
+        continue;
+      }
+
+      for ( size_t at = 0; at < closureSamples; ++at ) {
+
+        const double v =
+          spanMin + ( ( spanMax - spanMin ) * static_cast< double >( at ) /
+                      static_cast< double >( closureSamples - 1 ) );
+
+        if ( glm::distance( tinynurbs::surfacePoint( surface, uMin, v ),
+                            tinynurbs::surfacePoint( surface, uMax, v ) ) >
+               closureTolerance ) {
+
+          return false;
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // IS THE NEAREST IMAGE THE ROUTE THIS BOUNDARY TAKES? Asked of the surface,
+  // segment by segment, because it cannot be asked of the two samples - see
+  // the header note: they are the same two 3D points under every spelling.
+  //
+  // Runs AFTER the closure gate, which is what makes wrapping a u back into
+  // the knot domain an identity on the surface rather than a guess about it.
+  // ------------------------------------------------------------------
+  {
+    const auto wrappedU =
+      [ uMin, period ]( double u ) {
+
+        const double offset = std::fmod( u - uMin, period );
+
+        return uMin + ( offset < 0.0 ? offset + period : offset );
+      };
+
+    // How long the surface image of one candidate route is, walked at
+    // MAX_CHART_CHORD_FRACTION of a period - the spacing the layout itself
+    // will draw the route at, so the walk measures what the layout draws.
+    //
+    // LENGTH, AND NOT DISTANCE FROM THE CHORD, which was the first reading
+    // tried and is not a reading at all. The furthest a route strays is a
+    // SUPREMUM, so a route that sweeps a superset of another's u range
+    // inherits its worst point and the two TIE - measured on the slot case
+    // below, where the -0.30 image and the -2.30 image both read 6.128825,
+    // to every digit. A tie is not evidence and a comparison that produces
+    // them decides faces by their last bit.
+    //
+    // Length has neither problem. Every candidate ends where the others do,
+    // the chord is the straight line between those two points, and so NO
+    // route can be shorter than the chord: the chord's own length is the
+    // floor, and a route that lies ON the chord attains it and cannot be
+    // beaten. And an image that travels further reads as travelling further,
+    // where a supremum saturates at the surface's own extent.
+    //
+    // Under-sampling can only UNDER-state a length, and a long route is the
+    // one with more to miss between probes - which makes an alternative look
+    // better than it is, and pushes this toward refusing rather than toward
+    // laying out a route it has not confirmed.
+    //
+    // `ceiling` stops a walk early, and does so EXACTLY rather than
+    // approximately: a running length only grows, so once it has passed the
+    // reading it is being compared against, no remaining piece can bring it
+    // back. That is the property the distance-from-chord reading did not
+    // have, and it is what makes the alternatives - which are a period or two
+    // long, and so the whole cost of this - stop after a piece or two.
+    const auto routeLength =
+      [ & ]( const Point& from, const Point& to, double step,
+             double ceiling ) {
+
+        const size_t pieces =
+          std::max< size_t >(
+            2, static_cast< size_t >(
+                 std::ceil( std::abs( step ) /
+                            ( period * MAX_CHART_CHORD_FRACTION ) ) ) );
+
+        glm::dvec3 previous =
+          tinynurbs::surfacePoint( surface, wrappedU( from[ 0 ] ), from[ 1 ] );
+
+        double total = 0.0;
+
+        for ( size_t at = 1; at <= pieces; ++at ) {
+
+          const double fraction =
+            static_cast< double >( at ) / static_cast< double >( pieces );
+
+          const glm::dvec3 on =
+            tinynurbs::surfacePoint(
+              surface,
+              wrappedU( from[ 0 ] + ( step * fraction ) ),
+              from[ 1 ] + ( ( to[ 1 ] - from[ 1 ] ) * fraction ) );
+
+          total   += glm::distance( previous, on );
+          previous = on;
+
+          if ( total > ceiling ) {
+            break;
+          }
+        }
+
+        return total;
+      };
+
+    // Two turns either side. One turn is the ambiguity the reduction leaves
+    // and is the one the cases pin; the second is carried because the
+    // argument for stopping at the first - that a second turn re-traverses
+    // the closure and so cannot come out shorter - is an argument about the
+    // surface rather than a measurement of it, and it is the kind of argument
+    // this file has been wrong about before.
+    //
+    // NO CASE CAN PIN THE SECOND TURN ON ITS OWN, and that is the argument
+    // for carrying it rather than against it: a route that wraps twice would
+    // have to be the SHORTEST image to be chosen, which needs a closure whose
+    // second circuit costs nothing. If such a surface exists this reads it;
+    // if it does not, the cost is the early stop's first piece.
+    constexpr int ROUTE_IMAGE_TURNS = 2;
+
+    for ( const std::vector< Point >& ring : uvBoundaryValues ) {
+
+      for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
+
+        const Point& from = ring[ at ];
+        const Point& to   = ring[ ( at + 1 ) % count ];
+
+        double nearest = to[ 0 ] - from[ 0 ];
+
+        nearest -= period * std::round( nearest / period );
+
+        const double nearestLength =
+          routeLength( from, to, nearest,
+                       std::numeric_limits< double >::max() );
+
+        for ( int turns = -ROUTE_IMAGE_TURNS; turns <= ROUTE_IMAGE_TURNS;
+              ++turns ) {
+
+          if ( turns == 0 ) {
+            continue;
+          }
+
+          const double other =
+            nearest + ( period * static_cast< double >( turns ) );
+
+          if ( routeLength( from, to, other, nearestLength ) <=
+                 nearestLength ) {
+
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // The chart points: every ring point, plus whatever the layout split adds.
+  // A split point has `meshVertex` EMPTY_INDEX and NEVER acquires one - see
+  // the anchoring below, which puts its triangles back on the boundary sample
+  // it was interpolated from. So the mesh grows by the seam duplicates and by
+  // nothing else, and every refusal leaves it exactly as it was handed over.
+  // ------------------------------------------------------------------
+  struct ChartPoint {
+    double   u;
+    double   v;
+
+    /** The caller's vertex for a boundary sample; EMPTY_INDEX for a split. */
+    uint32_t meshVertex;
+
+    /** The boundary sample this point was interpolated from; itself for one. */
+    size_t   anchor;
+  };
+
+  std::vector< ChartPoint >            chartPoints;
+  std::vector< std::vector< size_t > > chartRings;
+
+  chartPoints.reserve( totalPoints );
+  chartRings.reserve( ringCount );
+
+  const double maxChordStep = period * MAX_CHART_CHORD_FRACTION;
+
+  {
+    uint32_t flat = 0;
+
+    for ( const std::vector< Point >& ring : uvBoundaryValues ) {
+
+      std::vector< size_t > indices;
+
+      indices.reserve( ring.size() );
+
+      for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
+
+        const size_t next = ( at + 1 ) % count;
+
+        const Point& from = ring[ at ];
+        const Point& to   = ring[ next ];
+
+        const size_t sample = chartPoints.size();
+
+        indices.push_back( sample );
+        chartPoints.push_back(
+          { from[ 0 ], from[ 1 ], flat + static_cast< uint32_t >( at ),
+            sample } );
+
+        // The step to the NEXT point, taken to its nearest image: a ring is
+        // sampled in the domain, so consecutive samples either side of the
+        // seam are a period apart in the spelling and adjacent on the surface.
+        double deltaU = to[ 0 ] - from[ 0 ];
+
+        deltaU -= period * std::round( deltaU / period );
+
+        if ( std::abs( deltaU ) <= maxChordStep ) {
+          continue;
+        }
+
+        const double deltaV = to[ 1 ] - from[ 1 ];
+
+        // NO 3D POSITION IS COMPUTED FOR A SPLIT POINT, because none is ever
+        // needed: the split exists so the annulus does not draw this segment
+        // as one wide chord, and the anchoring below keeps it out of the mesh
+        // entirely. The previous revision interpolated the segment's own two
+        // world positions here, which removed the crack an on-surface point
+        // opened against the neighbouring face but still emitted a vertex in
+        // the middle of a shared trim edge. Codex 4051991546 on
+        // bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+        const size_t pieces =
+          static_cast< size_t >(
+            std::ceil( std::abs( deltaU ) / maxChordStep ) );
+
+        for ( size_t piece = 1; piece < pieces; ++piece ) {
+
+          const double fraction =
+            static_cast< double >( piece ) / static_cast< double >( pieces );
+
+          const double midU = from[ 0 ] + ( deltaU * fraction );
+          const double midV = from[ 1 ] + ( deltaV * fraction );
+
+          indices.push_back( chartPoints.size() );
+          chartPoints.push_back( { midU, midV, EMPTY_INDEX, sample } );
+        }
+      }
+
+      flat += static_cast< uint32_t >( ring.size() );
+      chartRings.push_back( std::move( indices ) );
+    }
+  }
+
+  // The annulus: angle = the point's u as a fraction of the period, radius =
+  // 1 + phi with phi the point's v normalized over the boundary's own extent,
+  // so every boundary point sits at radius in [1, 2] and the origin is
+  // strictly inside the inner rim. Identical in shape to the wrapping layout
+  // `triangulateUnwrappedLoops` uses, which is what the cylinder side face
+  // with two rims already ships on.
+  double vLow  = std::numeric_limits< double >::max();
+  double vHigh = std::numeric_limits< double >::lowest();
+
+  for ( const ChartPoint& point : chartPoints ) {
+    vLow  = std::min( vLow, point.v );
+    vHigh = std::max( vHigh, point.v );
+  }
+
+  // A boundary at one v encloses no area in any layout; refusing it here is
+  // the same degeneracy refusal `triangulateUnwrappedLoops` makes on an empty
+  // edge set, taken earlier because the radius would collapse.
+  if ( !( vHigh > vLow ) ) {
+    return false;
+  }
+
+  const double vSpan = vHigh - vLow;
+
+  std::vector< CDT::V2d< double > > cdtVertices;
+  std::vector< size_t >             cdtSource;
+  std::vector< double >             cdtBaseU;
+  std::vector< CDT::Edge >          cdtEdges;
+
+  std::map< std::pair< long long, long long >, uint32_t > weld;
+  std::set< std::pair< uint32_t, uint32_t > >             edgeSet;
+
+  // Which welded vertex each chart point ended up in, which is what lets a
+  // split point's triangles be put back onto its anchor's welded vertex.
+  std::vector< uint32_t > weldedOf( chartPoints.size(), EMPTY_INDEX );
+
+  bool inputFinite = true;
+
+  // The same 1e-9 parameter quantization `triangulateUnwrappedLoops` welds at,
+  // for the same reason: a seam-doubled boundary edge becomes one interior
+  // constraint rather than two coincident ones.
+  auto weldVertex = [&]( size_t chartIndex ) {
+
+    const ChartPoint& point = chartPoints[ chartIndex ];
+
+    const double theta =
+      unwrap_detail::kTwoPi * ( point.u - uMin ) / period;
+    const double radius = 1.0 + ( ( point.v - vLow ) / vSpan );
+
+    const double x = radius * std::cos( theta );
+    const double y = radius * std::sin( theta );
+
+    std::pair< long long, long long > key(
+      std::llround( x * 1e9 ), std::llround( y * 1e9 ) );
+
+    auto [ found, isNew ] =
+      weld.try_emplace( key, static_cast< uint32_t >( cdtVertices.size() ) );
+
+    if ( isNew ) {
+
+      if ( !std::isfinite( x ) || !std::isfinite( y ) ) {
+        inputFinite = false;
+      }
+
+      cdtVertices.emplace_back( x, y );
+      cdtSource.push_back( chartIndex );
+
+      // The representative's u, folded into one period. Every lift below is
+      // this value plus a whole number of periods, so the chart's origin is
+      // the same for every vertex and the offsets are integers.
+      double base = std::fmod( point.u - uMin, period );
+
+      if ( base < 0.0 ) {
+        base += period;
+      }
+
+      cdtBaseU.push_back( uMin + base );
+
+    } else if ( point.meshVertex != EMPTY_INDEX &&
+                chartPoints[ cdtSource[ found->second ] ].meshVertex ==
+                  EMPTY_INDEX ) {
+
+      // A BOUNDARY SAMPLE ALWAYS REPRESENTS ITS WELDED VERTEX, even when a
+      // split point reached the key first. Everything below resolves a welded
+      // vertex through `cdtSource`, and a split-point representative would
+      // leave a sample the caller already has a vertex for with no vertex to
+      // carry - and would anchor it away to somewhere else on the boundary.
+      cdtSource[ found->second ] = chartIndex;
+    }
+
+    weldedOf[ chartIndex ] = found->second;
+
+    return found->second;
+  };
+
+  for ( const std::vector< size_t >& ring : chartRings ) {
+    for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
+
+      const uint32_t v1 = weldVertex( ring[ at ] );
+      const uint32_t v2 = weldVertex( ring[ ( at + 1 ) % count ] );
+
+      if ( v1 == v2 ) {
+        continue;
+      }
+
+      std::pair< uint32_t, uint32_t > ordered(
+        std::min( v1, v2 ), std::max( v1, v2 ) );
+
+      if ( edgeSet.insert( ordered ).second ) {
+        cdtEdges.emplace_back( v1, v2 );
+      }
+    }
+  }
+
+  if ( !inputFinite || cdtEdges.size() < 3 ) {
+    return false;
+  }
+
+  CDT::Triangulation< double > triangulation(
+    CDT::VertexInsertionOrder::Auto,
+    CDT::IntersectingConstraintEdges::TryResolve, 0 );
+
+  try
+  {
+    conway::AllocTagScope cdtTag( conway::AllocSite::Cdt );
+    triangulation.insertVertices( cdtVertices );
+    triangulation.insertEdges( cdtEdges );
+    triangulation.eraseOuterTrianglesAndHoles();
+  }
+  // std::exception, not CDT::Error (which derives from it), because the
+  // failure that actually costs a model here is std::bad_alloc, not a CDT
+  // diagnostic: TryResolve splits intersections into fresh intersecting
+  // edges and can allocate until the wasm heap is gone (conway#473 measured
+  // ~3.4GB on one face).
+  catch ( const std::exception &e )
+  {
+    Logger::logError( "CDT Exception (periodic u chart): %s", e.what() );
+    return false;
+  }
+
+  // THE VALIDITY SIGNAL. See the header comment: CDT resolves invalid input
+  // instead of rejecting it, and the only thing that says so is the vertex set
+  // coming back larger than it went in. One post-hoc reading, standing in for
+  // the containment and crossing gates the cut construction needed.
+  if ( triangulation.vertices.size() > cdtVertices.size() ) {
+    return false;
+  }
+
+  if ( triangulation.triangles.empty() ) {
+    return false;
+  }
+
+  const size_t triangleCount = triangulation.triangles.size();
+
+  // Nearest-image offset, in whole periods, of `to`'s base u from `from`'s.
+  const auto imageOffset =
+    [ & ]( uint32_t from, uint32_t to ) {
+
+      return static_cast< long long >(
+        std::llround( ( cdtBaseU[ from ] - cdtBaseU[ to ] ) / period ) );
+    };
+
+  // IS THE LIFT WELL-POSED? A triangle spans less than half a period exactly
+  // when its three pairwise nearest-image offsets sum to zero, and that is the
+  // whole precondition for lifting it: it says the runner-up image of every
+  // corner is decisively further than the one taken. Geometrically it holds
+  // for any triangle that does not contain the origin, which the erased inner
+  // rim is what guarantees - but it is read off the triangulation rather than
+  // argued, because it is the construction's own output and one reading is
+  // cheaper than trusting the argument.
+  //
+  // The second post-hoc reading, and the last. Both refuse the WHOLE face, and
+  // neither asks anything about how the input was spelled.
+  for ( const CDT::Triangle& triangle : triangulation.triangles ) {
+
+    const auto [ a, b, c ] = triangle.vertices;
+
+    if ( a == b || b == c || c == a ) {
+      continue;
+    }
+
+    if ( ( imageOffset( a, b ) + imageOffset( b, c ) + imageOffset( c, a ) ) !=
+           0 ) {
+      return false;
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // The lift. Breadth-first over the kept triangles' adjacency, giving each
+  // triangle a period offset; a vertex's sheet is its triangle's offset plus
+  // its own nearest-image offset within that triangle. Going round the
+  // annulus the offset advances by one - that monodromy IS the seam, and it
+  // shows up as vertices two triangles disagree about.
+  // ------------------------------------------------------------------
+  std::vector< long long > periodOffset( triangleCount, 0 );
+  std::vector< char >      visited( triangleCount, 0 );
+
+  const auto cornerOffset =
+    [ & ]( size_t triangle, size_t corner ) {
+
+      const auto& vertices = triangulation.triangles[ triangle ].vertices;
+
+      return corner == 0 ?
+        0LL : imageOffset( vertices[ 0 ], vertices[ corner ] );
+    };
+
+  const auto sheetOf =
+    [ & ]( size_t triangle, size_t corner ) {
+
+      return periodOffset[ triangle ] + cornerOffset( triangle, corner );
+    };
+
+  size_t components = 0;
+
+  {
+    std::vector< size_t > pending;
+
+    for ( size_t seed = 0; seed < triangleCount; ++seed ) {
+
+      if ( visited[ seed ] ) {
+        continue;
+      }
+
+      ++components;
+
+      visited[ seed ]     = 1;
+      periodOffset[ seed ] = 0;
+
+      pending.clear();
+      pending.push_back( seed );
+
+      for ( size_t head = 0; head < pending.size(); ++head ) {
+
+        const size_t current = pending[ head ];
+
+        const auto& currentVertices =
+          triangulation.triangles[ current ].vertices;
+
+        for ( size_t side = 0; side < 3; ++side ) {
+
+          const CDT::TriInd neighbour =
+            triangulation.triangles[ current ].neighbors[ side ];
+
+          if ( neighbour == CDT::noNeighbor || neighbour >= triangleCount ||
+               visited[ neighbour ] ) {
+            continue;
+          }
+
+          const auto& neighbourVertices =
+            triangulation.triangles[ neighbour ].vertices;
+
+          // Matched by shared vertex rather than by CDT's neighbour-index
+          // convention, so this does not depend on which side `side` names.
+          // One shared corner fixes the neighbour's offset; the other is then
+          // automatic, because the per-triangle sum above already makes the
+          // two triangles agree about the edge between them.
+          bool matched = false;
+
+          for ( size_t mine = 0; mine < 3 && !matched; ++mine ) {
+            for ( size_t theirs = 0; theirs < 3; ++theirs ) {
+
+              if ( currentVertices[ mine ] != neighbourVertices[ theirs ] ) {
+                continue;
+              }
+
+              periodOffset[ neighbour ] =
+                periodOffset[ current ] + cornerOffset( current, mine ) -
+                cornerOffset( neighbour, theirs );
+
+              matched = true;
+              break;
+            }
+          }
+
+          if ( !matched ) {
+            continue;
+          }
+
+          visited[ neighbour ] = 1;
+          pending.push_back( neighbour );
+        }
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // ONE REGION, WHICH IS WHAT THE LIFT IS DEFINED OVER. The walk above is
+  // breadth-first over adjacency, and its monodromy argument is a statement
+  // about ONE component: inside a component each triangle's sheet is fixed by
+  // its neighbour's, and going round the annulus the offsets advance by one.
+  // Across components nothing relates the sheets - every new seed starts again
+  // at zero - so a second component is not another part of this face, it is a
+  // second face this function has invented.
+  //
+  // THIS IS THE READING THE VERTEX-GROWTH CHECK CANNOT BE. That one catches
+  // constraints that INTERSECT, because `TryResolve` has to add a vertex to
+  // resolve them. An inner bound lying wholly outside the band intersects
+  // nothing: `eraseOuterTrianglesAndHoles` reads it as one more parity island,
+  // keeps its interior, adds no vertex, and the face ships with the stray
+  // loop's area welded onto it. Review on bldrs-ai/conway-geom#207 and
+  // bldrs-ai/conway#711 asked precisely whether an invalid input could reach a
+  // wrong-but-DEFINED triangulation without growing the vertex set; it can,
+  // and this is the reading that says so.
+  //
+  // WHY A COMPONENT COUNT AND NOT A CONTAINMENT TEST. The cut construction
+  // gated every candidate hole against the rims - point-in-polygon per hole
+  // per rim point, re-derived per face - and that is the gate this redesign
+  // deleted on purpose. This asks nothing about any individual bound. It is a
+  // counter on the adjacency the lift already walks, so it costs nothing new,
+  // and like the other two refusals it reads the OUTPUT rather than the
+  // input's spelling. It is SUFFICIENT rather than merely cheaper because a
+  // face is one connected region by definition - an `ADVANCED_FACE`'s bounds
+  // delimit a single face of a shell - so one component is not a heuristic
+  // about this corpus, it is the definition, and every way of getting more
+  // than one (a stray bound, a bound outside the band, a band severed by a
+  // hole that spans it) is a face this path must not emit.
+  // ------------------------------------------------------------------
+  if ( components != 1 ) {
+    return false;
+  }
+
+  // ------------------------------------------------------------------
+  // THE LAYOUT SPLIT IS LAYOUT-ONLY, WHICH IS SETTLED HERE. A split point
+  // exists so the annulus does not draw one boundary segment as a chord wide
+  // enough to cut across its neighbours. It is not a boundary point: the trim
+  // segment it sits on is SHARED with the face on the other side of that
+  // edge, which keeps the segment whole, so a mesh vertex in the middle of it
+  // gives this face two edges where its neighbour has one. `Geometry::Reify`
+  // welds coincident vertices and cannot match either half to the whole, so
+  // the pair are single-sided edges however exactly the point is placed -
+  // placing it ON the segment removes the crack and leaves the T-junction.
+  // Codex 4051991546 on bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+  //
+  // So a triangle corner that landed on a split point is put back on the
+  // boundary sample the split was interpolated from. That is EXACT, not an
+  // approximation. A split point's uv is the linear interpolation of its
+  // segment's two ends, so it is COLLINEAR with them in the chart and in 3D,
+  // and its fan is bounded by the two halves of that straight segment - two
+  // OPPOSITE rays from the split. The fan's region is therefore the polygon
+  // its chain closes with the anchor, and the fan re-hung on the anchor tiles
+  // the same polygon. The one triangle that re-hangs onto the anchor's own
+  // apex edge comes out with no area and is dropped; what it covered is
+  // covered by the rest of the same fan.
+  //
+  // WHAT IS READ OF THE RESULT, in the same posture as the three refusals
+  // above: a collapsed triangle that TURNED OVER in the chart is a fan the
+  // anchor cannot see all of, and one that now spans half a period is the
+  // fold the lift exists to prevent. Either refuses the face. Neither is a
+  // tolerance - one is a sign, the other the half period the
+  // `ParameterVertex` midpoint folds at.
+  //
+  // NEITHER IS SEPARATELY PINNED, which is said here rather than implied
+  // otherwise: 125 triangles collapse across this file's own cases and none
+  // of them, and nothing in the corpus, reaches either reading. The turn is
+  // reachable in principle - moving a fan's apex along its own boundary line
+  // can reverse the angular order of two chain vertices, which reverses that
+  // triangle - so it is read rather than argued.
+  // ------------------------------------------------------------------
+  const auto anchored =
+    [ & ]( uint32_t welded, long long sheet ) {
+
+      const ChartPoint& point = chartPoints[ cdtSource[ welded ] ];
+
+      if ( point.meshVertex != EMPTY_INDEX ) {
+        return std::pair< uint32_t, long long >( welded, sheet );
+      }
+
+      const uint32_t anchor = weldedOf[ point.anchor ];
+
+      // WHICH COPY OF THE ANCHOR: the nearest image of it to the split
+      // point's own lift, and that is exact rather than a guess. The split
+      // sits at most |deltaU| along its segment from the anchor, the route
+      // reading above caps every accepted |deltaU| at
+      // MAX_DECISIVE_IMAGE_STEP_FRACTION of a period, and 3/8 is on the side
+      // of a half period where a nearest image is the only image. The
+      // interpolated offset was carried on the ChartPoint and subtracted here
+      // first; it was removed because it cannot change the rounding, and
+      // measurably so - zeroing it changes nothing in any case in this file.
+      const double lifted =
+        cdtBaseU[ welded ] + ( period * static_cast< double >( sheet ) );
+
+      return std::pair< uint32_t, long long >(
+        anchor,
+        std::llround( ( lifted - cdtBaseU[ anchor ] ) / period ) );
+    };
+
+  const auto liftedOf =
+    [ & ]( const std::pair< uint32_t, long long >& corner ) {
+
+      return glm::dvec2(
+        cdtBaseU[ corner.first ] +
+          ( period * static_cast< double >( corner.second ) ),
+        chartPoints[ cdtSource[ corner.first ] ].v );
+    };
+
+  using Corners = std::array< std::pair< uint32_t, long long >, 3 >;
+
+  const auto turn =
+    [ & ]( const Corners& corners ) {
+
+      const glm::dvec2 first  = liftedOf( corners[ 0 ] );
+      const glm::dvec2 second = liftedOf( corners[ 1 ] );
+      const glm::dvec2 third  = liftedOf( corners[ 2 ] );
+
+      return ( ( second.x - first.x ) * ( third.y - first.y ) ) -
+             ( ( second.y - first.y ) * ( third.x - first.x ) );
+    };
+
+  std::vector< Corners > emitted;
+
+  emitted.reserve( triangleCount );
+
+  for ( size_t triangle = 0; triangle < triangleCount; ++triangle ) {
+
+    const auto [ a, b, c ] = triangulation.triangles[ triangle ].vertices;
+
+    if ( a == b || b == c || c == a ) {
+      continue;
+    }
+
+    const Corners chart = {
+      std::pair< uint32_t, long long >( a, sheetOf( triangle, 0 ) ),
+      std::pair< uint32_t, long long >( b, sheetOf( triangle, 1 ) ),
+      std::pair< uint32_t, long long >( c, sheetOf( triangle, 2 ) ) };
+
+    const Corners corners = {
+      anchored( chart[ 0 ].first, chart[ 0 ].second ),
+      anchored( chart[ 1 ].first, chart[ 1 ].second ),
+      anchored( chart[ 2 ].first, chart[ 2 ].second ) };
+
+    if ( corners != chart ) {
+
+      // Re-hung onto the anchor's own apex edge. Its area is not lost: the
+      // split is collinear with the anchor and the segment's far end, so what
+      // this triangle covered is covered by the rest of its own fan.
+      if ( corners[ 0 ] == corners[ 1 ] || corners[ 1 ] == corners[ 2 ] ||
+           corners[ 2 ] == corners[ 0 ] ) {
+        continue;
+      }
+
+      const double before = turn( chart );
+      const double after  = turn( corners );
+
+      if ( !( ( before > 0.0 && after > 0.0 ) ||
+              ( before < 0.0 && after < 0.0 ) ) ) {
+        return false;
+      }
+
+      double low  = std::numeric_limits< double >::max();
+      double high = std::numeric_limits< double >::lowest();
+
+      for ( const std::pair< uint32_t, long long >& corner : corners ) {
+
+        const double lifted = liftedOf( corner ).x;
+
+        low  = std::min( low, lifted );
+        high = std::max( high, lifted );
+      }
+
+      if ( ( high - low ) >= ( period * 0.5 ) ) {
+        return false;
+      }
+    }
+
+    emitted.push_back( corners );
+  }
+
+  if ( emitted.empty() ) {
+    return false;
+  }
+
+  // Which sheets does each welded vertex end up on? One is the ordinary case;
+  // more than one is the emergent seam passing through it, and each extra
+  // sheet costs one duplicated vertex carrying the same 3D point at a uv a
+  // whole number of periods away. No cap: the duplication is general, so a
+  // chart that wound twice would simply cost more copies.
+  std::map< std::pair< uint32_t, long long >, uint32_t > copies;
+  std::set< std::pair< uint32_t, long long > >           wanted;
+
+  for ( const Corners& corners : emitted ) {
+    for ( const std::pair< uint32_t, long long >& corner : corners ) {
+      wanted.insert( corner );
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // Commit. Past this point nothing may fail: the mesh grows by the
+  // subdivision points and the seam duplicates, and the surviving boundary
+  // vertices have their uv rewritten to the lifted chart.
+  // ------------------------------------------------------------------
+  // `wanted` is a set of (welded vertex, sheet) pairs ordered lexicographically,
+  // so every sheet of one vertex arrives in one contiguous run - which is what
+  // lets the first of each run reuse the vertex the caller already has.
+  uint32_t previousWelded = EMPTY_INDEX;
+
+  for ( const std::pair< uint32_t, long long >& request : wanted ) {
+
+    const uint32_t  welded = request.first;
+    const long long sheet  = request.second;
+
+    // ALWAYS A BOUNDARY SAMPLE, and so always a vertex the caller already
+    // has: `anchored` above resolved every split point onto the sample it was
+    // interpolated from, and `weldVertex` keeps a sample as the representative
+    // of any welded vertex a split point shares. The mesh therefore grows by
+    // the seam duplicates below and by nothing else.
+    ChartPoint& source = chartPoints[ cdtSource[ welded ] ];
+
+    const glm::dvec2 lifted(
+      cdtBaseU[ welded ] + ( period * static_cast< double >( sheet ) ),
+      source.v );
+
+    if ( welded != previousWelded ) {
+
+      mesh.vertices[ source.meshVertex ].uv = lifted;
+      copies.emplace( request, source.meshVertex );
+      previousWelded = welded;
+
+      continue;
+    }
+
+    // Every further sheet is a copy of the same world position - BITWISE,
+    // which is what makes the seam weld by identity in Geometry::Reify rather
+    // than by the surface's periodicity, as the old cut's two edges did. Read
+    // before makeVertex: that call can reallocate mesh.vertices.
+    const glm::dvec3 world = mesh.vertices[ source.meshVertex ].point;
+
+    copies.emplace( request, mesh.makeVertex( { world, lifted } ) );
+  }
+
+  trianglesOut.reserve( emitted.size() );
+
+  for ( const Corners& corners : emitted ) {
+
+    trianglesOut.push_back( { copies.at( corners[ 0 ] ),
+                              copies.at( corners[ 1 ] ),
+                              copies.at( corners[ 2 ] ) } );
+  }
+
+  // ------------------------------------------------------------------
+  // WHERE THE CUT RUNS, AS PAIRS OF MESH EDGES. Two triangles adjacent in the
+  // triangulation whose shared corners came out on different sheets ARE the
+  // two sides of the cut: the edge between them was one interior edge of the
+  // chart and is two edges of the mesh, each carrying a single triangle -
+  // which is to say a pair of BORDER edges by the winged-edge reading,
+  // although nothing about this face's geometry is a boundary there.
+  //
+  // WHY THE CALLER NEEDS THEM. `tesselate` skips every `edge.border()`
+  // (tesselation_utils.h, addCandidate), and rightly so for a trim boundary,
+  // which is shared with a neighbouring face this one may not move. The cut
+  // is not shared with anything, but it reads identically - so left to
+  // itself it keeps the triangulation's own coarseness while every interior
+  // edge beside it refines, and the one triangle on each side of it is
+  // subdivided away from it until it is a sliver on it. The old cut was short
+  // by construction, having been searched for at the narrowest gap; a cut
+  // chosen by the triangulation is wherever the walk's monodromy falls, so
+  // relocating it here is what exposed the skip. Found by codex 4051389889 on
+  // bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+  //
+  // Measured on Right_Hand.step `ADVANCED_FACE #19218`, whose cut is coarse
+  // enough to refine: with the cut left alone that face spent its whole 32x
+  // budget and 6760 of its 8320 triangles came out degenerate; refining it
+  // first, 4 of 1848 do, and the shipped face goes from 1550 triangles with
+  // 38 degenerate to 1844 with none.
+  //
+  // The two sides always disagree about BOTH shared corners or about
+  // neither, so one comparison settles an adjacency: within a triangle the
+  // sheet difference between two corners is their own nearest-image offset
+  // (that is what the zero-sum reading above makes true), which both
+  // triangles compute from the same two vertices.
+  // ------------------------------------------------------------------
+  // READ OFF THE EMITTED TRIANGLES, not off the triangulation's adjacency,
+  // which is what the previous revision did. The anchoring above drops the
+  // triangles that collapsed onto an apex edge - their area is covered by the
+  // rest of the same fan - and a cut whose two sides are read from CDT
+  // adjacency loses its report whenever one of those two was a dropped one.
+  // Measured on the six-sample band, where sixteen of twenty-eight triangles
+  // collapse and the cut went unreported entirely.
+  //
+  // One CHART edge, identified by its two welded vertices, reaches the mesh
+  // as more than one edge exactly when the lift put its ends on different
+  // sheets on either side of it. That IS the monodromy, stated on the output
+  // this function returns rather than on an intermediate structure.
+  {
+    std::map< std::pair< uint32_t, uint32_t >,
+              std::vector< std::pair< uint32_t, uint32_t > > > chartEdges;
+
+    for ( const Corners& corners : emitted ) {
+
+      for ( size_t side = 0; side < 3; ++side ) {
+
+        const std::pair< uint32_t, long long >& head = corners[ side ];
+        const std::pair< uint32_t, long long >& tail =
+          corners[ ( side + 1 ) % 3 ];
+
+        const bool ordered = head.first < tail.first;
+
+        chartEdges[ ordered ? std::pair< uint32_t, uint32_t >( head.first,
+                                                              tail.first )
+                            : std::pair< uint32_t, uint32_t >( tail.first,
+                                                               head.first ) ]
+          .push_back(
+            ordered ?
+              std::pair< uint32_t, uint32_t >( copies.at( head ),
+                                               copies.at( tail ) ) :
+              std::pair< uint32_t, uint32_t >( copies.at( tail ),
+                                               copies.at( head ) ) );
+      }
+    }
+
+    // Walked in triangle order, and reported from the first side of each cut
+    // edge that comes up, which is the order the adjacency walk it replaces
+    // produced. A face whose layout splits nothing therefore hands
+    // `refineSeamPairs` the same work in the same order as before, and the
+    // corpus digests do not move for a reordering.
+    std::set< std::pair< uint32_t, uint32_t > > reported;
+
+    for ( const Corners& corners : emitted ) {
+
+      for ( size_t side = 0; side < 3; ++side ) {
+
+        const std::pair< uint32_t, long long >& head = corners[ side ];
+        const std::pair< uint32_t, long long >& tail =
+          corners[ ( side + 1 ) % 3 ];
+
+        const bool ordered = head.first < tail.first;
+
+        const std::pair< uint32_t, uint32_t > chartEdge =
+          ordered ? std::pair< uint32_t, uint32_t >( head.first, tail.first )
+                  : std::pair< uint32_t, uint32_t >( tail.first, head.first );
+
+        const std::vector< std::pair< uint32_t, uint32_t > >& meshEdges =
+          chartEdges.at( chartEdge );
+
+        const std::set< std::pair< uint32_t, uint32_t > > distinct(
+          meshEdges.begin(), meshEdges.end() );
+
+        if ( distinct.size() < 2 ) {
+          continue;
+        }
+
+        // Each copy carries exactly one triangle, which is what makes it a
+        // BORDER edge by the winged-edge reading and so one `tesselate` skips
+        // - see the note above. A copy with two triangles is an ordinary
+        // interior edge and no side of anything.
+        //
+        // NOT REDUNDANT, though a triangulation gives an edge at most two
+        // triangles and so at most two lifts. The anchoring above is what
+        // makes it reachable: two different chart edges out of two different
+        // split points of one segment collapse onto the SAME pair of welded
+        // vertices, so this key can carry more entries than an edge of the
+        // triangulation ever does. Not reached by any case here either - the
+        // cases that split have one split point per segment - and said so
+        // rather than left to look like an invariant.
+        bool border = true;
+
+        for ( const std::pair< uint32_t, uint32_t >& copy : distinct ) {
+
+          border = border &&
+                   std::count( meshEdges.begin(), meshEdges.end(), copy ) == 1;
+        }
+
+        if ( !border || !reported.insert( chartEdge ).second ) {
+          continue;
+        }
+
+        const std::pair< uint32_t, uint32_t > mine =
+          ordered ?
+            std::pair< uint32_t, uint32_t >( copies.at( head ),
+                                             copies.at( tail ) ) :
+            std::pair< uint32_t, uint32_t >( copies.at( tail ),
+                                             copies.at( head ) );
+
+        for ( const std::pair< uint32_t, uint32_t >& copy : distinct ) {
+
+          if ( copy == mine ) {
+            continue;
+          }
+
+          seamEdgesOut.push_back(
+            { mine.first, mine.second, copy.first, copy.second } );
+        }
+      }
+    }
+  }
+
+  periodOut = period;
+  uMinOut   = uMin;
+
+  return !trianglesOut.empty();
+}
+
+
 inline void TriangulateBspline(Geometry &geometry,
                                const std::vector<IfcBound3D> &bounds,
                                IfcSurface &surface, double scaling,
@@ -7549,7 +9087,16 @@ inline void TriangulateBspline(Geometry &geometry,
     conway::ScratchArenaScope arenaScope;
     WingedEdgeMesh< ParameterVertex > mesh{ conway::ThreadScratchResource() };
 
-    for ( size_t i = 0; i < bounds.size(); ++i ) {
+    // Ring 0 is earcut's outer boundary and the rest are holes, so the
+    // face's own OUTERBOUND has to be the first ring fed in - the bounds
+    // arrive in the exporter's declaration order, which is not that order.
+    // See outerBoundFirstOrder (geometry_utils.h) for the full contract and
+    // what feeding a hole first costs. Identity permutation, and therefore a
+    // no-op on vertex order, for every face whose outer bound is already
+    // first.
+    const std::vector< size_t > boundOrder = outerBoundFirstOrder( bounds );
+
+    for ( const size_t i : boundOrder ) {
 
       std::vector<Point> points;
 
@@ -7663,6 +9210,41 @@ inline void TriangulateBspline(Geometry &geometry,
     const double seamGridDeflection2 =
       relativeDeflectionSquared( mesh, representationExtent * scaling );
 
+    // A face on a surface closed in u whose boundary WRAPS that closure is
+    // not one outer ring with holes inside it, which is the only shape
+    // mapbox::earcut can read - see triangulatePeriodicUChart, which
+    // triangulates the periodic chart directly and hands back triangles.
+    // Runs before the two single-bound structured paths because it is the
+    // multi-bound case they explicitly exclude.
+    std::vector< std::array< uint32_t, 3 > > chartTriangles;
+    std::vector< std::array< uint32_t, 4 > > chartSeamEdges;
+
+    double stripPeriod = 0.0;
+    double stripUMin   = 0.0;
+
+    const bool builtPeriodicChart =
+      bounds.size() > 1 &&
+      triangulatePeriodicUChart(
+        mesh, srf, surface.BSplineSurface.ClosedU, uvBoundaryValues,
+        chartTriangles, chartSeamEdges, stripPeriod, stripUMin );
+
+    // Refinement and shading evaluate at the mesh's own uv, and the lifted
+    // chart puts some of those outside the surface's knot domain. Wrap them
+    // back: the chart is closed in u, which is what triangulatePeriodicUChart
+    // established before lifting anything, so this is an identity on the
+    // surface and a no-op for any u already inside the domain.
+    const auto wrapChartU =
+      [ builtPeriodicChart, stripPeriod, stripUMin ]( double u ) {
+
+        if ( !builtPeriodicChart ) {
+          return u;
+        }
+
+        const double offset = std::fmod( u - stripUMin, stripPeriod );
+
+        return stripUMin + ( offset < 0.0 ? offset + stripPeriod : offset );
+      };
+
     const bool builtSeamGrid =
       bounds.size() == 1 &&
       bounds[ 0 ].seamPair &&
@@ -7693,6 +9275,19 @@ inline void TriangulateBspline(Geometry &geometry,
     std::vector<uint32_t> indices;
 
     if ( !builtStructured ) {
+
+    // The periodic chart is already triangulated, in mesh indices - it does
+    // not rewrite `uvBoundaryValues` into something for earcut, because the
+    // shape it triangulates has no simple-polygon spelling.
+    if ( builtPeriodicChart ) {
+
+      for ( const std::array< uint32_t, 3 >& triangle : chartTriangles ) {
+
+        mesh.makeTriangle( triangle[ 0 ], triangle[ 1 ], triangle[ 2 ] );
+      }
+
+    } else {
+
   {
     conway::AllocTagScope earcutTag( conway::AllocSite::Earcut );
     indices =
@@ -7703,14 +9298,69 @@ inline void TriangulateBspline(Geometry &geometry,
 
     for ( size_t i = 0; i < indices.size(); i += 3 ) {
 
-      mesh.makeTriangle( 
-        indices[ i  + 0 ], 
-        indices[ i  + 1 ], 
-        indices[ i  + 2 ] );
+      mesh.makeTriangle(
+        indices[ i + 0 ],
+        indices[ i + 1 ],
+        indices[ i + 2 ] );
+    }
     }
     }
     
   //  printf( "Tesselating BSpline Surface\n" );
+
+    // ONE target for both refinement passes, read once. The seam pass and
+    // `tesselate` have to aim at the same fineness or the seam is refined to
+    // a different density than the interior beside it, which is the defect
+    // the seam pass exists to remove; computing it here rather than at each
+    // call is what makes that true by construction. Identical to the value
+    // `tesselate` read for itself on every face that has no seam, because
+    // nothing between here and there touches the mesh.
+    //
+    // `representationExtent * scaling`, not the raw extent. This is the ONE
+    // triangulator that does not tessellate in the units its bound points
+    // arrive in: the projection loop above multiplies every point by
+    // `scaling` before seeding the mesh, so the mesh's own bounding box -
+    // the other half of the comparison relativeDeflectionSquared makes -
+    // is in post-`scaling` units too. Handing it a raw extent would put a
+    // millimetre-to-metre load's floor 1000x too coarse and a
+    // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
+    // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
+    //
+    // Both front ends pass scaling = 1 today, so this multiply is a no-op
+    // in every shipping path; it is here so the invariant on
+    // ParamsAddFaceToGeometry::representationExtent ("in the units the
+    // bound points arrive in") stays true if that ever changes.
+    const double faceDeflection2 =
+      relativeDeflectionSquared( mesh, representationExtent * scaling );
+
+    // ONE budget for both passes too, read off the triangulation before
+    // either has spent any of it. Both subtract the mesh's current size, so
+    // handing them the same number is what makes the seam pass spend FROM the
+    // face's allowance rather than enlarge it - a face does not get to refine
+    // its interior further for having a seam, and measured on
+    // `ADVANCED_FACE #19215` an allowance enlarged by the seam's own two
+    // triangles bought 62 more degenerate ones in the fan that face's trim
+    // solve already provokes.
+    const int32_t refinementBudget =
+      static_cast< int32_t >( mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION );
+
+    // The periodic chart's emergent seam is a pair of BORDER edges, and
+    // `tesselate` skips those - see refineSeamPairs, which splits the two
+    // sides in lockstep so the cut refines with its neighbourhood instead of
+    // being fanned onto by it.
+    if ( builtPeriodicChart && !builtStructured ) {
+
+      refineSeamPairs(
+        mesh,
+        [&bSplineInverseEvaluation, &wrapChartU](
+          [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {
+          return bSplineInverseEvaluation.evaluator.point(
+            wrapChartU( from.x ), from.y );
+        },
+        chartSeamEdges,
+        refinementBudget,
+        faceDeflection2 );
+    }
 
     // Skipped for the seam grid, which arrives already refined to this same
     // target in parameter space. Running the topological refiner over it does
@@ -7721,25 +9371,12 @@ inline void TriangulateBspline(Geometry &geometry,
     if ( !builtSeamGrid )
     tesselate(
       mesh,
-      [&bSplineInverseEvaluation]( [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {
-        return bSplineInverseEvaluation.evaluator.point( from.x, from.y );
+      [&bSplineInverseEvaluation, &wrapChartU](
+        [[maybe_unused]]const glm::dvec3&, const glm::dvec2& from ) {
+        return bSplineInverseEvaluation.evaluator.point( wrapChartU( from.x ), from.y );
       },
-      mesh.triangles.size() * MAX_TRIANGLE_AMPLIFACTION,
-      // `representationExtent * scaling`, not the raw extent. This is the ONE
-      // triangulator that does not tessellate in the units its bound points
-      // arrive in: the projection loop above multiplies every point by
-      // `scaling` before seeding the mesh, so the mesh's own bounding box -
-      // the other half of the comparison relativeDeflectionSquared makes -
-      // is in post-`scaling` units too. Handing it a raw extent would put a
-      // millimetre-to-metre load's floor 1000x too coarse and a
-      // metre-to-millimetre one's 1000x too fine, i.e. off entirely. Same
-      // reason boundConvergenceToTrim above is fed a scaled trim diagonal.
-      //
-      // Both front ends pass scaling = 1 today, so this multiply is a no-op
-      // in every shipping path; it is here so the invariant on
-      // ParamsAddFaceToGeometry::representationExtent ("in the units the
-      // bound points arrive in") stays true if that ever changes.
-      relativeDeflectionSquared( mesh, representationExtent * scaling ) );
+      refinementBudget,
+      faceDeflection2 );
 
     // Analytic shading normals (bldrs-ai/conway#667). A B-spline's normal is a
     // function of the parameters, not of the position — which is why the
@@ -7749,9 +9386,10 @@ inline void TriangulateBspline(Geometry &geometry,
       mesh,
       geometry,
       !surface.sameSense,
-      [&bSplineInverseEvaluation]( const ParameterVertex& vertex ) {
+      [&bSplineInverseEvaluation, &wrapChartU]( const ParameterVertex& vertex ) {
 
-        return bSplineInverseEvaluation.evaluator.normal( vertex.uv.x, vertex.uv.y );
+        return bSplineInverseEvaluation.evaluator.normal(
+          wrapChartU( vertex.uv.x ), vertex.uv.y );
       } );
 
   //  printf( "Tesselated BSpline Surface with %zu triangles\n", mesh.triangles.size() );
