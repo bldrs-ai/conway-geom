@@ -978,19 +978,22 @@ int main() {
     check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
-  printf( "=== a boundary that does not wrap is left to earcut ===\n" );
+  printf( "=== two bounds clear of each other are two faces, not one ===\n" );
 
   {
-    // The reading that chooses between two triangulators, and the only thing
-    // it can cost: a boundary that nets no winding is an ordinary outer ring
-    // with holes, which earcut reads correctly and more cheaply.
+    // THE REASON THIS IS REFUSED CHANGED. It used to be the winding reading:
+    // neither ring wraps, so the face was handed to earcut. That reading is
+    // gone (see the non-wrapping outer-and-hole case below, which now
+    // builds), and what refuses this is the component count - two rings that
+    // enclose nothing of each other are two regions, and an ADVANCED_FACE is
+    // one. Same answer, from a reading that cannot be wrong about it.
     Built state = build( { smallRing( 0.3, 0.5, 0.10 ),
                            smallRing( 0.7, 0.5, 0.05 ) } );
 
     const Outcome outcome = run( state, surface );
 
-    check( !outcome.built, "a boundary that does not wrap the closure is "
-                           "refused, for earcut to take" );
+    check( !outcome.built, "two bounds enclosing nothing of each other are "
+                           "refused as two regions" );
     check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
   }
 
@@ -1507,6 +1510,127 @@ int main() {
     check( state.mesh.triangles.size() == triangles &&
            state.mesh.vertices.size() == vertices,
            "an empty seam list leaves the mesh exactly as it was" );
+  }
+
+  printf( "=== a boundary that does not wrap the closure is triangulated too ===\n" );
+
+  {
+    // THE READING THAT USED TO STAND HERE, AND WHY IT IS GONE. This face's
+    // rings net no winding, and the old code sent it to earcut on that
+    // reading alone. codex 4051389902 on bldrs-ai/conway-geom#207 showed the
+    // reading cannot be made sound: the lifted steps +0.60P, -0.10P, +0.49P,
+    // +0.01P sum to one turn, and nearest-image reduction turns the first
+    // into -0.40P and the sum into zero, so a rim that DOES wrap reads as one
+    // that does not and is ear-clipped - the sliver this path exists to
+    // remove. No threshold closes it either: +0.80P, +0.10P, +0.05P, +0.05P
+    // also sum to one turn and every one of them reduces below 0.20P.
+    //
+    // So nothing chooses a triangulator from the winding any more, and this
+    // case - an ordinary outer ring with a hole in it, on a surface that
+    // happens to be closed in u - is triangulated here rather than refused.
+    // The property that says the winding is not being read is the CUT: a
+    // boundary that does not wrap has no monodromy, so there is nothing to
+    // duplicate and `seamEdges` comes back empty.
+    RingSpec outer;
+
+    outer.explicitPoints = { { 0.20, 0.30 }, { 0.45, 0.30 },
+                             { 0.45, 0.70 }, { 0.20, 0.70 },
+                             { 0.20, 0.30 } };
+
+    RingSpec hole;
+
+    hole.explicitPoints = { { 0.28, 0.45 }, { 0.28, 0.55 },
+                            { 0.37, 0.55 }, { 0.37, 0.45 },
+                            { 0.28, 0.45 } };
+
+    Built state = build( { outer, hole } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built,
+           "an outer ring with a hole, netting no winding, is triangulated "
+           "rather than handed to earcut on a reading of that winding" );
+    check( outcome.seamEdges.empty(),
+           "and it needs no cut, because a boundary that does not wrap has "
+           "no monodromy to cut" );
+    check( worstLiftedSpan( state, outcome ) < 0.5,
+           "with no triangle spanning half a period" );
+    check( emittedArea( state, outcome ) > 0.0,
+           "and it emits area" );
+  }
+
+  printf( "=== a step past the decisive bound is refused, not guessed at ===\n" );
+
+  {
+    // codex's own counterexample, spelled as the solve would return it - every
+    // u wrapped into [0, 1). The true steps are +0.60, -0.10, +0.49, +0.01 of
+    // the period and the rim wraps once; reduced to nearest images they read
+    // -0.40, -0.10, +0.49, +0.01 and net zero.
+    //
+    // The 0.49 and 0.40 are past MAX_DECISIVE_IMAGE_STEP_FRACTION, so this
+    // face is refused HERE - at the reading every later one depends on -
+    // rather than laid out from a step whose direction the reduction has
+    // reversed. The caller ear-clips, which is what it does today; what is
+    // new is that the construction says it cannot read this boundary instead
+    // of proceeding as if it could.
+    RingSpec ambiguous;
+
+    ambiguous.explicitPoints = { { 0.00, 0.70 }, { 0.60, 0.80 },
+                                 { 0.50, 0.70 }, { 0.99, 0.80 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ), ambiguous } );
+
+    const size_t boundary = state.mesh.vertices.size();
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "a rim whose steps reduce past the decisive bound is refused" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+    check( boundary == state.mesh.vertices.size(),
+           "leaving the caller exactly the boundary it handed over" );
+  }
+
+  printf( "=== a wide step is refused even when it reads decisively ===\n" );
+
+  {
+    // THE CASE THE BOUND IS FOR, and the one that shows it is load-bearing.
+    // This rim steps 0.40 of a period three times over - a shape the layout
+    // would lay out and the CDT would accept - and 0.40 is exactly what
+    // codex's +0.60 reduces to. Nothing recoverable from u separates the two
+    // spellings, so both are refused, and the caller ear-clips as it does
+    // today. The bound is conservative on purpose: it costs a coarse rim that
+    // happened to be spelled correctly, and it buys never laying out a
+    // reversed one.
+    RingSpec wide;
+
+    wide.explicitPoints = { { 0.00, 0.75 }, { 0.40, 0.75 }, { 0.80, 0.75 } };
+
+    Built state = build( { evenRim( 24, 0.25, true, true ), wide } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( !outcome.built,
+           "a rim stepping 0.40 of a period is refused, because that is what "
+           "a reversed 0.60 reduces to" );
+    check( outcome.vertexGrowth == 0, "and the mesh is untouched" );
+  }
+
+  printf( "=== the coarsest legitimate rim still builds ===\n" );
+
+  {
+    // THE FLOOR THE BOUND HAS TO CLEAR. Three samples is the fewest a closed
+    // rim can have and its steps are exactly a third of a period, an ulp
+    // either side. A bound at P/3 refuses this; 3/8 does not.
+    Built state = build( { evenRim( 3, 0.25, true, true ),
+                           evenRim( 3, 0.75, false, true ) } );
+
+    const Outcome outcome = run( state, surface );
+
+    check( outcome.built,
+           "a three-sample rim, whose every step is a third of a period, is "
+           "read rather than refused" );
+    check( worstLiftedSpan( state, outcome ) < 0.5,
+           "with no triangle spanning half a period" );
   }
 
   printf( failures == 0 ? "PASS\n" : "FAIL (%d)\n", failures );

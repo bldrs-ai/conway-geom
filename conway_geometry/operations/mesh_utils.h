@@ -57,6 +57,49 @@ constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
  */
 constexpr double MAX_CHART_CHORD_FRACTION = 1.0 / 12.0;
 
+/**
+ * The widest step in u, as a fraction of the period, from which
+ * triangulatePeriodicUChart will read a boundary at all.
+ *
+ * EVERY READING THAT PATH TAKES OF A BOUNDARY IS A NEAREST-IMAGE ONE: a
+ * consecutive pair of samples is assumed to be adjacent on the surface, so a
+ * step is reduced by `step - period * round( step / period )`. That
+ * reduction is a guess, and past half a period it is worth nothing - a
+ * segment genuinely spanning 0.60 of a period reduces to -0.40, which
+ * REVERSES its direction, and a layout drawn from a reversed segment is a
+ * chart the face never visits. A face carrying a step that wide is therefore
+ * REFUSED here and ear-clipped exactly as it is today, rather than laid out
+ * from a reduction that cannot be trusted.
+ *
+ * WHERE 3/8 COMES FROM, which is a placement and not a tolerance. The band it
+ * has to sit in is closed at both ends by facts:
+ *
+ *   - P/3 is the floor. The coarsest closed rim there is has THREE samples,
+ *     and its steps are exactly a third of a period; this file's own
+ *     three-sample rim case is one. A bound at or below P/3 refuses a
+ *     legitimate shape, and floating point puts that rim's steps an ulp
+ *     either side of P/3, so the floor has to be cleared rather than met.
+ *   - P/2 is the ceiling. There the two images are equidistant and the
+ *     reduction carries no information whatever.
+ *
+ * 3/8 is the middle of that band. Nothing in the corpus is near it.
+ *
+ * NOT a gate that can be made complete, and it is not claimed to be: a
+ * segment spanning 0.80 of a period reduces to -0.20 and reads as decisive
+ * while being just as wrong. Nothing recoverable from u alone separates the
+ * two - see the header note on triangulatePeriodicUChart - and the three
+ * post-hoc refusals on the triangulation's own output are what stand behind
+ * it. What this removes is the range in which the construction KNOWS it is
+ * guessing and proceeds anyway.
+ *
+ * Measured over the 13 smoke models and 14 more of the corpus: five faces
+ * reach the reading, thirteen rings between them, and the widest step of any
+ * of them is 0.2689 of a period (Equiptment_UltrasoundProbe.step), 0.72 of
+ * this bound and 0.81 of the floor below it. A quarter of a period - the
+ * first bound tried - would already be refusing two of those five faces.
+ */
+constexpr double MAX_DECISIVE_IMAGE_STEP_FRACTION = 3.0 / 8.0;
+
 
 
 // TODO: review and simplify
@@ -7724,10 +7767,35 @@ inline size_t reSolveClosedTrimHead(
  *   - the per-knot-span closure check, unchanged: does the surface KEEP the
  *     closure it declares, asked by evaluation with enough samples per span
  *     to settle each span's polynomial.
- *   - does the boundary actually WRAP that closure. This one only chooses
- *     between two triangulators - a boundary that does not wrap is a shape
- *     earcut reads correctly and cheaply - so a misreading costs today's
- *     behaviour, not a wrong strip.
+ *
+ * AND WHAT IS NO LONGER GATED: whether the boundary actually WRAPS that
+ * closure. That reading summed each ring's steps taken to their nearest
+ * periodic image and, when no ring netted a turn, handed the face to earcut
+ * as the cheaper triangulator. It was defended as costing only speed when it
+ * misread. That defence is wrong, and codex 4051389902 on
+ * bldrs-ai/conway-geom#207 showed why: the lifted steps +0.60P, -0.10P,
+ * +0.49P, +0.01P sum to one turn and can spell a simple rim by varying v, but
+ * nearest-image reduction turns the first into -0.40P and the sum into zero.
+ * A boundary that genuinely wraps then goes to earcut, which is the sliver
+ * and the dropped ring this path exists to prevent.
+ *
+ * NO THRESHOLD CLOSES IT. Routing an ambiguous step - one reduced to near
+ * half a period - conservatively to the CDT narrows the hole but does not
+ * shut it, because the reduction is lossy in both directions: the true steps
+ * +0.80P, +0.10P, +0.05P, +0.05P also sum to one turn, and every one of them
+ * reduces to a magnitude of 0.20P or less, under any threshold worth having.
+ * The measurement says the same thing from the other side - the largest
+ * nearest-image step in the models measured is 0.2689 of a period, on
+ * Equiptment_UltrasoundProbe.step, so a P/4 gate would already be firing on
+ * real data and a gate that fires is not a gate with headroom.
+ *
+ * So the reading is gone and every declared-closed-u multi-bound face comes
+ * here. The cost is that a boundary which does not wrap is triangulated by
+ * CDT rather than ear-clipped; the three refusals below are unchanged, so a
+ * face this cannot handle still falls back to exactly today's ear-clipping.
+ * Measured across the 13 smoke models and 14 more from the corpus, FIVE faces
+ * reach this point and all five wrap - the reading never once returned false,
+ * so removing it changes nothing that was measured.
  *
  * TWO DIFFERENT THINGS ARE CALLED "closed in u", and only one of them is a
  * gate here:
@@ -7817,21 +7885,19 @@ inline bool triangulatePeriodicUChart(
     return false;
   }
 
-  // DOES THE BOUNDARY WRAP THE CLOSURE? Summed over each ring's steps taken to
-  // their nearest periodic image, which is the same reading
-  // `triangulateUnwrappedLoops` takes to choose its layout, and it is taken
-  // here for the same reason: to choose one. A boundary that nets no winding
-  // is an ordinary outer ring with holes, which earcut reads correctly and
-  // more cheaply, and which every face in the corpus but three is.
+  // THERE IS NO WINDING READING HERE ANY MORE. See the header note: it asked
+  // whether the boundary wraps the closure, to send a boundary that does not
+  // to earcut as the cheaper triangulator, and it could not be made sound.
   //
-  // This is NOT the predecessor's per-ring unwrap, and it carries none of that
-  // reading's weight. There the whole strip was built on the unwrapped chain,
-  // so one misread step routed the boundary through chart the face never
-  // visits; here the sum decides a bool, the layout below re-derives every
-  // angle from the supplied u directly, and a misreading costs exactly today's
-  // ear-clipping.
+  // What IS read of the steps is whether their nearest-image reduction - the
+  // one assumption every later reading of this boundary rests on - is
+  // decisive at all. See MAX_DECISIVE_IMAGE_STEP_FRACTION: past a third of a
+  // period the reduction can reverse a segment's direction, and a layout
+  // drawn from a reversed segment is a chart the face never visits. Refused,
+  // which leaves the caller ear-clipping exactly as it does today.
   size_t totalPoints = 0;
-  bool   windsU      = false;
+
+  const double maxDecisiveStep = period * MAX_DECISIVE_IMAGE_STEP_FRACTION;
 
   for ( const std::vector< Point >& ring : uvBoundaryValues ) {
 
@@ -7841,23 +7907,17 @@ inline bool triangulatePeriodicUChart(
 
     totalPoints += ring.size();
 
-    double net = 0.0;
-
     for ( size_t at = 0, count = ring.size(); at < count; ++at ) {
 
       const double step =
         ring[ ( at + 1 ) % count ][ 0 ] - ring[ at ][ 0 ];
 
-      net += step - ( period * std::round( step / period ) );
-    }
+      if ( std::abs( step - ( period * std::round( step / period ) ) ) >
+             maxDecisiveStep ) {
 
-    if ( std::llround( net / period ) != 0 ) {
-      windsU = true;
+        return false;
+      }
     }
-  }
-
-  if ( !windsU ) {
-    return false;
   }
 
   // The caller's contract: every ring point is a mesh vertex, in ring order,
