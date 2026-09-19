@@ -49,8 +49,11 @@ constexpr double MAX_TRIANGLE_AMPLIFACTION = 32;
  * component. Both are refusals of a face that is perfectly well formed in
  * (u, v).
  *
- * The split point is placed ON THE SEGMENT IT SPLITS, in 3D - see
- * triangulatePeriodicUChart - so it refines the LAYOUT and not the boundary.
+ * The split point NEVER REACHES THE MESH - see the anchoring in
+ * triangulatePeriodicUChart, which puts the triangles round a split point
+ * back on the boundary sample it was interpolated from. So this refines the
+ * LAYOUT and nothing else: the face emits exactly the boundary polyline it
+ * was handed, which is also the one the neighbouring face keeps.
  * Measured on the corpus, the widest segment of any ring of any of the three
  * faces that reach here is 0.0398 of a period (14.3 degrees), against a
  * threshold of 30, so nothing in the corpus splits at all.
@@ -7720,32 +7723,28 @@ inline size_t reSolveClosedTrimHead(
  * there in (u, v)) and a hole lying along a rim (the lens between the two
  * spellings of the same contact becomes a second parity component).
  *
- * THE SPLIT POINT USED TO BE EVALUATED ON THIS FACE'S SURFACE, and that was
- * a defect: the trim segment is SHARED with the face on the other side of
- * that edge, which keeps the original endpoint-to-endpoint edge. A point
- * pulled onto this surface is generally not on that straight edge, so the
- * two faces disagree about where the boundary runs - `Geometry::Reify` welds
- * vertices and cannot split the neighbour's edge, leaving a T-junction AND a
- * geometric crack. The file's own test pinned the disagreement as a feature:
- * a four-sample rim was asserted to come out a TWELVE-gon. Found by codex
- * 4051389895 on bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+ * THE SPLIT POINT IS NOT A POINT OF THE FACE, and two rounds of review were
+ * spent discovering it. It was first EVALUATED ON THIS FACE'S SURFACE, which
+ * put it off the straight trim segment the neighbouring face keeps: a
+ * T-junction AND a geometric crack, with the file's own test pinning the
+ * disagreement as a feature (a four-sample rim asserted to come out a
+ * TWELVE-gon). Codex 4051389895. It was then interpolated along the segment,
+ * which removed the crack - the area is the 4-gon band's again - and left the
+ * T-junction, documented here as unfixable from inside this function. Codex
+ * 4051991546 read that and answered it: `Reify` welds coincident vertices and
+ * cannot match A-M or M-B to the neighbour's A-B, so every split that fires
+ * still makes two single-sided edges, and the split has to stay LAYOUT-ONLY.
  *
- * So the point is placed on the SEGMENT instead - the linear interpolation
- * of the two endpoints' own mesh positions, which is exactly the edge the
- * neighbour has. The emitted face then spans precisely the boundary polyline
- * it was handed (this file measures a four-sample rim's area as the 4-gon
- * band's, not the 12-gon's), no crack is possible because the added point is
- * ON the neighbour's edge, and the refinement that makes the face accurate
- * is `tesselate` afterwards, which splits interior edges only and so cannot
- * move a shared boundary either.
- *
- * WHAT REMAINS is a T-junction: the neighbour has one edge where this face
- * has two. That cannot be closed from here. Coordinating the split with the
- * shared trim tessellation would have to happen where the curve is
- * tessellated, since the criterion is THIS face's u period and the
- * neighbour - a plane, say - cannot compute it. It is bounded: the split
- * fires only on a boundary already sampled coarser than 30 degrees of the
- * closure, and never anywhere in the corpus.
+ * It does. The split points go into the CDT, where the layout needs them, and
+ * a triangle corner that lands on one is put back on the boundary sample it
+ * was interpolated from before anything is emitted - see the anchoring below,
+ * which is exact rather than approximate because a split point is collinear
+ * with its segment's ends in the chart and in 3D, and because the route
+ * reading above leaves it nearer to its anchor than half a period. The
+ * emitted face's border
+ * edges are the boundary polyline's own segments and the emergent seam, and
+ * nothing else; this file asserts that directly, over a boundary whose
+ * segments are not all the same length.
  *
  * THE VALIDITY SIGNAL is built in rather than gated, because it is a failure
  * the construction can cause and therefore the construction's job to catch.
@@ -8195,15 +8194,20 @@ inline bool triangulatePeriodicUChart(
 
   // ------------------------------------------------------------------
   // The chart points: every ring point, plus whatever the layout split adds.
-  // RECORDED, NOT CREATED - `meshVertex` is EMPTY_INDEX for a point this
-  // function invented, and those become mesh vertices only in the commit
-  // section, so every refusal below leaves the mesh as it was.
+  // A split point has `meshVertex` EMPTY_INDEX and NEVER acquires one - see
+  // the anchoring below, which puts its triangles back on the boundary sample
+  // it was interpolated from. So the mesh grows by the seam duplicates and by
+  // nothing else, and every refusal leaves it exactly as it was handed over.
   // ------------------------------------------------------------------
   struct ChartPoint {
-    double     u;
-    double     v;
-    uint32_t   meshVertex;
-    glm::dvec3 world;
+    double   u;
+    double   v;
+
+    /** The caller's vertex for a boundary sample; EMPTY_INDEX for a split. */
+    uint32_t meshVertex;
+
+    /** The boundary sample this point was interpolated from; itself for one. */
+    size_t   anchor;
   };
 
   std::vector< ChartPoint >            chartPoints;
@@ -8230,10 +8234,12 @@ inline bool triangulatePeriodicUChart(
         const Point& from = ring[ at ];
         const Point& to   = ring[ next ];
 
-        indices.push_back( chartPoints.size() );
+        const size_t sample = chartPoints.size();
+
+        indices.push_back( sample );
         chartPoints.push_back(
           { from[ 0 ], from[ 1 ], flat + static_cast< uint32_t >( at ),
-            glm::dvec3( 0.0 ) } );
+            sample } );
 
         // The step to the NEXT point, taken to its nearest image: a ring is
         // sampled in the domain, so consecutive samples either side of the
@@ -8248,16 +8254,14 @@ inline bool triangulatePeriodicUChart(
 
         const double deltaV = to[ 1 ] - from[ 1 ];
 
-        // The two ends of THIS segment, as the caller already has them. The
-        // split point is interpolated between these and nothing else - see
-        // the header comment: the segment is shared with the face on the
-        // other side of this edge, so the only position that cannot open a
-        // crack against it is a position on the segment.
-        const glm::dvec3& fromWorld =
-          mesh.vertices[ flat + static_cast< uint32_t >( at ) ].point;
-        const glm::dvec3& toWorld =
-          mesh.vertices[ flat + static_cast< uint32_t >( next ) ].point;
-
+        // NO 3D POSITION IS COMPUTED FOR A SPLIT POINT, because none is ever
+        // needed: the split exists so the annulus does not draw this segment
+        // as one wide chord, and the anchoring below keeps it out of the mesh
+        // entirely. The previous revision interpolated the segment's own two
+        // world positions here, which removed the crack an on-surface point
+        // opened against the neighbouring face but still emitted a vertex in
+        // the middle of a shared trim edge. Codex 4051991546 on
+        // bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
         const size_t pieces =
           static_cast< size_t >(
             std::ceil( std::abs( deltaU ) / maxChordStep ) );
@@ -8271,9 +8275,7 @@ inline bool triangulatePeriodicUChart(
           const double midV = from[ 1 ] + ( deltaV * fraction );
 
           indices.push_back( chartPoints.size() );
-          chartPoints.push_back(
-            { midU, midV, EMPTY_INDEX,
-              fromWorld + ( ( toWorld - fromWorld ) * fraction ) } );
+          chartPoints.push_back( { midU, midV, EMPTY_INDEX, sample } );
         }
       }
 
@@ -8312,6 +8314,10 @@ inline bool triangulatePeriodicUChart(
 
   std::map< std::pair< long long, long long >, uint32_t > weld;
   std::set< std::pair< uint32_t, uint32_t > >             edgeSet;
+
+  // Which welded vertex each chart point ended up in, which is what lets a
+  // split point's triangles be put back onto its anchor's welded vertex.
+  std::vector< uint32_t > weldedOf( chartPoints.size(), EMPTY_INDEX );
 
   bool inputFinite = true;
 
@@ -8354,7 +8360,20 @@ inline bool triangulatePeriodicUChart(
       }
 
       cdtBaseU.push_back( uMin + base );
+
+    } else if ( point.meshVertex != EMPTY_INDEX &&
+                chartPoints[ cdtSource[ found->second ] ].meshVertex ==
+                  EMPTY_INDEX ) {
+
+      // A BOUNDARY SAMPLE ALWAYS REPRESENTS ITS WELDED VERTEX, even when a
+      // split point reached the key first. Everything below resolves a welded
+      // vertex through `cdtSource`, and a split-point representative would
+      // leave a sample the caller already has a vertex for with no vertex to
+      // carry - and would anchor it away to somewhere else on the boundary.
+      cdtSource[ found->second ] = chartIndex;
     }
+
+    weldedOf[ chartIndex ] = found->second;
 
     return found->second;
   };
@@ -8585,13 +8604,96 @@ inline bool triangulatePeriodicUChart(
     return false;
   }
 
-  // Which sheets does each welded vertex end up on? One is the ordinary case;
-  // more than one is the emergent seam passing through it, and each extra
-  // sheet costs one duplicated vertex carrying the same 3D point at a uv a
-  // whole number of periods away. No cap: the duplication is general, so a
-  // chart that wound twice would simply cost more copies.
-  std::map< std::pair< uint32_t, long long >, uint32_t > copies;
-  std::set< std::pair< uint32_t, long long > >           wanted;
+  // ------------------------------------------------------------------
+  // THE LAYOUT SPLIT IS LAYOUT-ONLY, WHICH IS SETTLED HERE. A split point
+  // exists so the annulus does not draw one boundary segment as a chord wide
+  // enough to cut across its neighbours. It is not a boundary point: the trim
+  // segment it sits on is SHARED with the face on the other side of that
+  // edge, which keeps the segment whole, so a mesh vertex in the middle of it
+  // gives this face two edges where its neighbour has one. `Geometry::Reify`
+  // welds coincident vertices and cannot match either half to the whole, so
+  // the pair are single-sided edges however exactly the point is placed -
+  // placing it ON the segment removes the crack and leaves the T-junction.
+  // Codex 4051991546 on bldrs-ai/conway-geom#207 and bldrs-ai/conway#711.
+  //
+  // So a triangle corner that landed on a split point is put back on the
+  // boundary sample the split was interpolated from. That is EXACT, not an
+  // approximation. A split point's uv is the linear interpolation of its
+  // segment's two ends, so it is COLLINEAR with them in the chart and in 3D,
+  // and its fan is bounded by the two halves of that straight segment - two
+  // OPPOSITE rays from the split. The fan's region is therefore the polygon
+  // its chain closes with the anchor, and the fan re-hung on the anchor tiles
+  // the same polygon. The one triangle that re-hangs onto the anchor's own
+  // apex edge comes out with no area and is dropped; what it covered is
+  // covered by the rest of the same fan.
+  //
+  // WHAT IS READ OF THE RESULT, in the same posture as the three refusals
+  // above: a collapsed triangle that TURNED OVER in the chart is a fan the
+  // anchor cannot see all of, and one that now spans half a period is the
+  // fold the lift exists to prevent. Either refuses the face. Neither is a
+  // tolerance - one is a sign, the other the half period the
+  // `ParameterVertex` midpoint folds at.
+  //
+  // NEITHER IS SEPARATELY PINNED, which is said here rather than implied
+  // otherwise: 125 triangles collapse across this file's own cases and none
+  // of them, and nothing in the corpus, reaches either reading. The turn is
+  // reachable in principle - moving a fan's apex along its own boundary line
+  // can reverse the angular order of two chain vertices, which reverses that
+  // triangle - so it is read rather than argued.
+  // ------------------------------------------------------------------
+  const auto anchored =
+    [ & ]( uint32_t welded, long long sheet ) {
+
+      const ChartPoint& point = chartPoints[ cdtSource[ welded ] ];
+
+      if ( point.meshVertex != EMPTY_INDEX ) {
+        return std::pair< uint32_t, long long >( welded, sheet );
+      }
+
+      const uint32_t anchor = weldedOf[ point.anchor ];
+
+      // WHICH COPY OF THE ANCHOR: the nearest image of it to the split
+      // point's own lift, and that is exact rather than a guess. The split
+      // sits at most |deltaU| along its segment from the anchor, the route
+      // reading above caps every accepted |deltaU| at
+      // MAX_DECISIVE_IMAGE_STEP_FRACTION of a period, and 3/8 is on the side
+      // of a half period where a nearest image is the only image. The
+      // interpolated offset was carried on the ChartPoint and subtracted here
+      // first; it was removed because it cannot change the rounding, and
+      // measurably so - zeroing it changes nothing in any case in this file.
+      const double lifted =
+        cdtBaseU[ welded ] + ( period * static_cast< double >( sheet ) );
+
+      return std::pair< uint32_t, long long >(
+        anchor,
+        std::llround( ( lifted - cdtBaseU[ anchor ] ) / period ) );
+    };
+
+  const auto liftedOf =
+    [ & ]( const std::pair< uint32_t, long long >& corner ) {
+
+      return glm::dvec2(
+        cdtBaseU[ corner.first ] +
+          ( period * static_cast< double >( corner.second ) ),
+        chartPoints[ cdtSource[ corner.first ] ].v );
+    };
+
+  using Corners = std::array< std::pair< uint32_t, long long >, 3 >;
+
+  const auto turn =
+    [ & ]( const Corners& corners ) {
+
+      const glm::dvec2 first  = liftedOf( corners[ 0 ] );
+      const glm::dvec2 second = liftedOf( corners[ 1 ] );
+      const glm::dvec2 third  = liftedOf( corners[ 2 ] );
+
+      return ( ( second.x - first.x ) * ( third.y - first.y ) ) -
+             ( ( second.y - first.y ) * ( third.x - first.x ) );
+    };
+
+  std::vector< Corners > emitted;
+
+  emitted.reserve( triangleCount );
 
   for ( size_t triangle = 0; triangle < triangleCount; ++triangle ) {
 
@@ -8601,16 +8703,69 @@ inline bool triangulatePeriodicUChart(
       continue;
     }
 
-    for ( size_t corner = 0; corner < 3; ++corner ) {
+    const Corners chart = {
+      std::pair< uint32_t, long long >( a, sheetOf( triangle, 0 ) ),
+      std::pair< uint32_t, long long >( b, sheetOf( triangle, 1 ) ),
+      std::pair< uint32_t, long long >( c, sheetOf( triangle, 2 ) ) };
 
-      wanted.emplace(
-        triangulation.triangles[ triangle ].vertices[ corner ],
-        sheetOf( triangle, corner ) );
+    const Corners corners = {
+      anchored( chart[ 0 ].first, chart[ 0 ].second ),
+      anchored( chart[ 1 ].first, chart[ 1 ].second ),
+      anchored( chart[ 2 ].first, chart[ 2 ].second ) };
+
+    if ( corners != chart ) {
+
+      // Re-hung onto the anchor's own apex edge. Its area is not lost: the
+      // split is collinear with the anchor and the segment's far end, so what
+      // this triangle covered is covered by the rest of its own fan.
+      if ( corners[ 0 ] == corners[ 1 ] || corners[ 1 ] == corners[ 2 ] ||
+           corners[ 2 ] == corners[ 0 ] ) {
+        continue;
+      }
+
+      const double before = turn( chart );
+      const double after  = turn( corners );
+
+      if ( !( ( before > 0.0 && after > 0.0 ) ||
+              ( before < 0.0 && after < 0.0 ) ) ) {
+        return false;
+      }
+
+      double low  = std::numeric_limits< double >::max();
+      double high = std::numeric_limits< double >::lowest();
+
+      for ( const std::pair< uint32_t, long long >& corner : corners ) {
+
+        const double lifted = liftedOf( corner ).x;
+
+        low  = std::min( low, lifted );
+        high = std::max( high, lifted );
+      }
+
+      if ( ( high - low ) >= ( period * 0.5 ) ) {
+        return false;
+      }
     }
+
+    emitted.push_back( corners );
   }
 
-  if ( wanted.empty() ) {
+  if ( emitted.empty() ) {
     return false;
+  }
+
+  // Which sheets does each welded vertex end up on? One is the ordinary case;
+  // more than one is the emergent seam passing through it, and each extra
+  // sheet costs one duplicated vertex carrying the same 3D point at a uv a
+  // whole number of periods away. No cap: the duplication is general, so a
+  // chart that wound twice would simply cost more copies.
+  std::map< std::pair< uint32_t, long long >, uint32_t > copies;
+  std::set< std::pair< uint32_t, long long > >           wanted;
+
+  for ( const Corners& corners : emitted ) {
+    for ( const std::pair< uint32_t, long long >& corner : corners ) {
+      wanted.insert( corner );
+    }
   }
 
   // ------------------------------------------------------------------
@@ -8628,15 +8783,12 @@ inline bool triangulatePeriodicUChart(
     const uint32_t  welded = request.first;
     const long long sheet  = request.second;
 
+    // ALWAYS A BOUNDARY SAMPLE, and so always a vertex the caller already
+    // has: `anchored` above resolved every split point onto the sample it was
+    // interpolated from, and `weldVertex` keeps a sample as the representative
+    // of any welded vertex a split point shares. The mesh therefore grows by
+    // the seam duplicates below and by nothing else.
     ChartPoint& source = chartPoints[ cdtSource[ welded ] ];
-
-    // A layout split point becomes a mesh vertex here and nowhere earlier,
-    // and only if a kept triangle actually uses it - a point whose triangles
-    // were all erased costs the caller nothing.
-    if ( source.meshVertex == EMPTY_INDEX ) {
-      source.meshVertex =
-        mesh.makeVertex( { source.world, glm::dvec2( source.u, source.v ) } );
-    }
 
     const glm::dvec2 lifted(
       cdtBaseU[ welded ] + ( period * static_cast< double >( sheet ) ),
@@ -8660,20 +8812,13 @@ inline bool triangulatePeriodicUChart(
     copies.emplace( request, mesh.makeVertex( { world, lifted } ) );
   }
 
-  trianglesOut.reserve( triangleCount );
+  trianglesOut.reserve( emitted.size() );
 
-  for ( size_t triangle = 0; triangle < triangleCount; ++triangle ) {
+  for ( const Corners& corners : emitted ) {
 
-    const auto [ a, b, c ] = triangulation.triangles[ triangle ].vertices;
-
-    if ( a == b || b == c || c == a ) {
-      continue;
-    }
-
-    trianglesOut.push_back(
-      { copies.at( { a, sheetOf( triangle, 0 ) } ),
-        copies.at( { b, sheetOf( triangle, 1 ) } ),
-        copies.at( { c, sheetOf( triangle, 2 ) } ) } );
+    trianglesOut.push_back( { copies.at( corners[ 0 ] ),
+                              copies.at( corners[ 1 ] ),
+                              copies.at( corners[ 2 ] ) } );
   }
 
   // ------------------------------------------------------------------
@@ -8708,74 +8853,118 @@ inline bool triangulatePeriodicUChart(
   // (that is what the zero-sum reading above makes true), which both
   // triangles compute from the same two vertices.
   // ------------------------------------------------------------------
-  const auto keptTriangle =
-    [ & ]( size_t triangle ) {
+  // READ OFF THE EMITTED TRIANGLES, not off the triangulation's adjacency,
+  // which is what the previous revision did. The anchoring above drops the
+  // triangles that collapsed onto an apex edge - their area is covered by the
+  // rest of the same fan - and a cut whose two sides are read from CDT
+  // adjacency loses its report whenever one of those two was a dropped one.
+  // Measured on the six-sample band, where sixteen of twenty-eight triangles
+  // collapse and the cut went unreported entirely.
+  //
+  // One CHART edge, identified by its two welded vertices, reaches the mesh
+  // as more than one edge exactly when the lift put its ends on different
+  // sheets on either side of it. That IS the monodromy, stated on the output
+  // this function returns rather than on an intermediate structure.
+  {
+    std::map< std::pair< uint32_t, uint32_t >,
+              std::vector< std::pair< uint32_t, uint32_t > > > chartEdges;
 
-      const auto [ a, b, c ] = triangulation.triangles[ triangle ].vertices;
+    for ( const Corners& corners : emitted ) {
 
-      return a != b && b != c && c != a;
-    };
+      for ( size_t side = 0; side < 3; ++side ) {
 
-  for ( size_t triangle = 0; triangle < triangleCount; ++triangle ) {
+        const std::pair< uint32_t, long long >& head = corners[ side ];
+        const std::pair< uint32_t, long long >& tail =
+          corners[ ( side + 1 ) % 3 ];
 
-    if ( !keptTriangle( triangle ) ) {
-      continue;
+        const bool ordered = head.first < tail.first;
+
+        chartEdges[ ordered ? std::pair< uint32_t, uint32_t >( head.first,
+                                                              tail.first )
+                            : std::pair< uint32_t, uint32_t >( tail.first,
+                                                               head.first ) ]
+          .push_back(
+            ordered ?
+              std::pair< uint32_t, uint32_t >( copies.at( head ),
+                                               copies.at( tail ) ) :
+              std::pair< uint32_t, uint32_t >( copies.at( tail ),
+                                               copies.at( head ) ) );
+      }
     }
 
-    const auto& mine = triangulation.triangles[ triangle ].vertices;
+    // Walked in triangle order, and reported from the first side of each cut
+    // edge that comes up, which is the order the adjacency walk it replaces
+    // produced. A face whose layout splits nothing therefore hands
+    // `refineSeamPairs` the same work in the same order as before, and the
+    // corpus digests do not move for a reordering.
+    std::set< std::pair< uint32_t, uint32_t > > reported;
 
-    for ( size_t side = 0; side < 3; ++side ) {
+    for ( const Corners& corners : emitted ) {
 
-      const CDT::TriInd neighbour =
-        triangulation.triangles[ triangle ].neighbors[ side ];
+      for ( size_t side = 0; side < 3; ++side ) {
 
-      // Each adjacency once, from its lower triangle.
-      if ( neighbour == CDT::noNeighbor ||
-           static_cast< size_t >( neighbour ) <= triangle ||
-           static_cast< size_t >( neighbour ) >= triangleCount ||
-           !keptTriangle( neighbour ) ) {
-        continue;
-      }
+        const std::pair< uint32_t, long long >& head = corners[ side ];
+        const std::pair< uint32_t, long long >& tail =
+          corners[ ( side + 1 ) % 3 ];
 
-      const auto& theirs = triangulation.triangles[ neighbour ].vertices;
+        const bool ordered = head.first < tail.first;
 
-      size_t   sharedMine[ 2 ]   = { 0, 0 };
-      size_t   sharedTheirs[ 2 ] = { 0, 0 };
-      size_t   shared            = 0;
+        const std::pair< uint32_t, uint32_t > chartEdge =
+          ordered ? std::pair< uint32_t, uint32_t >( head.first, tail.first )
+                  : std::pair< uint32_t, uint32_t >( tail.first, head.first );
 
-      for ( size_t here = 0; here < 3 && shared < 2; ++here ) {
-        for ( size_t there = 0; there < 3; ++there ) {
+        const std::vector< std::pair< uint32_t, uint32_t > >& meshEdges =
+          chartEdges.at( chartEdge );
 
-          if ( mine[ here ] != theirs[ there ] ) {
+        const std::set< std::pair< uint32_t, uint32_t > > distinct(
+          meshEdges.begin(), meshEdges.end() );
+
+        if ( distinct.size() < 2 ) {
+          continue;
+        }
+
+        // Each copy carries exactly one triangle, which is what makes it a
+        // BORDER edge by the winged-edge reading and so one `tesselate` skips
+        // - see the note above. A copy with two triangles is an ordinary
+        // interior edge and no side of anything.
+        //
+        // NOT REDUNDANT, though a triangulation gives an edge at most two
+        // triangles and so at most two lifts. The anchoring above is what
+        // makes it reachable: two different chart edges out of two different
+        // split points of one segment collapse onto the SAME pair of welded
+        // vertices, so this key can carry more entries than an edge of the
+        // triangulation ever does. Not reached by any case here either - the
+        // cases that split have one split point per segment - and said so
+        // rather than left to look like an invariant.
+        bool border = true;
+
+        for ( const std::pair< uint32_t, uint32_t >& copy : distinct ) {
+
+          border = border &&
+                   std::count( meshEdges.begin(), meshEdges.end(), copy ) == 1;
+        }
+
+        if ( !border || !reported.insert( chartEdge ).second ) {
+          continue;
+        }
+
+        const std::pair< uint32_t, uint32_t > mine =
+          ordered ?
+            std::pair< uint32_t, uint32_t >( copies.at( head ),
+                                             copies.at( tail ) ) :
+            std::pair< uint32_t, uint32_t >( copies.at( tail ),
+                                             copies.at( head ) );
+
+        for ( const std::pair< uint32_t, uint32_t >& copy : distinct ) {
+
+          if ( copy == mine ) {
             continue;
           }
 
-          sharedMine[ shared ]   = here;
-          sharedTheirs[ shared ] = there;
-          ++shared;
-          break;
+          seamEdgesOut.push_back(
+            { mine.first, mine.second, copy.first, copy.second } );
         }
       }
-
-      if ( shared != 2 ) {
-        continue;
-      }
-
-      const long long mineFirst  = sheetOf( triangle, sharedMine[ 0 ] );
-      const long long mineSecond = sheetOf( triangle, sharedMine[ 1 ] );
-
-      const long long theirsFirst  = sheetOf( neighbour, sharedTheirs[ 0 ] );
-      const long long theirsSecond = sheetOf( neighbour, sharedTheirs[ 1 ] );
-
-      if ( mineFirst == theirsFirst ) {
-        continue;
-      }
-
-      seamEdgesOut.push_back(
-        { copies.at( { mine[ sharedMine[ 0 ] ], mineFirst } ),
-          copies.at( { mine[ sharedMine[ 1 ] ], mineSecond } ),
-          copies.at( { theirs[ sharedTheirs[ 0 ] ], theirsFirst } ),
-          copies.at( { theirs[ sharedTheirs[ 1 ] ], theirsSecond } ) } );
     }
   }
 

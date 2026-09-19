@@ -588,6 +588,91 @@ double emittedArea( const Built& state, const Outcome& outcome ) {
 }
 
 /**
+ * The emitted face's border edges - the ones exactly one triangle carries -
+ * as mesh-vertex pairs with the lower index first.
+ *
+ * A face's border edges are its trim boundary plus the emergent seam, and
+ * nothing else. Anything a border edge is that is neither is a T-junction or
+ * a hole.
+ */
+std::set< std::pair< uint32_t, uint32_t > > borderEdgesOf(
+    const Outcome& outcome ) {
+
+  std::map< std::pair< uint32_t, uint32_t >, size_t > counts;
+
+  for ( const std::array< uint32_t, 3 >& triangle : outcome.triangles ) {
+
+    for ( size_t side = 0; side < 3; ++side ) {
+
+      const uint32_t head = triangle[ side ];
+      const uint32_t tail = triangle[ ( side + 1 ) % 3 ];
+
+      ++counts[ { std::min( head, tail ), std::max( head, tail ) } ];
+    }
+  }
+
+  std::set< std::pair< uint32_t, uint32_t > > borders;
+
+  for ( const std::pair< const std::pair< uint32_t, uint32_t >, size_t >& edge :
+          counts ) {
+
+    if ( edge.second == 1 ) {
+      borders.insert( edge.first );
+    }
+  }
+
+  return borders;
+}
+
+/** An edge keyed by its two endpoint POSITIONS, lower first. */
+std::array< double, 6 > positionKey( const glm::dvec3& first,
+                                     const glm::dvec3& second ) {
+
+  std::array< double, 3 > low  = { first.x, first.y, first.z };
+  std::array< double, 3 > high = { second.x, second.y, second.z };
+
+  if ( high < low ) {
+    std::swap( low, high );
+  }
+
+  return { low[ 0 ], low[ 1 ], low[ 2 ], high[ 0 ], high[ 1 ], high[ 2 ] };
+}
+
+/**
+ * The boundary polyline's own segments, keyed by position: `build` lays every
+ * ring point out as a mesh vertex in ring order from vertex 0, which is the
+ * contract `triangulatePeriodicUChart` is handed.
+ *
+ * BY POSITION AND NOT BY INDEX, because a boundary vertex the emergent seam
+ * runs through is duplicated, and the segments either side of it then carry
+ * one index each of a bitwise-identical pair. Position is what the
+ * neighbouring face shares and what `Reify` welds on, so it is what "the same
+ * edge" has to mean here.
+ */
+std::set< std::array< double, 6 > > boundarySegmentsOf( const Built& state ) {
+
+  std::set< std::array< double, 6 > > segments;
+
+  uint32_t flat = 0;
+
+  for ( const std::vector< std::array< double, 2 > >& ring : state.rings ) {
+
+    const uint32_t count = static_cast< uint32_t >( ring.size() );
+
+    for ( uint32_t at = 0; at < count; ++at ) {
+
+      segments.insert(
+        positionKey( state.mesh.vertices[ flat + at ].point,
+                     state.mesh.vertices[ flat + ( ( at + 1 ) % count ) ].point ) );
+    }
+
+    flat += count;
+  }
+
+  return segments;
+}
+
+/**
  * Every vertex the run added beyond `boundaryCount` must carry a position
  * that is BITWISE some existing vertex's position, or it is a subdivision
  * point rather than a seam duplicate. Counted separately so a test can say
@@ -1115,11 +1200,14 @@ int main() {
     // bldrs-ai/conway-geom#207 read the test as demonstrating the mismatch,
     // which is exactly what it was doing.
     //
-    // The split point is now the linear interpolation of the segment's own
-    // two endpoints, so it lies ON the edge the neighbour kept: the split is
-    // invisible in 3D, the emitted area is the 4-gon band's to the last
-    // digit, and no crack is geometrically possible. What remains is a
-    // T-junction, which cannot be closed from inside this function.
+    // Placing the split point on the segment removed the crack and left the
+    // T-junction: the face still had edges A-M and M-B where its neighbour
+    // had A-B, and `Reify` welds coincident vertices and cannot match either
+    // half to the whole. Codex 4051991546 read the second half of that note -
+    // that the T-junction could not be closed from here - as the thing to
+    // fix, and it was right: the split has no reason to reach the mesh at
+    // all. It does not any more. The layout still splits, the emitted area is
+    // still the 4-gon band's to the last digit, and the mesh gains nothing.
     Built state = build( { evenRim( 4, 0.25, true, true ),
                            evenRim( 4, 0.75, false, true ) } );
 
@@ -1130,28 +1218,31 @@ int main() {
 
     const Growth growth = classifyGrowth( state, boundary );
 
-    check( growth.introduced > 0,
-           "and the layout still splits it, because 90 degrees is past the "
-           "threshold" );
+    check( growth.introduced == 0,
+           "and the layout split reaches the mesh nowhere: every vertex this "
+           "added is a seam duplicate" );
 
     check( std::abs( emittedArea( state, outcome ) - bandArea( 4 ) ) <
              ( bandArea( 4 ) * 1e-9 ),
-           "but the emitted area is the boundary polyline's own, exactly - "
-           "the 4-gon band, not the 12-gon's" );
+           "with the emitted area still the boundary polyline's own, exactly "
+           "- the 4-gon band, and the split invisible in it" );
 
     check( worstLiftedSpan( state, outcome ) < 0.5,
            "with no triangle spanning half a period" );
   }
 
-  printf( "=== every split point lies on the segment it splits ===\n" );
+  printf( "=== the emitted face has the boundary it was handed ===\n" );
 
   {
     // THE PROPERTY THE AREA ASSERTION IS A CONSEQUENCE OF, stated directly
-    // and over a boundary whose segments are not all the same length: every
-    // vertex this function invents must be collinear with - and between - the
-    // two boundary vertices of the segment it came from, because that segment
-    // is the neighbouring face's edge. Read off the mesh rather than the
-    // chart: any introduced vertex must lie on SOME boundary segment.
+    // and over a boundary whose segments are not all the same length. A
+    // face's border edges are its trim boundary plus the emergent seam, and
+    // nothing else: any other border edge is an edge the neighbouring face
+    // does not have, which is a T-junction and a single-sided edge after
+    // `Reify` welds. Read off the emitted triangles rather than off the
+    // vertex list, because a split point that reached the mesh would show up
+    // here as TWO border edges where the caller handed over one, whatever its
+    // position.
     Built state = build( { evenRim( 5, 0.25, true, true ),
                            evenRim( 3, 0.75, false, true ) } );
 
@@ -1160,66 +1251,44 @@ int main() {
 
     check( outcome.built, "a band with two differently sampled rims builds" );
 
-    size_t introduced = 0;
-    size_t onSegment  = 0;
+    const Growth growth = classifyGrowth( state, boundary );
 
-    for ( size_t at = boundary; at < state.mesh.vertices.size(); ++at ) {
+    check( growth.introduced == 0,
+           "and it invents no vertex: a layout split point is not a point of "
+           "this face" );
 
-      const glm::dvec3& point = state.mesh.vertices[ at ].point;
+    const std::set< std::pair< uint32_t, uint32_t > > borders =
+      borderEdgesOf( outcome );
+    const std::set< std::array< double, 6 > > segments =
+      boundarySegmentsOf( state );
 
-      bool duplicate = false;
+    std::set< std::pair< uint32_t, uint32_t > > cut;
 
-      for ( size_t other = 0; other < boundary && !duplicate; ++other ) {
-        duplicate = state.mesh.vertices[ other ].point == point;
-      }
+    for ( const std::array< uint32_t, 4 >& edge : outcome.seamEdges ) {
 
-      if ( duplicate ) {
-        continue;
-      }
-
-      ++introduced;
-
-      // Against every segment of every ring: collinear, and strictly between.
-      for ( const std::vector< std::array< double, 2 > >& ring : state.rings ) {
-
-        const size_t count = ring.size();
-
-        for ( size_t step = 0; step < count; ++step ) {
-
-          const glm::dvec3 a =
-            tubePoint( ring[ step ][ 0 ], ring[ step ][ 1 ] );
-          const glm::dvec3 b =
-            tubePoint( ring[ ( step + 1 ) % count ][ 0 ],
-                       ring[ ( step + 1 ) % count ][ 1 ] );
-
-          const glm::dvec3 along = b - a;
-          const double     length2 = glm::dot( along, along );
-
-          if ( length2 == 0.0 ) {
-            continue;
-          }
-
-          const double t = glm::dot( point - a, along ) / length2;
-
-          if ( t <= 0.0 || t >= 1.0 ) {
-            continue;
-          }
-
-          if ( glm::distance( point, a + ( along * t ) ) <
-                 ( TUBE_RADIUS * 1e-12 ) ) {
-
-            ++onSegment;
-            step  = count;
-            break;
-          }
-        }
-      }
+      cut.insert( { std::min( edge[ 0 ], edge[ 1 ] ),
+                    std::max( edge[ 0 ], edge[ 1 ] ) } );
+      cut.insert( { std::min( edge[ 2 ], edge[ 3 ] ),
+                    std::max( edge[ 2 ], edge[ 3 ] ) } );
     }
 
-    check( introduced > 0, "and the layout splits at least one of its steps" );
-    check( introduced == onSegment,
-           "with every invented vertex lying on the boundary segment it came "
-           "from, which is the edge the neighbouring face keeps" );
+    size_t accounted = 0;
+
+    for ( const std::pair< uint32_t, uint32_t >& edge : borders ) {
+
+      accounted +=
+        ( cut.count( edge ) > 0 ||
+          segments.count(
+            positionKey( state.mesh.vertices[ edge.first ].point,
+                         state.mesh.vertices[ edge.second ].point ) ) > 0 ) ?
+          1 : 0;
+    }
+
+    check( !borders.empty(), "it has border edges to account for" );
+    check( accounted == borders.size(),
+           "and every one of them is either a segment of the boundary "
+           "polyline it was handed or a side of the cut - no edge that the "
+           "neighbouring face does not also have" );
   }
 
   printf( "=== a boundary that touches itself without crossing ===\n" );

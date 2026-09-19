@@ -883,37 +883,25 @@ namespace conway::geometry {
         continue;
       }
 
-      // A READING THAT IS NOT ABOUT THE CHORD. Bisection drives the deflection
-      // to zero only when the two ends lie on the surface the callback
-      // describes; when one of them does not, the reading bottoms out at that
-      // disagreement instead, and every further split halves an edge without
-      // ever satisfying the floor. It happens: `triangulatePeriodicUChart`'s
-      // own layout split places its point on the trim SEGMENT rather than on
-      // the surface, because that segment is shared with the neighbouring
-      // face - so a cut that ends on one of those points is anchored at a
-      // vertex the surface does not pass through.
+      // THERE WAS A NON-CONVERGENCE BOUND HERE, AND ITS CAUSE IS GONE.
+      // Bisection drives the deflection to zero only when both ends lie on the
+      // surface the callback describes; when one does not, the reading bottoms
+      // out at that disagreement and every further split halves an edge
+      // without ever satisfying the floor above. The end that did not was
+      // `triangulatePeriodicUChart`'s own layout split point, which sat on the
+      // shared trim segment rather than on the surface - and one cut of the
+      // six-sample band in test/periodic_u_chart_test.cpp spent all 434 of its
+      // splits and left 678 zero-length edges piled on one point.
       //
-      // Refused on the geometry rather than on a depth count. For two ends on
-      // the surface the deflection of their chord is bounded by L*L*k/8 with k
-      // the local curvature, so a deflection past a QUARTER of the chord needs
-      // L > 2/k - a chord longer than the local diameter of curvature, which
-      // two points of the surface do not span. A non-convergent one runs
-      // straight into it instead: as the split points pile up at the surface
-      // point the off-surface end's parameter names, the chord settles at that
-      // end's own distance r from it and the deflection at r/2, which is half
-      // the chord and so eight times over.
-      //
-      // Measured: without this, one cut of a six-sample band in
-      // test/periodic_u_chart_test.cpp spent all 434 of its splits and left
-      // 678 zero-length edges piled on one point. With it the same cut refines
-      // and stops. Nothing in the corpus comes within two orders of magnitude
-      // of the bound - `ADVANCED_FACE #19218`'s cut reads deflection 4.9e-8
-      // against a chord of 1.85e-2, i.e. 1.6e-6 of the way to it.
-      const glm::dvec3 chord = to.point - from.point;
-
-      if ( ( deflection * 16.0 ) >= glm::dot( chord, chord ) ) {
-        continue;
-      }
+      // Layout split points no longer reach the mesh at all, so a cut's two
+      // ends are boundary samples or their bitwise seam duplicates, and those
+      // are on the surface to the inverse solve's own convergence target -
+      // orders below the deflection floor this loop already stops at. Measured
+      // after that change: the bound fires ZERO times across this file's
+      // cases, and removing it leaves all 88 of its assertions passing with
+      // the same cut refining and stopping. A guard whose cause has been
+      // removed is a guard nothing can read, so it is gone rather than kept as
+      // a second opinion on a condition that cannot arise.
 
       // The other side's own midpoint in uv - the same point on the surface,
       // a whole number of periods away, which is the disagreement the cut
