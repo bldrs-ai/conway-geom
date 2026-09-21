@@ -1,5 +1,5 @@
 /*
- * Termination tests for `tesselate`'s ParameterVertex overload
+ * Subdivision-progress tests for `tesselate`'s ParameterVertex overload
  * (conway_geometry/operations/tesselation_utils.h).
  *
  * Splitting an edge replaces the two triangles on it with four, and queues
@@ -18,32 +18,24 @@
  * 4,510 copies of two points, and the 637 triangles that survived
  * `Geometry::Reify` were the earcut seed.
  *
- * The spine below is that configuration in the small: four vertices at
- * u = 0, 0.4, 0.8, 1.2 on a unit circle, triangulated as ( v0, v2, v1 ) and
- * ( v0, v2, v3 ), so the shared edge ( v0, v2 ) has v1 - its own uv midpoint -
- * as one apex and v3 as the other. Splitting it puts a vertex on v1, and the
- * off-diagonal ( v3, new ) spans u 0.4 to 1.2: the same 0.8 the parent
- * spanned, one step further along. Unbounded, that is a period-2 orbit.
+ * `tesselate` stops it by bounding an off-diagonal at the key of the edge
+ * whose split produced it, so a chain of them is strictly decreasing and
+ * cannot close. THE TWO HALVES OF THIS FILE ARE THE TWO WAYS THAT BOUND CAN
+ * BE WRONG:
  *
- * Verified by breaking rather than by reading, in a scratch copy of
- * tesselation_utils.h reached by an -I override - the working tree is never
- * reverted:
+ *   - `spineDoesNotRunAway()` is the runaway in the small. Without the bound
+ *     it does not terminate.
+ *   - `codexAnisotropicCase()` is the bound applied where it means nothing.
+ *     The key is deflection times chord and deflection is DIRECTIONAL, so
+ *     across a face curved harder in one parameter than the other a genuine
+ *     off-diagonal reads a higher key than the edge that spawned it and a
+ *     blanket ceiling discards it for good. That case is why the ceiling is
+ *     lifted for an off-diagonal nearly orthogonal to its parent, and this is
+ *     the review finding on bldrs-ai/conway-geom#211.
  *
- *   - the two off-diagonal `addCandidate` calls handed
- *     `std::numeric_limits< double >::infinity()` instead of `parentKey`:
- *     both spine assertions go red, at 1,000 triangles (its whole budget) and
- *     503 vertices over a largest coincident cluster of 251;
- *   - `if ( key >= keyCeiling )` made permanently false: the same two, the
- *     same numbers;
- *   - `if ( key >= keyCeiling )` made permanently true, so the ceiling
- *     refuses everything: the CONTROL goes red instead, falling from 48
- *     triangles to its 18-triangle seed.
- *
- * That last one is why the control is here. A bound that starved ordinary
- * refinement would fix the spine and facet every curved face in the corpus,
- * so a patch with real interior edges is refined here too and its triangle
- * count pinned exactly - and the first two variants leave it at 48, which is
- * the claim that this bound costs an ordinary face nothing.
+ * `ordinaryPatchIsRefinedAsBefore()` is the control for both: a patch with
+ * real interior edges, refined to a pinned triangle count, so that a bound
+ * which starved ordinary refinement could not pass this file either.
  *
  * Standalone by design: includes the header directly and links nothing but
  * the Logger stubs below, matching outer_bound_order_test.cpp.
@@ -54,6 +46,7 @@
 #include <cstdio>
 #include <map>
 #include <string>
+#include <tuple>
 #include <vector>
 
 // The header's error paths call these; the rest is header-only.
@@ -75,6 +68,7 @@ void check( bool condition, const std::string& what ) {
   ++failures;
 }
 
+using conway::geometry::Edge;
 using conway::geometry::ParameterVertex;
 using conway::geometry::WingedEdgeMesh;
 
@@ -89,9 +83,20 @@ glm::dvec3 cylinder( const glm::dvec3&, const glm::dvec2& uv ) {
   return glm::dvec3( cos( uv.x ), sin( uv.x ), uv.y );
 }
 
-ParameterVertex onCylinder( double u, double v ) {
+/**
+ * z = 0.1u^2 + v^2 - a regular surface, curved TEN TIMES harder across v than
+ * along u. Nothing about it is degenerate; the anisotropy is the whole point.
+ * See `codexAnisotropicCase()`.
+ */
+glm::dvec3 anisotropicParaboloid( const glm::dvec3&, const glm::dvec2& uv ) {
 
-  return ParameterVertex{ cylinder( glm::dvec3( 0.0 ), glm::dvec2( u, v ) ),
+  return glm::dvec3( uv.x, uv.y, ( 0.1 * uv.x * uv.x ) + ( uv.y * uv.y ) );
+}
+
+template< typename SurfacePointFunction >
+ParameterVertex on( SurfacePointFunction surface, double u, double v ) {
+
+  return ParameterVertex{ surface( glm::dvec3( 0.0 ), glm::dvec2( u, v ) ),
                           glm::dvec2( u, v ) };
 }
 
@@ -115,34 +120,76 @@ size_t largestCoincidentCluster( const WingedEdgeMesh< ParameterVertex >& mesh )
   return largest;
 }
 
+/**
+ * The worst squared deflection left on any live interior edge - what the
+ * refinement still owes when it returns, in the units `tesselate` compares
+ * against `minimumDeflection`.
+ */
+template< typename SurfacePointFunction >
+double worstRemainingDeflection(
+  const WingedEdgeMesh< ParameterVertex >& mesh,
+  SurfacePointFunction                     surface ) {
+
+  double worst = 0.0;
+
+  for ( const Edge& edge : mesh.edges ) {
+
+    if ( edge.border() ) {
+      continue;
+    }
+
+    const ParameterVertex& v0 = mesh.vertices[ edge.vertices[ 0 ] ];
+    const ParameterVertex& v1 = mesh.vertices[ edge.vertices[ 1 ] ];
+
+    glm::dvec3 average = ( v0.point + v1.point ) * 0.5;
+    glm::dvec3 delta   = surface( average, ( v0.uv + v1.uv ) * 0.5 ) - average;
+
+    worst = std::max( worst, glm::dot( delta, delta ) );
+  }
+
+  return worst;
+}
+
 // A target of 0.02 linear on a unit cylinder: a 0.8-radian chord sags 0.08
 // and a 0.2-radian one sags 0.005, so every edge of the seeds below is well
 // above it and refinement stops after a couple of halvings.
 constexpr double TARGET_DEFLECTION         = 0.02;
 constexpr double TARGET_DEFLECTION_SQUARED = TARGET_DEFLECTION * TARGET_DEFLECTION;
 
-// Far above anything either seed needs, so that reaching it means the loop
-// did not terminate rather than that it ran out of room.
+// Far above anything either cylinder seed needs, so that reaching it means
+// the loop did not terminate rather than that it ran out of room.
 constexpr int32_t GENEROUS_BUDGET = 1000;
 
-// What the refinement loop reaches on the 4x4 grid below - with the
-// off-diagonal bound and, measured, without it.
+// What the refinement loop reaches on the 4x4 grid below - with the bound
+// and, measured, without it.
 constexpr size_t ORDINARY_PATCH_TRIANGLES = 48;
 
 void spineDoesNotRunAway() {
 
+  // Four vertices at u = 0, 0.4, 0.8, 1.2 on a unit circle, triangulated as
+  // ( v0, v2, v1 ) and ( v0, v2, v3 ), so the shared edge ( v0, v2 ) has v1 -
+  // its own uv midpoint - as one apex and v3 as the other. Splitting it puts
+  // a vertex on v1, and the off-diagonal ( v3, new ) spans u 0.4 to 1.2: the
+  // same 0.8 the parent spanned, one step further along, and PARALLEL to it,
+  // which is what keeps it inside the ceiling's reach. Unbounded, that is a
+  // period-2 orbit - measured, 1,000 triangles and 251 vertices on one point.
   WingedEdgeMesh< ParameterVertex > mesh;
 
-  mesh.makeVertex( onCylinder( 0.0, 0.0 ) );
-  mesh.makeVertex( onCylinder( 0.4, 0.0 ) );
-  mesh.makeVertex( onCylinder( 0.8, 0.0 ) );
-  mesh.makeVertex( onCylinder( 1.2, 0.0 ) );
+  mesh.makeVertex( on( cylinder, 0.0, 0.0 ) );
+  mesh.makeVertex( on( cylinder, 0.4, 0.0 ) );
+  mesh.makeVertex( on( cylinder, 0.8, 0.0 ) );
+  mesh.makeVertex( on( cylinder, 1.2, 0.0 ) );
 
   mesh.makeTriangle( 0, 2, 1 );
   mesh.makeTriangle( 0, 2, 3 );
 
   conway::geometry::tesselate(
     mesh, cylinder, GENEROUS_BUDGET, TARGET_DEFLECTION_SQUARED );
+
+  printf(
+    "      spine: %zu triangles, %zu vertices, largest coincident cluster %zu\n",
+    mesh.triangles.size(), mesh.vertices.size(),
+    largestCoincidentCluster( mesh ) );
 
   check(
     static_cast< int32_t >( mesh.triangles.size() ) < GENEROUS_BUDGET,
@@ -151,11 +198,77 @@ void spineDoesNotRunAway() {
   check(
     largestCoincidentCluster( mesh ) <= 2,
     "and does so without stacking vertices on one point" );
+}
+
+void codexAnisotropicCase() {
+
+  // THE CASE THAT SAYS THE CEILING MAY NOT BE APPLIED BLANKET, raised in
+  // review on bldrs-ai/conway-geom#211.
+  //
+  // Two triangles sharing ( -1, 0 ) - ( 1, 0 ) with apices ( 0, +-1 ), on a
+  // surface ten times more curved across v than along u. The shared edge runs
+  // the flat way: squared deflection 0.01 over a chord of 2, so key 0.02.
+  // Each apex-to-midpoint off-diagonal runs the curved way: squared
+  // deflection 0.0625 over a chord of sqrt( 2 ), so key 0.088 - FOUR TIMES
+  // the key of the edge that spawned it, though it is a genuine halving of
+  // the quad and the surface is regular everywhere. Bounded at the parent's
+  // key both are discarded and never reconsidered, and since the two true
+  // halves are already under target the queue empties four triangles in,
+  // leaving interior edges at 0.0625 against a 0.005 target - TWELVE TIMES
+  // over tolerance, and worse than the unbounded loop's own 0.0149.
+  //
+  // The off-diagonals are exactly orthogonal to the edge that made them, so
+  // the ceiling is lifted for them and the refinement proceeds. The two
+  // assertions are the two halves of the finding: that these edges are not
+  // thrown away, and that what the loop settles at is far below what the
+  // blanket ceiling settled at.
+  constexpr double  TARGET = 0.005;
+  constexpr int32_t BUDGET = 4000;
+
+  // What an UNREFINED first-split off-diagonal reads on this seed, and so
+  // exactly what the blanket ceiling leaves behind: 4 triangles and this.
+  constexpr double DISCARDED_OFF_DIAGONAL = 0.0625;
+
+  // What this loop settles at instead, measured. The unbounded loop reaches
+  // 0.0149383 before its own orbit takes the rest of the budget, so this is
+  // most of the way back to it from 0.0625.
+  constexpr double SETTLES_AT = 0.0215724;
+
+  WingedEdgeMesh< ParameterVertex > mesh;
+
+  mesh.makeVertex( on( anisotropicParaboloid, -1.0,  0.0 ) );
+  mesh.makeVertex( on( anisotropicParaboloid,  1.0,  0.0 ) );
+  mesh.makeVertex( on( anisotropicParaboloid,  0.0,  1.0 ) );
+  mesh.makeVertex( on( anisotropicParaboloid,  0.0, -1.0 ) );
+
+  mesh.makeTriangle( 0, 1, 2 );
+  mesh.makeTriangle( 1, 0, 3 );
+
+  conway::geometry::tesselate( mesh, anisotropicParaboloid, BUDGET, TARGET );
+
+  const double worst = worstRemainingDeflection( mesh, anisotropicParaboloid );
 
   printf(
-    "      spine: %zu triangles, %zu vertices, largest coincident cluster %zu\n",
+    "      codex: %zu triangles, %zu vertices, largest coincident cluster %zu,"
+    " worst remaining %.6g\n",
     mesh.triangles.size(), mesh.vertices.size(),
-    largestCoincidentCluster( mesh ) );
+    largestCoincidentCluster( mesh ), worst );
+
+  check(
+    worst < DISCARDED_OFF_DIAGONAL,
+    "the off-diagonals across the curved direction are refined, not discarded" );
+
+  check(
+    worst <= SETTLES_AT,
+    "and the loop settles within a third of what discarding them settles at" );
+
+  check(
+    static_cast< int32_t >( mesh.triangles.size() ) < BUDGET,
+    "while still stopping on its own rather than on its triangle budget" );
+
+  check(
+    largestCoincidentCluster( mesh ) == 1,
+    "with every vertex on a position of its own" );
 }
 
 void ordinaryPatchIsRefinedAsBefore() {
@@ -170,7 +283,7 @@ void ordinaryPatchIsRefinedAsBefore() {
   for ( uint32_t row = 0; row < SIDE; ++row ) {
     for ( uint32_t column = 0; column < SIDE; ++column ) {
 
-      mesh.makeVertex( onCylinder( 0.8 * column, 0.8 * row ) );
+      mesh.makeVertex( on( cylinder, 0.8 * column, 0.8 * row ) );
     }
   }
 
@@ -209,6 +322,9 @@ int main() {
 
   printf( "\n=== a uv-collinear spine terminates ===\n" );
   spineDoesNotRunAway();
+
+  printf( "\n=== an anisotropic face keeps its off-diagonals ===\n" );
+  codexAnisotropicCase();
 
   printf( "\n=== an ordinary patch is refined exactly as before ===\n" );
   ordinaryPatchIsRefinedAsBefore();
