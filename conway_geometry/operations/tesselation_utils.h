@@ -638,7 +638,19 @@ namespace conway::geometry {
         std::pmr::vector< CandidateEdge< ParameterVertex > >(
           conway::ThreadScratchResource() ) };
 
-    auto addCandidate = [&]( uint32_t edgeIndex ) {
+    /**
+     * Queue `edgeIndex` for subdivision, unless its priority key is at or
+     * above `keyCeiling`.
+     *
+     * The ceiling is how the caller says "this edge is a product of a split,
+     * so it has to be finer than what was split" - see the OFF-DIAGONAL note
+     * at the two calls that pass one. Left at infinity, which is what the
+     * seeding sweep and the two true halves of a split want, nothing is
+     * refused that was not refused before.
+     */
+    auto addCandidate = [&](
+      uint32_t edgeIndex,
+      double   keyCeiling = std::numeric_limits< double >::infinity() ) {
 
       if ( edgeIndex == EMPTY_INDEX  ) {
         return;
@@ -666,8 +678,14 @@ namespace conway::geometry {
         return;
       }
 
+      double key = deflection * glm::distance( v0.point, v1.point );
+
+      if ( key >= keyCeiling ) {
+        return;
+      }
+
       candidates.push( CandidateEdge< ParameterVertex > { 
-        deflection * glm::distance( v0.point, v1.point ),
+        key,
         edgeIndex,
         ParameterVertex { newPoint, newUV } 
         } );
@@ -713,6 +731,9 @@ namespace conway::geometry {
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t                 otherVertex0 = t0.otherVertex( edge );
       uint32_t                 otherVertex1 = t1.otherVertex( edge );
+      // Read before the pop below invalidates `candidate`; the field is the
+      // heap key (deflection * chord), not the deflection alone.
+      const double             parentKey    = candidate.deflection;
       uint32_t                 newVertex    = mesh.makeVertex( candidate.vertex );
 
       candidates.pop();
@@ -731,8 +752,59 @@ namespace conway::geometry {
       mesh.makeTriangle( newVertex, edge.vertices[ 0 ], otherVertex1 );
       mesh.makeTriangle( otherVertex1, edge.vertices[ 1 ], newVertex );
 
-      addCandidate( mesh.getEdge( otherVertex0, newVertex ).value_or( EMPTY_INDEX ) );
-      addCandidate( mesh.getEdge( otherVertex1, newVertex ).value_or( EMPTY_INDEX ) );
+      // THE TWO OFF-DIAGONALS ARE NEW EDGES, NOT HALVES OF THE ONE JUST SPLIT,
+      // SO NOTHING MAKES THEM FINER - AND WITHOUT A BOUND THEY CYCLE.
+      //
+      // ( edge.vertices[ 0 ], newVertex ) and ( edge.vertices[ 1 ], newVertex )
+      // below are the bisection's own halves: their uv span is half their
+      // parent's, so repeated subdivision drives their deflection to zero and
+      // the loop's termination argument covers them. These two are not. They
+      // span the quad from an apex to the new point, they did not exist before
+      // this split, and on an obtuse quad they come out as long as the edge
+      // that was split and reading the same deflection. Refining one then
+      // re-creates an off-diagonal congruent to the original, and the face
+      // subdivides for ever at a constant priority key.
+      //
+      // Measured on `Right_Hand.step` at 928f562, with the mesh dumped between
+      // `tesselate` and `appendMeshToGeometry`:
+      //
+      //   ADVANCED_FACE #18856 - 302 seed triangles against a 9,664 budget;
+      //     `tesselate` returns 9,664 triangles - the budget EXHAUSTED, with
+      //     9,598 candidates still queued - of which 9,017 are EXACTLY
+      //     zero-area, and its 4,984 vertices carry only 474 distinct
+      //     positions. From subdivision 170 on it is a period-2 orbit: the
+      //     alternating bisection between trim vertices 67 and 175 is the
+      //     contraction x -> x / 4 + ( uv67 / 2 + uv175 / 4 ), so it converges
+      //     onto that uv segment's two trisection points and then reproduces
+      //     them bit-for-bit, and each of the remaining 4,510 subdivisions
+      //     re-inserts one of exactly two points. The 637 triangles that
+      //     survive `Geometry::Reify` are the seed, which is why the face
+      //     shipped as a fan of 25-82mm chords across a 103mm part
+      //     (bldrs-ai/conway-geom#210).
+      //   ADVANCED_FACE #19333 - the same with a period-3 orbit anchored on
+      //     trim vertices 310 and 53: 12,096 triangles (again the whole
+      //     budget) of which 3,526 are exactly zero-area, 6,239 vertices over
+      //     948 distinct positions, 5,290 of them inside a coincident cluster.
+      //     One of those two vertices carried 3,563 triangles
+      //     (bldrs-ai/conway-geom#208).
+      //
+      // Both issues read the runaway as the `deflection` term conflating the
+      // chord's own error with a trim vertex's uv-versus-position residual.
+      // It does not: #18856's residuals are at most 1.6e-5 against a 1.55e-4
+      // target, a tenth of it, and the deflections the loop refuses to let go
+      // of are real - the orbit's two edges genuinely sag 4.5mm over 67mm.
+      // What is wrong is that subdividing them buys nothing.
+      //
+      // The bound is the parent's own key, so a chain of off-diagonals is
+      // strictly decreasing and cannot close. It is not a deflection-to-chord
+      // ratio like the one #208 measured and rejected: an edge that is merely
+      // coarse still enters the heap at whatever key it reads, from the
+      // seeding sweep or from the halves above, so no face is starved of
+      // refinement it needs. Both halves keep their unbounded call.
+      addCandidate(
+        mesh.getEdge( otherVertex0, newVertex ).value_or( EMPTY_INDEX ), parentKey );
+      addCandidate(
+        mesh.getEdge( otherVertex1, newVertex ).value_or( EMPTY_INDEX ), parentKey );
       addCandidate( mesh.getEdge( edge.vertices[ 0 ], newVertex ).value_or( EMPTY_INDEX ) );
       addCandidate( mesh.getEdge( edge.vertices[ 1 ], newVertex ).value_or( EMPTY_INDEX ) );
 
