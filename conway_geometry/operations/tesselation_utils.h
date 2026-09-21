@@ -615,6 +615,48 @@ namespace conway::geometry {
   }
 
   /**
+   * How far an off-diagonal has to have turned away from the edge whose
+   * subdivision created it before the two stop being comparable, as the sine
+   * of the angle between them in uv - see the OFF-DIAGONAL note in `tesselate`
+   * below, which is where this is used and why it has to exist at all.
+   *
+   * 0.999 is 87.4 degrees: the ceiling is lifted only where the two edges are
+   * very nearly ORTHOGONAL, which is where the parent's key is not a weak
+   * proxy for the off-diagonal's but no information about it whatsoever.
+   *
+   * THE PRINCIPLE SAYS WHAT MAY NOT BE BOUNDED; THIS NUMBER SAYS HOW MUCH OF
+   * THAT THE CORPUS WILL CURRENTLY BEAR, AND THE TWO ARE NOT THE SAME THING.
+   * It is set as high - the relaxation as narrow - as it is because every
+   * wider setting was measured against `Right_Hand.step` and every wider
+   * setting costs something:
+   *
+   *   0.999  the four gated solids ( #19701, #19702, #19715, #19720 ) keep
+   *          their signed volumes, their degenerate-triangle counts and their
+   *          triangle counts, and `ADVANCED_FACE`s #18856, #18790 and #19333
+   *          every column. One face in the corpus moves: #18961, 1.41mm2,
+   *          gains 2 triangles of which one welds degenerate and is dropped,
+   *          taking its spurious open edges from 0 to 3.
+   *   0.99   adds #19333's normal-deviation p90 at 2.66 degrees rather than
+   *          2.62, and +174 triangles on #19702.
+   *   0.95   and 0.9 move the volumes themselves: #19702 to 26,439.9mm3 and
+   *          #19720 to 3,476.5mm3 (from 26,443.3 and 3,476.8, against
+   *          OpenCascade's 26,732.7 and 3,478.5), and #19333's peak vertex
+   *          valence from 842 to 932.
+   *   0.1    which is what the "only where the edges are nearly PARALLEL"
+   *          reading of the rule would actually ask for, is far worse again:
+   *          the budget goes into subdividing slivers into slivers, #19702
+   *          carries 18,531 degenerate triangles instead of 3,546, and the
+   *          control face #18790 stops matching itself.
+   *
+   * So this closes the hole conservatively rather than completely. The loop
+   * still under-refines an anisotropic face somewhat - on the seed in
+   * `codexAnisotropicCase` it settles at 0.0216 where the unbounded loop
+   * reaches 0.0149 - and getting the rest needs the budget spent better, not
+   * a smaller number here.
+   */
+  constexpr double OFF_DIAGONAL_COMPARABLE_SINE = 0.999;
+
+  /**
    * Given a parameterized surface (UV)->(XYZ),
    * this will take a starting mesh with parameterized vertices and tesselate the internal triangles
    */
@@ -638,7 +680,21 @@ namespace conway::geometry {
         std::pmr::vector< CandidateEdge< ParameterVertex > >(
           conway::ThreadScratchResource() ) };
 
-    auto addCandidate = [&]( uint32_t edgeIndex ) {
+    /**
+     * Queue `edgeIndex` for subdivision, unless its priority key is at or
+     * above `keyCeiling`.
+     *
+     * The ceiling is how the caller says "this edge is a product of a split,
+     * ALONG the edge that was split, so it has to be finer than what was
+     * split" - see the OFF-DIAGONAL note at the two calls that pass one,
+     * which is also where the reason an edge that turns AWAY may not be
+     * bounded this way is written out. Left at infinity, which is what the
+     * seeding sweep, the two true halves of a split and an off-diagonal that
+     * turns away all want, nothing is refused that was not refused before.
+     */
+    auto addCandidate = [&](
+      uint32_t edgeIndex,
+      double   keyCeiling = std::numeric_limits< double >::infinity() ) {
 
       if ( edgeIndex == EMPTY_INDEX  ) {
         return;
@@ -666,8 +722,14 @@ namespace conway::geometry {
         return;
       }
 
+      double key = deflection * glm::distance( v0.point, v1.point );
+
+      if ( key >= keyCeiling ) {
+        return;
+      }
+
       candidates.push( CandidateEdge< ParameterVertex > { 
-        deflection * glm::distance( v0.point, v1.point ),
+        key,
         edgeIndex,
         ParameterVertex { newPoint, newUV } 
         } );
@@ -713,6 +775,9 @@ namespace conway::geometry {
       const ConnectedTriangle& t1           = mesh.triangles[ edge.triangles[ 1 ] ];
       uint32_t                 otherVertex0 = t0.otherVertex( edge );
       uint32_t                 otherVertex1 = t1.otherVertex( edge );
+      // Read before the pop below invalidates `candidate`; the field is the
+      // heap key (deflection * chord), not the deflection alone.
+      const double             parentKey    = candidate.deflection;
       uint32_t                 newVertex    = mesh.makeVertex( candidate.vertex );
 
       candidates.pop();
@@ -731,8 +796,112 @@ namespace conway::geometry {
       mesh.makeTriangle( newVertex, edge.vertices[ 0 ], otherVertex1 );
       mesh.makeTriangle( otherVertex1, edge.vertices[ 1 ], newVertex );
 
-      addCandidate( mesh.getEdge( otherVertex0, newVertex ).value_or( EMPTY_INDEX ) );
-      addCandidate( mesh.getEdge( otherVertex1, newVertex ).value_or( EMPTY_INDEX ) );
+      // THE TWO OFF-DIAGONALS ARE NEW EDGES, NOT HALVES OF THE ONE JUST SPLIT,
+      // SO NOTHING MAKES THEM FINER - AND WHERE THEY RUN ALONG IT THEY CYCLE.
+      //
+      // ( edge.vertices[ 0 ], newVertex ) and ( edge.vertices[ 1 ], newVertex )
+      // below are the bisection's own halves: their uv span is half their
+      // parent's, so repeated subdivision drives their deflection to zero and
+      // the loop's termination argument covers them. These two are not. They
+      // span the quad from an apex to the new point, they did not exist before
+      // this split, and on an obtuse quad they come out as long as the edge
+      // that was split and reading the same deflection. Refining one then
+      // re-creates an off-diagonal congruent to the original, and the face
+      // subdivides for ever at a constant priority key.
+      //
+      // Measured on `Right_Hand.step` at 928f562, with the mesh dumped between
+      // `tesselate` and `appendMeshToGeometry`:
+      //
+      //   ADVANCED_FACE #18856 - 302 seed triangles against a 9,664 budget;
+      //     `tesselate` returns 9,664 triangles - the budget EXHAUSTED, with
+      //     9,598 candidates still queued - of which 9,017 are EXACTLY
+      //     zero-area, and its 4,984 vertices carry only 474 distinct
+      //     positions. From subdivision 170 on it is a period-2 orbit: the
+      //     alternating bisection between trim vertices 67 and 175 is the
+      //     contraction x -> x / 4 + ( uv67 / 2 + uv175 / 4 ), so it converges
+      //     onto that uv segment's two trisection points and then reproduces
+      //     them bit-for-bit, and each of the remaining 4,510 subdivisions
+      //     re-inserts one of exactly two points. The 637 triangles that
+      //     survive `Geometry::Reify` are the seed, which is why the face
+      //     shipped as a fan of 25-82mm chords across a 103mm part
+      //     (bldrs-ai/conway-geom#210).
+      //   ADVANCED_FACE #19333 - the same with a period-3 orbit anchored on
+      //     trim vertices 310 and 53: 12,096 triangles (again the whole
+      //     budget) of which 3,526 are exactly zero-area, 6,239 vertices over
+      //     948 distinct positions, 5,290 of them inside a coincident cluster.
+      //     One of those two vertices carried 3,563 triangles
+      //     (bldrs-ai/conway-geom#208).
+      //
+      // Both issues read the runaway as the `deflection` term conflating the
+      // chord's own error with a trim vertex's uv-versus-position residual.
+      // It does not: #18856's residuals are at most 1.6e-5 against a 1.55e-4
+      // target, a tenth of it, and the deflections the loop refuses to let go
+      // of are real - the orbit's two edges genuinely sag 4.5mm over 67mm.
+      // What is wrong is that subdividing them buys nothing.
+      //
+      // THE BOUND IS THE PARENT'S OWN KEY, AND IT IS ONLY APPLIED WHERE THAT
+      // COMPARISON MEANS SOMETHING.
+      //
+      // A chain of off-diagonals bounded this way is strictly decreasing and
+      // cannot close, which is what kills the orbits above. But the key is
+      // deflection times chord, and deflection is a DIRECTIONAL property of
+      // the surface, so two edges' keys are only comparable when the edges
+      // run the same way. Where the off-diagonal turns away from the edge
+      // that made it, it is measuring a curvature the parent never saw, and
+      // the parent's key is not a bound on it but an unrelated number:
+      // on `z = 0.1u^2 + v^2`, two triangles sharing ( -1, 0 ) - ( 1, 0 ) with
+      // apices ( 0, +-1 ) split their shared edge at key 0.02, and each
+      // apex-to-midpoint off-diagonal - a genuine halving of the quad, across
+      // the direction curved ten times harder - reads key 0.088. Bounded by
+      // the parent, both are discarded and never reconsidered, and since the
+      // two true halves are already under target the queue empties four
+      // triangles in, with interior edges TWELVE TIMES over the tolerance on
+      // a surface that is regular everywhere. That is the review finding on
+      // bldrs-ai/conway-geom#211, kept as `codexAnisotropicCase` in
+      // test/refinement_progress_test.cpp.
+      //
+      // So the ceiling is NOT passed for an off-diagonal that has turned
+      // `OFF_DIAGONAL_COMPARABLE_SINE` away from the edge that was split,
+      // measured in uv; that one is queued at whatever key it reads, like the
+      // seeding sweep's edges and like both halves below. Everything else
+      // keeps the bound, and the runaway is inside "everything else" by
+      // construction: an orbit re-creates a CONGRUENT edge, and congruent
+      // means parallel, so the chain it needs is still strictly decreasing
+      // and still cannot close. How far "turned away" reaches is a separate
+      // question from what the rule is, and is answered where the constant is
+      // defined, with the measurements that answered it.
+      const glm::dvec2 splitSpan =
+        mesh.vertices[ edge.vertices[ 1 ] ].uv -
+        mesh.vertices[ edge.vertices[ 0 ] ].uv;
+
+      const double splitSpanLength = glm::length( splitSpan );
+
+      // A zero-length reading - an apex sitting exactly on the new point, as
+      // the collinear spine's does - satisfies this and lifts the ceiling,
+      // which costs nothing: that off-diagonal has zero deflection, so
+      // addCandidate drops it against `minimumDeflection` before the ceiling
+      // is ever consulted.
+      const auto ceilingFor = [ & ]( uint32_t apex ) {
+
+        const glm::dvec2 alongOffDiagonal =
+          mesh.vertices[ apex ].uv - mesh.vertices[ newVertex ].uv;
+
+        const double sine =
+          std::abs( ( splitSpan.x * alongOffDiagonal.y ) -
+                    ( splitSpan.y * alongOffDiagonal.x ) );
+
+        return sine >= ( OFF_DIAGONAL_COMPARABLE_SINE * splitSpanLength *
+                         glm::length( alongOffDiagonal ) )
+                 ? std::numeric_limits< double >::infinity()
+                 : parentKey;
+      };
+
+      addCandidate(
+        mesh.getEdge( otherVertex0, newVertex ).value_or( EMPTY_INDEX ),
+        ceilingFor( otherVertex0 ) );
+      addCandidate(
+        mesh.getEdge( otherVertex1, newVertex ).value_or( EMPTY_INDEX ),
+        ceilingFor( otherVertex1 ) );
       addCandidate( mesh.getEdge( edge.vertices[ 0 ], newVertex ).value_or( EMPTY_INDEX ) );
       addCandidate( mesh.getEdge( edge.vertices[ 1 ], newVertex ).value_or( EMPTY_INDEX ) );
 
