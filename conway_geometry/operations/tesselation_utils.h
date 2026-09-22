@@ -12,6 +12,7 @@
 #include "representation/Geometry.h"
 #include "representation/IfcGeometryReps.h"
 #include "operations/math_utils.h"
+#include "operations/deflection_certificate.h"
 
 #if defined (_MSC_VER)
 
@@ -660,12 +661,15 @@ namespace conway::geometry {
    * Given a parameterized surface (UV)->(XYZ),
    * this will take a starting mesh with parameterized vertices and tesselate the internal triangles
    */
-  template< typename SurfacePointFunction >
+  template<
+    typename SurfacePointFunction,
+    typename DeflectionCertificate = NoDeflectionCertificate >
   inline void tesselate(
     WingedEdgeMesh< ParameterVertex >& mesh,
     SurfacePointFunction surface,
     int32_t maximumTriangles,
-    double minimumDeflection ) {
+    double minimumDeflection,
+    const DeflectionCertificate& certificate = DeflectionCertificate() ) {
 
     // AFTP: back the subdivision candidate heap with the thread scratch arena
     // too (this runs inside the per-face ScratchArenaScope of the ParameterVertex
@@ -679,6 +683,31 @@ namespace conway::geometry {
         std::less< CandidateEdge< ParameterVertex > >(),
         std::pmr::vector< CandidateEdge< ParameterVertex > >(
           conway::ThreadScratchResource() ) };
+
+    // SURFACE POSITION OF EVERY VERTEX, INDEXED LIKE `mesh.vertices`.
+    //
+    // A seed vertex's `point` is where the TRIM said the boundary is; its
+    // `uv` is what the inverse solve returned for that point, and the two
+    // disagree by the solve's residual. `surfaceAt` is the second of those
+    // two readings, and the deflection test below is written against it -
+    // see THE DEFLECTION IS MEASURED AGAINST THE SURFACE'S OWN CHORD there.
+    //
+    // A vertex made by a split needs no evaluation: its `point` was STORED
+    // from `surface( ... )` in addCandidate, so it is its own surface
+    // position bitwise, and the push_back beside `makeVertex` below keeps
+    // this vector index-aligned with `mesh.vertices` for free.
+    std::pmr::vector< glm::dvec3 > surfaceAt(
+      conway::ThreadScratchResource() );
+
+    surfaceAt.reserve( mesh.vertices.size() );
+
+    {
+      conway::AllocTagScope surfaceTag( conway::AllocSite::SurfaceEval );
+
+      for ( const ParameterVertex& vertex : mesh.vertices ) {
+        surfaceAt.push_back( surface( vertex.point, vertex.uv ) );
+      }
+    }
 
     /**
      * Queue `edgeIndex` for subdivision, unless its priority key is at or
@@ -709,17 +738,120 @@ namespace conway::geometry {
       const ParameterVertex& v0   = mesh.vertices[ edge.vertices[ 0 ] ];
       const ParameterVertex& v1   = mesh.vertices[ edge.vertices[ 1 ] ];
 
+      const glm::dvec3& surface0 = surfaceAt[ edge.vertices[ 0 ] ];
+      const glm::dvec3& surface1 = surfaceAt[ edge.vertices[ 1 ] ];
+
       glm::dvec3 averagePoint = ( v0.point + v1.point ) * 0.5;
       glm::dvec2 newUV        = ( v0.uv + v1.uv ) * 0.5;
       conway::AllocTagScope surfaceTag( conway::AllocSite::SurfaceEval );
       glm::dvec3 newPoint     = surface( averagePoint, newUV );
 
-      glm::dvec3 deltaNewPoint = newPoint - averagePoint;
+      // THE DEFLECTION IS MEASURED AGAINST THE SURFACE'S OWN CHORD, NOT THE
+      // MESH'S.
+      //
+      // `newPoint - averagePoint` - what this read before - is the sum of two
+      // unlike things: how far the surface bows away from the chord, which
+      // subdividing removes, and the seed vertices' own uv-versus-position
+      // residual, which it CANNOT. Halving an edge that ends on a seed vertex
+      // carrying residual `e` leaves the new half reading `e / 2` however
+      // short it gets, so once `e` is over the target the edge is re-queued
+      // for ever and the face spends its whole budget converging onto a
+      // point. Measured on `Right_Hand.step`: 4,652 subdivisions accepted at a
+      // chord of 1-10um still reading 3.3um of "deflection" against a 1.58um
+      // target, and 1,903 of solid #19702's triangles coming out with all
+      // three corners in one 1um bucket.
+      //
+      // Subtracting the chord BETWEEN THE SURFACE POINTS instead leaves only
+      // the bow: it is zero at both ends by construction and falls as the
+      // square of the span, so the test converges and the loop terminates on
+      // its own. The residual is not lost, it is declined - no subdivision
+      // can reduce it, and the place to fix it is the inverse solve.
+      const glm::dvec3 midDeviation = newPoint - ( ( surface0 + surface1 ) * 0.5 );
 
-      double deflection = glm::dot( deltaNewPoint, deltaNewPoint );
+      // One sample cannot see a chord that spans an inflection: the surface
+      // crosses it at the midpoint and bows to either side, so the midpoint
+      // reads zero however far off the chord is. Sample the quarter points
+      // too and keep the worst.
+      const auto deviationAt = [ & ]( double at ) {
+
+        const double from = 1.0 - at;
+
+        return surface( ( v0.point * from ) + ( v1.point * at ),
+                        ( v0.uv * from ) + ( v1.uv * at ) ) -
+               ( ( surface0 * from ) + ( surface1 * at ) );
+      };
+
+      const glm::dvec3 firstQuarter  = deviationAt( 0.25 );
+      const glm::dvec3 thirdQuarter  = deviationAt( 0.75 );
+
+      // A LOWER bound on the deviation over the edge, and that is the whole
+      // reason it is read first. Three samples cannot show that a chord is
+      // WITHIN tolerance - see the WHY A BOUND AND NOT SAMPLES note in
+      // deflection_certificate.h - but any one of them being OVER tolerance
+      // proves the chord is out of tolerance somewhere, which is all the
+      // decision to subdivide needs. So this stands as its own proof on the
+      // refine side, and the certificate below is consulted only on the
+      // accept side, where sampling has nothing to say.
+      //
+      // That ordering is also what makes the certificate affordable: the
+      // expensive answer is only computed for the edges a cheap one cannot
+      // settle. Measured per-path counts are in the cost probe.
+      double deflection =
+        std::max(
+          glm::dot( midDeviation, midDeviation ),
+          std::max( glm::dot( firstQuarter, firstQuarter ),
+                    glm::dot( thirdQuarter, thirdQuarter ) ) );
 
       if ( minimumDeflection > deflection ) {
-        return;
+
+        if constexpr ( DeflectionCertificate::CERTIFIES ) {
+
+          double certified = 0.0;
+
+          switch ( certificate.bound(
+                     v0.uv, v1.uv, surface0, surface1, certified ) ) {
+
+            case CertificateOutcome::Certified: {
+
+              const double certifiedSquared = certified * certified;
+
+              if ( minimumDeflection > certifiedSquared ) {
+                return;
+              }
+
+              // Over tolerance somewhere between the samples. Refine, keyed
+              // on what the bound says rather than on what the samples
+              // missed, so the heap orders these against each other by the
+              // size of the miss.
+              deflection = certifiedSquared;
+              break;
+            }
+
+            case CertificateOutcome::Inconclusive:
+
+              // NOT "small" - UNKNOWN. Subdivide, which is what makes the
+              // unknown cases shrink: a chord that wrapped the chart or
+              // crossed too many knot spans stops doing either once it is
+              // short enough, so this terminates rather than looping.
+              //
+              // Keyed at the tolerance itself, the lowest key that gets
+              // past the test above: an edge nobody can bound has no
+              // measured size to order by, and it must not outrank an edge
+              // whose miss IS measured.
+              deflection = minimumDeflection;
+              break;
+
+            case CertificateOutcome::Unsupported:
+
+              // No certificate exists for this surface at all. The sampled
+              // reading is the whole test, exactly as before, and this edge
+              // is outside the guarantee - see WHAT IS NOT COVERED.
+              return;
+          }
+
+        } else {
+          return;
+        }
       }
 
       double key = deflection * glm::distance( v0.point, v1.point );
@@ -779,6 +911,10 @@ namespace conway::geometry {
       // heap key (deflection * chord), not the deflection alone.
       const double             parentKey    = candidate.deflection;
       uint32_t                 newVertex    = mesh.makeVertex( candidate.vertex );
+
+      // Index-aligned with `mesh.vertices`, and exact: `candidate.vertex.point`
+      // is the value `surface()` returned for this uv in addCandidate.
+      surfaceAt.push_back( candidate.vertex.point );
 
       candidates.pop();
 

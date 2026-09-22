@@ -58,6 +58,8 @@ struct RationalSurfaceEvaluator {
 
         homogeneous_[ i * cols_ + j ] =
             glm::dvec4( point * weight, weight );
+
+        polynomial_ = polynomial_ && ( weight == 1.0 );
       }
     }
   }
@@ -161,6 +163,87 @@ struct RationalSurfaceEvaluator {
     }
 
     return result;
+  }
+
+  /**
+   * The surface's DEGREES and KNOTS, and whether the weights are all one.
+   *
+   * Exposed for the deflection certificate in
+   * `operations/deflection_certificate.h`, which needs the degrees to know
+   * what polynomial degree the surface restricted to a line has, the knots to
+   * know where that polynomial CHANGES, and the weights to know whether it is
+   * a polynomial at all. Nothing else reads them; the evaluation paths below
+   * use `surface_` directly.
+   */
+  uint32_t degreeU() const { return surface_.degree_u; }
+
+  uint32_t degreeV() const { return surface_.degree_v; }
+
+  const std::vector< double >& knotsU() const { return surface_.knots_u; }
+
+  const std::vector< double >& knotsV() const { return surface_.knots_v; }
+
+  /** False on the tinynurbs fallback, where `pointHomogeneous` has no path. */
+  bool supportsFastPath() const { return fastPath_; }
+
+  /**
+   * True when every weight is exactly one, so `point` is a POLYNOMIAL map of
+   * the parameters rather than a quotient of two.
+   *
+   * Exact comparison, not a tolerance: a weight an ulp off one leaves the
+   * surface rational, and reporting it polynomial would put a rational
+   * function inside a polynomial bound. STEP's
+   * `B_SPLINE_SURFACE_WITH_KNOTS` carries no weights and is built with
+   * literal 1.0, so the common case answers true on the nose.
+   */
+  bool isPolynomial() const { return polynomial_; }
+
+  /**
+   * The surface point in HOMOGENEOUS form - ( x w, y w, z w, w ) - before the
+   * perspective divide `point` ends with.
+   *
+   * Both halves are polynomial in the parameters where `point` is not, which
+   * is what lets the certificate bound a rational surface: see the RATIONAL
+   * SURFACES note in `deflection_certificate.h`.
+   */
+  glm::dvec4 pointHomogeneous( double u, double v ) const {
+
+    // The homogeneous control grid only exists on the fast path. Rather than
+    // read an empty vector, hand back a value the caller's finiteness check
+    // rejects - the certificate then declines instead of bounding garbage.
+    if ( !fastPath_ ) {
+      return glm::dvec4( std::numeric_limits< double >::quiet_NaN() );
+    }
+
+    uint32_t degreeU = surface_.degree_u;
+    uint32_t degreeV = surface_.degree_v;
+
+    int spanU = findSpan( degreeU, surface_.knots_u, u );
+    int spanV = findSpan( degreeV, surface_.knots_v, v );
+
+    double basisU[ NURBS_MAX_STACK_DEGREE + 1 ];
+    double basisV[ NURBS_MAX_STACK_DEGREE + 1 ];
+
+    basis( degreeU, spanU, surface_.knots_u, u, basisU );
+    basis( degreeV, spanV, surface_.knots_v, v, basisV );
+
+    glm::dvec4 pointw( 0.0 );
+
+    for ( uint32_t l = 0; l <= degreeV; ++l ) {
+
+      glm::dvec4 temp( 0.0 );
+
+      for ( uint32_t k = 0; k <= degreeU; ++k ) {
+
+        temp +=
+            basisU[ k ] *
+            controlPointW( spanU - degreeU + k, spanV - degreeV + l );
+      }
+
+      pointw += basisV[ l ] * temp;
+    }
+
+    return pointw;
   }
 
   /** Point on the surface, matching tinynurbs::surfacePoint( rational ). */
@@ -296,6 +379,9 @@ struct RationalSurfaceEvaluator {
   const glm::dvec4& controlPointW( size_t i, size_t j ) const {
     return homogeneous_[ i * cols_ + j ];
   }
+
+  /** All weights exactly 1 - see isPolynomial(). */
+  bool polynomial_ = true;
 
   /** Cox-de-Boor basis, mirroring tinynurbs::bsplineBasis. */
   static void basis(
