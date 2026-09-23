@@ -983,48 +983,65 @@ void errorTermTracksTheControlValues() {
 }
 
 
-/**
- * TWO DISTINCT KNOTS THAT ROUND TO ONE CHORD PARAMETER ARE REFUSED.
+/*
+ * THE NEXT TWO TESTS ARE A PAIR, AND THE CONTRAST BETWEEN THEM IS THE POINT.
  *
- * The pieces are walked by sorting the cut parameters and stepping between
- * consecutive ones, and a zero-length step is skipped. So when two knots that
- * are genuinely apart in PARAMETER space round to the same `t`, the span
- * between them gets no piece of its own and is never certified - while the
- * returned bound still claims to cover the whole chord. A span silently
- * dropped is the same defect class as a sample taken from the wrong
- * polynomial, and just as invisible.
+ * Both build the same shape: a degree-1 surface with full-multiplicity breaks
+ * at two nearby knots, flat at zero on the spans either side, and standing 5
+ * off the chord only on the narrow span between them. Both are driven by a
+ * chord from -1e9 to 1e9, long enough that the two knots round to the SAME
+ * chord parameter. They differ in one number - how far apart the two knots
+ * are - and that number decides which side of a real boundary the case falls
+ * on:
  *
- * It needs no exotic input, only a long chord: from -1e9 to 1e9, the knots
- * 1.0 and nextafter( 1.0 ) both map to 0.50000000050000004. This is the
- * third finding on bldrs-ai/conway-geom#214, built to its author's recipe -
- * degree 1, full-multiplicity breaks at both knots, the surface flat at zero
- * on the surrounding spans and non-zero only on the one that gets dropped.
+ *   span 1e-9 wide,       the collapse is a property of the CHORD being
+ *   flat across itself    long, and nothing else. The box is still
+ *                         enumerated, still carries its own knot-derived
+ *                         corners, and is CERTIFIED. Nothing is lost and
+ *                         nothing has to be declined.
  *
- * Note what the sampled reading does here, because it is the point of the
- * whole file: a MILLION-point sweep of the chord returns 2.4e-7. The span
- * that carries the departure is one ulp of `u` wide, so no sweep of any
- * density lands in it. Only walking the knots finds it at all.
+ *   span ONE ULP wide,    there is no representable parameter strictly
+ *   surface CLIMBS        inside the span, so no chord - however short - can
+ *   across it             put an interpolation node where the climb happens.
+ *                         DECLINED, on the long chord and on every shorter
+ *                         one.
+ *
+ * THE LINE BETWEEN THEM IS NOT WIDTH. A span an ulp wide that the surface is
+ * FLAT across is bounded perfectly well: nodes that land in the wrong places
+ * still read the right value, and the certificate's own gradient term says
+ * so, because the term is built from the span's control points and they do
+ * not differ. What cannot be bounded is a span too narrow to sample that the
+ * surface also MOVES across - narrowness and variation together, neither
+ * alone.
+ *
+ * That matters for how the refusal behaves. The first case never needs one.
+ * The second can never be cleared by subdividing, because subdividing
+ * shortens the chord and does not widen the span, so it is a stated
+ * limitation rather than a guard that resolves itself. An earlier version of
+ * this file asserted the second case WAS self-clearing; it passed only
+ * because the narrow span was built flat, which is precisely the
+ * distinction above - and giving that span a varying height is
+ * `collapsedNodeParametersAreDeclined` below.
  */
-void collapsedKnotCutsAreRefused() {
 
-  printf( "collapsedKnotCutsAreRefused\n" );
+/**
+ * The shared shape - see the note above. `gap` is the only difference.
+ *
+ * Returned by value and BOUND TO A NAMED LOCAL at both call sites, never
+ * handed straight to an evaluator: `RationalSurfaceEvaluator` keeps a
+ * REFERENCE to the surface it is built from, so a temporary would dangle.
+ */
+tinynurbs::RationalSurface3d twoBreakSurface(
+  double gap, double heightIn, double heightOut ) {
 
-  constexpr double LOW    = -1.0e9;
-  constexpr double HIGH   =  1.0e9;
-  constexpr double HEIGHT =  5.0;
+  const double low  = -1.0e9;
+  const double high =  1.0e9;
 
-  const double firstKnot = 1.0;
-
+  const double firstKnot  = 1.0;
   const double secondKnot =
-    std::nextafter( 1.0, std::numeric_limits< double >::infinity() );
-
-  check( secondKnot > firstKnot,
-         "the two knots really are distinct doubles" );
-
-  check( ( ( firstKnot - LOW ) / ( HIGH - LOW ) ) ==
-           ( ( secondKnot - LOW ) / ( HIGH - LOW ) ),
-         "and they map to the SAME chord parameter (" +
-           std::to_string( ( firstKnot - LOW ) / ( HIGH - LOW ) ) + ")" );
+    ( gap > 0.0 ) ?
+      ( firstKnot + gap ) :
+      std::nextafter( firstKnot, std::numeric_limits< double >::infinity() );
 
   tinynurbs::RationalSurface3d surface;
 
@@ -1033,16 +1050,18 @@ void collapsedKnotCutsAreRefused() {
 
   // Multiplicity 2 = degree + 1 at BOTH knots, so the span between them is
   // independent of its neighbours.
-  surface.knots_u = { LOW, LOW, firstKnot, firstKnot,
-                      secondKnot, secondKnot, HIGH, HIGH };
+  surface.knots_u = { low, low, firstKnot, firstKnot,
+                      secondKnot, secondKnot, high, high };
   surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
 
-  const double across[ 6 ] = { LOW, firstKnot, firstKnot,
-                               secondKnot, secondKnot, HIGH };
+  // Greville abscissae for degree 1 are the knots themselves, so x tracks u.
+  const double across[ 6 ] = { low, firstKnot, firstKnot,
+                               secondKnot, secondKnot, high };
 
-  // Zero on the first and last spans, HEIGHT only on the middle one - the
-  // span whose piece disappears.
-  const double height[ 6 ] = { 0.0, 0.0, HEIGHT, HEIGHT, 0.0, 0.0 };
+  // The narrow span's two control heights. Equal makes it a flat shelf
+  // standing off the chord; different makes the surface CLIMB across a span
+  // that may be too narrow to sample.
+  const double tall[ 6 ] = { 0.0, 0.0, heightIn, heightOut, 0.0, 0.0 };
 
   std::vector< glm::dvec3 > points;
   std::vector< double >     weights;
@@ -1052,7 +1071,7 @@ void collapsedKnotCutsAreRefused() {
     for ( uint32_t b = 0; b < 2; ++b ) {
 
       points.push_back(
-        glm::dvec3( across[ a ], static_cast< double >( b ), height[ a ] ) );
+        glm::dvec3( across[ a ], static_cast< double >( b ), tall[ a ] ) );
 
       weights.push_back( 1.0 );
     }
@@ -1060,6 +1079,50 @@ void collapsedKnotCutsAreRefused() {
 
   surface.control_points = tinynurbs::array2( 6, 2, points );
   surface.weights        = tinynurbs::array2( 6, 2, weights );
+
+  return surface;
+}
+
+/**
+ * A NARROW SPAN WHOSE CHORD PARAMETERS COLLAPSE IS STILL CERTIFIED.
+ *
+ * The boxes used to be recovered by computing a cut parameter for every knot
+ * the chord crossed, sorting them and stepping between consecutive ones - so
+ * two distinct knots that rounded to one parameter produced one cut instead
+ * of two, the zero-length step between them was skipped, and the span between
+ * them was never certified while the result still claimed to cover the whole
+ * chord. That was the third finding on bldrs-ai/conway-geom#214.
+ *
+ * The walk enumerates boxes by SPAN INDEX instead, and a box carries the
+ * exact knot values that bound it, so a box whose chord parameters round
+ * together is still a box with a real uv interval and is bounded like any
+ * other. The defect is not guarded here - it is unrepresentable.
+ *
+ * Note what the sampled reading does, because it is the point of the whole
+ * file: a MILLION-point sweep of this chord returns 2.4e-7. The span that
+ * carries the departure is 1e-9 of `u` wide against a chord of 2e9, so no
+ * sweep of any density lands in it. Only walking the knots finds it at all.
+ */
+void narrowSpanWithCollapsedParametersIsCertified() {
+
+  printf( "narrowSpanWithCollapsedParametersIsCertified\n" );
+
+  constexpr double LOW    = -1.0e9;
+  constexpr double HIGH   =  1.0e9;
+  constexpr double HEIGHT =  5.0;
+  constexpr double GAP    =  1.0e-9;
+
+  const double firstKnot  = 1.0;
+  const double secondKnot = firstKnot + GAP;
+
+  check( ( ( firstKnot - LOW ) / ( HIGH - LOW ) ) ==
+           ( ( secondKnot - LOW ) / ( HIGH - LOW ) ),
+         "the two knots map to the SAME chord parameter (" +
+           std::to_string( ( firstKnot - LOW ) / ( HIGH - LOW ) ) + ")" );
+
+  // Named, not a temporary - the evaluator keeps a reference to it.
+  const tinynurbs::RationalSurface3d surface =
+    twoBreakSurface( GAP, HEIGHT, HEIGHT );
 
   const RationalSurfaceEvaluator evaluator( surface );
 
@@ -1078,7 +1141,7 @@ void collapsedKnotCutsAreRefused() {
   };
 
   check( std::abs( departureAt( firstKnot ) - HEIGHT ) < 1.0e-6,
-         "the dropped span really does stand " + std::to_string( HEIGHT ) +
+         "the narrow span stands " + std::to_string( HEIGHT ) +
            " off the chord (" +
            std::to_string( departureAt( firstKnot ) ) + ")" );
 
@@ -1097,12 +1160,11 @@ void collapsedKnotCutsAreRefused() {
          "and a million-point sweep of the chord cannot find it (" +
            std::to_string( swept ) + ")" );
 
-  // The tolerance has to be loose enough that the ROUNDING term does not
-  // decline this chord on its own - the chord is 2e9 long, so that term is
-  // about 2.7e-5 here - and tight enough that a departure of 5 is out of
-  // tolerance. Without that gap the assertion below would pass on a build
-  // with no collapse check at all, for a reason that has nothing to do with
-  // what it is meant to be pinning.
+  // Loose enough that the ROUNDING term does not decline this chord on its
+  // own - the chord is 2e9 long, so that term is about 2.7e-5 here. Without
+  // the gap the assertion below would fail for a reason that has nothing to
+  // do with what it is pinning, which is the opposite mistake to the one
+  // this file's history is full of.
   constexpr double TOLERANCE = 1.0e-2;
 
   const NurbsDeflectionCertificate certificate(
@@ -1113,44 +1175,290 @@ void collapsedKnotCutsAreRefused() {
   const CertificateOutcome outcome =
     certificate.bound( uv0, uv1, at0, at1, bound );
 
-  // THE ASSERTION. Before the cuts were checked for collapse this returned
-  // Certified with 2.7e-5, against a true departure of 5.
-  check( outcome == CertificateOutcome::Inconclusive,
-         "the certificate REFUSES a chord whose knot cuts collapse, rather "
-         "than certifying a span it never looked at" );
+  check( outcome == CertificateOutcome::Certified,
+         "the certificate reaches a verdict on the whole chord" );
 
-  check( outcome != CertificateOutcome::Certified ||
-           bound >= departureAt( firstKnot ),
-         "and if it ever does certify one, the bound covers that span" );
-
-  // AND THE REFUSAL IS ABOUT THE COLLAPSE, NOT ABOUT THE SURFACE. The same
-  // surface and the same two knots, on a chord short enough that the two
-  // cuts are 1.1e-10 apart instead of identical, is certified - and its
-  // bound covers the span that the long chord dropped. This is also why
-  // declining is self-clearing: `Inconclusive` subdivides, and subdividing
-  // is what turns the first case into the second.
-  const glm::dvec2 nearUV0( firstKnot - 1.0e-6, 0.5 );
-  const glm::dvec2 nearUV1( secondKnot + 1.0e-6, 0.5 );
-
-  const glm::dvec3 near0 = evaluator.point( nearUV0.x, nearUV0.y );
-  const glm::dvec3 near1 = evaluator.point( nearUV1.x, nearUV1.y );
-
-  check( ( ( firstKnot - nearUV0.x ) / ( nearUV1.x - nearUV0.x ) ) !=
-           ( ( secondKnot - nearUV0.x ) / ( nearUV1.x - nearUV0.x ) ),
-         "on a short chord the two knots map to DISTINCT parameters again" );
-
-  double nearBound = 0.0;
-
-  const CertificateOutcome nearOutcome =
-    certificate.bound( nearUV0, nearUV1, near0, near1, nearBound );
-
-  check( nearOutcome == CertificateOutcome::Certified,
-         "and that chord is certified" );
-
-  check( nearBound >= HEIGHT,
-         "with a bound that covers the span the long chord dropped (" +
-           std::to_string( nearBound ) + " >= " +
+  check( bound >= HEIGHT,
+         "and its bound covers the span whose parameters collapsed (" +
+           std::to_string( bound ) + " >= " +
            std::to_string( HEIGHT ) + ")" );
+}
+
+/**
+ * A KNOT SPAN BELOW PARAMETER RESOLUTION IS DECLINED, PERMANENTLY.
+ *
+ * This is the other side of the pair. The span is ONE ULP of `u` wide AND
+ * the surface climbs across it, from 0 at one end to 5 at the other. There
+ * is no representable parameter strictly inside, so no chord can put a node
+ * where the climb happens, and the gradient term - built from this span's
+ * own control points, which now differ - is enormous. The certificate
+ * declines.
+ *
+ * Unlike every other refusal in this file, THIS ONE DOES NOT CLEAR.
+ * Subdividing shortens the chord; it does not widen the knot span. The face
+ * will spend its triangle budget and stop, which is the correct behaviour
+ * for a span nobody can bound, but it is a limitation to know about rather
+ * than a guard that resolves itself.
+ */
+void subUlpKnotSpanIsDeclined() {
+
+  printf( "subUlpKnotSpanIsDeclined\n" );
+
+  constexpr double HEIGHT = 5.0;
+
+  const double firstKnot  = 1.0;
+  const double secondKnot =
+    std::nextafter( firstKnot, std::numeric_limits< double >::infinity() );
+
+  check( std::nextafter( firstKnot,
+                         std::numeric_limits< double >::infinity() ) ==
+           secondKnot,
+         "the span is exactly one ulp wide - nothing lies strictly inside" );
+
+  // Named, not a temporary - the evaluator keeps a reference to it.
+  const tinynurbs::RationalSurface3d surface =
+    twoBreakSurface( 0.0, 0.0, HEIGHT );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, 1.0e-4 );
+
+  // The long chord it starts on, then the ones subdividing would produce.
+  // Every one of them is declined: the refusal is about the SPAN, not the
+  // chord, so making the chord shorter cannot reach it.
+  const double reaches[ 5 ] =
+    { 1.0e9, 1.0e3, 1.0, 1.0e-3, 1.0e-6 };
+
+  bool declinedEverywhere = true;
+
+  for ( double reach : reaches ) {
+
+    const glm::dvec2 uv0( firstKnot - reach, 0.5 );
+    const glm::dvec2 uv1( secondKnot + reach, 0.5 );
+
+    const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+    const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+    double bound = 0.0;
+
+    const CertificateOutcome outcome =
+      certificate.bound( uv0, uv1, at0, at1, bound );
+
+    printf( "    chord reach %-10g -> %s\n", reach,
+            outcome == CertificateOutcome::Certified ? "Certified" :
+              ( outcome == CertificateOutcome::Inconclusive ?
+                  "Inconclusive" : "Unsupported" ) );
+
+    declinedEverywhere =
+      declinedEverywhere &&
+      ( outcome == CertificateOutcome::Inconclusive );
+  }
+
+  check( declinedEverywhere,
+         "a span an ulp wide is declined on every chord, however short - "
+         "this refusal is NOT self-clearing" );
+}
+
+/**
+ * NODES THAT COLLAPSE ONTO THE BOX'S CORNERS ARE DECLINED.
+ *
+ * A node's uv is computed as `from + s * ( to - from )`, and that sum rounds
+ * to an ulp of the PARAMETER MAGNITUDE, not of the box width. On a box narrow
+ * relative to where it sits, distinct Chebyshev-Lobatto parameters land on
+ * the same representable uv - so the values handed to the interpolation are
+ * of the right function at the wrong places, and the coefficient hull bounds
+ * a curve that is not the one being certified.
+ *
+ * This is the fourth finding on bldrs-ai/conway-geom#214, built to its
+ * author's recipe: a quadratic u span from 1e9 to the SECOND nextafter value,
+ * linear in v, Bezier heights [ 0, 2, 0 ]. The span is two ulps wide, the one
+ * representable interior parameter carries height 1, and the degree-3 nodes
+ * round onto the zero-height ends. Measured before this was detected: bound
+ * 6.2e-5 against a true departure of 1, certified at a tolerance of 0.01.
+ *
+ * IT IS NOT THE INDEX WALK THAT CLOSES THIS, and the distinction matters.
+ * The walk guarantees the box EXISTS and is named by its span indices; it
+ * says nothing about whether the nodes inside the box can be placed. What
+ * closes it is the gradient term in boundPiece's error: the surface's
+ * sensitivity per unit parameter, bounded from the control net, times the
+ * parameter's own rounding. On this patch that product is enormous and the
+ * error gate declines the chord.
+ */
+void collapsedNodeParametersAreDeclined() {
+
+  printf( "collapsedNodeParametersAreDeclined\n" );
+
+  const double first  = 1.0e9;
+  const double second =
+    std::nextafter( first, std::numeric_limits< double >::infinity() );
+  const double third =
+    std::nextafter( second, std::numeric_limits< double >::infinity() );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 1;
+  surface.knots_u  = { first, first, first, third, third, third };
+  surface.knots_v  = { 0.0, 0.0, 1.0, 1.0 };
+
+  const double across[ 3 ] = { first, second, third };
+  const double height[ 3 ] = { 0.0, 2.0, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 3; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      points.push_back(
+        glm::dvec3( across[ a ], static_cast< double >( b ), height[ a ] ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 3, 2, points );
+  surface.weights        = tinynurbs::array2( 3, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  check( std::abs( evaluator.point( second, 0.5 ).z - 1.0 ) < 1.0e-9,
+         "the one representable interior parameter carries height 1 (" +
+           std::to_string( evaluator.point( second, 0.5 ).z ) + ")" );
+
+  check( evaluator.point( first, 0.5 ).z == 0.0 &&
+           evaluator.point( third, 0.5 ).z == 0.0,
+         "and both ends of the span are zero" );
+
+  const glm::dvec2 uv0( first, 0.5 );
+  const glm::dvec2 uv1( third, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  const double middleT = ( second - first ) / ( third - first );
+
+  const double truth =
+    glm::length( evaluator.point( second, 0.5 ) -
+                 ( ( at0 * ( 1.0 - middleT ) ) + ( at1 * middleT ) ) );
+
+  check( truth > 0.99,
+         "so the true departure from the chord is about 1 (" +
+           std::to_string( truth ) + ")" );
+
+  constexpr double TOLERANCE = 1.0e-2;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, TOLERANCE * TOLERANCE );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "a box whose nodes cannot be placed is never certified below the "
+         "truth (" + std::to_string( bound ) + " vs " +
+           std::to_string( truth ) + ")" );
+
+  check( outcome == CertificateOutcome::Inconclusive,
+         "and it is declined outright" );
+}
+
+
+/**
+ * A CHORD RUNNING DOWNWARD FROM A DISCONTINUOUS KNOT STARTS IN THE SPAN IT
+ * IS ABOUT TO TRAVERSE.
+ *
+ * `directionalSpan` is the ONE span lookup left in the certificate - every
+ * other span is reached by incrementing it - so it is the one place where
+ * "which polynomial is this" can still be answered wrongly. `findSpan`
+ * resolves a parameter sitting exactly on a knot to the span on its RIGHT,
+ * which is what a chord climbing away from that knot wants and the opposite
+ * of what a chord descending from it wants.
+ *
+ * Same surface as `fullMultiplicityKnotIsSampledOneSided`, walked downward
+ * from the knot: the chord leaves u = 1/2 heading for u = 0, so every point
+ * on it belongs to the LEFT polynomial, while the endpoint the caller cached
+ * came from the right one. The departure is the difference between them.
+ */
+void descendingChordStartsInTheSpanItTraverses() {
+
+  printf( "descendingChordStartsInTheSpanItTraverses\n" );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+  surface.knots_u  = { 0.0, 0.0, 0.5, 0.5, 1.0, 1.0 };
+  surface.knots_v  = { 0.0, 0.0, 1.0, 1.0 };
+
+  const double across[ 4 ] = { 0.0, 0.5, 0.5, 1.0 };
+  const double height[ 4 ] = { 0.0, 1.0, 2.0 / 3.0, 2.0 / 3.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 4; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      points.push_back(
+        glm::dvec3( across[ a ], static_cast< double >( b ), height[ a ] ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 4, 2, points );
+  surface.weights        = tinynurbs::array2( 4, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  // DOWNWARD: starts exactly on the knot, heads away from it.
+  const glm::dvec2 uv0( 0.5, 0.5 );
+  const glm::dvec2 uv1( 0.0, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  check( std::abs( at0.z - ( 2.0 / 3.0 ) ) < 1.0e-12,
+         "the cached start point came from the RIGHT polynomial (" +
+           std::to_string( at0.z ) + ")" );
+
+  double truth = 0.0;
+
+  for ( uint32_t i = 1; i <= 200000; ++i ) {
+
+    const double t = static_cast< double >( i ) / 200000.0;
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( uv0.x + ( t * ( uv1.x - uv0.x ) ),
+                                              0.5 ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  check( truth > 0.33,
+         "and the chord departs from it by about a third (" +
+           std::to_string( truth ) + ")" );
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, 1.0e-12 );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "the bound covers it (" + std::to_string( bound ) + " vs " +
+           std::to_string( truth ) + ")" );
+
+  check( outcome == CertificateOutcome::Certified,
+         "and the chord is certified rather than declined" );
 }
 
 }  // namespace
@@ -1159,7 +1467,10 @@ int main() {
 
   certificateCatchesWhatSamplingMisses();
   fullMultiplicityKnotIsSampledOneSided();
-  collapsedKnotCutsAreRefused();
+  narrowSpanWithCollapsedParametersIsCertified();
+  subUlpKnotSpanIsDeclined();
+  collapsedNodeParametersAreDeclined();
+  descendingChordStartsInTheSpanItTraverses();
   errorTermTracksTheControlValues();
   knotClippingCatchesAZigZag();
   wrappedChordIsStillCertified();

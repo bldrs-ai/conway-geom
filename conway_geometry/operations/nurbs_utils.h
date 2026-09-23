@@ -314,6 +314,78 @@ struct RationalSurfaceEvaluator {
     return pointw;
   }
 
+  /**
+   * Largest step between ADJACENT homogeneous control points in the window
+   * that supports span ( spanU, spanV ), along u or along v.
+   *
+   * This is what a B-spline's derivative is built from: the derivative is
+   * itself a B-spline whose control points are
+   * `degree * ( P[ i + 1 ] - P[ i ] ) / ( knot difference )`, and its basis
+   * is a partition of unity, so the derivative over this span is bounded by
+   * the largest of them. Taken over the LOCAL window rather than the whole
+   * grid, which matters: on a surface whose coordinates span 1e9, a global
+   * maximum would put a bound of 1e9 on a span whose own control points are
+   * all of order one, and the certificate would decline chords it can
+   * perfectly well bound.
+   *
+   * The window is `degree + 1` control points wide, so there are `degree`
+   * steps across it and every index stays inside the span's own support.
+   */
+  void controlSpread(
+      int     spanU,
+      int     spanV,
+      bool    alongU,
+      double& pointSpread,
+      double& weightSpread ) const {
+
+    pointSpread  = 0.0;
+    weightSpread = 0.0;
+
+    if ( !fastPath_ ) {
+      pointSpread  = std::numeric_limits< double >::infinity();
+      weightSpread = std::numeric_limits< double >::infinity();
+      return;
+    }
+
+    const int rowBase = spanU - static_cast< int >( surface_.degree_u );
+    const int colBase = spanV - static_cast< int >( surface_.degree_v );
+
+    const uint32_t lastRow =
+        alongU ?
+          ( surface_.degree_u > 0 ? surface_.degree_u - 1 : 0 ) :
+          surface_.degree_u;
+
+    const uint32_t lastCol =
+        alongU ?
+          surface_.degree_v :
+          ( surface_.degree_v > 0 ? surface_.degree_v - 1 : 0 );
+
+    if ( ( alongU && surface_.degree_u == 0 ) ||
+         ( !alongU && surface_.degree_v == 0 ) ) {
+      return;
+    }
+
+    for ( uint32_t a = 0; a <= lastRow; ++a ) {
+
+      for ( uint32_t b = 0; b <= lastCol; ++b ) {
+
+        const glm::dvec4& here =
+            controlPointW( rowBase + a, colBase + b );
+
+        const glm::dvec4& next =
+            controlPointW( rowBase + a + ( alongU ? 1 : 0 ),
+                           colBase + b + ( alongU ? 0 : 1 ) );
+
+        pointSpread =
+            std::max( pointSpread,
+                      glm::length( glm::dvec3( next ) - glm::dvec3( here ) ) );
+
+        weightSpread =
+            std::max( weightSpread, std::abs( next.w - here.w ) );
+      }
+    }
+  }
+
   /** `pointHomogeneousAtSpan` with the perspective divide applied. */
   glm::dvec3 pointAtSpan( int spanU, int spanV, double u, double v ) const {
 

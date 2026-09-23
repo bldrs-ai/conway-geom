@@ -104,15 +104,26 @@ namespace conway::geometry {
 constexpr uint32_t CERTIFICATE_MAX_DEGREE = 13;
 
 /**
- * Most knot spans a single chord may cross and still be certified. The
- * deviation is only polynomial WITHIN a knot box, so a chord crossing knot
- * lines is cut at the crossings and bounded piecewise; this caps that work.
+ * Most knot boxes a single chord may pass through and still be certified.
+ * The deviation is only polynomial WITHIN a box, so a chord crossing knot
+ * lines is bounded box by box; this caps that work.
  *
  * Refusing above the cap is conservative - the edge is subdivided - and it
- * terminates, because halving an edge halves the spans it crosses, so a chord
- * over the cap is under it within log2( spans / cap ) levels.
+ * terminates, because halving an edge halves the boxes it crosses, so a chord
+ * over the cap is under it within log2( boxes / cap ) levels.
+ *
+ * 16 rather than the 8 the cut-based arrangement used, because the two count
+ * DIFFERENT THINGS and 8 is not the same budget here. That one capped the
+ * cut parameters collected per axis, in two nested passes, so a chord could
+ * reach roughly 8 x 8 boxes before being refused; this caps the boxes
+ * themselves, once. Measured on `Right_Hand.step`: at 16 the walk refuses
+ * NOTHING on the whole corpus and the model comes out at 201,223 triangles,
+ * against 201,311 for the arrangement this replaces - the 88 chords that one
+ * refused at its cap are now certified. At 8 it refuses enough to cost 200
+ * triangles back, at 201,423. Degenerate and welded-open counts are
+ * identical at all three.
  */
-constexpr uint32_t CERTIFICATE_MAX_SPANS = 8;
+constexpr uint32_t CERTIFICATE_MAX_PIECES = 16;
 
 /**
  * Multiple of the interpolation error the bound is inflated by before it is
@@ -129,6 +140,8 @@ constexpr double CERTIFICATE_ERROR_SAFETY = 8.0;
  * a performance cut-off rather than the thing soundness hangs on.
  */
 constexpr double CERTIFICATE_MAX_ERROR_FRACTION = 0.25;
+
+
 
 /**
  * Values at n + 1 nodes -> the n + 1 Bernstein coefficients of the degree-n
@@ -484,7 +497,7 @@ class NurbsDeflectionCertificate {
     uint64_t spans        = 0;
     uint64_t wrapped      = 0;
     uint64_t tooManySpans = 0;
-    uint64_t collapsedCut = 0;
+    uint64_t unplaceable  = 0;
     uint64_t illConditioned = 0;
     uint64_t badPiece     = 0;
   };
@@ -513,136 +526,44 @@ class NurbsDeflectionCertificate {
       return CertificateOutcome::Unsupported;
     }
 
-    // The chord's own magnitude, which is one of the three things the error
-    // term below is built from. It is NOT on its own a scale for the
-    // evaluation error - see maxHomogeneousNorm() in nurbs_utils.h, and the
-    // ERROR PROPAGATION note on boundPiece.
+    // The chord's own magnitude, which is one of the things the error term
+    // is built from. It is NOT on its own a scale for the evaluation error -
+    // see maxHomogeneousNorm() in nurbs_utils.h, and the ERROR PROPAGATION
+    // note on boundPiece.
     const double chordScale =
       std::max( glm::length( surface0 ), glm::length( surface1 ) );
 
-    // STAGE 1: the cuts that are not u knots - the periodic chart's SHEET
-    // boundaries and the v knot lines.
-    //
-    // The chart wrap makes t -> u( t ) discontinuous where the segment steps
-    // across the cut, and a discontinuous function has no polynomial through
-    // it. Cutting there rather than declining is worth the code: measured on
-    // `Right_Hand.step`, declining a wrapped chord left 22,634 of 216,757
-    // candidates ( 10.4% ) uncertifiable, all of which then had to be
-    // subdivided on no evidence, and solid #19715 came out with 1,737
-    // degenerate triangles against 164 before the certificate.
-    double cuts[ CERTIFICATE_MAX_SPANS + 1 ];
+    Piece pieces[ CERTIFICATE_MAX_PIECES ];
 
-    uint32_t cutCount = 0;
+    uint32_t pieceCount = 0;
 
-    cuts[ cutCount++ ] = 0.0;
-
-    if ( periodic_ ) {
-
-      const double sheet0 = std::floor( ( uv0.x - stripUMin_ ) / stripPeriod_ );
-      const double sheet1 = std::floor( ( uv1.x - stripUMin_ ) / stripPeriod_ );
-
-      const double lowSheet  = std::min( sheet0, sheet1 );
-      const double highSheet = std::max( sheet0, sheet1 );
-
-      for ( double sheet = lowSheet + 1.0; sheet <= highSheet; sheet += 1.0 ) {
-
-        if ( !addCut( stripUMin_ + ( sheet * stripPeriod_ ),
-                      uv0.x, uv1.x, cuts, cutCount ) ) {
-
-          ++counters_.tooManySpans;
-          ++counters_.inconclusive;
-          return CertificateOutcome::Inconclusive;
-        }
-      }
-    }
-
-    if ( !collectCrossings(
-           evaluator_->degreeV(), evaluator_->knotsV(), uv0.y, uv1.y,
-           cuts, cutCount ) ) {
-
+    if ( !walkPieces( uv0, uv1, pieces, pieceCount ) ) {
       ++counters_.tooManySpans;
       ++counters_.inconclusive;
       return CertificateOutcome::Inconclusive;
     }
 
-    cuts[ cutCount++ ] = 1.0;
-
-    std::sort( cuts, cuts + cutCount );
-
-    double worst     = 0.0;
+    double worst      = 0.0;
     double worstError = 0.0;
 
-    for ( uint32_t piece = 0; piece + 1 < cutCount; ++piece ) {
+    for ( uint32_t at = 0; at < pieceCount; ++at ) {
 
-      const double from = cuts[ piece ];
-      const double to   = cuts[ piece + 1 ];
+      ++counters_.spans;
 
-      if ( !( to > from ) ) {
-        continue;
-      }
+      double pieceBound = 0.0;
+      double pieceError = 0.0;
 
-      // STAGE 2: this piece lies on ONE sheet, so `shift` is constant across
-      // it and t -> u is affine again. Read at the MIDPOINT rather than at an
-      // end, because a cut sits exactly on a sheet boundary and rounding
-      // there could put it on either side.
-      double shift = 0.0;
+      if ( !boundPiece(
+             pieces[ at ], surface0, surface1, chordScale,
+             pieceBound, pieceError ) ) {
 
-      if ( periodic_ ) {
-
-        const double middle = 0.5 * ( from + to );
-
-        shift =
-          std::floor(
-            ( ( uv0.x + ( middle * ( uv1.x - uv0.x ) ) ) - stripUMin_ ) /
-            stripPeriod_ ) * stripPeriod_;
-      }
-
-      double inner[ CERTIFICATE_MAX_SPANS + 1 ];
-
-      uint32_t innerCount = 0;
-
-      inner[ innerCount++ ] = from;
-
-      const double pieceU0 = uv0.x + ( from * ( uv1.x - uv0.x ) ) - shift;
-      const double pieceU1 = uv0.x + ( to * ( uv1.x - uv0.x ) ) - shift;
-
-      if ( !collectCrossings(
-             evaluator_->degreeU(), evaluator_->knotsU(),
-             pieceU0, pieceU1, inner, innerCount, from, to ) ) {
-
-        ++counters_.tooManySpans;
+        ++counters_.badPiece;
         ++counters_.inconclusive;
         return CertificateOutcome::Inconclusive;
       }
 
-      inner[ innerCount++ ] = to;
-
-      std::sort( inner, inner + innerCount );
-
-      for ( uint32_t part = 0; part + 1 < innerCount; ++part ) {
-
-        if ( !( inner[ part + 1 ] > inner[ part ] ) ) {
-          continue;
-        }
-
-        ++counters_.spans;
-
-        double pieceBound = 0.0;
-        double pieceError = 0.0;
-
-        if ( !boundPiece(
-               uv0, uv1, surface0, surface1, chordScale,
-               inner[ part ], inner[ part + 1 ], shift,
-               pieceBound, pieceError ) ) {
-
-          ++counters_.badPiece;
-          ++counters_.inconclusive;
-          return CertificateOutcome::Inconclusive;
-        }
-
-        worst      = std::max( worst, pieceBound );
-        worstError = std::max( worstError, pieceError );
-      }
+      worst      = std::max( worst, pieceBound );
+      worstError = std::max( worstError, pieceError );
     }
 
     // THE BOUND'S OWN ERROR HAS TO BE SMALL COMPARED WITH WHAT IT IS
@@ -667,167 +588,320 @@ class NurbsDeflectionCertificate {
  private:
 
   /**
-   * Record a cut at `cut`, refusing any that cannot SEPARATE the spans on
-   * either side of it.
+   * ONE KNOT BOX THE CHORD PASSES THROUGH, named by its span INDICES.
    *
-   * The pieces are walked by sorting these parameters and stepping between
-   * consecutive ones, and a zero-length step is skipped. So a cut that lands
-   * on a piece end, or on another cut, does not merely waste a slot: the
-   * span between the two boundaries that collapsed gets no piece of its own
-   * and is NEVER CERTIFIED, while the result still claims to cover the whole
-   * chord. That is the same defect class as certifying against the wrong
-   * polynomial, and it is silent in exactly the same way.
+   * The indices are the whole point. An earlier arrangement recovered the
+   * pieces by computing a cut parameter for every knot the chord crossed,
+   * sorting those parameters and stepping between consecutive ones - so a
+   * piece existed only if its two bounding parameters came out distinct, and
+   * the polynomial to certify it against was recovered afterwards by looking
+   * a parameter back up with `findSpan`. Both steps put exact integer
+   * structure - WHICH KNOT SPAN IS THIS - through a lossy round trip into
+   * doubles, and both produced a P1 on bldrs-ai/conway-geom#214:
    *
-   * Two distinct knots can round to one parameter for ordinary doubles: with
-   * a chord from -1e9 to 1e9, the knots 1.0 and nextafter( 1.0 ) both give
-   * 0.50000000050000004. See `collapsedKnotCutsAreRefused`, and the third
-   * finding on bldrs-ai/conway-geom#214.
+   *   - a node parameter sitting exactly on a knot resolved to the span on
+   *     its RIGHT, so a piece to the left of a discontinuous knot was
+   *     certified against the polynomial it was not covering;
+   *   - two distinct knots that rounded to one parameter produced one cut
+   *     instead of two, the zero-length step between them was skipped, and
+   *     the span between them was never certified at all while the result
+   *     still claimed to cover the whole chord.
    *
-   * Declining is the right answer rather than a repair: `Inconclusive`
-   * subdivides, subdividing shrinks the chord, and a shorter chord resolves
-   * the two knots again - so the refusal is self-clearing.
+   * Here a piece exists because the walk emitted it, and carries the span it
+   * belongs to as an integer it was emitted with. `tFrom`/`tTo` are derived
+   * FROM the boxes and are used only to place nodes and to read the chord;
+   * nothing is recovered from them.
+   *
+   * `from` and `to` are in EVALUATED uv - the periodic shift is already
+   * removed - and the axis that ended the piece is pinned to the exact knot
+   * value that ended it, rather than recomputed from a parameter.
    */
-  bool recordCut(
-    double    cut,
-    double    tFrom,
-    double    tTo,
-    double*   cuts,
-    uint32_t& cutCount ) const {
+  struct Piece {
 
-    if ( !( cut > tFrom ) || !( cut < tTo ) ) {
-      ++counters_.collapsedCut;
-      return false;
-    }
-
-    for ( uint32_t at = 0; at < cutCount; ++at ) {
-
-      if ( cuts[ at ] == cut ) {
-        ++counters_.collapsedCut;
-        return false;
-      }
-    }
-
-    if ( cutCount + 1 >= CERTIFICATE_MAX_SPANS + 1 ) {
-      ++counters_.tooManySpans;
-      return false;
-    }
-
-    cuts[ cutCount++ ] = cut;
-
-    return true;
-  }
-
-  /** Record the parameter at which `a -> b` passes `value`, if it does. */
-  bool addCut(
-    double    value,
-    double    a,
-    double    b,
-    double*   cuts,
-    uint32_t& cutCount ) const {
-
-    const double low  = std::min( a, b );
-    const double high = std::max( a, b );
-
-    if ( value <= low || value >= high ) {
-      return true;
-    }
-
-    return recordCut(
-      ( value - a ) / ( b - a ), 0.0, 1.0, cuts, cutCount );
-  }
+    int        spanU = 0;
+    int        spanV = 0;
+    glm::dvec2 from  = glm::dvec2( 0.0 );
+    glm::dvec2 to    = glm::dvec2( 0.0 );
+    double     tFrom = 0.0;
+    double     tTo   = 0.0;
+  };
 
   /**
-   * Append the parameters at which the segment `a -> b` crosses an INTERIOR
-   * knot of `knots`. False if that would take the piece count over the cap.
+   * The span the walk should START in at `at`, moving in the direction
+   * `ascending`, skipping spans of zero width.
    *
-   * Interior only: the first and last `degree + 1` knots clamp the domain and
-   * are not places the polynomial changes.
+   * THIS IS THE ONLY SPAN LOOKUP IN THE CERTIFICATE. Every other span comes
+   * from incrementing this one, which is what makes "certified against the
+   * wrong polynomial" a question that can only be asked once per chord
+   * instead of once per node. `findSpan` resolves a parameter sitting
+   * exactly on a knot to the span on its right - the span the walk wants
+   * when it is moving up, and the wrong one when it is moving down - so the
+   * direction is applied here explicitly.
+   *
+   * THE DIRECTION IS AN OPTIMISATION, NOT A SOUNDNESS REQUIREMENT, which is
+   * worth writing down because it is the one lookup that could still answer
+   * wrongly. If it returns the span on the wrong side, that span's exit
+   * boundary lies AT or BEHIND the chord's start, so the walk's first box
+   * comes out with zero extent - contributing a deviation of zero, since its
+   * single point is the cached endpoint itself - and the very next step
+   * lands in the right span. Measured: the `walk-ignores-direction` red
+   * proof removes this block entirely and every assertion still passes,
+   * including `descendingChordStartsInTheSpanItTraverses`, which is built
+   * to catch exactly this. What the block buys is not correctness but one
+   * fewer wasted box per descending chord.
+   *
+   * Returns -1 when the direction leaves the knot domain with no non-empty
+   * span in it.
    */
-  bool collectCrossings(
+  static int directionalSpan(
     uint32_t                     degree,
     const std::vector< double >& knots,
-    double                       a,
-    double                       b,
-    double*                      cuts,
-    uint32_t&                    cutCount,
-    double                       tFrom = 0.0,
-    double                       tTo   = 1.0 ) const {
+    double                       at,
+    bool                         ascending ) {
 
-    if ( knots.size() < ( 2 * degree ) + 2 ) {
-      return true;
+    const int first = static_cast< int >( degree );
+    const int last  =
+      static_cast< int >( knots.size() ) - static_cast< int >( degree ) - 2;
+
+    if ( last < first ) {
+      return -1;
     }
 
-    const double low  = std::min( a, b );
-    const double high = std::max( a, b );
+    int span = RationalSurfaceEvaluator::findSpan( degree, knots, at );
 
-    if ( !( high > low ) ) {
-      return true;
+    if ( !ascending ) {
+
+      // Descending from exactly a knot: the span the chord is about to
+      // traverse is the one to the LEFT, and a repeated knot means stepping
+      // back over every copy of it.
+      while ( span > first && knots[ span ] >= at ) {
+        --span;
+      }
     }
 
-    const double span = b - a;
-
-    // The last knot VALUE that produced a cut. Knots repeat to carry
-    // multiplicity, and repeats are the same span boundary, not a second
-    // one - the span between two equal knots is empty and has nothing to
-    // certify. They must be skipped before `recordCut`, which would
-    // otherwise read their identical parameters as a collapse.
-    double previousKnot  = 0.0;
-    bool   havePrevious  = false;
-
-    for ( size_t at = degree + 1, end = knots.size() - degree - 1;
-          at < end;
-          ++at ) {
-
-      const double knot = knots[ at ];
-
-      if ( knot <= low || knot >= high ) {
-        continue;
-      }
-
-      if ( havePrevious && knot == previousKnot ) {
-        continue;
-      }
-
-      if ( !recordCut(
-             tFrom + ( ( ( knot - a ) / span ) * ( tTo - tFrom ) ),
-             tFrom, tTo, cuts, cutCount ) ) {
-        return false;
-      }
-
-      previousKnot = knot;
-      havePrevious = true;
+    while ( span >= first && span <= last &&
+            !RationalSurfaceEvaluator::spanIsEvaluable( knots, span ) ) {
+      span += ascending ? 1 : -1;
     }
 
-    return true;
+    return ( span < first || span > last ) ? -1 : span;
   }
 
   /**
-   * Bound the deviation on the sub-interval [ `from`, `to` ] of the chord,
-   * and the error that bound carries.
+   * Enumerate the knot boxes the chord passes through, in order along it.
+   *
+   * The walk advances in INDEX space: at each step it asks which axis's box
+   * ends first along the chord, emits the box it is in, steps that axis's
+   * index, and repeats. Progress is therefore guaranteed by the indices
+   * advancing, not by the chord parameter increasing - which is what lets a
+   * box whose parameter interval collapses still be emitted and bounded
+   * rather than vanishing.
+   *
+   * The periodic chart's cut is folded in as a RESTART of the u walk: when
+   * the chord reaches the edge of the strip, the shift changes and the u
+   * index resumes at the far end of the knot domain. It is not a separate
+   * kind of cut, so there is no second source of boundaries that could
+   * collide with the first.
+   */
+  bool walkPieces(
+    const glm::dvec2& uv0,
+    const glm::dvec2& uv1,
+    Piece*            pieces,
+    uint32_t&         count ) const {
+
+    const std::vector< double >& knotsU = evaluator_->knotsU();
+    const std::vector< double >& knotsV = evaluator_->knotsV();
+
+    const uint32_t degreeU = evaluator_->degreeU();
+    const uint32_t degreeV = evaluator_->degreeV();
+
+    const int firstU = static_cast< int >( degreeU );
+    const int firstV = static_cast< int >( degreeV );
+    const int lastU  =
+      static_cast< int >( knotsU.size() ) - static_cast< int >( degreeU ) - 2;
+    const int lastV  =
+      static_cast< int >( knotsV.size() ) - static_cast< int >( degreeV ) - 2;
+
+    const double du = uv1.x - uv0.x;
+    const double dv = uv1.y - uv0.y;
+
+    const bool upU = du >= 0.0;
+    const bool upV = dv >= 0.0;
+
+    double shift =
+      periodic_ ?
+        ( std::floor( ( uv0.x - stripUMin_ ) / stripPeriod_ ) *
+          stripPeriod_ ) :
+        0.0;
+
+    glm::dvec2 from( uv0.x - shift, uv0.y );
+
+    int spanU = directionalSpan( degreeU, knotsU, from.x, upU );
+    int spanV = directionalSpan( degreeV, knotsV, from.y, upV );
+
+    if ( spanU < 0 || spanV < 0 ) {
+      return false;
+    }
+
+    const double infinity = std::numeric_limits< double >::infinity();
+
+    // Once the walk runs off the end of a knot domain there are no further
+    // edges on that axis - the surface clamps there and the last span's
+    // polynomial is extended, which is what the evaluator does too. Without
+    // these the walk would keep finding the same domain edge and emit
+    // zero-width boxes until it hit the cap.
+    bool clampedU =
+      ( du == 0.0 ) ||
+      ( upU ? ( from.x >= knotsU[ lastU + 1 ] ) : ( from.x <= knotsU[ firstU ] ) );
+
+    bool clampedV =
+      ( dv == 0.0 ) ||
+      ( upV ? ( from.y >= knotsV[ lastV + 1 ] ) : ( from.y <= knotsV[ firstV ] ) );
+
+    double tFrom = 0.0;
+
+    count = 0;
+
+    while ( true ) {
+
+      if ( count >= CERTIFICATE_MAX_PIECES ) {
+        return false;
+      }
+
+      // Where this box ends on each axis, in that axis's own parameter.
+      const double edgeU = upU ? knotsU[ spanU + 1 ] : knotsU[ spanU ];
+      const double edgeV = upV ? knotsV[ spanV + 1 ] : knotsV[ spanV ];
+
+      // And where the periodic strip ends, in RAW u.
+      const double edgeStrip =
+        upU ? ( stripUMin_ + shift + stripPeriod_ )
+            : ( stripUMin_ + shift );
+
+      const double tU =
+        clampedU ? infinity : ( ( ( edgeU + shift ) - uv0.x ) / du );
+
+      const double tV =
+        clampedV ? infinity : ( ( edgeV - uv0.y ) / dv );
+
+      const double tStrip =
+        ( periodic_ && du != 0.0 ) ?
+          ( ( edgeStrip - uv0.x ) / du ) : infinity;
+
+      double tTo = 1.0;
+
+      tTo = std::min( tTo, std::min( tU, std::min( tV, tStrip ) ) );
+
+      // Never run backwards: a knot whose parameter rounds below where the
+      // walk already is gives a box of zero parameter width, which is
+      // emitted and bounded like any other - its uv interval comes from the
+      // knots and is not degenerate.
+      tTo = std::max( tTo, tFrom );
+
+      // ONE AXIS PER STEP, even when two boundaries land on the same
+      // parameter. Advancing both at once would skip the box between them -
+      // and two boundaries tie here whenever their parameters round
+      // together, which is the same rounding that produced the third
+      // finding. Stepping one at a time emits that box with its own span
+      // indices and its own knot-derived corners; it is thin, and it is
+      // bounded rather than assumed away.
+      const bool endsOnStrip = periodic_ && ( du != 0.0 ) && ( tStrip <= tTo );
+      const bool endsOnU     = !endsOnStrip && !clampedU && ( tU <= tTo );
+      const bool endsOnV     =
+        !endsOnStrip && !endsOnU && !clampedV && ( tV <= tTo );
+      const bool endsChord   = !endsOnU && !endsOnV && !endsOnStrip;
+
+      // The far corner of this box. The axis that ended it is PINNED to the
+      // knot value that ended it; the other is read off the chord.
+      glm::dvec2 to(
+        endsOnStrip ? ( edgeStrip - shift )
+                    : ( endsOnU ? edgeU
+                                : ( ( uv0.x + ( tTo * du ) ) - shift ) ),
+        endsOnV ? edgeV : ( uv0.y + ( tTo * dv ) ) );
+
+      if ( endsChord ) {
+        to = glm::dvec2( uv1.x - shift, uv1.y );
+      }
+
+      pieces[ count++ ] = Piece{ spanU, spanV, from, to, tFrom, tTo };
+
+      if ( endsChord ) {
+        return true;
+      }
+
+      from  = to;
+      tFrom = tTo;
+
+      if ( endsOnStrip ) {
+
+        // The strip's edge is not a cut of its own - it is where the u walk
+        // RESTARTS, at the far end of the knot domain, one period along.
+        shift += upU ? stripPeriod_ : -stripPeriod_;
+
+        from.x = ( uv0.x + ( tTo * du ) ) - shift;
+
+        spanU = directionalSpan( degreeU, knotsU, from.x, upU );
+
+        if ( spanU < 0 ) {
+          return false;
+        }
+
+      } else if ( endsOnU ) {
+
+        do {
+          spanU += upU ? 1 : -1;
+        } while ( spanU >= firstU && spanU <= lastU &&
+                  !RationalSurfaceEvaluator::spanIsEvaluable(
+                    knotsU, spanU ) );
+
+        // Off the end of the knot domain with no strip to wrap into: the
+        // surface clamps there, so stay in the boundary span and stop
+        // looking for more u edges.
+        if ( spanU < firstU || spanU > lastU ) {
+          spanU   = ( spanU < firstU ) ? firstU : lastU;
+          clampedU = true;
+        }
+      }
+
+      else if ( endsOnV ) {
+
+        do {
+          spanV += upV ? 1 : -1;
+        } while ( spanV >= firstV && spanV <= lastV &&
+                  !RationalSurfaceEvaluator::spanIsEvaluable(
+                    knotsV, spanV ) );
+
+        if ( spanV < firstV || spanV > lastV ) {
+          spanV    = ( spanV < firstV ) ? firstV : lastV;
+          clampedV = true;
+        }
+      }
+    }
+  }
+
+  /**
+   * Bound the deviation on one knot box, and the error that bound carries.
    *
    * The deviation restricted to a sub-interval is the same polynomial
    * composed with an affine map, so it has the same degree and the same
    * treatment; what it is measured against stays the WHOLE chord, which is
    * what the mesh will carry.
    *
-   * ONE-SIDED EVALUATION. Every node is evaluated as the polynomial of the
-   * spans this piece lies in, named from the piece's MIDPOINT, not of the
-   * spans its parameters fall in. At an interior knot of multiplicity
-   * `degree + 1` the two sides are different polynomials with a step between
-   * them, and `findSpan` resolves a parameter sitting exactly on the knot to
-   * the right-hand one - so a piece whose last node is that knot would be
-   * given one sample from the polynomial it is NOT certifying, and the
-   * interpolant would be fitted through a point that is not on the curve.
-   * The Chebyshev-Lobatto nodes make this certain rather than unlikely:
-   * they always include both endpoints. Measured on the smallest case that
-   * shows it - degrees ( 1, 1 ), a knot of multiplicity 2, left-hand
-   * deviation rising to 1 and right-hand knot value 2/3 - the samples come
-   * out [ 0, 1/2, 2/3 ], the coefficients [ 0, 2/3, 2/3 ], and the bound
-   * 0.667 against a true 1.0. See `fullMultiplicityKnotIsSampledOneSided`.
+   * ONE-SIDED BY CONSTRUCTION. Every node is evaluated as the polynomial of
+   * `piece.spanU` / `piece.spanV`, the indices the walk emitted this box
+   * with. No parameter is ever resolved back to a span here, so a node
+   * sitting exactly on a knot cannot be read from the far side of it - the
+   * question is not asked. See the note on `Piece`.
+   *
+   * NODES ARE PLACED IN uv, NOT IN t. `piece.from` and `piece.to` are the
+   * box's own corners, with the axis that ended the box pinned to the exact
+   * knot that ended it, so the nodes span the box even when the box's chord
+   * parameters `tFrom` and `tTo` round to the same double. `t` is read only
+   * to place the chord, which is affine and therefore insensitive to it at
+   * that scale.
    *
    * ERROR PROPAGATION. `error` is an outward bound on everything between the
-   * exact deviation polynomial and the number returned, and it is built from
-   * three sources, none of which the chord's endpoints alone govern:
+   * exact deviation polynomial and the number returned, from four sources,
+   * none of which the chord's endpoints alone govern:
    *
    *   1. THE NODE VALUES. `pointHomogeneousAtSpan` accumulates
    *      `basis * controlPointW` over ( dU + 1 )( dV + 1 ) terms whose basis
@@ -840,51 +914,48 @@ class NurbsDeflectionCertificate {
    *      exact node values. The inverse is itself computed in floating point
    *      ( `inverseError()`, measured a posteriori ) and applying it is a
    *      dot product of `degree + 1` terms, and both are carried here.
-   *   3. THE RATIONAL QUOTIENT. `numerator / weight` amplifies the
+   *   3. WHERE THE NODES ACTUALLY LANDED. A node's uv is computed as
+   *      `from + s * ( to - from )`, and that sum rounds to an ulp of the
+   *      PARAMETER MAGNITUDE - not of the box width. So on a box that is
+   *      narrow relative to where it sits, the nodes are not at the
+   *      parameters the interpolation assumes and the values handed to it
+   *      are of the right function at the wrong places. That is the fourth
+   *      finding on bldrs-ai/conway-geom#214: a quadratic span two ulps wide
+   *      at u = 1e9, with a bump at the one representable interior
+   *      parameter, returned 6.2e-5 against a true departure of 1.
+   *
+   *      It is carried as an error in the node VALUE, via a bound on the
+   *      surface's own gradient taken from the CONTROL NET - a B-spline's
+   *      derivative control points are `degree * dP / spanWidth`, so
+   *      `| dS/du | <= degreeU * 2 * maxHomogeneousNorm / spanWidthU` - times
+   *      the parameter's rounding. Not as a misplacement of the abscissa:
+   *      the rounding moves a node OFF the chord in uv as well as along it,
+   *      and only the along-chord part is expressible as a shifted abscissa.
+   *      Bounding the value directly covers both.
+   *   4. THE RATIONAL QUOTIENT. `numerator / weight` amplifies the
    *      numerator's error by `1 / weight` AND turns any over-estimate of
    *      the weight's lower bound into an under-estimate of the quotient. So
    *      the weight hull is taken at its own LOWER bound, and a lower bound
    *      that reaches zero is refused rather than divided by.
    */
   bool boundPiece(
-    const glm::dvec2& uv0,
-    const glm::dvec2& uv1,
+    const Piece&      piece,
     const glm::dvec3& surface0,
     const glm::dvec3& surface1,
     double            chordScale,
-    double            from,
-    double            to,
-    double            uShift,
     double&           result,
     double&           error ) const {
 
     const uint32_t count = interpolation_.degree() + 1;
 
-    // The spans this piece lies in, read at the midpoint so that a cut
-    // sitting exactly on a knot resolves to the piece's own side of it.
-    const double middle = 0.5 * ( from + to );
-
-    const glm::dvec2 midUV =
-      ( uv0 * ( 1.0 - middle ) ) + ( uv1 * middle ) -
-      glm::dvec2( uShift, 0.0 );
-
-    const int spanU =
-      RationalSurfaceEvaluator::findSpan(
-        evaluator_->degreeU(), evaluator_->knotsU(), midUV.x );
-
-    const int spanV =
-      RationalSurfaceEvaluator::findSpan(
-        evaluator_->degreeV(), evaluator_->knotsV(), midUV.y );
-
-    // A span with an empty knot interval has no polynomial to name, and the
-    // Cox-de-Boor denominators are only bounded away from zero on a
-    // non-empty one.
     if ( !RationalSurfaceEvaluator::spanIsEvaluable(
-           evaluator_->knotsU(), spanU ) ||
+           evaluator_->knotsU(), piece.spanU ) ||
          !RationalSurfaceEvaluator::spanIsEvaluable(
-           evaluator_->knotsV(), spanV ) ) {
+           evaluator_->knotsV(), piece.spanV ) ) {
       return false;
     }
+
+    const glm::dvec2 across = piece.to - piece.from;
 
     glm::dvec3 numerators[ CERTIFICATE_MAX_DEGREE + 1 ];
     double     weights[ CERTIFICATE_MAX_DEGREE + 1 ];
@@ -894,10 +965,11 @@ class NurbsDeflectionCertificate {
 
     for ( uint32_t i = 0; i < count; ++i ) {
 
-      const double at = from + ( ( to - from ) * interpolation_.node( i ) );
+      const double s = interpolation_.node( i );
 
-      const glm::dvec2 uv =
-        ( uv0 * ( 1.0 - at ) ) + ( uv1 * at ) - glm::dvec2( uShift, 0.0 );
+      const glm::dvec2 uv = piece.from + ( across * s );
+
+      const double at = piece.tFrom + ( ( piece.tTo - piece.tFrom ) * s );
 
       const glm::dvec3 chord =
         ( surface0 * ( 1.0 - at ) ) + ( surface1 * at );
@@ -907,7 +979,8 @@ class NurbsDeflectionCertificate {
       if ( rational_ ) {
 
         const glm::dvec4 homogeneous =
-          evaluator_->pointHomogeneousAtSpan( spanU, spanV, uv.x, uv.y );
+          evaluator_->pointHomogeneousAtSpan(
+            piece.spanU, piece.spanV, uv.x, uv.y );
 
         // N( t ) = A( t ) - W( t ) * chord( t ), both polynomial.
         numerators[ i ] =
@@ -918,7 +991,8 @@ class NurbsDeflectionCertificate {
       } else {
 
         numerators[ i ] =
-          evaluator_->pointAtSpan( spanU, spanV, uv.x, uv.y ) - chord;
+          evaluator_->pointAtSpan(
+            piece.spanU, piece.spanV, uv.x, uv.y ) - chord;
 
         weights[ i ] = 1.0;
       }
@@ -934,6 +1008,28 @@ class NurbsDeflectionCertificate {
       largestWeight = std::max( largestWeight, std::abs( weights[ i ] ) );
     }
 
+    double largestNumerator     = 0.0;
+    double largestWeightHull    = 0.0;
+    double smallestWeight       = std::numeric_limits< double >::infinity();
+
+    for ( uint32_t i = 0; i < count; ++i ) {
+
+      largestNumerator =
+        std::max(
+          largestNumerator,
+          glm::length( interpolation_.coefficient( i, numerators ) ) );
+
+      const double weight = interpolation_.coefficient( i, weights );
+
+      largestWeightHull = std::max( largestWeightHull, std::abs( weight ) );
+      smallestWeight    = std::min( smallestWeight, weight );
+    }
+
+    if ( !std::isfinite( largestNumerator ) ||
+         !std::isfinite( smallestWeight ) ) {
+      return false;
+    }
+
     const double epsilon = std::numeric_limits< double >::epsilon();
 
     const double terms =
@@ -945,7 +1041,7 @@ class NurbsDeflectionCertificate {
       CERTIFICATE_ERROR_SAFETY * terms * epsilon *
       evaluator_->maxHomogeneousNorm();
 
-    const double weightError =
+    double weightError =
       rational_ ?
         ( CERTIFICATE_ERROR_SAFETY * terms * epsilon *
           evaluator_->maxWeight() ) :
@@ -954,17 +1050,60 @@ class NurbsDeflectionCertificate {
     const double chordError =
       CERTIFICATE_ERROR_SAFETY * epsilon * chordScale;
 
-    // N = A - W * chord, so the chord's error enters scaled by the weight
-    // and the weight's error scaled by the chord.
-    const double nodeError =
-      rational_ ?
-        ( evaluationError + ( largestWeight * chordError ) +
-          ( chordScale * weightError ) +
-          ( epsilon * largestWeight * chordScale ) ) :
-        ( evaluationError + chordError );
+    // 3. WHERE THE NODES ACTUALLY LANDED, as an error in the VALUE.
+    const double roundingU =
+      CERTIFICATE_ERROR_SAFETY * epsilon *
+      std::max( std::abs( piece.from.x ), std::abs( piece.to.x ) );
 
-    // 2. THE INTERPOLATION: exact inverse on perturbed values, plus the
-    // inverse's own error, plus the rounding of applying it.
+    const double roundingV =
+      CERTIFICATE_ERROR_SAFETY * epsilon *
+      std::max( std::abs( piece.from.y ), std::abs( piece.to.y ) );
+
+    double spreadPointU  = 0.0;
+    double spreadWeightU = 0.0;
+    double spreadPointV  = 0.0;
+    double spreadWeightV = 0.0;
+
+    evaluator_->controlSpread(
+      piece.spanU, piece.spanV, true, spreadPointU, spreadWeightU );
+
+    evaluator_->controlSpread(
+      piece.spanU, piece.spanV, false, spreadPointV, spreadWeightV );
+
+    const double gradientU =
+      gradientBound( evaluator_->degreeU(), evaluator_->knotsU(),
+                     piece.spanU, spreadPointU );
+
+    const double gradientV =
+      gradientBound( evaluator_->degreeV(), evaluator_->knotsV(),
+                     piece.spanV, spreadPointV );
+
+    const double placementError =
+      ( gradientU * roundingU ) + ( gradientV * roundingV );
+
+    const double placementWeightError =
+      rational_ ?
+        ( ( gradientBound( evaluator_->degreeU(), evaluator_->knotsU(),
+                           piece.spanU, spreadWeightU ) * roundingU ) +
+          ( gradientBound( evaluator_->degreeV(), evaluator_->knotsV(),
+                           piece.spanV, spreadWeightV ) * roundingV ) ) :
+        0.0;
+
+    if ( !std::isfinite( placementError ) ||
+         !std::isfinite( placementWeightError ) ) {
+      ++counters_.unplaceable;
+      return false;
+    }
+
+    const double nodeError =
+      placementError +
+      ( rational_ ?
+        ( evaluationError + ( largestWeight * chordError ) +
+          ( chordScale * ( weightError + placementWeightError ) ) +
+          ( epsilon * largestWeight * chordScale ) ) :
+        ( evaluationError + chordError ) );
+
+    // 2. THE INTERPOLATION.
     const double applyError =
       interpolation_.inverseError() +
       ( count * epsilon * interpolation_.normInfinity() );
@@ -979,31 +1118,11 @@ class NurbsDeflectionCertificate {
           ( applyError * largestWeight ) ) :
         0.0;
 
-    double largestNumerator = 0.0;
-    double smallestWeight   = std::numeric_limits< double >::infinity();
-
-    for ( uint32_t i = 0; i < count; ++i ) {
-
-      largestNumerator =
-        std::max(
-          largestNumerator,
-          glm::length( interpolation_.coefficient( i, numerators ) ) );
-
-      smallestWeight =
-        std::min( smallestWeight,
-                  interpolation_.coefficient( i, weights ) );
-    }
-
-    if ( !std::isfinite( largestNumerator ) ||
-         !std::isfinite( smallestWeight ) ) {
-      return false;
-    }
-
-    // 3. THE RATIONAL QUOTIENT. The weight hull is taken at its own LOWER
+    // 4. THE RATIONAL QUOTIENT. The weight hull is taken at its own LOWER
     // bound: over-estimating it would under-estimate the quotient, which is
     // the one direction a bound may not err in. A lower bound that reaches
-    // zero makes N / W unbounded on the piece and is refused - "the bound
-    // does not exist" is not the same as "the bound is small".
+    // zero makes N / W unbounded on the box and is refused - "the bound does
+    // not exist" is not the same as "the bound is small".
     const double weightFloor = smallestWeight - weightCoefficientError;
 
     if ( !( weightFloor > 0.0 ) ) {
@@ -1026,6 +1145,38 @@ class NurbsDeflectionCertificate {
     }
 
     return true;
+  }
+
+  /**
+   * Bound on how fast the surface can move per unit of one parameter, over
+   * one span, read off the CONTROL NET rather than from a derivative
+   * evaluation.
+   *
+   * A B-spline's derivative is itself a B-spline whose control points are
+   * `degree * ( P[ i + 1 ] - P[ i ] ) / ( knot difference )`, and the basis
+   * is a partition of unity, so the derivative is bounded by the largest of
+   * them. `spread` is that largest control step over the span's OWN window
+   * ( see controlSpread ), and the denominator here is the span's own width
+   * - which is never larger than the knot differences the real formula uses,
+   * so the result is never smaller than the real bound.
+   *
+   * On ordinary geometry the product with a few ulps of parameter rounding
+   * is many orders below the tolerance; on a span too narrow to place nodes
+   * in, it grows until the error gate declines the chord.
+   */
+  static double gradientBound(
+    uint32_t                     degree,
+    const std::vector< double >& knots,
+    int                          span,
+    double                       spread ) {
+
+    const double width = knots[ span + 1 ] - knots[ span ];
+
+    if ( !( width > 0.0 ) ) {
+      return std::numeric_limits< double >::infinity();
+    }
+
+    return static_cast< double >( degree ) * spread / width;
   }
 
   const RationalSurfaceEvaluator* evaluator_   = nullptr;
