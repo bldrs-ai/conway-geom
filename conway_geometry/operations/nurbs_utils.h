@@ -58,6 +58,19 @@ struct RationalSurfaceEvaluator {
 
         homogeneous_[ i * cols_ + j ] =
             glm::dvec4( point * weight, weight );
+
+        polynomial_ = polynomial_ && ( weight == 1.0 );
+
+        // The magnitudes an evaluation's rounding error is actually governed
+        // by - see maxHomogeneousNorm(). Taken over the WHOLE grid rather
+        // than the local window: a window-wise maximum would be tighter, but
+        // this is read once per candidate and the difference is nowhere near
+        // the margin involved.
+        maxHomogeneousNorm_ =
+            std::max( maxHomogeneousNorm_,
+                      glm::length( glm::dvec3( point * weight ) ) );
+
+        maxWeight_ = std::max( maxWeight_, std::abs( weight ) );
       }
     }
   }
@@ -161,6 +174,225 @@ struct RationalSurfaceEvaluator {
     }
 
     return result;
+  }
+
+  /**
+   * The surface's DEGREES and KNOTS, and whether the weights are all one.
+   *
+   * Exposed for the deflection certificate in
+   * `operations/deflection_certificate.h`, which needs the degrees to know
+   * what polynomial degree the surface restricted to a line has, the knots to
+   * know where that polynomial CHANGES, and the weights to know whether it is
+   * a polynomial at all. Nothing else reads them; the evaluation paths below
+   * use `surface_` directly.
+   */
+  uint32_t degreeU() const { return surface_.degree_u; }
+
+  uint32_t degreeV() const { return surface_.degree_v; }
+
+  const std::vector< double >& knotsU() const { return surface_.knots_u; }
+
+  const std::vector< double >& knotsV() const { return surface_.knots_v; }
+
+  /** False on the tinynurbs fallback, where `pointHomogeneous` has no path. */
+  bool supportsFastPath() const { return fastPath_; }
+
+  /**
+   * Largest homogeneous control value, and largest weight, over the grid.
+   *
+   * These, not the magnitude of the surface POINTS, are what the rounding
+   * error of an evaluation is governed by: `point` accumulates
+   * `basis * controlPointW` over ( degreeU + 1 ) * ( degreeV + 1 ) terms, and
+   * the basis functions are a partition of unity, so the absolute error of
+   * the sum scales with the largest term in it. A patch whose surface values
+   * are small can still have large control values that cancel - how much
+   * larger is bounded by the basis's own condition number, but it is not
+   * bounded by the surface values, which is why the certificate's error term
+   * reads these rather than the chord endpoints.
+   */
+  double maxHomogeneousNorm() const { return maxHomogeneousNorm_; }
+
+  double maxWeight() const { return maxWeight_; }
+
+  /**
+   * Is `span` a span the basis can be evaluated on - i.e. does it have a
+   * non-empty knot interval?
+   *
+   * The Cox-de-Boor denominators are `knots[ span + a ] - knots[ span + b ]`
+   * with `a >= 1 >= b`, so they are all at least `knots[ span + 1 ] -
+   * knots[ span ]`; a non-empty span therefore divides by nothing near zero,
+   * INCLUDING for a parameter outside the span, which is what
+   * `pointHomogeneousAtSpan` relies on.
+   */
+  static bool spanIsEvaluable(
+      const std::vector< double >& knots, int span ) {
+
+    return span >= 0 &&
+           static_cast< size_t >( span ) + 1 < knots.size() &&
+           knots[ span ] < knots[ span + 1 ];
+  }
+
+  /**
+   * True when every weight is exactly one, so `point` is a POLYNOMIAL map of
+   * the parameters rather than a quotient of two.
+   *
+   * Exact comparison, not a tolerance: a weight an ulp off one leaves the
+   * surface rational, and reporting it polynomial would put a rational
+   * function inside a polynomial bound. STEP's
+   * `B_SPLINE_SURFACE_WITH_KNOTS` carries no weights and is built with
+   * literal 1.0, so the common case answers true on the nose.
+   */
+  bool isPolynomial() const { return polynomial_; }
+
+  /**
+   * The surface point in HOMOGENEOUS form - ( x w, y w, z w, w ) - before the
+   * perspective divide `point` ends with.
+   *
+   * Both halves are polynomial in the parameters where `point` is not, which
+   * is what lets the certificate bound a rational surface: see the RATIONAL
+   * SURFACES note in `deflection_certificate.h`.
+   */
+  glm::dvec4 pointHomogeneous( double u, double v ) const {
+
+    return pointHomogeneousAtSpan(
+        findSpan( surface_.degree_u, surface_.knots_u, u ),
+        findSpan( surface_.degree_v, surface_.knots_v, v ),
+        u,
+        v );
+  }
+
+  /**
+   * The homogeneous point, evaluated as the polynomial of the NAMED spans
+   * rather than of the spans `u` and `v` fall in.
+   *
+   * This is what makes a ONE-SIDED reading possible. `findSpan` resolves a
+   * parameter sitting exactly on an interior knot to the span on its RIGHT,
+   * and at a knot of multiplicity `degree + 1` the two sides are different
+   * polynomials with a step between them - so a piece whose last node lands
+   * on such a knot would otherwise be sampled from the polynomial it is not
+   * certifying. Naming the span pins every node of a piece to that piece's
+   * own polynomial; the basis extends outside its knot interval without any
+   * division by zero, see spanIsEvaluable.
+   *
+   * Callers must have checked `spanIsEvaluable` for both spans.
+   */
+  glm::dvec4 pointHomogeneousAtSpan(
+      int spanU, int spanV, double u, double v ) const {
+
+    // The homogeneous control grid only exists on the fast path. Rather than
+    // read an empty vector, hand back a value the caller's finiteness check
+    // rejects - the certificate then declines instead of bounding garbage.
+    if ( !fastPath_ ) {
+      return glm::dvec4( std::numeric_limits< double >::quiet_NaN() );
+    }
+
+    uint32_t degreeU = surface_.degree_u;
+    uint32_t degreeV = surface_.degree_v;
+
+    double basisU[ NURBS_MAX_STACK_DEGREE + 1 ];
+    double basisV[ NURBS_MAX_STACK_DEGREE + 1 ];
+
+    basis( degreeU, spanU, surface_.knots_u, u, basisU );
+    basis( degreeV, spanV, surface_.knots_v, v, basisV );
+
+    glm::dvec4 pointw( 0.0 );
+
+    for ( uint32_t l = 0; l <= degreeV; ++l ) {
+
+      glm::dvec4 temp( 0.0 );
+
+      for ( uint32_t k = 0; k <= degreeU; ++k ) {
+
+        temp +=
+            basisU[ k ] *
+            controlPointW( spanU - degreeU + k, spanV - degreeV + l );
+      }
+
+      pointw += basisV[ l ] * temp;
+    }
+
+    return pointw;
+  }
+
+  /**
+   * Largest step between ADJACENT homogeneous control points in the window
+   * that supports span ( spanU, spanV ), along u or along v.
+   *
+   * This is what a B-spline's derivative is built from: the derivative is
+   * itself a B-spline whose control points are
+   * `degree * ( P[ i + 1 ] - P[ i ] ) / ( knot difference )`, and its basis
+   * is a partition of unity, so the derivative over this span is bounded by
+   * the largest of them. Taken over the LOCAL window rather than the whole
+   * grid, which matters: on a surface whose coordinates span 1e9, a global
+   * maximum would put a bound of 1e9 on a span whose own control points are
+   * all of order one, and the certificate would decline chords it can
+   * perfectly well bound.
+   *
+   * The window is `degree + 1` control points wide, so there are `degree`
+   * steps across it and every index stays inside the span's own support.
+   */
+  void controlSpread(
+      int     spanU,
+      int     spanV,
+      bool    alongU,
+      double& pointSpread,
+      double& weightSpread ) const {
+
+    pointSpread  = 0.0;
+    weightSpread = 0.0;
+
+    if ( !fastPath_ ) {
+      pointSpread  = std::numeric_limits< double >::infinity();
+      weightSpread = std::numeric_limits< double >::infinity();
+      return;
+    }
+
+    const int rowBase = spanU - static_cast< int >( surface_.degree_u );
+    const int colBase = spanV - static_cast< int >( surface_.degree_v );
+
+    const uint32_t lastRow =
+        alongU ?
+          ( surface_.degree_u > 0 ? surface_.degree_u - 1 : 0 ) :
+          surface_.degree_u;
+
+    const uint32_t lastCol =
+        alongU ?
+          surface_.degree_v :
+          ( surface_.degree_v > 0 ? surface_.degree_v - 1 : 0 );
+
+    if ( ( alongU && surface_.degree_u == 0 ) ||
+         ( !alongU && surface_.degree_v == 0 ) ) {
+      return;
+    }
+
+    for ( uint32_t a = 0; a <= lastRow; ++a ) {
+
+      for ( uint32_t b = 0; b <= lastCol; ++b ) {
+
+        const glm::dvec4& here =
+            controlPointW( rowBase + a, colBase + b );
+
+        const glm::dvec4& next =
+            controlPointW( rowBase + a + ( alongU ? 1 : 0 ),
+                           colBase + b + ( alongU ? 0 : 1 ) );
+
+        pointSpread =
+            std::max( pointSpread,
+                      glm::length( glm::dvec3( next ) - glm::dvec3( here ) ) );
+
+        weightSpread =
+            std::max( weightSpread, std::abs( next.w - here.w ) );
+      }
+    }
+  }
+
+  /** `pointHomogeneousAtSpan` with the perspective divide applied. */
+  glm::dvec3 pointAtSpan( int spanU, int spanV, double u, double v ) const {
+
+    const glm::dvec4 homogeneous =
+        pointHomogeneousAtSpan( spanU, spanV, u, v );
+
+    return glm::dvec3( homogeneous ) / homogeneous.w;
   }
 
   /** Point on the surface, matching tinynurbs::surfacePoint( rational ). */
@@ -296,6 +528,13 @@ struct RationalSurfaceEvaluator {
   const glm::dvec4& controlPointW( size_t i, size_t j ) const {
     return homogeneous_[ i * cols_ + j ];
   }
+
+  /** All weights exactly 1 - see isPolynomial(). */
+  bool polynomial_ = true;
+
+  /** Control-grid magnitudes - see maxHomogeneousNorm(). */
+  double maxHomogeneousNorm_ = 0.0;
+  double maxWeight_          = 0.0;
 
   /** Cox-de-Boor basis, mirroring tinynurbs::bsplineBasis. */
   static void basis(

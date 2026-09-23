@@ -48,7 +48,8 @@ for source in test/*_test.cpp; do
     test/spherical_trim_test.cpp | test/inverse_wrong_sheet_test.cpp | \
     test/corner_normals_test.cpp | test/gltf_stream_test.cpp | \
     test/normalize_test.cpp | test/outer_bound_order_test.cpp | \
-    test/periodic_u_chart_test.cpp | test/refinement_progress_test.cpp ) ;;
+    test/periodic_u_chart_test.cpp | test/refinement_progress_test.cpp | \
+    test/certificate_test.cpp | test/certificate_fuzz_test.cpp ) ;;
     * ) continue ;;
   esac
 
@@ -60,6 +61,25 @@ for source in test/*_test.cpp; do
     "${source}" -o "${OUT}/${name}"
 
   if ! "${OUT}/${name}"; then
+    STATUS=1
+  fi
+done
+
+# The periodic-path switch is the one test that has to be built TWICE. A flag
+# is only proven to gate something if the two builds DISAGREE about the
+# periodic chord, and the file asserts the opposite outcome under each value;
+# it also asserts a non-periodic chord is certified either way, so a change
+# that disabled the certificate outright fails rather than passes. Compiling
+# it once would assert whichever half the default happens to give.
+for value in 0 1; do
+
+  echo "=== certificate_flag_test ( CERTIFICATE_CERTIFIES_PERIODIC_CHARTS=${value} ) ==="
+
+  "${COMPILER}" -std=c++20 -O1 -DREAL_T_IS_DOUBLE \
+    -DCERTIFICATE_CERTIFIES_PERIODIC_CHARTS="${value}" "${INCLUDES[@]}" \
+    test/certificate_flag_test.cpp -o "${OUT}/certificate_flag_test_${value}"
+
+  if ! "${OUT}/certificate_flag_test_${value}"; then
     STATUS=1
   fi
 done

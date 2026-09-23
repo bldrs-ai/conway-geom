@@ -9362,6 +9362,22 @@ inline void TriangulateBspline(Geometry &geometry,
         faceDeflection2 );
     }
 
+    // The deflection CERTIFICATE for this face - an upper bound on how far
+    // the surface departs from a candidate chord over the WHOLE edge, which
+    // is what `tesselate` needs to REFUSE a subdivision soundly. It is built
+    // from the same evaluator and the same chart wrap the callback above uses,
+    // and it is the only `tesselate` call site that has a NURBS to build one
+    // from - the cone and cylinder paths project an incoming POSITION onto
+    // their surface rather than evaluating a parameterisation, so there is no
+    // `S( uv )` there to bound and they take the default null certificate.
+    // See WHAT IS NOT COVERED in deflection_certificate.h.
+    const NurbsDeflectionCertificate faceCertificate(
+      bSplineInverseEvaluation.evaluator,
+      builtPeriodicChart,
+      stripUMin,
+      stripPeriod,
+      faceDeflection2 );
+
     // Skipped for the seam grid, which arrives already refined to this same
     // target in parameter space. Running the topological refiner over it does
     // not converge - it spends the whole 32x budget and folds the mesh - see
@@ -9376,7 +9392,8 @@ inline void TriangulateBspline(Geometry &geometry,
         return bSplineInverseEvaluation.evaluator.point( wrapChartU( from.x ), from.y );
       },
       refinementBudget,
-      faceDeflection2 );
+      faceDeflection2,
+      faceCertificate );
 
     // Analytic shading normals (bldrs-ai/conway#667). A B-spline's normal is a
     // function of the parameters, not of the position — which is why the
