@@ -60,6 +60,17 @@ struct RationalSurfaceEvaluator {
             glm::dvec4( point * weight, weight );
 
         polynomial_ = polynomial_ && ( weight == 1.0 );
+
+        // The magnitudes an evaluation's rounding error is actually governed
+        // by - see maxHomogeneousNorm(). Taken over the WHOLE grid rather
+        // than the local window: a window-wise maximum would be tighter, but
+        // this is read once per candidate and the difference is nowhere near
+        // the margin involved.
+        maxHomogeneousNorm_ =
+            std::max( maxHomogeneousNorm_,
+                      glm::length( glm::dvec3( point * weight ) ) );
+
+        maxWeight_ = std::max( maxWeight_, std::abs( weight ) );
       }
     }
   }
@@ -187,6 +198,41 @@ struct RationalSurfaceEvaluator {
   bool supportsFastPath() const { return fastPath_; }
 
   /**
+   * Largest homogeneous control value, and largest weight, over the grid.
+   *
+   * These, not the magnitude of the surface POINTS, are what the rounding
+   * error of an evaluation is governed by: `point` accumulates
+   * `basis * controlPointW` over ( degreeU + 1 ) * ( degreeV + 1 ) terms, and
+   * the basis functions are a partition of unity, so the absolute error of
+   * the sum scales with the largest term in it. A patch whose surface values
+   * are small can still have large control values that cancel - how much
+   * larger is bounded by the basis's own condition number, but it is not
+   * bounded by the surface values, which is why the certificate's error term
+   * reads these rather than the chord endpoints.
+   */
+  double maxHomogeneousNorm() const { return maxHomogeneousNorm_; }
+
+  double maxWeight() const { return maxWeight_; }
+
+  /**
+   * Is `span` a span the basis can be evaluated on - i.e. does it have a
+   * non-empty knot interval?
+   *
+   * The Cox-de-Boor denominators are `knots[ span + a ] - knots[ span + b ]`
+   * with `a >= 1 >= b`, so they are all at least `knots[ span + 1 ] -
+   * knots[ span ]`; a non-empty span therefore divides by nothing near zero,
+   * INCLUDING for a parameter outside the span, which is what
+   * `pointHomogeneousAtSpan` relies on.
+   */
+  static bool spanIsEvaluable(
+      const std::vector< double >& knots, int span ) {
+
+    return span >= 0 &&
+           static_cast< size_t >( span ) + 1 < knots.size() &&
+           knots[ span ] < knots[ span + 1 ];
+  }
+
+  /**
    * True when every weight is exactly one, so `point` is a POLYNOMIAL map of
    * the parameters rather than a quotient of two.
    *
@@ -208,6 +254,31 @@ struct RationalSurfaceEvaluator {
    */
   glm::dvec4 pointHomogeneous( double u, double v ) const {
 
+    return pointHomogeneousAtSpan(
+        findSpan( surface_.degree_u, surface_.knots_u, u ),
+        findSpan( surface_.degree_v, surface_.knots_v, v ),
+        u,
+        v );
+  }
+
+  /**
+   * The homogeneous point, evaluated as the polynomial of the NAMED spans
+   * rather than of the spans `u` and `v` fall in.
+   *
+   * This is what makes a ONE-SIDED reading possible. `findSpan` resolves a
+   * parameter sitting exactly on an interior knot to the span on its RIGHT,
+   * and at a knot of multiplicity `degree + 1` the two sides are different
+   * polynomials with a step between them - so a piece whose last node lands
+   * on such a knot would otherwise be sampled from the polynomial it is not
+   * certifying. Naming the span pins every node of a piece to that piece's
+   * own polynomial; the basis extends outside its knot interval without any
+   * division by zero, see spanIsEvaluable.
+   *
+   * Callers must have checked `spanIsEvaluable` for both spans.
+   */
+  glm::dvec4 pointHomogeneousAtSpan(
+      int spanU, int spanV, double u, double v ) const {
+
     // The homogeneous control grid only exists on the fast path. Rather than
     // read an empty vector, hand back a value the caller's finiteness check
     // rejects - the certificate then declines instead of bounding garbage.
@@ -217,9 +288,6 @@ struct RationalSurfaceEvaluator {
 
     uint32_t degreeU = surface_.degree_u;
     uint32_t degreeV = surface_.degree_v;
-
-    int spanU = findSpan( degreeU, surface_.knots_u, u );
-    int spanV = findSpan( degreeV, surface_.knots_v, v );
 
     double basisU[ NURBS_MAX_STACK_DEGREE + 1 ];
     double basisV[ NURBS_MAX_STACK_DEGREE + 1 ];
@@ -244,6 +312,15 @@ struct RationalSurfaceEvaluator {
     }
 
     return pointw;
+  }
+
+  /** `pointHomogeneousAtSpan` with the perspective divide applied. */
+  glm::dvec3 pointAtSpan( int spanU, int spanV, double u, double v ) const {
+
+    const glm::dvec4 homogeneous =
+        pointHomogeneousAtSpan( spanU, spanV, u, v );
+
+    return glm::dvec3( homogeneous ) / homogeneous.w;
   }
 
   /** Point on the surface, matching tinynurbs::surfacePoint( rational ). */
@@ -382,6 +459,10 @@ struct RationalSurfaceEvaluator {
 
   /** All weights exactly 1 - see isPolynomial(). */
   bool polynomial_ = true;
+
+  /** Control-grid magnitudes - see maxHomogeneousNorm(). */
+  double maxHomogeneousNorm_ = 0.0;
+  double maxWeight_          = 0.0;
 
   /** Cox-de-Boor basis, mirroring tinynurbs::bsplineBasis. */
   static void basis(

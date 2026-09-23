@@ -579,7 +579,15 @@ void knotClippingCatchesAZigZag() {
   surface.knots_u  = { 0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0 };
   surface.knots_v  = { 0.0, 0.0, 1.0, 1.0 };
 
-  const double heights[ 5 ] = { 0.0, HEIGHT, 0.0, -HEIGHT, 0.0 };
+  // The bump sits on an OUTER span and the span containing u = 1/2 is FLAT.
+  // That matters for what the uncut reading does: every node of a piece is
+  // evaluated as the polynomial of the span the piece's MIDPOINT falls in
+  // (see boundPiece), so an uncut chord is read entirely as the flat middle
+  // span and comes out at zero - an under-estimate, which is the direction a
+  // bound may not err in. A symmetric zig-zag instead makes the uncut
+  // reading EXTRAPOLATE a steep span and over-estimate, which hides the
+  // defect; measured, it returned 0.5 against a truth of 0.25.
+  const double heights[ 5 ] = { 0.0, HEIGHT, 0.0, 0.0, 0.0 };
 
   std::vector< glm::dvec3 > points;
   std::vector< double >     weights;
@@ -621,6 +629,10 @@ void knotClippingCatchesAZigZag() {
   check( std::abs( truth - HEIGHT ) < 1.0e-9,
          "the fold really does stand " + std::to_string( HEIGHT ) +
            " off its chord (" + std::to_string( truth ) + ")" );
+
+  check( std::abs( evaluator.point( 0.625, 0.5 ).z ) < 1.0e-12,
+         "and the span around u = 1/2 is flat, so an uncut reading of the "
+         "whole chord lands at zero" );
 
   // The three parameters an UNCUT degree-two reading would interpolate at.
   double atNodes = 0.0;
@@ -763,11 +775,220 @@ void wrappedChordIsStillCertified() {
            std::to_string( bound / truth ) + "x)" );
 }
 
+
+/**
+ * A FULL-MULTIPLICITY INTERIOR KNOT IS SAMPLED FROM THE PIECE'S OWN SIDE.
+ *
+ * A valid B-spline may repeat an interior knot `degree + 1` times, and there
+ * the two spans are different polynomials with a STEP between them.
+ * `findSpan` resolves a parameter sitting exactly on the knot to the span on
+ * its right, and the Chebyshev-Lobatto nodes always include both endpoints of
+ * a piece - so the piece to the LEFT of such a knot would be interpolated
+ * through one sample taken from the polynomial to the RIGHT. The interpolant
+ * is then fitted through a point that is not on the curve it is certifying,
+ * and its coefficient hull bounds neither.
+ *
+ * This is the smallest case that shows it, and the numbers are the ones a
+ * reviewer of bldrs-ai/conway-geom#214 worked out by hand: degrees ( 1, 1 ),
+ * an interior knot of multiplicity 2, a left-hand deviation rising linearly
+ * to 1 and a right-hand value at the knot of 2/3. The samples come out
+ * [ 0, 1/2, 2/3 ], the degree-2 Bernstein coefficients [ 0, 2/3, 2/3 ], and
+ * the bound 2/3 - so any tolerance between 2/3 and 1 was accepted when it
+ * should have been refused.
+ *
+ * No surface in the smoke corpus has such a knot ( measured: 0 of 127
+ * b-spline faces across `Right_Hand.step` and `nist_ctc_02_asme1_rc.stp` ),
+ * which is exactly why this needs a test rather than a corpus run.
+ */
+void fullMultiplicityKnotIsSampledOneSided() {
+
+  printf( "fullMultiplicityKnotIsSampledOneSided\n" );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  // 0.5 twice: multiplicity degree + 1, so the surface STEPS there.
+  surface.knots_u = { 0.0, 0.0, 0.5, 0.5, 1.0, 1.0 };
+  surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
+
+  // Greville abscissae for degree 1 are the knots themselves, so x stays
+  // continuous across the break and the step is purely in z.
+  const double across[ 4 ] = { 0.0, 0.5, 0.5, 1.0 };
+  const double height[ 4 ] = { 0.0, 1.0, 2.0 / 3.0, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 4; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      points.push_back(
+        glm::dvec3( across[ a ], static_cast< double >( b ), height[ a ] ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 4, 2, points );
+  surface.weights        = tinynurbs::array2( 4, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const double leftLimit =
+    evaluator.point( std::nextafter( 0.5, 0.0 ), 0.5 ).z;
+
+  const double rightValue = evaluator.point( 0.5, 0.5 ).z;
+
+  check( std::abs( leftLimit - 1.0 ) < 1.0e-9 &&
+           std::abs( rightValue - ( 2.0 / 3.0 ) ) < 1.0e-12,
+         "the surface really does step at the knot, 1 to 2/3 (" +
+           std::to_string( leftLimit ) + " -> " +
+           std::to_string( rightValue ) + ")" );
+
+  const glm::dvec2 uv0( 0.0, 0.5 );
+  const glm::dvec2 uv1( 1.0, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  double truth = 0.0;
+
+  for ( uint32_t i = 0; i <= 2000000; ++i ) {
+
+    const double t = static_cast< double >( i ) / 2000000.0;
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( t, 0.5 ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  check( truth > 0.999,
+         "and the true departure from the chord approaches 1 (" +
+           std::to_string( truth ) + ")" );
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, 1.0e-12 );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome == CertificateOutcome::Certified ||
+           outcome == CertificateOutcome::Inconclusive,
+         "the certificate reaches a verdict" );
+
+  // THE ASSERTION. Reading the last node from the right-hand polynomial
+  // returns 2/3 here, which is below the truth - a bound that is not one.
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "a bound across a discontinuous knot is still an UPPER bound (" +
+           std::to_string( bound ) + " vs " + std::to_string( truth ) + ")" );
+}
+
+/**
+ * THE ERROR TERM IS GOVERNED BY THE CONTROL VALUES, NOT THE CHORD ENDPOINTS.
+ *
+ * The first version of this file scaled its floating-point inflation by
+ * `max( |S0|, |S1| )`. That is not an error bound for what `boundPiece`
+ * returns: an evaluation accumulates `basis * controlPointW` over
+ * ( dU + 1 )( dV + 1 ) terms, so its absolute error scales with the largest
+ * CONTROL value, and a patch can have control values far above the surface
+ * values at the two ends of one chord. The reviewer of
+ * bldrs-ai/conway-geom#214 raised it, and it is right as an analysis even
+ * though no falsifying input could be built ( see the report ).
+ *
+ * What is checkable is the behaviour the corrected term produces: on a patch
+ * whose control values sit 1e12 above its chord endpoints, and with a
+ * tolerance fine enough that the evaluation error is a large fraction of it,
+ * the certificate must DECLINE rather than certify. The endpoint-scaled
+ * reading certifies it, because 1e-13 is under any gate.
+ */
+void errorTermTracksTheControlValues() {
+
+  printf( "errorTermTracksTheControlValues\n" );
+
+  constexpr double HUGE_CONTROL = 1.0e12;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 3;
+  surface.degree_v = 3;
+  surface.knots_u  = { 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0 };
+  surface.knots_v  = surface.knots_u;
+
+  // Corners at zero - so both chord endpoints read O( 1 ) - with the two
+  // interior rows at +/- 1e12, which cancel in the middle.
+  const double height[ 4 ] = { 0.0, HUGE_CONTROL, -HUGE_CONTROL, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 4; ++a ) {
+
+    for ( uint32_t b = 0; b < 4; ++b ) {
+
+      points.push_back( glm::dvec3( a / 3.0, b / 3.0, height[ a ] ) );
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 4, 4, points );
+  surface.weights        = tinynurbs::array2( 4, 4, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  // A SHORT chord in the corner. Short, because that is what pulls the chord
+  // endpoints far below the control values: on a long chord the surface
+  // reaches the control magnitude somewhere and the endpoint-scaled reading
+  // is accidentally the right size, which is why this defect needs a
+  // deliberately local chord to show at all.
+  const glm::dvec2 uv0( 0.0, 0.0 );
+  const glm::dvec2 uv1( 1.0e-6, 1.0e-6 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  const double endpointScale =
+    std::max( glm::length( at0 ), glm::length( at1 ) );
+
+  check( endpointScale < evaluator.maxHomogeneousNorm() * 1.0e-5,
+         "the chord endpoints sit far below the control values (" +
+           std::to_string( endpointScale ) + " against " +
+           std::to_string( evaluator.maxHomogeneousNorm() ) + ")" );
+
+  check( evaluator.maxHomogeneousNorm() > 1.0e11,
+         "while the control values are 1e12 (" +
+           std::to_string( evaluator.maxHomogeneousNorm() ) + ")" );
+
+  // A tolerance fine enough that the real evaluation error - about
+  // 8 * 16 * eps * 1e12, amplified by ||M||inf = 46.2 - is a large fraction
+  // of it. The endpoint-scaled reading computes 1e-13 here and sails through.
+  const double tolerance = 1.0;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome == CertificateOutcome::Inconclusive,
+         "the certificate DECLINES rather than certifying at an accuracy it "
+         "cannot deliver" );
+}
+
 }  // namespace
 
 int main() {
 
   certificateCatchesWhatSamplingMisses();
+  fullMultiplicityKnotIsSampledOneSided();
+  errorTermTracksTheControlValues();
   knotClippingCatchesAZigZag();
   wrappedChordIsStillCertified();
   boundHoldsOnARationalPatch();

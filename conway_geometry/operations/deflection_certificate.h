@@ -272,6 +272,8 @@ class BernsteinNodes {
 
       normInfinity_ = std::max( normInfinity_, rowSum );
     }
+
+    measureInverseError( degree );
   }
 
   uint32_t degree() const { return degree_; }
@@ -279,6 +281,28 @@ class BernsteinNodes {
   double node( uint32_t i ) const { return nodes_[ i ]; }
 
   double normInfinity() const { return normInfinity_; }
+
+  /**
+   * Bound on how far the STORED inverse is from the exact one, in the
+   * infinity norm.
+   *
+   * `normInfinity()` amplifies perturbations of exact node values; it says
+   * nothing about the inverse itself being inexact, and the Gauss-Jordan
+   * above is ordinary floating point. Measured a posteriori rather than
+   * estimated: with `R = I - M V`, `M = ( I - R ) V^-1` exactly, so
+   * `V^-1 - M = R V^-1` and `|| V^-1 - M || <= ||R|| ||M|| / ( 1 - ||R|| )`.
+   * The residual is itself computed in floating point, so it is widened by
+   * the rounding of forming `V` and of the product before being used.
+   *
+   * Measured values, degree 2 to 15 ( scratchpad /tmp/err.cpp ): 1.7e-16 at
+   * n = 2, 1.2e-13 at n = 6, 3.5e-13 at n = 7, 1.9e-9 at n = 13. Small
+   * everywhere the degree cap allows, which is the point - it is carried so
+   * the bound does not REST on it being small.
+   */
+  double inverseError() const { return inverseError_; }
+
+  /** True when the table is usable at all. */
+  bool valid() const { return degree_ > 0 && inverseError_ < 1.0; }
 
   /** Bernstein coefficient `i` from the values at the nodes. */
   template< typename Value >
@@ -297,10 +321,65 @@ class BernsteinNodes {
 
  private:
 
-  uint32_t              degree_       = 0;
+  /** See inverseError(). */
+  void measureInverseError( uint32_t degree ) {
+
+    const uint32_t count = degree + 1;
+
+    double residual = 0.0;
+
+    for ( uint32_t i = 0; i < count; ++i ) {
+
+      double rowSum = 0.0;
+
+      for ( uint32_t j = 0; j < count; ++j ) {
+
+        double product = 0.0;
+
+        for ( uint32_t k = 0; k < count; ++k ) {
+
+          // V[ k ][ j ] = B_{ j, degree }( node_k ), rebuilt here rather than
+          // kept, so the residual is not read off the same array the
+          // elimination consumed.
+          double binomial = 1.0;
+
+          for ( uint32_t b = 0; b < j; ++b ) {
+            binomial = binomial * ( degree - b ) / ( b + 1 );
+          }
+
+          const double t = nodes_[ k ];
+
+          product +=
+            inverse_[ ( i * count ) + k ] * binomial *
+            std::pow( t, static_cast< double >( j ) ) *
+            std::pow( 1.0 - t, static_cast< double >( degree - j ) );
+        }
+
+        rowSum += std::abs( product - ( i == j ? 1.0 : 0.0 ) );
+      }
+
+      residual = std::max( residual, rowSum );
+    }
+
+    // Widen by the rounding that forming the residual itself carries: the
+    // Bernstein values are a few ulps off, and the row product is a sum of
+    // `count` terms. Both are amplified by the inverse's own norm.
+    const double slack =
+      8.0 * count * std::numeric_limits< double >::epsilon() * normInfinity_;
+
+    residual += slack;
+
+    inverseError_ =
+      residual < 0.5 ?
+        ( normInfinity_ * residual / ( 1.0 - residual ) ) :
+        std::numeric_limits< double >::infinity();
+  }
+
+  uint32_t              degree_        = 0;
   std::vector< double > nodes_;
   std::vector< double > inverse_;
-  double                normInfinity_ = 0.0;
+  double                normInfinity_  = 0.0;
+  double                inverseError_  = std::numeric_limits< double >::infinity();
 };
 
 /** What a certificate attempt concluded. */
@@ -387,7 +466,8 @@ class NurbsDeflectionCertificate {
 
       interpolation_.build( totalDegree );
 
-      supported_ = interpolation_.degree() == totalDegree;
+      supported_ =
+        interpolation_.degree() == totalDegree && interpolation_.valid();
     }
   }
 
@@ -432,27 +512,12 @@ class NurbsDeflectionCertificate {
       return CertificateOutcome::Unsupported;
     }
 
-    const double scale =
+    // The chord's own magnitude, which is one of the three things the error
+    // term below is built from. It is NOT on its own a scale for the
+    // evaluation error - see maxHomogeneousNorm() in nurbs_utils.h, and the
+    // ERROR PROPAGATION note on boundPiece.
+    const double chordScale =
       std::max( glm::length( surface0 ), glm::length( surface1 ) );
-
-    // Per-node evaluation error: the cancellation in `surfacePoint - chord`
-    // is the dominant term and it is bounded by a few ulps of the larger of
-    // the two magnitudes involved.
-    const double inflation =
-      interpolation_.normInfinity() *
-      CERTIFICATE_ERROR_SAFETY *
-      std::numeric_limits< double >::epsilon() *
-      std::max( scale, 1.0 );
-
-    // The bound's own error has to be small compared with what it is
-    // bounding, or it is not a bound anybody should act on. Declining here is
-    // what keeps CERTIFICATE_MAX_DEGREE a cost cut-off rather than the thing
-    // soundness hangs on.
-    if ( inflation >= tolerance_ * CERTIFICATE_MAX_ERROR_FRACTION ) {
-      ++counters_.illConditioned;
-      ++counters_.inconclusive;
-      return CertificateOutcome::Inconclusive;
-    }
 
     // STAGE 1: the cuts that are not u knots - the periodic chart's SHEET
     // boundaries and the v knot lines.
@@ -503,7 +568,8 @@ class NurbsDeflectionCertificate {
 
     std::sort( cuts, cuts + cutCount );
 
-    double worst = 0.0;
+    double worst     = 0.0;
+    double worstError = 0.0;
 
     for ( uint32_t piece = 0; piece + 1 < cutCount; ++piece ) {
 
@@ -561,21 +627,36 @@ class NurbsDeflectionCertificate {
         ++counters_.spans;
 
         double pieceBound = 0.0;
+        double pieceError = 0.0;
 
         if ( !boundPiece(
-               uv0, uv1, surface0, surface1,
-               inner[ part ], inner[ part + 1 ], shift, pieceBound ) ) {
+               uv0, uv1, surface0, surface1, chordScale,
+               inner[ part ], inner[ part + 1 ], shift,
+               pieceBound, pieceError ) ) {
 
           ++counters_.badPiece;
           ++counters_.inconclusive;
           return CertificateOutcome::Inconclusive;
         }
 
-        worst = std::max( worst, pieceBound );
+        worst      = std::max( worst, pieceBound );
+        worstError = std::max( worstError, pieceError );
       }
     }
 
-    result = worst + inflation;
+    // THE BOUND'S OWN ERROR HAS TO BE SMALL COMPARED WITH WHAT IT IS
+    // BOUNDING, or it is not a bound anybody should act on. `pieceBound`
+    // already carries its error outward; this declines the cases where that
+    // outward widening is itself a large fraction of the target, which is
+    // what keeps CERTIFICATE_MAX_DEGREE a cost cut-off rather than the thing
+    // soundness hangs on.
+    if ( worstError >= tolerance_ * CERTIFICATE_MAX_ERROR_FRACTION ) {
+      ++counters_.illConditioned;
+      ++counters_.inconclusive;
+      return CertificateOutcome::Inconclusive;
+    }
+
+    result = worst;
 
     ++counters_.certified;
 
@@ -660,27 +741,95 @@ class NurbsDeflectionCertificate {
   }
 
   /**
-   * Bound the deviation on the sub-interval [ `from`, `to` ] of the chord.
+   * Bound the deviation on the sub-interval [ `from`, `to` ] of the chord,
+   * and the error that bound carries.
    *
    * The deviation restricted to a sub-interval is the same polynomial
    * composed with an affine map, so it has the same degree and the same
    * treatment; what it is measured against stays the WHOLE chord, which is
    * what the mesh will carry.
+   *
+   * ONE-SIDED EVALUATION. Every node is evaluated as the polynomial of the
+   * spans this piece lies in, named from the piece's MIDPOINT, not of the
+   * spans its parameters fall in. At an interior knot of multiplicity
+   * `degree + 1` the two sides are different polynomials with a step between
+   * them, and `findSpan` resolves a parameter sitting exactly on the knot to
+   * the right-hand one - so a piece whose last node is that knot would be
+   * given one sample from the polynomial it is NOT certifying, and the
+   * interpolant would be fitted through a point that is not on the curve.
+   * The Chebyshev-Lobatto nodes make this certain rather than unlikely:
+   * they always include both endpoints. Measured on the smallest case that
+   * shows it - degrees ( 1, 1 ), a knot of multiplicity 2, left-hand
+   * deviation rising to 1 and right-hand knot value 2/3 - the samples come
+   * out [ 0, 1/2, 2/3 ], the coefficients [ 0, 2/3, 2/3 ], and the bound
+   * 0.667 against a true 1.0. See `fullMultiplicityKnotIsSampledOneSided`.
+   *
+   * ERROR PROPAGATION. `error` is an outward bound on everything between the
+   * exact deviation polynomial and the number returned, and it is built from
+   * three sources, none of which the chord's endpoints alone govern:
+   *
+   *   1. THE NODE VALUES. `pointHomogeneousAtSpan` accumulates
+   *      `basis * controlPointW` over ( dU + 1 )( dV + 1 ) terms whose basis
+   *      factors are a partition of unity, so the absolute error scales with
+   *      the largest CONTROL value, not with the surface value - a patch
+   *      whose values are small can have larger control values that cancel.
+   *      `maxHomogeneousNorm()` is that scale. The chord subtracted from it
+   *      contributes its own magnitude.
+   *   2. THE INTERPOLATION. `normInfinity()` covers only a perturbation of
+   *      exact node values. The inverse is itself computed in floating point
+   *      ( `inverseError()`, measured a posteriori ) and applying it is a
+   *      dot product of `degree + 1` terms, and both are carried here.
+   *   3. THE RATIONAL QUOTIENT. `numerator / weight` amplifies the
+   *      numerator's error by `1 / weight` AND turns any over-estimate of
+   *      the weight's lower bound into an under-estimate of the quotient. So
+   *      the weight hull is taken at its own LOWER bound, and a lower bound
+   *      that reaches zero is refused rather than divided by.
    */
   bool boundPiece(
     const glm::dvec2& uv0,
     const glm::dvec2& uv1,
     const glm::dvec3& surface0,
     const glm::dvec3& surface1,
+    double            chordScale,
     double            from,
     double            to,
     double            uShift,
-    double&           result ) const {
+    double&           result,
+    double&           error ) const {
 
     const uint32_t count = interpolation_.degree() + 1;
 
+    // The spans this piece lies in, read at the midpoint so that a cut
+    // sitting exactly on a knot resolves to the piece's own side of it.
+    const double middle = 0.5 * ( from + to );
+
+    const glm::dvec2 midUV =
+      ( uv0 * ( 1.0 - middle ) ) + ( uv1 * middle ) -
+      glm::dvec2( uShift, 0.0 );
+
+    const int spanU =
+      RationalSurfaceEvaluator::findSpan(
+        evaluator_->degreeU(), evaluator_->knotsU(), midUV.x );
+
+    const int spanV =
+      RationalSurfaceEvaluator::findSpan(
+        evaluator_->degreeV(), evaluator_->knotsV(), midUV.y );
+
+    // A span with an empty knot interval has no polynomial to name, and the
+    // Cox-de-Boor denominators are only bounded away from zero on a
+    // non-empty one.
+    if ( !RationalSurfaceEvaluator::spanIsEvaluable(
+           evaluator_->knotsU(), spanU ) ||
+         !RationalSurfaceEvaluator::spanIsEvaluable(
+           evaluator_->knotsV(), spanV ) ) {
+      return false;
+    }
+
     glm::dvec3 numerators[ CERTIFICATE_MAX_DEGREE + 1 ];
     double     weights[ CERTIFICATE_MAX_DEGREE + 1 ];
+
+    double largestNode   = 0.0;
+    double largestWeight = 0.0;
 
     for ( uint32_t i = 0; i < count; ++i ) {
 
@@ -697,7 +846,7 @@ class NurbsDeflectionCertificate {
       if ( rational_ ) {
 
         const glm::dvec4 homogeneous =
-          evaluator_->pointHomogeneous( uv.x, uv.y );
+          evaluator_->pointHomogeneousAtSpan( spanU, spanV, uv.x, uv.y );
 
         // N( t ) = A( t ) - W( t ) * chord( t ), both polynomial.
         numerators[ i ] =
@@ -707,8 +856,10 @@ class NurbsDeflectionCertificate {
 
       } else {
 
-        numerators[ i ] = evaluator_->point( uv.x, uv.y ) - chord;
-        weights[ i ]    = 1.0;
+        numerators[ i ] =
+          evaluator_->pointAtSpan( spanU, spanV, uv.x, uv.y ) - chord;
+
+        weights[ i ] = 1.0;
       }
 
       if ( !std::isfinite( numerators[ i ].x ) ||
@@ -717,7 +868,55 @@ class NurbsDeflectionCertificate {
            !std::isfinite( weights[ i ] ) ) {
         return false;
       }
+
+      largestNode   = std::max( largestNode, glm::length( numerators[ i ] ) );
+      largestWeight = std::max( largestWeight, std::abs( weights[ i ] ) );
     }
+
+    const double epsilon = std::numeric_limits< double >::epsilon();
+
+    const double terms =
+      static_cast< double >( evaluator_->degreeU() + 1 ) *
+      static_cast< double >( evaluator_->degreeV() + 1 );
+
+    // 1. THE NODE VALUES.
+    const double evaluationError =
+      CERTIFICATE_ERROR_SAFETY * terms * epsilon *
+      evaluator_->maxHomogeneousNorm();
+
+    const double weightError =
+      rational_ ?
+        ( CERTIFICATE_ERROR_SAFETY * terms * epsilon *
+          evaluator_->maxWeight() ) :
+        0.0;
+
+    const double chordError =
+      CERTIFICATE_ERROR_SAFETY * epsilon * chordScale;
+
+    // N = A - W * chord, so the chord's error enters scaled by the weight
+    // and the weight's error scaled by the chord.
+    const double nodeError =
+      rational_ ?
+        ( evaluationError + ( largestWeight * chordError ) +
+          ( chordScale * weightError ) +
+          ( epsilon * largestWeight * chordScale ) ) :
+        ( evaluationError + chordError );
+
+    // 2. THE INTERPOLATION: exact inverse on perturbed values, plus the
+    // inverse's own error, plus the rounding of applying it.
+    const double applyError =
+      interpolation_.inverseError() +
+      ( count * epsilon * interpolation_.normInfinity() );
+
+    const double numeratorError =
+      ( interpolation_.normInfinity() * nodeError ) +
+      ( applyError * largestNode );
+
+    const double weightCoefficientError =
+      rational_ ?
+        ( ( interpolation_.normInfinity() * weightError ) +
+          ( applyError * largestWeight ) ) :
+        0.0;
 
     double largestNumerator = 0.0;
     double smallestWeight   = std::numeric_limits< double >::infinity();
@@ -734,17 +933,38 @@ class NurbsDeflectionCertificate {
                   interpolation_.coefficient( i, weights ) );
     }
 
-    // A weight hull that reaches zero makes N / W unbounded on the piece. A
-    // valid NURBS has strictly positive weights so this is a numerical
-    // guard, but "the bound does not exist" is not the same as "the bound is
-    // small" and it may not be reported as the latter.
-    if ( !( smallestWeight > 0.0 ) || !std::isfinite( largestNumerator ) ) {
+    if ( !std::isfinite( largestNumerator ) ||
+         !std::isfinite( smallestWeight ) ) {
       return false;
     }
 
-    result = largestNumerator / smallestWeight;
+    // 3. THE RATIONAL QUOTIENT. The weight hull is taken at its own LOWER
+    // bound: over-estimating it would under-estimate the quotient, which is
+    // the one direction a bound may not err in. A lower bound that reaches
+    // zero makes N / W unbounded on the piece and is refused - "the bound
+    // does not exist" is not the same as "the bound is small".
+    const double weightFloor = smallestWeight - weightCoefficientError;
 
-    return std::isfinite( result );
+    if ( !( weightFloor > 0.0 ) ) {
+      return false;
+    }
+
+    // The un-widened reading, kept only so `error` can say how much of what
+    // is returned is outward widening rather than measurement.
+    const double raw = largestNumerator / smallestWeight;
+
+    // One more rounding for the division and the sums above.
+    result =
+      ( ( largestNumerator + numeratorError ) / weightFloor ) *
+      ( 1.0 + ( 4.0 * epsilon ) );
+
+    error = result - raw;
+
+    if ( !std::isfinite( result ) || !( error >= 0.0 ) ) {
+      return false;
+    }
+
+    return true;
   }
 
   const RationalSurfaceEvaluator* evaluator_   = nullptr;
