@@ -982,12 +982,184 @@ void errorTermTracksTheControlValues() {
          "cannot deliver" );
 }
 
+
+/**
+ * TWO DISTINCT KNOTS THAT ROUND TO ONE CHORD PARAMETER ARE REFUSED.
+ *
+ * The pieces are walked by sorting the cut parameters and stepping between
+ * consecutive ones, and a zero-length step is skipped. So when two knots that
+ * are genuinely apart in PARAMETER space round to the same `t`, the span
+ * between them gets no piece of its own and is never certified - while the
+ * returned bound still claims to cover the whole chord. A span silently
+ * dropped is the same defect class as a sample taken from the wrong
+ * polynomial, and just as invisible.
+ *
+ * It needs no exotic input, only a long chord: from -1e9 to 1e9, the knots
+ * 1.0 and nextafter( 1.0 ) both map to 0.50000000050000004. This is the
+ * third finding on bldrs-ai/conway-geom#214, built to its author's recipe -
+ * degree 1, full-multiplicity breaks at both knots, the surface flat at zero
+ * on the surrounding spans and non-zero only on the one that gets dropped.
+ *
+ * Note what the sampled reading does here, because it is the point of the
+ * whole file: a MILLION-point sweep of the chord returns 2.4e-7. The span
+ * that carries the departure is one ulp of `u` wide, so no sweep of any
+ * density lands in it. Only walking the knots finds it at all.
+ */
+void collapsedKnotCutsAreRefused() {
+
+  printf( "collapsedKnotCutsAreRefused\n" );
+
+  constexpr double LOW    = -1.0e9;
+  constexpr double HIGH   =  1.0e9;
+  constexpr double HEIGHT =  5.0;
+
+  const double firstKnot = 1.0;
+
+  const double secondKnot =
+    std::nextafter( 1.0, std::numeric_limits< double >::infinity() );
+
+  check( secondKnot > firstKnot,
+         "the two knots really are distinct doubles" );
+
+  check( ( ( firstKnot - LOW ) / ( HIGH - LOW ) ) ==
+           ( ( secondKnot - LOW ) / ( HIGH - LOW ) ),
+         "and they map to the SAME chord parameter (" +
+           std::to_string( ( firstKnot - LOW ) / ( HIGH - LOW ) ) + ")" );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  // Multiplicity 2 = degree + 1 at BOTH knots, so the span between them is
+  // independent of its neighbours.
+  surface.knots_u = { LOW, LOW, firstKnot, firstKnot,
+                      secondKnot, secondKnot, HIGH, HIGH };
+  surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
+
+  const double across[ 6 ] = { LOW, firstKnot, firstKnot,
+                               secondKnot, secondKnot, HIGH };
+
+  // Zero on the first and last spans, HEIGHT only on the middle one - the
+  // span whose piece disappears.
+  const double height[ 6 ] = { 0.0, 0.0, HEIGHT, HEIGHT, 0.0, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 6; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      points.push_back(
+        glm::dvec3( across[ a ], static_cast< double >( b ), height[ a ] ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 6, 2, points );
+  surface.weights        = tinynurbs::array2( 6, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const glm::dvec2 uv0( LOW, 0.5 );
+  const glm::dvec2 uv1( HIGH, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  const auto departureAt = [ & ]( double u ) {
+
+    const double t = ( u - LOW ) / ( HIGH - LOW );
+
+    return glm::length( evaluator.point( u, 0.5 ) -
+                        ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) );
+  };
+
+  check( std::abs( departureAt( firstKnot ) - HEIGHT ) < 1.0e-6,
+         "the dropped span really does stand " + std::to_string( HEIGHT ) +
+           " off the chord (" +
+           std::to_string( departureAt( firstKnot ) ) + ")" );
+
+  double swept = 0.0;
+
+  for ( uint32_t i = 0; i <= 1000000; ++i ) {
+
+    swept =
+      std::max( swept,
+                departureAt( LOW + ( ( HIGH - LOW ) *
+                                     ( static_cast< double >( i ) /
+                                       1000000.0 ) ) ) );
+  }
+
+  check( swept < 1.0e-6,
+         "and a million-point sweep of the chord cannot find it (" +
+           std::to_string( swept ) + ")" );
+
+  // The tolerance has to be loose enough that the ROUNDING term does not
+  // decline this chord on its own - the chord is 2e9 long, so that term is
+  // about 2.7e-5 here - and tight enough that a departure of 5 is out of
+  // tolerance. Without that gap the assertion below would pass on a build
+  // with no collapse check at all, for a reason that has nothing to do with
+  // what it is meant to be pinning.
+  constexpr double TOLERANCE = 1.0e-2;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, TOLERANCE * TOLERANCE );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  // THE ASSERTION. Before the cuts were checked for collapse this returned
+  // Certified with 2.7e-5, against a true departure of 5.
+  check( outcome == CertificateOutcome::Inconclusive,
+         "the certificate REFUSES a chord whose knot cuts collapse, rather "
+         "than certifying a span it never looked at" );
+
+  check( outcome != CertificateOutcome::Certified ||
+           bound >= departureAt( firstKnot ),
+         "and if it ever does certify one, the bound covers that span" );
+
+  // AND THE REFUSAL IS ABOUT THE COLLAPSE, NOT ABOUT THE SURFACE. The same
+  // surface and the same two knots, on a chord short enough that the two
+  // cuts are 1.1e-10 apart instead of identical, is certified - and its
+  // bound covers the span that the long chord dropped. This is also why
+  // declining is self-clearing: `Inconclusive` subdivides, and subdividing
+  // is what turns the first case into the second.
+  const glm::dvec2 nearUV0( firstKnot - 1.0e-6, 0.5 );
+  const glm::dvec2 nearUV1( secondKnot + 1.0e-6, 0.5 );
+
+  const glm::dvec3 near0 = evaluator.point( nearUV0.x, nearUV0.y );
+  const glm::dvec3 near1 = evaluator.point( nearUV1.x, nearUV1.y );
+
+  check( ( ( firstKnot - nearUV0.x ) / ( nearUV1.x - nearUV0.x ) ) !=
+           ( ( secondKnot - nearUV0.x ) / ( nearUV1.x - nearUV0.x ) ),
+         "on a short chord the two knots map to DISTINCT parameters again" );
+
+  double nearBound = 0.0;
+
+  const CertificateOutcome nearOutcome =
+    certificate.bound( nearUV0, nearUV1, near0, near1, nearBound );
+
+  check( nearOutcome == CertificateOutcome::Certified,
+         "and that chord is certified" );
+
+  check( nearBound >= HEIGHT,
+         "with a bound that covers the span the long chord dropped (" +
+           std::to_string( nearBound ) + " >= " +
+           std::to_string( HEIGHT ) + ")" );
+}
+
 }  // namespace
 
 int main() {
 
   certificateCatchesWhatSamplingMisses();
   fullMultiplicityKnotIsSampledOneSided();
+  collapsedKnotCutsAreRefused();
   errorTermTracksTheControlValues();
   knotClippingCatchesAZigZag();
   wrappedChordIsStillCertified();

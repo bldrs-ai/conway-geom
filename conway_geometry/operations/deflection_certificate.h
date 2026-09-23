@@ -484,6 +484,7 @@ class NurbsDeflectionCertificate {
     uint64_t spans        = 0;
     uint64_t wrapped      = 0;
     uint64_t tooManySpans = 0;
+    uint64_t collapsedCut = 0;
     uint64_t illConditioned = 0;
     uint64_t badPiece     = 0;
   };
@@ -665,13 +666,64 @@ class NurbsDeflectionCertificate {
 
  private:
 
+  /**
+   * Record a cut at `cut`, refusing any that cannot SEPARATE the spans on
+   * either side of it.
+   *
+   * The pieces are walked by sorting these parameters and stepping between
+   * consecutive ones, and a zero-length step is skipped. So a cut that lands
+   * on a piece end, or on another cut, does not merely waste a slot: the
+   * span between the two boundaries that collapsed gets no piece of its own
+   * and is NEVER CERTIFIED, while the result still claims to cover the whole
+   * chord. That is the same defect class as certifying against the wrong
+   * polynomial, and it is silent in exactly the same way.
+   *
+   * Two distinct knots can round to one parameter for ordinary doubles: with
+   * a chord from -1e9 to 1e9, the knots 1.0 and nextafter( 1.0 ) both give
+   * 0.50000000050000004. See `collapsedKnotCutsAreRefused`, and the third
+   * finding on bldrs-ai/conway-geom#214.
+   *
+   * Declining is the right answer rather than a repair: `Inconclusive`
+   * subdivides, subdividing shrinks the chord, and a shorter chord resolves
+   * the two knots again - so the refusal is self-clearing.
+   */
+  bool recordCut(
+    double    cut,
+    double    tFrom,
+    double    tTo,
+    double*   cuts,
+    uint32_t& cutCount ) const {
+
+    if ( !( cut > tFrom ) || !( cut < tTo ) ) {
+      ++counters_.collapsedCut;
+      return false;
+    }
+
+    for ( uint32_t at = 0; at < cutCount; ++at ) {
+
+      if ( cuts[ at ] == cut ) {
+        ++counters_.collapsedCut;
+        return false;
+      }
+    }
+
+    if ( cutCount + 1 >= CERTIFICATE_MAX_SPANS + 1 ) {
+      ++counters_.tooManySpans;
+      return false;
+    }
+
+    cuts[ cutCount++ ] = cut;
+
+    return true;
+  }
+
   /** Record the parameter at which `a -> b` passes `value`, if it does. */
-  static bool addCut(
+  bool addCut(
     double    value,
     double    a,
     double    b,
     double*   cuts,
-    uint32_t& cutCount ) {
+    uint32_t& cutCount ) const {
 
     const double low  = std::min( a, b );
     const double high = std::max( a, b );
@@ -680,13 +732,8 @@ class NurbsDeflectionCertificate {
       return true;
     }
 
-    if ( cutCount + 1 >= CERTIFICATE_MAX_SPANS + 1 ) {
-      return false;
-    }
-
-    cuts[ cutCount++ ] = ( value - a ) / ( b - a );
-
-    return true;
+    return recordCut(
+      ( value - a ) / ( b - a ), 0.0, 1.0, cuts, cutCount );
   }
 
   /**
@@ -719,6 +766,14 @@ class NurbsDeflectionCertificate {
 
     const double span = b - a;
 
+    // The last knot VALUE that produced a cut. Knots repeat to carry
+    // multiplicity, and repeats are the same span boundary, not a second
+    // one - the span between two equal knots is empty and has nothing to
+    // certify. They must be skipped before `recordCut`, which would
+    // otherwise read their identical parameters as a collapse.
+    double previousKnot  = 0.0;
+    bool   havePrevious  = false;
+
     for ( size_t at = degree + 1, end = knots.size() - degree - 1;
           at < end;
           ++at ) {
@@ -729,12 +784,18 @@ class NurbsDeflectionCertificate {
         continue;
       }
 
-      if ( cutCount + 1 >= CERTIFICATE_MAX_SPANS + 1 ) {
+      if ( havePrevious && knot == previousKnot ) {
+        continue;
+      }
+
+      if ( !recordCut(
+             tFrom + ( ( ( knot - a ) / span ) * ( tTo - tFrom ) ),
+             tFrom, tTo, cuts, cutCount ) ) {
         return false;
       }
 
-      cuts[ cutCount++ ] =
-        tFrom + ( ( ( knot - a ) / span ) * ( tTo - tFrom ) );
+      previousKnot = knot;
+      havePrevious = true;
     }
 
     return true;
