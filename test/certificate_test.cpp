@@ -1461,6 +1461,356 @@ void descendingChordStartsInTheSpanItTraverses() {
          "and the chord is certified rather than declined" );
 }
 
+
+/**
+ * WHEN A u BOUNDARY AND A v BOUNDARY TIE, BOTH ORDERS ARE BOUNDED.
+ *
+ * `tU` and `tV` are computed from exact knots but carried in doubles, so a
+ * difference below their own rounding says nothing about which boundary the
+ * chord reaches first. The walk used to always take u, which steps
+ * `( oldU, oldV ) -> ( newU, oldV ) -> ( newU, newV )` and never bounds
+ * `( oldU, newV )`.
+ *
+ * With full multiplicity on BOTH axes that skipped patch is an independent
+ * polynomial - not a near-point sliver - so it can carry any departure at
+ * all while every patch that IS bounded reads zero. This file previously
+ * argued no such case could be built, and named the condition under which
+ * the argument would fail; this is that condition. It is the fifth finding
+ * on bldrs-ai/conway-geom#214, built to its author's recipe: a chord from
+ * ( -1e9, -1e9 ) to ( 1e9, 1e9 ), a v knot at 1.0 and a u knot at
+ * nextafter( 1.0 ), with the height living only on the omitted combination.
+ *
+ * Measured before the fix: bound 4.8e-5 against a true departure of 7, and
+ * a two-million-point sweep of the chord finds only 5.1e-7.
+ */
+void tiedCrossAxisBoundariesCoverBothOrders() {
+
+  printf( "tiedCrossAxisBoundariesCoverBothOrders\n" );
+
+  constexpr double LOW    = -1.0e9;
+  constexpr double HIGH   =  1.0e9;
+  constexpr double HEIGHT =  7.0;
+
+  const double vKnot = 1.0;
+  const double uKnot =
+    std::nextafter( vKnot, std::numeric_limits< double >::infinity() );
+
+  check( ( ( vKnot - LOW ) / ( HIGH - LOW ) ) ==
+           ( ( uKnot - LOW ) / ( HIGH - LOW ) ),
+         "the u and v crossings land on the SAME chord parameter (" +
+           std::to_string( ( vKnot - LOW ) / ( HIGH - LOW ) ) + ")" );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+  surface.knots_u  = { LOW, LOW, uKnot, uKnot, HIGH, HIGH };
+  surface.knots_v  = { LOW, LOW, vKnot, vKnot, HIGH, HIGH };
+
+  const double alongU[ 4 ] = { LOW, uKnot, uKnot, HIGH };
+  const double alongV[ 4 ] = { LOW, vKnot, vKnot, HIGH };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t i = 0; i < 4; ++i ) {
+
+    for ( uint32_t j = 0; j < 4; ++j ) {
+
+      // Height ONLY on ( left u span, right v span ) - the combination the
+      // walk skips when it takes u first.
+      const bool omitted = ( i <= 1 ) && ( j >= 2 );
+
+      points.push_back(
+        glm::dvec3( alongU[ i ], alongV[ j ], omitted ? HEIGHT : 0.0 ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 4, 4, points );
+  surface.weights        = tinynurbs::array2( 4, 4, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  check( std::abs( evaluator.point( vKnot, vKnot ).z - HEIGHT ) < 1.0e-9,
+         "the omitted patch really does stand " + std::to_string( HEIGHT ) +
+           " up (" + std::to_string( evaluator.point( vKnot, vKnot ).z ) +
+           ")" );
+
+  const glm::dvec2 uv0( LOW, LOW );
+  const glm::dvec2 uv1( HIGH, HIGH );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  const auto departure = [ & ]( double u, double v ) {
+
+    const double t = ( u - LOW ) / ( HIGH - LOW );
+
+    return glm::length( evaluator.point( u, v ) -
+                        ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) );
+  };
+
+  double swept = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    const double t = static_cast< double >( i ) / 200000.0;
+    const double at = LOW + ( t * ( HIGH - LOW ) );
+
+    swept = std::max( swept, departure( at, at ) );
+  }
+
+  check( swept < 1.0e-5,
+         "and no sweep of the chord finds it (" +
+           std::to_string( swept ) + ")" );
+
+  const double truth = departure( vKnot, vKnot );
+
+  constexpr double TOLERANCE = 1.0e-2;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, TOLERANCE * TOLERANCE );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "the bound covers the patch whose ordering was ambiguous (" +
+           std::to_string( bound ) + " vs " + std::to_string( truth ) + ")" );
+
+  // Covering both orders rather than declining is the point: an ambiguous
+  // ordering is common enough on real geometry that refusing it would cost
+  // subdivisions, and both boxes together are sound because each parameter
+  // in the ambiguous stretch genuinely belongs to one of them.
+  check( outcome == CertificateOutcome::Certified,
+         "and it is CERTIFIED rather than declined" );
+}
+
+/**
+ * THE WEIGHT'S PLACEMENT PERTURBATION REACHES THE WEIGHT FLOOR.
+ *
+ * `placementWeightError` bounds how far the sampled weights sit from the
+ * intended ones when a box is narrow enough for the nodes to move in uv. It
+ * was propagated into the numerator but not into the weight coefficients -
+ * so the reconstructed weight hull omitted it, `weightFloor` could sit above
+ * the true minimum denominator, and a denominator that is too large makes
+ * the quotient too small. The sixth finding on bldrs-ai/conway-geom#214.
+ *
+ * The assertion is the invariant rather than a single number: on a rational
+ * patch whose weights vary sharply across a narrow span, whatever the
+ * certificate returns must still be an upper bound.
+ */
+void weightPlacementErrorReachesTheFloor() {
+
+  printf( "weightPlacementErrorReachesTheFloor\n" );
+
+  const double first  = 1.0e8;
+  const double second =
+    std::nextafter( std::nextafter( first,
+                                    std::numeric_limits< double >::infinity() ),
+                    std::numeric_limits< double >::infinity() );
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 1;
+  surface.knots_u  = { first, first, first, second, second, second };
+  surface.knots_v  = { 0.0, 0.0, 1.0, 1.0 };
+
+  const double alongU[ 3 ] =
+    { first, std::nextafter( first,
+                             std::numeric_limits< double >::infinity() ),
+      second };
+
+  // Weights that swing hard within the span - which is what makes the weight
+  // hull, and therefore the floor, sensitive to where the nodes land.
+  const double weight[ 3 ] = { 1.0, 0.01, 1.0 };
+  const double height[ 3 ] = { 0.0, 3.0, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 3; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      points.push_back(
+        glm::dvec3( alongU[ a ], static_cast< double >( b ), height[ a ] ) );
+
+      weights.push_back( weight[ a ] );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 3, 2, points );
+  surface.weights        = tinynurbs::array2( 3, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  check( !evaluator.isPolynomial(),
+         "the patch is rational, so the weight chain runs" );
+
+  const glm::dvec2 uv0( first, 0.5 );
+  const glm::dvec2 uv1( second, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( uv0.x, uv0.y );
+  const glm::dvec3 at1 = evaluator.point( uv1.x, uv1.y );
+
+  double truth = 0.0;
+
+  for ( double u = first; u <= second;
+        u = std::nextafter( u, std::numeric_limits< double >::infinity() ) ) {
+
+    const double t = ( u - first ) / ( second - first );
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( u, 0.5 ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  // Small, because the 0.01 middle weight pulls the curve off the control
+  // point that carries the height - which is exactly the configuration that
+  // makes the weight HULL, and so the floor, sensitive to where the nodes
+  // land. The magnitude is not the point; the invariant below is.
+  check( truth > 0.02,
+         "and it really does depart from its chord (" +
+           std::to_string( truth ) + ")" );
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, false, 0.0, 0.0, 1.0e-4 );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "whatever is certified is still an upper bound (" +
+           std::to_string( bound ) + " vs " + std::to_string( truth ) + ")" );
+}
+
+
+/**
+ * A PERIODIC CHORD THAT WRAPS IMMEDIATELY STILL WALKS ITS SPANS.
+ *
+ * `clampedU` records that the walk has run out of knot domain in the
+ * direction it is travelling, and it is a LATCH. A strip restart puts the
+ * chord back at the far end of the domain with the whole of it still to
+ * cross, so the latch has to be cleared there - otherwise the walk stops
+ * looking for u boundaries and everything after the wrap comes out as one
+ * box carrying whatever span it happened to start in.
+ *
+ * This is the eighth finding on bldrs-ai/conway-geom#214, found by the
+ * differential fuzzer rather than by review, and only once the fuzzer was
+ * taught to drive periodic charts - a third of `walkPieces` had never been
+ * executed by any test. Measured before the fix: a chord from u = 1 to
+ * u = -1 on a strip of exactly that width starts clamped ( it begins on the
+ * domain edge, descending ), wraps at once, and then emitted a SINGLE box
+ * with spanU = 4 covering u from 1 down to -0.9999999979 - three spans read
+ * as one. Bound 0.1618 against a true 0.1809.
+ */
+void periodicChordThatWrapsStillWalksItsSpans() {
+
+  printf( "periodicChordThatWrapsStillWalksItsSpans\n" );
+
+  constexpr double PERIOD = 2.0;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  // Three spans in u, so a walk that fails to advance is visible.
+  surface.knots_u = { -1.0, -1.0, -0.4, -0.4, 0.3, 1.0, 1.0 };
+  surface.knots_v = { 0.0, 0.0, 1.0, 1.0 };
+
+  const double across[ 5 ] = { -1.0, -0.4, -0.4, 0.3, 1.0 };
+  const double height[ 5 ] = { 0.0, 0.0, 0.9, 0.0, 0.0 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t a = 0; a < 5; ++a ) {
+
+    for ( uint32_t b = 0; b < 2; ++b ) {
+
+      // CLOSED in u - a periodic chart is only built on a closed surface,
+      // so the first and last control rows have to agree.
+      const uint32_t row = ( a == 4 ) ? 0 : a;
+
+      points.push_back(
+        glm::dvec3( across[ a ], static_cast< double >( b ),
+                    height[ row ] ) );
+
+      weights.push_back( 1.0 );
+    }
+  }
+
+  surface.control_points = tinynurbs::array2( 5, 2, points );
+  surface.weights        = tinynurbs::array2( 5, 2, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - ( -1.0 ), PERIOD );
+
+    return -1.0 + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  // Starts exactly on the domain edge, descending - so the walk begins
+  // clamped and wraps on its first step.
+  const glm::dvec2 uv0( 1.0, 0.5 );
+  const glm::dvec2 uv1( -1.0, 0.5 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  double truth = 0.0;
+
+  for ( uint32_t i = 0; i <= 400000; ++i ) {
+
+    const double t = static_cast< double >( i ) / 400000.0;
+    const double u = uv0.x + ( t * ( uv1.x - uv0.x ) );
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( wrap( u ), 0.5 ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  check( truth > 0.4,
+         "the chord really does depart from its chord after the wrap (" +
+           std::to_string( truth ) + ")" );
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, -1.0, PERIOD, 1.0e-8 );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and whatever is certified covers it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+
+  check( outcome == CertificateOutcome::Certified,
+         "the wrapped chord is certified rather than declined" );
+
+  check( certificate.counters().strips > 0,
+         "the strip restart really did fire (" +
+           std::to_string( certificate.counters().strips ) + ")" );
+
+  check( certificate.counters().clampsClear > 0,
+         "and the clamp really was cleared by it (" +
+           std::to_string( certificate.counters().clampsClear ) + ")" );
+}
+
 }  // namespace
 
 int main() {
@@ -1470,6 +1820,9 @@ int main() {
   narrowSpanWithCollapsedParametersIsCertified();
   subUlpKnotSpanIsDeclined();
   collapsedNodeParametersAreDeclined();
+  tiedCrossAxisBoundariesCoverBothOrders();
+  weightPlacementErrorReachesTheFloor();
+  periodicChordThatWrapsStillWalksItsSpans();
   descendingChordStartsInTheSpanItTraverses();
   errorTermTracksTheControlValues();
   knotClippingCatchesAZigZag();

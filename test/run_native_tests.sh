@@ -49,7 +49,7 @@ for source in test/*_test.cpp; do
     test/corner_normals_test.cpp | test/gltf_stream_test.cpp | \
     test/normalize_test.cpp | test/outer_bound_order_test.cpp | \
     test/periodic_u_chart_test.cpp | test/refinement_progress_test.cpp | \
-    test/certificate_test.cpp ) ;;
+    test/certificate_test.cpp | test/certificate_fuzz_test.cpp ) ;;
     * ) continue ;;
   esac
 

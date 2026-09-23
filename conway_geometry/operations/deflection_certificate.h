@@ -481,6 +481,11 @@ class NurbsDeflectionCertificate {
 
       supported_ =
         interpolation_.degree() == totalDegree && interpolation_.valid();
+
+      interpolation_.build( totalDegree );
+
+      supported_ =
+        interpolation_.degree() == totalDegree && interpolation_.valid();
     }
   }
 
@@ -498,6 +503,19 @@ class NurbsDeflectionCertificate {
     uint64_t wrapped      = 0;
     uint64_t tooManySpans = 0;
     uint64_t unplaceable  = 0;
+    uint64_t ambiguous    = 0;
+    uint64_t extrapolated = 0;
+
+    /**
+     * Branch counters, for the COVERAGE audit rather than for cost. A
+     * certificate defect has twice now lived in a branch no test executed,
+     * so the fuzzer reports which of these it has reached and the ones
+     * still at zero are the list of what is not being exercised.
+     */
+    uint64_t strips       = 0;
+    uint64_t clampsClear  = 0;
+    uint64_t descending   = 0;
+    uint64_t rationalPath = 0;
     uint64_t illConditioned = 0;
     uint64_t badPiece     = 0;
   };
@@ -620,6 +638,13 @@ class NurbsDeflectionCertificate {
 
     int        spanU = 0;
     int        spanV = 0;
+
+    /**
+     * The periodic shift already removed from `from` and `to`, kept only so
+     * the error term can price it - see ROUNDING IS GOVERNED BY THE RAW
+     * PARAMETER in boundPiece.
+     */
+    double     shift = 0.0;
     glm::dvec2 from  = glm::dvec2( 0.0 );
     glm::dvec2 to    = glm::dvec2( 0.0 );
     double     tFrom = 0.0;
@@ -688,6 +713,34 @@ class NurbsDeflectionCertificate {
   }
 
   /**
+   * Step one span index in the direction of travel, skipping spans of zero
+   * width, and report when the walk has run off the end of the knot domain.
+   */
+  static int advanceSpan(
+    int                          span,
+    bool                         ascending,
+    uint32_t                     degree,
+    const std::vector< double >& knots,
+    bool&                        clamped ) {
+
+    const int first = static_cast< int >( degree );
+    const int last  =
+      static_cast< int >( knots.size() ) - static_cast< int >( degree ) - 2;
+
+    do {
+      span += ascending ? 1 : -1;
+    } while ( span >= first && span <= last &&
+              !RationalSurfaceEvaluator::spanIsEvaluable( knots, span ) );
+
+    if ( span < first || span > last ) {
+      span    = ( span < first ) ? first : last;
+      clamped = true;
+    }
+
+    return span;
+  }
+
+  /**
    * Enumerate the knot boxes the chord passes through, in order along it.
    *
    * The walk advances in INDEX space: at each step it asks which axis's box
@@ -727,6 +780,14 @@ class NurbsDeflectionCertificate {
 
     const bool upU = du >= 0.0;
     const bool upV = dv >= 0.0;
+
+    if ( !upU || !upV ) {
+      ++counters_.descending;
+    }
+
+    if ( rational_ ) {
+      ++counters_.rationalPath;
+    }
 
     double shift =
       periodic_ ?
@@ -797,14 +858,39 @@ class NurbsDeflectionCertificate {
       // knots and is not degenerate.
       tTo = std::max( tTo, tFrom );
 
-      // ONE AXIS PER STEP, even when two boundaries land on the same
-      // parameter. Advancing both at once would skip the box between them -
-      // and two boundaries tie here whenever their parameters round
-      // together, which is the same rounding that produced the third
-      // finding. Stepping one at a time emits that box with its own span
-      // indices and its own knot-derived corners; it is thin, and it is
-      // bounded rather than assumed away.
-      const bool endsOnStrip = periodic_ && ( du != 0.0 ) && ( tStrip <= tTo );
+      // WHEN TWO AXES TIE, THEIR ORDER IS NOT DECIDABLE, SO COVER BOTH.
+      //
+      // `tU` and `tV` are computed from exact knots but carried in doubles,
+      // so a difference below their own rounding says nothing about which
+      // boundary the chord really reaches first. Picking one - this used to
+      // always pick u - walks `( oldU, oldV ) -> ( newU, oldV ) ->
+      // ( newU, newV )` and never bounds `( oldU, newV )`. With full
+      // multiplicity on both axes that skipped patch is an INDEPENDENT
+      // polynomial, not a near-point sliver, and it can carry any departure
+      // at all while every emitted patch reads zero. Measured on the
+      // reviewer's case: a bound of 4.8e-5 against a true departure of 7.
+      //
+      // That was the fifth finding on bldrs-ai/conway-geom#214, and it is
+      // the one this file shipped on an ARGUMENT - that such a box had zero
+      // extent on both axes so no departure could develop in it. The
+      // argument named its own failure condition, full multiplicity in both
+      // axes, and that is the condition the reviewer used.
+      //
+      // Both intermediate boxes are emitted instead of declining. Each t in
+      // the ambiguous interval genuinely belongs to one of them, and the
+      // bound is the maximum over boxes, so covering the interval twice is
+      // sound and costs two boxes where declining would cost a subdivision.
+      const double separation =
+        8.0 * std::numeric_limits< double >::epsilon() *
+        std::max( std::max( std::abs( tU ), std::abs( tV ) ), 1.0 );
+
+      const bool ambiguous =
+        !clampedU && !clampedV && std::isfinite( tU ) && std::isfinite( tV ) &&
+        ( std::abs( tU - tV ) <= separation ) &&
+        ( std::min( tU, tV ) <= 1.0 );
+
+      const bool endsOnStrip =
+        !ambiguous && periodic_ && ( du != 0.0 ) && ( tStrip <= tTo );
       const bool endsOnU     = !endsOnStrip && !clampedU && ( tU <= tTo );
       const bool endsOnV     =
         !endsOnStrip && !endsOnU && !clampedV && ( tV <= tTo );
@@ -822,14 +908,55 @@ class NurbsDeflectionCertificate {
         to = glm::dvec2( uv1.x - shift, uv1.y );
       }
 
-      pieces[ count++ ] = Piece{ spanU, spanV, from, to, tFrom, tTo };
+      pieces[ count++ ] = Piece{ spanU, spanV, shift, from, to, tFrom, tTo };
 
-      if ( endsChord ) {
+      if ( endsChord && !ambiguous ) {
         return true;
       }
 
       from  = to;
       tFrom = tTo;
+
+      if ( ambiguous ) {
+
+        const double late =
+          std::min( 1.0, std::max( std::max( tU, tV ), tFrom ) );
+
+        const glm::dvec2 beyond(
+          ( uv0.x + ( late * du ) ) - shift, uv0.y + ( late * dv ) );
+
+        const int steppedU =
+          advanceSpan( spanU, upU, degreeU, knotsU, clampedU );
+
+        const int steppedV =
+          advanceSpan( spanV, upV, degreeV, knotsV, clampedV );
+
+        if ( count + 2 > CERTIFICATE_MAX_PIECES ) {
+          return false;
+        }
+
+        // One box for each order the two boundaries could have come in. The
+        // corners are the chord's own, not pinned to either knot, because
+        // which knot bounds this stretch is exactly what is not known.
+        pieces[ count++ ] =
+          Piece{ steppedU, spanV, shift, from, beyond, tFrom, late };
+
+        pieces[ count++ ] =
+          Piece{ spanU, steppedV, shift, from, beyond, tFrom, late };
+
+        ++counters_.ambiguous;
+
+        spanU = steppedU;
+        spanV = steppedV;
+        from  = beyond;
+        tFrom = late;
+
+        if ( late >= 1.0 ) {
+          return true;
+        }
+
+        continue;
+      }
 
       if ( endsOnStrip ) {
 
@@ -837,7 +964,18 @@ class NurbsDeflectionCertificate {
         // RESTARTS, at the far end of the knot domain, one period along.
         shift += upU ? stripPeriod_ : -stripPeriod_;
 
-        from.x = ( uv0.x + ( tTo * du ) ) - shift;
+        // THE ENTRY POINT AFTER A WRAP IS THE STRIP EDGE, EXACTLY - not a
+        // parameter recomputed from the chord. `( uv0.x + tTo * du ) - shift`
+        // is three rounded operations, and it lands PAST the edge often
+        // enough to matter: measured, it came out 1.4e-14 above the domain
+        // start, which stepped the walk straight over two knot spans an ulp
+        // wide sitting there and left them unbounded while the callback's
+        // own wrap put parameters squarely inside them. Bound 0.01577
+        // against a true 0.02063.
+        //
+        // The chord crosses the strip edge; where it resumes is that edge
+        // and nothing else, so say so rather than deriving it.
+        from.x = upU ? stripUMin_ : ( stripUMin_ + stripPeriod_ );
 
         spanU = directionalSpan( degreeU, knotsU, from.x, upU );
 
@@ -845,35 +983,47 @@ class NurbsDeflectionCertificate {
           return false;
         }
 
+        // AND CLEAR THE CLAMP. `clampedU` records that the walk has run out
+        // of knot domain in the direction of travel, and it is a latch - but
+        // a strip restart puts the chord back at the FAR end of the domain
+        // with the whole of it still to cross. Leaving the latch set makes
+        // the walk stop looking for u boundaries entirely, so everything
+        // after the wrap comes out as ONE box carrying the span it happened
+        // to start in.
+        //
+        // Measured on the case the fuzzer found: a chord from u = 1 to
+        // u = -1 on a strip of exactly that width starts clamped ( it begins
+        // on the domain edge, descending ), wraps immediately, and then
+        // emitted a single box with spanU = 4 covering u from 1 down to
+        // -0.9999999979 - three spans read as one. Bound 0.1618 against a
+        // true 0.1809.
+        //
+        // The eighth finding on bldrs-ai/conway-geom#214, and the one the
+        // fuzzer found only once it was taught to drive periodic charts at
+        // all: a third of this function's branches had never been executed
+        // by any test.
+        const bool wasClamped = clampedU;
+
+        clampedU =
+          upU ? ( from.x >= knotsU[ lastU + 1 ] )
+              : ( from.x <= knotsU[ firstU ] );
+
+        ++counters_.strips;
+
+        if ( wasClamped && !clampedU ) {
+          ++counters_.clampsClear;
+        }
+
       } else if ( endsOnU ) {
 
-        do {
-          spanU += upU ? 1 : -1;
-        } while ( spanU >= firstU && spanU <= lastU &&
-                  !RationalSurfaceEvaluator::spanIsEvaluable(
-                    knotsU, spanU ) );
-
         // Off the end of the knot domain with no strip to wrap into: the
-        // surface clamps there, so stay in the boundary span and stop
-        // looking for more u edges.
-        if ( spanU < firstU || spanU > lastU ) {
-          spanU   = ( spanU < firstU ) ? firstU : lastU;
-          clampedU = true;
-        }
-      }
+        // surface clamps there, so advanceSpan stays in the boundary span
+        // and stops the walk looking for more u edges.
+        spanU = advanceSpan( spanU, upU, degreeU, knotsU, clampedU );
 
-      else if ( endsOnV ) {
+      } else if ( endsOnV ) {
 
-        do {
-          spanV += upV ? 1 : -1;
-        } while ( spanV >= firstV && spanV <= lastV &&
-                  !RationalSurfaceEvaluator::spanIsEvaluable(
-                    knotsV, spanV ) );
-
-        if ( spanV < firstV || spanV > lastV ) {
-          spanV    = ( spanV < firstV ) ? firstV : lastV;
-          clampedV = true;
-        }
+        spanV = advanceSpan( spanV, upV, degreeV, knotsV, clampedV );
       }
     }
   }
@@ -1051,9 +1201,28 @@ class NurbsDeflectionCertificate {
       CERTIFICATE_ERROR_SAFETY * epsilon * chordScale;
 
     // 3. WHERE THE NODES ACTUALLY LANDED, as an error in the VALUE.
+    // ROUNDING IS GOVERNED BY THE RAW PARAMETER, NOT THE WRAPPED ONE.
+    //
+    // On a periodic chart the callback evaluates `point( wrapChartU( u ), v )`
+    // and the walk evaluates `point( u - shift, v )`, and THOSE ARE NOT THE
+    // SAME NUMBER. IEEE `fmod` is exact; `u - floor( ( u - uMin ) / P ) * P`
+    // is three rounded operations. Measured on the case the fuzzer found,
+    // the two disagree on 98,591 of 200,001 sampled parameters along one
+    // chord - by an ulp of the RAW parameter, which on a chart whose chords
+    // run far outside the strip is much larger than an ulp of the wrapped
+    // one this used to read.
+    //
+    // So the magnitude that prices a node's placement is the raw parameter's,
+    // and `| shift |` is what carries it: raw = wrapped + shift, so
+    // | raw | <= | wrapped | + | shift |. Zero on every non-periodic chord,
+    // which is why nothing outside the periodic path moves.
+    //
+    // This is the eighth finding on bldrs-ai/conway-geom#214 and the same
+    // shape as the first: an error term scaled by the wrong quantity.
     const double roundingU =
       CERTIFICATE_ERROR_SAFETY * epsilon *
-      std::max( std::abs( piece.from.x ), std::abs( piece.to.x ) );
+      ( std::max( std::abs( piece.from.x ), std::abs( piece.to.x ) ) +
+        std::abs( piece.shift ) );
 
     const double roundingV =
       CERTIFICATE_ERROR_SAFETY * epsilon *
@@ -1095,6 +1264,137 @@ class NurbsDeflectionCertificate {
       return false;
     }
 
+    // A BOX OUTSIDE THE KNOT DOMAIN IS EXTRAPOLATED, AND THE GRADIENT BOUND
+    // DOES NOT HOLD THERE.
+    //
+    // `findSpan` clamps a parameter past either end of the domain into the
+    // boundary span, and the basis is then evaluated outside that span - so
+    // the surface is a polynomial EXTRAPOLATION, whose derivative grows
+    // without any relation to `controlSpread / spanWidth`. The placement
+    // term would be priced from a gradient that only describes the span's
+    // interior.
+    //
+    // Found by the fuzzer: a chord reaching 8.4e6 beyond a domain of 2.6e8
+    // returned a bound 0.1% below the truth, with both around 1.5e12 because
+    // extrapolation had taken a surface of size 1e-3 there.
+    //
+    // Declining rather than pricing it, because an extrapolated box is
+    // outside what the certificate is a statement about at all.
+    {
+      const std::vector< double >& knotsU = evaluator_->knotsU();
+      const std::vector< double >& knotsV = evaluator_->knotsV();
+
+      const double lowU  = knotsU[ evaluator_->degreeU() ];
+      const double highU = knotsU[ knotsU.size() - evaluator_->degreeU() - 1 ];
+      const double lowV  = knotsV[ evaluator_->degreeV() ];
+      const double highV = knotsV[ knotsV.size() - evaluator_->degreeV() - 1 ];
+
+      // Outside by a ROUNDING is not extrapolation, and refusing it would be
+      // expensive: a trim solve lands parameters on the domain edge, where a
+      // couple of ulps either way is the normal case rather than a
+      // pathology. Measured on `Right_Hand.step`, refusing those too
+      // declined 126 chords and cost 122 degenerate triangles.
+      //
+      // The tolerance is scaled by the DOMAIN, not by the parameter. A face
+      // whose u domain is [ -1.1e-17, 0.0796 ] has boxes sitting at the
+      // near-zero end whose own magnitude is 1e-17, so a parameter-scaled
+      // tolerance comes out at 2e-32 and refuses an overshoot of 4.5e-32
+      // that is two ulps of nothing. What decides whether a parameter is
+      // outside the domain is the domain's own scale. Against the case the
+      // fuzzer found - 8.4e6 beyond a domain of 2.6e8, four parts in a
+      // thousand - this still declines by six orders of magnitude.
+      const double reachU =
+        roundingU + ( CERTIFICATE_ERROR_SAFETY * epsilon *
+                      std::max( std::abs( lowU ), std::abs( highU ) ) );
+
+      const double reachV =
+        roundingV + ( CERTIFICATE_ERROR_SAFETY * epsilon *
+                      std::max( std::abs( lowV ), std::abs( highV ) ) );
+
+      if ( piece.from.x < lowU - reachU || piece.from.x > highU + reachU ||
+           piece.to.x   < lowU - reachU || piece.to.x   > highU + reachU ||
+           piece.from.y < lowV - reachV || piece.from.y > highV + reachV ||
+           piece.to.y   < lowV - reachV || piece.to.y   > highV + reachV ) {
+        ++counters_.extrapolated;
+        return false;
+      }
+    }
+
+    // A BOX TOO THIN TO SEPARATE FROM ITS NEIGHBOUR, ON AN AXIS THAT STEPS.
+    //
+    // `placementError` prices a node landing slightly off its intended
+    // parameter using the surface's GRADIENT, which is the right price only
+    // while the node stays inside this box. Where the box's extent on an
+    // axis is no larger than that axis's own rounding, and the box touches a
+    // span boundary, a node can land on the far side of the boundary - and
+    // across a knot of multiplicity degree + 1 the two sides are different
+    // polynomials with a STEP between them, so the cost is the step, not the
+    // gradient.
+    //
+    // Found by the differential fuzzer rather than by review: a chord
+    // descending in u by 2e-9 while v swept a whole domain, on a surface
+    // with a multiplicity-3 knot in u, had its evaluated u PINNED to the
+    // knot across a stretch of the chord - so the callback read one span for
+    // that stretch while the walk bounded the other. Bound 0.0134 against a
+    // true 0.0143.
+    //
+    // Declining rather than covering both sides, because unlike the
+    // ambiguous-ordering case this is not a stretch of chord with two
+    // candidate spans - it is a box whose own identity is not resolvable.
+    //
+    // THE TEST IS ON THE SPAN'S OWN WIDTH, NOT ON HOW MUCH OF IT THIS CHORD
+    // CROSSES, and the difference is what makes it affordable. A chord
+    // running almost parallel to v has boxes with no u extent at all, and
+    // there is nothing wrong with those - u is constant, the span is
+    // unambiguous, and the nodes are exactly where they should be. What
+    // cannot be sampled is a KNOT SPAN narrower than the parameter's own
+    // resolution, because then no node placed by
+    // `from + s * ( to - from )` lands inside it whatever the chord does.
+    //
+    // Measured: testing the box's extent instead of the span's declines
+    // ordinary v-parallel chords and costs 686 degenerate triangles on
+    // `Right_Hand.step` ( 1,075 -> 1,761 ). Testing the span's width costs
+    // nothing there and still refuses every case the fuzzer found.
+    //
+    // Only a box that covers a STRETCH of the chord can hide a mismatch:
+    // the walk emits zero-length boxes at the chord's ends and wherever two
+    // boundaries coincide, and those are single points whose value is the
+    // cached endpoint.
+    const auto spanIsBelowResolution =
+      []( const std::vector< double >& knots, int span, double rounding ) {
+
+        return ( knots[ span + 1 ] - knots[ span ] ) <= rounding;
+      };
+
+    // NEITHER THIS TEST NOR THE ONE THAT USED TO SIT BESIDE IT HAS A RED
+    // PROOF ANY MORE, and they were treated differently for a reason worth
+    // writing down.
+    //
+    // A second arm here tested whether a box on a boundary the surface STEPS
+    // across had an extent below the rounding. Once the wrap entry was
+    // pinned to the strip edge ( see walkPieces ) neither arm's removal was
+    // detectable: 200,000 trials across three seeds find nothing either of
+    // them catches. The difference is the COST. The stepping arm declined
+    // 46,000 of 250,000 fuzz cases on its own, so it was deleted - an
+    // expensive branch nothing can miss is not carrying anything. This one
+    // declines 30 of 250,000, and none at all on the smoke corpus.
+    //
+    // So it is kept on its argument rather than on evidence: a knot span
+    // narrower than the parameter's own resolution cannot be sampled,
+    // whatever the chord does, because no node placed by
+    // `from + s * ( to - from )` lands inside it. That argument has no test
+    // behind it and this file's history is a list of arguments that turned
+    // out to be wrong - but at 30 in 250,000 the price of being wrong the
+    // other way is lower.
+    if ( piece.tTo > piece.tFrom &&
+         ( spanIsBelowResolution( evaluator_->knotsU(), piece.spanU,
+                                  roundingU ) ||
+           spanIsBelowResolution( evaluator_->knotsV(), piece.spanV,
+                                  roundingV ) ) ) {
+      ++counters_.unplaceable;
+      return false;
+    }
+
     const double nodeError =
       placementError +
       ( rational_ ?
@@ -1112,9 +1412,18 @@ class NurbsDeflectionCertificate {
       ( interpolation_.normInfinity() * nodeError ) +
       ( applyError * largestNode );
 
+    // `placementWeightError` belongs HERE as well as in `nodeError`. It
+    // bounds how far the sampled weights are from the intended ones, and the
+    // weight hull is reconstructed from those same samples - so leaving it
+    // out lets `weightFloor` sit above the true minimum denominator, and a
+    // denominator that is too large makes the quotient too small. That is
+    // the one direction this bound may not err in. The sixth finding on
+    // bldrs-ai/conway-geom#214, and the same shape as the first: a stage of
+    // the chain not carrying an error the stage before it computed.
     const double weightCoefficientError =
       rational_ ?
-        ( ( interpolation_.normInfinity() * weightError ) +
+        ( ( interpolation_.normInfinity() *
+            ( weightError + placementWeightError ) ) +
           ( applyError * largestWeight ) ) :
         0.0;
 
