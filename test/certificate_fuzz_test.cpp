@@ -30,48 +30,122 @@
  *     PINNED to a knot because the step per unit chord is below the
  *     parameter's resolution - with no reviewer involved;
  *   - it found the eighth, in the periodic path, within minutes of being
- *     taught to drive periodic charts at all.
+ *     taught to drive periodic charts at all;
+ *   - and it found FOUR MORE - #9, #10, #11 and #12 - in the round that was
+ *     supposed to be the clean one. See the table below.
  *
  * It also reports which BRANCHES of the certificate it reached, because the
  * eighth finding lived in one that nothing had ever executed. A zero in that
  * line is a hole in this file, not a clean bill of health for the code.
  *
+ * FAR-SHEET CHORDS. The generator used to draw u from
+ * [ lowU * 1.5, highU * 1.5 ], so ( u - lowU ) / P landed in [ -0.25, 1.25 ]
+ * and the walk's shift was never more than ONE period. A whole regime was
+ * therefore unreachable: a chord many sheets outside its strip, where an ulp
+ * of the RAW parameter is orders of magnitude larger than an ulp of the
+ * wrapped one. That regime is what the `| shift |` term in `roundingU`
+ * exists for, and it is why that term had no red proof for a round. It has
+ * one now - see the table. Both endpoints are pushed out by up to 2^20
+ * periods on half the periodic trials.
+ *
+ * THE SHAPE IS BUILT, NOT WAITED FOR. There are three generators. The free
+ * one explores; the ALIGNED one constructs two knots whose chord parameters
+ * round together, which is the fifth finding's family; the GRAZING one
+ * constructs the eleventh's - a chord whose extent on one axis is below the
+ * parameter's resolution, ending exactly on a knot the surface steps at,
+ * with knots on the other axis inside that window so the walk emits a box
+ * the caller resolves entirely elsewhere.
+ *
+ * That third one is the reason this round exists. The eleventh finding was
+ * reached ONCE in 2,800,000 free trials, which is luck rather than
+ * instrumentation - and the guard it red-proved had already been deleted for
+ * want of a proof. With the shape constructed it is caught at trial 94, and
+ * the generator immediately produced three more findings of the same family.
+ *
+ * THE PERIODIC PATH SHIPS DISABLED AND IS FUZZED ANYWAY.
+ * `CERTIFICATE_CERTIFIES_PERIODIC_CHARTS` is 0 in a release build, so a
+ * periodic chord takes the sampled test; this file defines it to 1. The
+ * reason to ship it off is that the size of that family is unknown, which is
+ * precisely the reason to keep looking - a fuzzer that followed the shipping
+ * default would stop looking where the risk is concentrated and report
+ * nothing, and the nothing would mean nothing. About a third of the trials
+ * here drive periodic charts.
+ *
+ * AND THE SEAM IS WATCHED DIRECTLY. CERTIFICATE_AUDIT_CALLER_SPANS, defined
+ * above, compares the span the walk assigned each box against the span the
+ * CALL SITE's own `findSpan` names for the same doubles. `inside` - a box
+ * placed on a span that does not contain it - is a hard failure and this
+ * program exits non-zero on it. The fifteenth finding was found that way and
+ * produced no violation at all in 800,000 trials, so nothing else would have
+ * found it.
+ *
  * HOW LONG IT TAKES TO REDISCOVER EACH FINDING, measured by reintroducing
  * each one and running until this file catches it again - with the
  * unmodified build's own violations subtracted, so that running into the
- * residual does not count as a rediscovery. The harness that produced these
- * reintroduces each finding into a scratch copy of the header reached by an
- * `-I` override, exactly as the red proofs do, and is not committed for the
- * same reason they are not:
+ * residual does not count as a rediscovery ( `test/certificate_rediscover.sh` ):
  *
  *     finding                                        first caught at trial
  *     #2  node's span resolved by findSpan                              5
  *     #5  ambiguous cross-axis order always taking u                    5
+ *     #11 stepping-axis arm of the unplaceable test                    94
+ *     #13 boundary test taken as exact equality                     1,553
+ *     #4b node placement priced by the WRAPPED parameter             1,475
  *     #8  clamp not cleared by a strip restart                      2,752
+ *     #14 strip magnitude left out of roundingU                     5,387
  *     #4  node-placement gradient term dropped                     17,575
+ *     #9  strip boundary suppressed by a knot tie                  24,405
+ *     #12 periodic start reduced with floor, not fmod               32,525
  *     #9a wrap entry recomputed instead of pinned to the edge      45,004
  *     #8b extrapolated box bounded by an in-span gradient          51,982
+ *     #10 strip/knot order decided in chord space                 124,473
+ *     #15 rounding priced at the box's magnitude, not the chord's
+ *                                       AUDIT ONLY - 1 in ~600,000 trials
  *     #6  weight placement error not carried to the floor      NOT CAUGHT
  *
- * #6 IS NOT REDISCOVERED AT ALL, in 200,000 trials across three seeds. It is
- * a real missing link - the weight hull is rebuilt from samples whose
- * perturbation was priced only into the numerator - but its effect is below
- * anything this generator produces, exactly as it was below anything a
- * hand-built case could produce. Nothing here defends it; it is carried on
- * the argument alone, and that is worth knowing.
+ * TWO ENTRIES ARE THE POINT OF THIS FILE. #15 is caught by the audit and by
+ * nothing else - it never became a wrong number. #6 is caught by nothing at
+ * all, in 200,000 trials across three seeds, and is carried on its argument.
+ *
+ * AND THE HISTORY OF "NO RED PROOF" IN THIS PR IS THREE FOR THREE. The
+ * `| shift |` term ( #4b ), the stepping-axis arm ( #11 ) and the span-width
+ * guard ( 3b8 in `certificate_redprove.sh` ) were each at some point
+ * defensible only by argument. Two of the three turned out to be load-
+ * bearing as soon as the generator reached their shape, and one of those had
+ * already been DELETED on the reasoning that it cost declines and caught
+ * nothing. 3b8 is the one still in that state; it now costs 4 declines in
+ * 120,000 trials and none on the corpus, and it stays.
+ *
+ * #10 fired at 124,473 when it was written and NO LONGER DOES: #12 moves the
+ * periodic start by 3.7e-9, which is enough to stop that chord's two cut
+ * parameters rounding together. The fix is kept on its argument; the number
+ * above is the measurement that existed, not one that reproduces today.
  *
  * #3 and #7 cannot be reintroduced to measure, because the code that carried
  * them no longer exists: #3's cut-parameter sorting was replaced by the index
- * walk, and #7's stepping-axis guard was DELETED once the span-width test
- * made breaking it undetectable.
+ * walk. (#7's stepping-axis guard was deleted and is now BACK, as #11.)
  *
  * The default budget below is set above the largest number in that table
  * that is not "NOT CAUGHT".
  */
+// Watch the walk/caller seam directly rather than by its consequences. This
+// has to come before the include - see CERTIFICATE_AUDIT_CALLER_SPANS.
+#define CERTIFICATE_AUDIT_CALLER_SPANS 1
+
+// THE INSTRUMENT TESTS THE CODE, NOT THE CONFIGURATION.
+//
+// `CERTIFICATE_CERTIFIES_PERIODIC_CHARTS` ships at 0, so a periodic chord in
+// a release build takes the sampled test. That is a decision about what to
+// expose, and following it here would point the only thing that has ever
+// found a periodic defect away from the periodic path - which is the one
+// place we already know we cannot size the risk. Everything below therefore
+// runs with the periodic path ON.
+#define CERTIFICATE_CERTIFIES_PERIODIC_CHARTS 1
+
 #include "conway_geometry/operations/deflection_certificate.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <random>
 #include <vector>
 #include "logging/Logger.h"
@@ -141,10 +215,11 @@ std::vector< double > makeKnots(
 
 int main( int argc, char** argv ) {
 
-  // 100,000 by default, which is ~14 seconds. Not a round number picked for
-  // comfort: the budget has to be larger than what it takes to rediscover
-  // the findings this file exists to catch, and the largest of those that it
-  // CAN rediscover needs 79,231 trials. See the table above.
+  // 100,000 by default. Not a round number picked for comfort: the budget
+  // has to be larger than what it takes to rediscover the findings this file
+  // exists to catch, and the largest of those that it can rediscover by a
+  // VIOLATION needs 124,473 - so the default no longer covers the table on
+  // one seed, and the sweep that gates a change runs fourteen. See above.
   const uint64_t trials = ( argc > 1 ) ? strtoull( argv[ 1 ], nullptr, 10 ) : 100000;
   const uint64_t seed   = ( argc > 2 ) ? strtoull( argv[ 2 ], nullptr, 10 ) : 1;
 
@@ -168,6 +243,12 @@ int main( int argc, char** argv ) {
       into.extrapolated += from.extrapolated; into.unplaceable += from.unplaceable;
       into.illConditioned += from.illConditioned; into.tooManySpans += from.tooManySpans;
       into.badPiece += from.badPiece;
+      into.callerSpanAgree += from.callerSpanAgree;
+      into.callerSpanEdge += from.callerSpanEdge;
+      into.callerSpanInside += from.callerSpanInside;
+      into.callerSpanWhole += from.callerSpanWhole;
+      into.callerSpanPair += from.callerSpanPair;
+      into.callerSpanWholeStep += from.callerSpanWholeStep;
     };
 
   for ( uint64_t trial = 0; trial < trials; ++trial ) {
@@ -314,6 +395,337 @@ int main( int argc, char** argv ) {
       continue;
     }
 
+    // GENERATOR THREE: THE GRAZING CHORD, built rather than waited for.
+    //
+    // This is the eleventh finding's shape. The free generator reached it
+    // once, at trial 173,559 on one seed out of fourteen, which means it is
+    // effectively unreachable at any budget this file would run by default -
+    // and the finding was then found by its CONSEQUENCE, a bound under a
+    // sampled truth, rather than by anything watching the seam. Both halves
+    // of that are fixed here: the shape is constructed, and
+    // CERTIFICATE_AUDIT_CALLER_SPANS watches the seam directly.
+    //
+    // The shape has three parts, and all three are needed:
+    //
+    //   1. a knot K of multiplicity degree + 1 on one axis, so the surface
+    //      STEPS there rather than merely kinking;
+    //   2. a chord whose extent on that axis is so small that a MACROSCOPIC
+    //      range of t has a rounded parameter equal to K. The fraction is
+    //      ulp( K ) / ( 2 |d| ), so `d` is chosen from a target fraction
+    //      rather than the other way round;
+    //   3. the chord ENDING on K, so there is no next box to own that
+    //      double - which is what makes it unsound rather than merely
+    //      covered by the neighbour.
+    //
+    // Multiplicity `degree` is generated as well as `degree + 1`. At
+    // multiplicity `degree` the surface is C0 - the two polynomials AGREE at
+    // K - so it should be harmless, and `stepsAnywhere`'s threshold says so.
+    // That is an argument, and arguments are what this file exists to check.
+    const bool grazing = !aligned && ( pick( 2 ) == 0 );
+
+    if ( grazing ) {
+
+      const uint32_t degreeSlow = 1 + pick( 3 );
+      const uint32_t degreeFast = 1 + pick( 3 );
+
+      // The axis the chord grazes along. Generated both ways round: the
+      // walk, the strip and the periodic reduction are all u-specific, so a
+      // v-only version of this would leave half the seam untested.
+      const bool grazeU = ( pick( 2 ) == 0 );
+
+      const double magnitude = std::pow( 10.0, uniform( -2.0, 6.0 ) );
+
+      const double low = -magnitude, high = magnitude;
+
+      // K, strictly inside, and the fraction of the chord that will round
+      // onto it.
+      const double K = uniform( low * 0.6, high * 0.6 );
+
+      const double fraction = std::pow( 10.0, uniform( -9.0, -2.0 ) );
+
+      const double ulpK =
+        std::nextafter( std::abs( K ) + 1.0,
+                        std::numeric_limits< double >::infinity() ) -
+        ( std::abs( K ) + 1.0 );
+
+      double step = ulpK / ( 2.0 * fraction );
+
+      if ( !( step > 0.0 ) || !std::isfinite( step ) ) { ++skipped; continue; }
+
+      // MULTIPLICITY degree + 1 STEPS, degree ONLY KINKS. Both are built.
+      const uint32_t slowMultiplicity =
+        ( pick( 4 ) == 0 ) ? degreeSlow : ( degreeSlow + 1 );
+
+      std::vector< double > slowKnots;
+
+      for ( uint32_t i = 0; i <= degreeSlow; ++i ) slowKnots.push_back( low );
+      for ( uint32_t i = 0; i < slowMultiplicity; ++i ) slowKnots.push_back( K );
+      for ( uint32_t i = 0; i <= degreeSlow; ++i ) slowKnots.push_back( high );
+
+      // The axis the chord actually travels along gets several interior
+      // knots, so the walk emits a run of boxes rather than one.
+      // MORE SPANS THAN THE WALK WILL CARRY, one time in four. The walk
+      // gives up at CERTIFICATE_MAX_PIECES, and until this that branch had
+      // never executed in any run - the free generator's surfaces are not
+      // deep enough and its chords do not cross every span of one.
+      const uint32_t fastSpans =
+        ( pick( 4 ) == 0 ) ? ( 8 + pick( 24 ) ) : ( 1 + pick( 6 ) );
+
+      std::vector< double > fastKnots;
+
+      for ( uint32_t i = 0; i <= degreeFast; ++i ) fastKnots.push_back( low );
+
+      for ( uint32_t i = 1; i < fastSpans; ++i ) {
+
+        const double at =
+          low + ( ( high - low ) * static_cast< double >( i ) /
+                  static_cast< double >( fastSpans ) );
+
+        const uint32_t multiplicity = 1 + pick( degreeFast + 1 );
+
+        for ( uint32_t m = 0; m < multiplicity; ++m ) fastKnots.push_back( at );
+      }
+
+      // AND SOME KNOTS INSIDE THE GRAZING WINDOW. Without these the walk
+      // never emits a box whose extent on the slow axis is zero: every box
+      // straddles the point where the rounded parameter reaches K, so its
+      // two corners differ and only one node sits on the knot. Seed 7 had
+      // them - its u knots were 1e-9 from the chord's end while the grazing
+      // window was 2.8e-8 wide - and that is the difference between a box
+      // the caller resolves elsewhere at ONE node and one it resolves
+      // elsewhere at EVERY node.
+      {
+        const uint32_t inWindow = 1 + pick( 3 );
+
+        std::vector< double > late;
+
+        for ( uint32_t i = 0; i < inWindow; ++i ) {
+
+          const double atT =
+            1.0 - ( fraction * std::pow( 10.0, uniform( -2.0, 0.0 ) ) );
+
+          const double value = low + ( ( high - low ) * atT );
+
+          if ( value > fastKnots.back() && value < high ) {
+            late.push_back( value );
+          }
+        }
+
+        std::sort( late.begin(), late.end() );
+
+        for ( double value : late ) {
+
+          const uint32_t multiplicity = 1 + pick( degreeFast + 1 );
+
+          for ( uint32_t m = 0; m < multiplicity; ++m ) {
+            fastKnots.push_back( value );
+          }
+        }
+      }
+
+      for ( uint32_t i = 0; i <= degreeFast; ++i ) fastKnots.push_back( high );
+
+      tinynurbs::RationalSurface3d surface;
+
+      surface.degree_u = grazeU ? degreeSlow : degreeFast;
+      surface.degree_v = grazeU ? degreeFast : degreeSlow;
+      surface.knots_u  = grazeU ? slowKnots : fastKnots;
+      surface.knots_v  = grazeU ? fastKnots : slowKnots;
+
+      const uint32_t countU =
+        static_cast< uint32_t >( surface.knots_u.size() ) - surface.degree_u - 1;
+
+      const uint32_t countV =
+        static_cast< uint32_t >( surface.knots_v.size() ) - surface.degree_v - 1;
+
+      if ( countU < surface.degree_u + 1 || countV < surface.degree_v + 1 ) {
+        ++skipped; continue;
+      }
+
+      // The two sides of K have to be FAR APART, or a step that is taken on
+      // the wrong side of it costs nothing and the case proves nothing. The
+      // index of the last control row before K is what divides them.
+      const uint32_t before = degreeSlow + slowMultiplicity - 1;
+
+      const double relief = std::pow( 10.0, uniform( 0.0, 3.0 ) );
+
+      const bool rationalGrazing = ( pick( 4 ) == 0 );
+
+      const bool wantPeriodicGrazing = ( pick( 3 ) == 0 );
+
+      std::vector< glm::dvec3 > points;
+      std::vector< double >     weights;
+
+      for ( uint32_t i = 0; i < countU; ++i ) {
+
+        for ( uint32_t j = 0; j < countV; ++j ) {
+
+          const uint32_t slowAt = grazeU ? i : j;
+          const uint32_t fastAt = grazeU ? j : i;
+
+          const double side = ( slowAt < before ) ? 0.0 : relief;
+
+          points.push_back(
+            glm::dvec3( uniform( -1.0, 1.0 ) + static_cast< double >( fastAt ),
+                        uniform( -1.0, 1.0 ),
+                        side + uniform( -0.25, 0.25 ) ) );
+
+          weights.push_back(
+            rationalGrazing ? std::pow( 10.0, uniform( -2.0, 2.0 ) ) : 1.0 );
+        }
+      }
+
+      if ( wantPeriodicGrazing ) {
+
+        // CLOSED in u, which is what a periodic chart requires.
+        for ( uint32_t j = 0; j < countV; ++j ) {
+          points[ ( ( countU - 1 ) * countV ) + j ]  = points[ j ];
+          weights[ ( ( countU - 1 ) * countV ) + j ] = weights[ j ];
+        }
+      }
+
+      surface.control_points = tinynurbs::array2( countU, countV, points );
+      surface.weights        = tinynurbs::array2( countU, countV, weights );
+
+      const RationalSurfaceEvaluator grazeEvaluator( surface );
+
+      if ( !grazeEvaluator.supportsFastPath() ) { ++skipped; continue; }
+
+      // APPROACH K, AND END ON IT. Both directions of approach are built:
+      // from below, `findSpan` at K names the span above and the walk names
+      // the one below, which is the disagreement; from above they agree, and
+      // that arm is generated so the difference between them is measured
+      // rather than assumed.
+      const bool fromBelow = ( pick( 4 ) != 0 );
+
+      if ( !fromBelow ) step = -step;
+
+      const double slowStart = K - step;
+      const double slowEnd   = K;
+
+      if ( slowStart == slowEnd ) { ++skipped; continue; }
+
+      // ... and travel the whole of the other axis, so the boxes cover real
+      // stretches of chord.
+      const double fastStart = low;
+      const double fastEnd   = high;
+
+      const glm::dvec2 uv0(
+        grazeU ? slowStart : fastStart, grazeU ? fastStart : slowStart );
+
+      const glm::dvec2 uv1(
+        grazeU ? slowEnd : fastEnd, grazeU ? fastEnd : slowEnd );
+
+      const double stripMinG    = low;
+      const double stripPeriodG = high - low;
+
+      const auto wrapG = [ & ]( double u ) {
+        if ( !wantPeriodicGrazing ) return u;
+        const double offset = std::fmod( u - stripMinG, stripPeriodG );
+        return stripMinG + ( offset < 0.0 ? offset + stripPeriodG : offset );
+      };
+
+      const glm::dvec3 at0 = grazeEvaluator.point( wrapG( uv0.x ), uv0.y );
+      const glm::dvec3 at1 = grazeEvaluator.point( wrapG( uv1.x ), uv1.y );
+
+      if ( !std::isfinite( at0.x ) || !std::isfinite( at1.x ) ) {
+        ++skipped; continue;
+      }
+
+      const double tolerance = std::pow( 10.0, uniform( -9.0, 1.0 ) );
+
+      NurbsDeflectionCertificate certificate(
+        grazeEvaluator, wantPeriodicGrazing, stripMinG, stripPeriodG,
+        tolerance * tolerance );
+
+      double bound = 0.0;
+
+      const CertificateOutcome outcome =
+        certificate.bound( uv0, uv1, at0, at1, bound );
+
+      accumulate( total, certificate.counters() );
+
+      if ( outcome == CertificateOutcome::Unsupported ) { ++unsupported; continue; }
+      if ( outcome == CertificateOutcome::Inconclusive ) { ++declined; continue; }
+
+      ++certified;
+
+      const auto departureG = [ & ]( long double t ) {
+        const double u = (double)( (long double)uv0.x + t * ( (long double)uv1.x - uv0.x ) );
+        const double v = (double)( (long double)uv0.y + t * ( (long double)uv1.y - uv0.y ) );
+        const glm::dvec3 q = grazeEvaluator.point( wrapG( u ), v );
+        const long double cx = (long double)at0.x + t * ( (long double)at1.x - at0.x );
+        const long double cy = (long double)at0.y + t * ( (long double)at1.y - at0.y );
+        const long double cz = (long double)at0.z + t * ( (long double)at1.z - at0.z );
+        const long double dx = (long double)q.x - cx;
+        const long double dy = (long double)q.y - cy;
+        const long double dz = (long double)q.z - cz;
+        return (double)sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) );
+      };
+
+      double truth = 0.0;
+
+      for ( uint32_t i = 0; i <= 3000; ++i ) {
+        truth = std::max( truth, departureG( (long double)i / 3000.0L ) );
+      }
+
+      // THE SWEEP ABOVE CANNOT SEE THIS CASE. The stretch whose rounded
+      // parameter equals K is `fraction` of the chord, and `fraction` goes
+      // down to 1e-9. Sample it directly, geometrically, from one part in
+      // ten of it up to the chord's end.
+      for ( uint32_t i = 0; i <= 400; ++i ) {
+
+        const long double reach =
+          (long double)fraction * 10.0L *
+          powl( 1.0e-4L, (long double)i / 400.0L );
+
+        truth = std::max( truth, departureG( 1.0L - reach ) );
+      }
+
+      for ( int nudge = 0; nudge <= 4; ++nudge ) {
+
+        long double tt = 1.0L;
+
+        for ( int k = 0; k < nudge; ++k ) tt = std::nextafterl( tt, 0.0L );
+
+        truth = std::max( truth, departureG( tt ) );
+      }
+
+      if ( !std::isfinite( truth ) ) continue;
+
+      if ( bound < truth ) {
+        ++violations;
+        if ( violations <= 4 ) {
+          printf( "VIOLATION(grazing) trial=%llu bound=%.10g < truth=%.10g "
+                  "ratio=%.4g  grazeU=%d mult=%u/%u fraction=%.3g "
+                  "periodic=%d fromBelow=%d rational=%d\n",
+                  (unsigned long long)trial, bound, truth,
+                  truth / std::max( bound, 1e-300 ), (int)grazeU,
+                  slowMultiplicity, degreeSlow, fraction,
+                  (int)wantPeriodicGrazing, (int)fromBelow,
+                  (int)rationalGrazing );
+          printf( "  s.degree_u=%u; s.degree_v=%u;\n",
+                  surface.degree_u, surface.degree_v );
+          printf( "  s.knots_u={" );
+          for ( double k : surface.knots_u ) printf( "%.17g,", k );
+          printf( "};\n  s.knots_v={" );
+          for ( double k : surface.knots_v ) printf( "%.17g,", k );
+          printf( "};\n  const double P[]={" );
+          for ( const glm::dvec3& q : points ) printf( "%.17g,%.17g,%.17g,", q.x, q.y, q.z );
+          printf( "};\n  const double W[]={" );
+          for ( double q : weights ) printf( "%.17g,", q );
+          printf( "};\n  const uint32_t NU=%u, NV=%u;\n", countU, countV );
+          printf( "  glm::dvec2 uv0(%.17g,%.17g), uv1(%.17g,%.17g); double TOL=%.17g;\n",
+                  uv0.x, uv0.y, uv1.x, uv1.y, tolerance );
+          printf( "  const bool PERIODIC=%d; const double SMIN=%.17g, SPER=%.17g;\n",
+                  (int)wantPeriodicGrazing, stripMinG, stripPeriodG );
+        }
+      }
+
+      continue;
+    }
+
+
     const uint32_t degreeU = 1 + pick( 3 );
     const uint32_t degreeV = 1 + pick( 3 );
 
@@ -391,8 +803,26 @@ int main( int argc, char** argv ) {
                          uniform( lowV, highV ) );
     };
 
-    const glm::dvec2 uv0 = endpoint( pick( 3 ) == 0 );
-    const glm::dvec2 uv1 = endpoint( pick( 3 ) == 0 );
+    glm::dvec2 uv0 = endpoint( pick( 3 ) == 0 );
+    glm::dvec2 uv1 = endpoint( pick( 3 ) == 0 );
+
+    // FAR-SHEET VARIANT. The stock generator draws u from
+    // [ lowU * 1.5, highU * 1.5 ], so ( u - lowU ) / P lands in [ -0.25, 1.25 ]
+    // and the walk's shift is never more than ONE period. That is the whole
+    // reason the `| shift |` term in roundingU has no red proof: the regime it
+    // prices - a chord many sheets outside the strip, where an ulp of the raw
+    // parameter is orders of magnitude larger than an ulp of the wrapped one -
+    // is unreachable. This pushes both endpoints out by up to 2^20 periods.
+    if ( wantPeriodic && pick( 2 ) == 0 ) {
+
+      const double sheets =
+        (double)( (int64_t)pick( 2097153 ) - 1048576 );
+
+      const double offset = sheets * ( highU - lowU );
+
+      uv0.x += offset;
+      uv1.x += offset;
+    }
 
     if ( uv0 == uv1 ) { ++skipped; continue; }
 
@@ -515,11 +945,34 @@ int main( int argc, char** argv ) {
           (unsigned long long)total.extrapolated, (unsigned long long)total.unplaceable,
           (unsigned long long)total.illConditioned, (unsigned long long)total.tooManySpans,
           (unsigned long long)total.badPiece );
+
+  // THE WALK/CALLER SEAM. `inside` must be zero - anything else means a box
+  // was placed on a span that does not contain it. `whole` is the eleventh
+  // finding's signature, and a zero there means this generator is not
+  // reaching that shape, NOT that the shape is impossible.
+  printf( "CALLER SPANS: agree=%llu edge=%llu inside=%llu whole=%llu "
+          "wholeOnStep=%llu pair=%llu\n",
+          (unsigned long long)total.callerSpanAgree,
+          (unsigned long long)total.callerSpanEdge,
+          (unsigned long long)total.callerSpanInside,
+          (unsigned long long)total.callerSpanWhole,
+          (unsigned long long)total.callerSpanWholeStep,
+          (unsigned long long)total.callerSpanPair );
+  // THE AUDIT IS A GATE, NOT A READOUT. `inside` means a box was placed on a
+  // span that does not contain it, which no amount of sampling is guaranteed
+  // to turn into a violation - the fifteenth finding was found this way and
+  // produced none in 800,000 trials. A run that reports it has failed.
+  if ( total.callerSpanInside > 0 ) {
+    printf( "AUDIT FAILURE: %llu box(es) placed on a span that does not "
+            "contain them\n",
+            (unsigned long long)total.callerSpanInside );
+  }
+
   printf( "trials=%llu certified=%llu declined=%llu unsupported=%llu skipped=%llu "
           "VIOLATIONS=%llu\n",
           (unsigned long long)trials, (unsigned long long)certified,
           (unsigned long long)declined, (unsigned long long)unsupported,
           (unsigned long long)skipped, (unsigned long long)violations );
 
-  return violations == 0 ? 0 : 1;
+  return ( violations == 0 && total.callerSpanInside == 0 ) ? 0 : 1;
 }

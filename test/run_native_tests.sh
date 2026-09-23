@@ -65,6 +65,25 @@ for source in test/*_test.cpp; do
   fi
 done
 
+# The periodic-path switch is the one test that has to be built TWICE. A flag
+# is only proven to gate something if the two builds DISAGREE about the
+# periodic chord, and the file asserts the opposite outcome under each value;
+# it also asserts a non-periodic chord is certified either way, so a change
+# that disabled the certificate outright fails rather than passes. Compiling
+# it once would assert whichever half the default happens to give.
+for value in 0 1; do
+
+  echo "=== certificate_flag_test ( CERTIFICATE_CERTIFIES_PERIODIC_CHARTS=${value} ) ==="
+
+  "${COMPILER}" -std=c++20 -O1 -DREAL_T_IS_DOUBLE \
+    -DCERTIFICATE_CERTIFIES_PERIODIC_CHARTS="${value}" "${INCLUDES[@]}" \
+    test/certificate_flag_test.cpp -o "${OUT}/certificate_flag_test_${value}"
+
+  if ! "${OUT}/certificate_flag_test_${value}"; then
+    STATUS=1
+  fi
+done
+
 # The allocation instrument is the one test here that cannot be a
 # link-nothing translation unit: it is the --wrap hooks that are under test, so
 # it needs alloc_telemetry.cpp compiled alongside it, the compile gate defined,

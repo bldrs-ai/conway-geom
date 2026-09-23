@@ -23,6 +23,16 @@
  * Standalone, like refinement_progress_test.cpp: includes the headers and
  * links nothing but the Logger stubs.
  */
+// THE INSTRUMENT TESTS THE CODE, NOT THE CONFIGURATION.
+//
+// `CERTIFICATE_CERTIFIES_PERIODIC_CHARTS` ships at 0, so a periodic chord in
+// a release build takes the sampled test. That is a decision about what to
+// expose, and following it here would point the only thing that has ever
+// found a periodic defect away from the periodic path - which is the one
+// place we already know we cannot size the risk. Everything below therefore
+// runs with the periodic path ON.
+#define CERTIFICATE_CERTIFIES_PERIODIC_CHARTS 1
+
 #include "conway_geometry/operations/deflection_certificate.h"
 #include "conway_geometry/operations/tesselation_utils.h"
 
@@ -1811,6 +1821,1280 @@ void periodicChordThatWrapsStillWalksItsSpans() {
            std::to_string( certificate.counters().clampsClear ) + ")" );
 }
 
+
+/**
+ * FUZZ SEED 51, minimised: a periodic chord whose u-domain end and strip top
+ * are the same point, with a v boundary tied to them.
+ *
+ * This is the ninth finding on bldrs-ai/conway-geom#214 and it lived in code
+ * added for the FIFTH. `endsOnStrip` read `!ambiguous && ...`, so a tie
+ * between the two knot axes - an ordering question inside one sheet - also
+ * suppressed the strip crossing, which is not an ordering question but a
+ * change of frame. Every box after the tie stayed on the sheet the chord had
+ * already left.
+ *
+ * The arrangement is the ordinary one for a periodic chart rather than a
+ * contrivance: the knot domain ends where the strip ends, so `tU` and
+ * `tStrip` are the same expression and agree bit for bit. All the fuzzer had
+ * to add was a v boundary within `separation` of them.
+ *
+ * The three sub-ulp u spans at the bottom of the domain are what makes the
+ * miss visible: the chord's last 1.4e-15 of parameter belongs to them and
+ * carries a different control row, so certifying it against span 4 is off by
+ * 1.2x rather than by a rounding.
+ */
+void periodicKnotTieStillCrossesTheStrip() {
+
+  printf( "periodicKnotTieStillCrossesTheStrip\n" );
+
+  constexpr double STRIP_MIN = -1.0;
+  constexpr double PERIOD    =  2.0;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 3;
+
+  // Three sub-ulp spans at the bottom of the u domain. They are what the
+  // walk has to reach after the wrap, and what it certified span 4 against
+  // instead.
+  surface.knots_u = { -1.0, -1.0,
+                      -0.99999999999999989, -0.99999999999999978,
+                      -0.99999999799999972, 1.0, 1.0 };
+
+  surface.knots_v = { -1.0, -1.0, -1.0, -1.0, 1.0, 1.0, 1.0, 1.0 };
+
+  const double net[ 60 ] = {
+    555.30102133302501, 65.140426731815637, -671.69463827467939,
+    -387.62508136699967, 693.93097078287371, 148.272119698653,
+    969.85539435141084, 414.65515633865573, -253.16965167964986,
+    516.7112896770094, 612.21330529454815, -572.52643293363735,
+    379.06830333418486, 314.85759129876635, -971.05294396675197,
+    124.58739535255211, -110.33469481842383, -330.62818235244981,
+    264.39031433017692, -588.93013781199875, 185.92106082125122,
+    -692.8471379204841, 637.04875813570641, 922.38010021307844,
+    -96.699201316808171, -882.27702333225568, 170.32169744249097,
+    666.33689723755754, -674.21753955852512, 337.57164129784007,
+    863.99718498663844, 808.71405221529892, -14.887922113306331,
+    926.08941688566335, -496.35912436497136, -380.62148294540771,
+    115.39132720436066, 56.893751438588083, -120.24050461411821,
+    -822.46410300602804, -328.35688412680247, -450.7302651795809,
+    507.58412215198848, -256.85685290765218, 780.40904163375274,
+    -917.0618030691254, -140.33937138685212, 949.16949352532072,
+    // CLOSED in u - the last row repeats the first, as a periodic chart
+    // requires.
+    555.30102133302501, 65.140426731815637, -671.69463827467939,
+    -387.62508136699967, 693.93097078287371, 148.272119698653,
+    969.85539435141084, 414.65515633865573, -253.16965167964986,
+    516.7112896770094, 612.21330529454815, -572.52643293363735 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 20; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 5, 4, points );
+  surface.weights        = tinynurbs::array2( 5, 4, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const glm::dvec2 uv0( -1.153887887186434, 0.54600406465490914 );
+  const glm::dvec2 uv1( -0.99999999999999978, -1.0 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  const auto departure = [ & ]( long double t ) {
+
+    const double u =
+      static_cast< double >( (long double)uv0.x + ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+    const double v =
+      static_cast< double >( (long double)uv0.y + ( t * ( (long double)uv1.y - uv0.y ) ) );
+
+    const glm::dvec3 q = evaluator.point( wrap( u ), v );
+
+    const long double dx = (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+    const long double dy = (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+    const long double dz = (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+    return static_cast< double >( sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+  };
+
+  double sweep = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    sweep = std::max( sweep, departure( (long double)i / 200000.0L ) );
+  }
+
+  // THE KNOT PROBE IS THE POINT. No uniform sweep lands in a sub-ulp span,
+  // so the departure that the miss hides is only visible by evaluating at
+  // the knot itself - which is where the b-spline call site's own subdivision
+  // would land too.
+  const long double tKnot =
+    ( (long double)surface.knots_u[ 2 ] - uv0.x ) /
+    ( (long double)uv1.x - uv0.x );
+
+  const double atKnot = departure( tKnot );
+
+  const double truth = std::max( sweep, atKnot );
+
+  check( tKnot > 0.0L && tKnot < 1.0L,
+         "the tied knot is interior to the chord (" +
+           std::to_string( (double)tKnot ) + ")" );
+
+  check( atKnot > 1700.0,
+         "the sub-ulp span really does carry a large departure (" +
+           std::to_string( atKnot ) + ")" );
+
+  check( atKnot > sweep * 1.2,
+         "and one a uniform sweep does not see (" + std::to_string( atKnot ) +
+           " vs " + std::to_string( sweep ) + ")" );
+
+  const double tolerance = 5.4642684472996372e-07;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD, tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  // The tie has to actually be a tie, or this case stops testing the
+  // interaction it was minimised for.
+  check( certificate.counters().ambiguous > 0,
+         "the two knot axes really do tie here (" +
+           std::to_string( certificate.counters().ambiguous ) + ")" );
+
+  check( certificate.counters().strips > 0,
+         "the strip crossing fires in spite of the tie (" +
+           std::to_string( certificate.counters().strips ) + ")" );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below the truth (" +
+           std::to_string( bound ) + " vs " + std::to_string( truth ) + ")" );
+}
+
+
+/**
+ * FUZZ SEED 1 OF THE FAR-SHEET GENERATOR, minimised: a periodic chord a
+ * million and a half sheets outside its strip.
+ *
+ * This is the case the `| shift |` term in `roundingU` was written for, and
+ * until this test it had no red proof - not because it was inert, but because
+ * the fuzzer could not reach the regime. The stock generator draws u from
+ * [ lowU * 1.5, highU * 1.5 ], so the walk's shift never exceeded ONE period
+ * and an ulp of the raw parameter was within a factor of three of an ulp of
+ * the wrapped one. Here the raw parameter is 1.58e6 and the wrapped one is
+ * O(1), so the two differ by a factor of about 7e6.
+ *
+ * The callback evaluates `point( wrapChartU( u ), v )` - one exact `fmod` -
+ * and the walk evaluates `point( u - shift, v )` - three rounded operations.
+ * The gap between them is an ulp of the RAW parameter, and a bound that
+ * prices node placement at an ulp of the WRAPPED parameter is under by that
+ * same factor: measured 6.437016711e-13 against a true departure of
+ * 4.148887769e-11.
+ */
+void chordManySheetsOutsideTheStripIsPricedByItsRawParameter() {
+
+  printf( "chordManySheetsOutsideTheStripIsPricedByItsRawParameter\n" );
+
+  constexpr double STRIP_MIN = -1.0;
+  constexpr double PERIOD    =  2.0;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  surface.knots_u = { -1.0, -1.0, -0.40266291262089327, 1.0, 1.0 };
+
+  surface.knots_v = { -1.0, -1.0,
+                      -0.61210848541668317, -0.61210848341668311,
+                      -0.612108483416683, 1.0, 1.0 };
+
+  const double net[ 45 ] = {
+    0.052911171003463126, 0.16590149205574273, -0.045694485954048736,
+    0.036517219798542222, 0.13548374136138874, 0.13569607054083888,
+    -0.049908481206195704, -0.092117586814640315, -0.077188447506570293,
+    0.04456451635024361, -0.12116806075050654, -0.094116024429135442,
+    -0.014455023125218208, -0.14657714361014568, -0.045219622990830655,
+    -0.069632949116618117, 0.067747662297891864, -0.11804404130381119,
+    0.12357586605036991, 0.12773533670499271, -0.15194700979759118,
+    0.037444559395139743, -0.097194160558549347, -0.10370575225061768,
+    0.099712115874956486, -0.13928271018335184, -0.14529671712880021,
+    0.089543831029257503, -0.087115120885457129, 0.11874110783743064,
+    // CLOSED in u.
+    0.052911171003463126, 0.16590149205574273, -0.045694485954048736,
+    0.036517219798542222, 0.13548374136138874, 0.13569607054083888,
+    -0.049908481206195704, -0.092117586814640315, -0.077188447506570293,
+    0.04456451635024361, -0.12116806075050654, -0.094116024429135442,
+    -0.014455023125218208, -0.14657714361014568, -0.045219622990830655 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 15; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 3, 5, points );
+  surface.weights        = tinynurbs::array2( 3, 5, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const double tolerance = 1.7830893502681724e-06;
+
+  // The same chord twice: once where the fuzzer found it, and once slid back
+  // into the strip. The GEOMETRY is identical - only the raw magnitude of the
+  // parameter differs - so anything that separates the two answers is the
+  // distance and nothing else.
+  const double SHEETS = 1583448.0;
+
+  const auto run = [ & ]( double offset, double& bound, double& truth ) {
+
+    const glm::dvec2 uv0( 1583447.5973370874 - offset, 1.0 );
+    const glm::dvec2 uv1( 1583447.0 - offset, 1.0 );
+
+    const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+    const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+    const auto departure = [ & ]( long double t ) {
+
+      const double u =
+        static_cast< double >( (long double)uv0.x +
+                               ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+      const glm::dvec3 q = evaluator.point( wrap( u ), uv0.y );
+
+      const long double dx =
+        (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+      const long double dy =
+        (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+      const long double dz =
+        (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+      return static_cast< double >(
+        sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+    };
+
+    truth = 0.0;
+
+    for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+      truth = std::max( truth, departure( (long double)i / 200000.0L ) );
+    }
+
+    const NurbsDeflectionCertificate certificate(
+      evaluator, true, STRIP_MIN, PERIOD, tolerance * tolerance );
+
+    bound = 0.0;
+
+    const CertificateOutcome outcome =
+      certificate.bound( uv0, uv1, at0, at1, bound );
+
+    return outcome;
+  };
+
+  double farBound  = 0.0;
+  double farTruth  = 0.0;
+  double nearBound = 0.0;
+  double nearTruth = 0.0;
+
+  const CertificateOutcome farOutcome  = run( 0.0, farBound, farTruth );
+  const CertificateOutcome nearOutcome = run( SHEETS, nearBound, nearTruth );
+
+  // `std::to_string` is %f, and everything here is at 1e-11. Print in a
+  // form that still says something when the assertion goes red.
+  const auto show = []( double value ) {
+
+    char text[ 32 ];
+
+    snprintf( text, sizeof( text ), "%.10g", value );
+
+    return std::string( text );
+  };
+
+  check( farTruth > 4.0e-11,
+         "the far chord really does depart from its chord (" +
+           show( farTruth ) + ")" );
+
+  check( nearOutcome == CertificateOutcome::Certified,
+         "the same geometry inside the strip is certified, so nothing here "
+         "is about the surface" );
+
+  check( farOutcome != CertificateOutcome::Certified || farBound >= farTruth,
+         "and nothing is certified below the truth a million sheets out (" +
+           show( farBound ) + " vs " + show( farTruth ) + ")" );
+}
+
+
+/**
+ * FUZZ SEED 6, minimised: a descending periodic chord whose u-domain edge and
+ * strip edge are 8e-9 apart on a chart whose knots are at 2.4e7 - so their
+ * two cut parameters DIVIDE TO THE SAME DOUBLE.
+ *
+ * The tenth finding on bldrs-ai/conway-geom#214, and the last comparison in
+ * the walk still made in parameter space. `tU` and `tStrip` are both
+ * `( edge - uv0.x ) / du`; at this magnitude an ulp of the numerator is
+ * 7.5e-9, so two edges 8e-9 apart round together and `tStrip <= tTo` decides
+ * the order by which way the `<=` happens to fall. It fell to the strip, the
+ * walk jumped a sheet, and the three u spans still between it and the strip
+ * edge - which is where the chord's last 8e-9 of parameter actually lies -
+ * were never entered. Bound 0.04044181424 against a true departure of
+ * 0.05351126679.
+ *
+ * The fix compares the two edges in EVALUATED u, where both are knot-or-strip
+ * values and the comparison is exact. This test pins the outcome, not the
+ * route: the walk may certify or decline, but it may not certify short.
+ */
+void tiedStripAndKnotEdgesAreOrderedInParameterSpaceNotChordSpace() {
+
+  printf( "tiedStripAndKnotEdgesAreOrderedInParameterSpaceNotChordSpace\n" );
+
+  constexpr double STRIP_MIN = -24461668.268462215;
+  constexpr double PERIOD    =  48923336.536924429;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 3;
+  surface.degree_v = 1;
+
+  // Three micro-spans at the bottom of the u domain, 4e-9 apart, on knots of
+  // magnitude 2.4e7 - a ratio of 1.6e-16, just under one ulp.
+  surface.knots_u = { -24461668.268462215, -24461668.268462215,
+                      -24461668.268462215, -24461668.268462215,
+                      -24461668.268462211, -24461668.268462211,
+                      -24461668.268462207,
+                      24461668.268462215, 24461668.268462215,
+                      24461668.268462215, 24461668.268462215 };
+
+  surface.knots_v = { -24461668.268462215, -24461668.268462215,
+                      -11751770.912085051,
+                      24461668.268462215, 24461668.268462215 };
+
+  const double net[ 63 ] = {
+    0.0066021523315360764, 0.0087403881186380247, -0.017838196908007746,
+    -0.00036635123264366909, -0.037925092929460218, 0.034415441423718503,
+    -0.046240897473654216, -0.015784834020217187, -0.039309082375280364,
+    0.017570293017203982, -0.011130315439521088, -0.027377173131882249,
+    -0.018902762490813903, -0.018974040382710486, -0.010325786262893509,
+    0.038114051640173625, 0.014375747837490439, 0.021334372231788613,
+    -0.0052054615923575395, -0.022852232836698082, -0.036244851294394462,
+    -0.0017487195966010075, 0.025877725551360135, 0.010921565304606598,
+    0.026140166429110261, -0.036557824616160549, -0.0080551014071843299,
+    0.039606786982324983, 0.025214589202848449, 0.015162067819354232,
+    -0.034982981155498999, -0.047897659130310792, 0.03628890198449803,
+    -0.016782497112719605, 0.011908324705000958, -0.03839697114252083,
+    0.016485717532553075, 0.0078283831644718263, 0.030964196182101521,
+    0.020850631199250146, 0.019178761521681055, 0.013136798616221912,
+    -0.027548854220578334, -0.048154409062731718, -0.014318669272199297,
+    -0.013689020277261689, -0.038135412920725822, 0.022894971297073068,
+    0.041231321101795747, 0.043183506054162484, -0.037909026968017318,
+    0.010092325060880133, 0.024474695099902764, 0.013528708125882444,
+    // CLOSED in u.
+    0.0066021523315360764, 0.0087403881186380247, -0.017838196908007746,
+    -0.00036635123264366909, -0.037925092929460218, 0.034415441423718503,
+    -0.046240897473654216, -0.015784834020217187, -0.039309082375280364 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 21; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 7, 3, points );
+  surface.weights        = tinynurbs::array2( 7, 3, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const glm::dvec2 uv0( 10211859.265748158, -8091389.4596511573 );
+  const glm::dvec2 uv1( -24461668.268462215, 24461668.268462215 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  const auto departure = [ & ]( long double t ) {
+
+    const double u =
+      static_cast< double >( (long double)uv0.x + ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+    const double v =
+      static_cast< double >( (long double)uv0.y + ( t * ( (long double)uv1.y - uv0.y ) ) );
+
+    const glm::dvec3 q = evaluator.point( wrap( u ), v );
+
+    const long double dx =
+      (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+    const long double dy =
+      (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+    const long double dz =
+      (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+    return static_cast< double >( sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+  };
+
+  double sweep = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    sweep = std::max( sweep, departure( (long double)i / 200000.0L ) );
+  }
+
+  // The departure that the skipped spans carry sits two ulps of t below the
+  // chord's end, where no uniform sweep lands.
+  long double tKnot =
+    ( (long double)surface.knots_u[ 4 ] - uv0.x ) /
+    ( (long double)uv1.x - uv0.x );
+
+  tKnot = std::nextafterl( std::nextafterl( tKnot, 0.0L ), 0.0L );
+
+  const double atKnot = departure( tKnot );
+
+  const double truth = std::max( sweep, atKnot );
+
+  check( atKnot > 0.05,
+         "the skipped micro-spans really do carry a departure (" +
+           std::to_string( atKnot ) + ")" );
+
+  check( atKnot > sweep * 1.2,
+         "and one a uniform sweep does not see (" + std::to_string( atKnot ) +
+           " vs " + std::to_string( sweep ) + ")" );
+
+  const double tolerance = 4.6917256171007448e-07;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD, tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+}
+
+
+/**
+ * FUZZ SEED 3 AT TRIAL 32,525, minimised: the walk's periodic reduction and
+ * the callback's landing on OPPOSITE ENDS OF THE STRIP.
+ *
+ * The reviewer on bldrs-ai/conway-geom#214 named this mechanism - "use the
+ * callback's reduction for the initial periodic point" - while attributing
+ * it to a case where it was not the cause (on fuzz seed 51 the two reductions
+ * agree bit for bit; what went wrong there was the strip crossing being
+ * suppressed by a knot tie). It is a real defect all the same, and this is
+ * the case that shows it.
+ *
+ * `wrapChartU` is `uMin + fmod( u - uMin, P )`: IEEE `fmod` is exact, so the
+ * callback's reduction has no error at all. The walk used
+ * `u - floor( ( u - uMin ) / P ) * P`: four rounded operations, and near a
+ * sheet boundary the rounded quotient crosses an integer where the exact one
+ * does not. Here u = 79627595.655702367 with P = 114.74700735250697: `floor`
+ * puts the start 6.2e-9 above the BOTTOM of the strip, `fmod` puts it 1.3e-9
+ * below the TOP - a full period apart.
+ *
+ * `du` is zero, so the walk never moves in u and never gets a second chance:
+ * every box is bounded at a u the callback does not evaluate.
+ */
+void periodicStartIsReducedTheWayTheCallbackReducesIt() {
+
+  printf( "periodicStartIsReducedTheWayTheCallbackReducesIt\n" );
+
+  constexpr double STRIP_MIN = -57.373503676253485;
+  constexpr double PERIOD    = 114.74700735250697;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 3;
+
+  surface.knots_u = { -57.373503676253485, -57.373503676253485,
+                      -57.373503676253485,
+                      -57.373503676253478, -57.373503676253478,
+                      57.373503676253485, 57.373503676253485,
+                      57.373503676253485 };
+
+  surface.knots_v = { -57.373503676253485, -57.373503676253485,
+                      -57.373503676253485, -57.373503676253485,
+                      -57.373503561506475,
+                      57.373503676253485, 57.373503676253485,
+                      57.373503676253485, 57.373503676253485 };
+
+  // THE FUZZER'S OWN NET, not a substitute. A first attempt at this test
+  // used a tidy closed net of its own and it was VACUOUS - the case declined
+  // either way, so the assertion passed with the defect restored. The
+  // numbers below are what trial 32,525 generated, and the last row repeats
+  // the first, which is what makes the chart periodic.
+  const double net[ 75 ] = {
+    -0.0017517532670473183, 0.0015746121395702139, 0.0015821301951952165,
+    0.0011702115466867172, -0.00053782024544115161, -0.0014410850813068557,
+    -0.00096316625058488455, -0.0022013435825237121, 0.00059372150553900667,
+    -0.0015870419184512066, 0.001234968195446543, -0.001454928435764211,
+    0.0010687300938512258, 0.00010077528341219952, 0.0014430209278028286,
+    0.0019772823348125474, 0.00070006936510851395, 0.0020098337655775548,
+    0.00071094844842253552, -0.0010006343639879726, 0.0021567154530632046,
+    -0.0014721930330668129, -0.002108944335109299, 0.0018325025641636188,
+    -0.00090043907719711291, 0.0019139541911185752, 0.0016533185517177778,
+    -0.0023864771573792005, 0.0020152529889563707, 0.002076481882942544,
+    -0.00085896604098827925, 0.0018886305100227567, -0.0012434574668067522,
+    -0.00018737484334745711, -0.00064339061424294511, -0.0012541330485418374,
+    -0.0022992604075862096, -0.00033161013839504106, 0.0020483258091436294,
+    0.00079329795713613, 0.0020689672792076597, 0.0010065252781206817,
+    0.0022849961782679408, -0.0019619367574640304, 0.0015740266774232257,
+    -0.00085014514229452866, -0.0014687989490391508, -0.00054461444967614193,
+    -0.00023425483018200792, 0.001847974228920695, -0.00068300935272389246,
+    0.0014788345878406182, 0.002266438613054565, 0.0023472733559065655,
+    0.0013740424836580166, 0.00054786877420530183, -0.0006150195648733012,
+    -0.0021484157315325232, 0.00089823235151480912, 0.0018398522840405679,
+    -0.0017517532670473183, 0.0015746121395702139, 0.0015821301951952165,
+    0.0011702115466867172, -0.00053782024544115161, -0.0014410850813068557,
+    -0.00096316625058488455, -0.0022013435825237121, 0.00059372150553900667,
+    -0.0015870419184512066, 0.001234968195446543, -0.001454928435764211,
+    0.0010687300938512258, 0.00010077528341219952, 0.0014430209278028286 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 25; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 5, 5, points );
+  surface.weights        = tinynurbs::array2( 5, 5, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  // The two reductions have to actually disagree, or this case stops being
+  // the case it was minimised for.
+  const double raw = 79627595.655702367;
+
+  const double byFloor =
+    raw - ( std::floor( ( raw - STRIP_MIN ) / PERIOD ) * PERIOD );
+
+  check( byFloor != wrap( raw ),
+         "the floor reduction and the callback's fmod really do disagree" );
+
+  check( std::abs( byFloor - wrap( raw ) ) > 0.5 * PERIOD,
+         "and by most of a period, not by a rounding (" +
+           std::to_string( std::abs( byFloor - wrap( raw ) ) ) + " of " +
+           std::to_string( PERIOD ) + ")" );
+
+  // A chord that moves only in v, so the walk never steps in u and the start
+  // point is the only u it ever uses.
+  const glm::dvec2 uv0( raw, -57.373503676253485 );
+  const glm::dvec2 uv1( raw,  57.373503676253485 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  double truth = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    const double t = static_cast< double >( i ) / 200000.0;
+    const double v = uv0.y + ( t * ( uv1.y - uv0.y ) );
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( wrap( uv0.x ), v ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  check( truth > 0.0,
+         "the chord really does depart from its chord (" +
+           std::to_string( truth ) + ")" );
+
+  // The v knot the chord crosses is where the departure peaks, and it is two
+  // ulps of t from the chord's start - no uniform sweep lands there.
+  {
+    const long double tKnot =
+      ( (long double)surface.knots_v[ 4 ] - uv0.y ) /
+      ( (long double)uv1.y - uv0.y );
+
+    const double v =
+      static_cast< double >(
+        (long double)uv0.y +
+        std::nextafterl( std::nextafterl( tKnot, 0.0L ), 0.0L ) *
+          ( (long double)uv1.y - uv0.y ) );
+
+    const double t = ( v - uv0.y ) / ( uv1.y - uv0.y );
+
+    truth =
+      std::max( truth,
+                glm::length( evaluator.point( wrap( uv0.x ), v ) -
+                             ( ( at0 * ( 1.0 - t ) ) + ( at1 * t ) ) ) );
+  }
+
+  const double tolerance = 4.5874072345266852e-06;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD, tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome == CertificateOutcome::Certified,
+         "the case is certified rather than declined, so the assertion below "
+         "is about the bound and not about a refusal" );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+}
+
+
+/**
+ * FUZZ SEED 7 AT TRIAL 173,559, minimised: a chord whose v moves 2e-9 in
+ * total and whose far end sits exactly on a v knot of multiplicity
+ * degree + 1.
+ *
+ * THIS IS THE CASE THAT RED-PROVES A GUARD DELETED EARLIER IN THIS PR. The
+ * second arm of boundPiece's unplaceable test - "a box whose own extent on an
+ * axis is below the parameter's rounding AND that sits on a span boundary the
+ * surface steps across" - was removed on the reasoning that it declined
+ * 46,000 of 250,000 fuzz cases while catching nothing. Nothing could break it
+ * and see a test go red, so the only discriminator left was cost. That
+ * reasoning was wrong in the way it is usually wrong: the generator had not
+ * reached the shape it defends.
+ *
+ * The shape: `findSpan` resolves a parameter sitting exactly ON a knot to the
+ * span on its RIGHT. The walk assigns spans by exact knot arithmetic and
+ * evaluates one-sided, which is what closed the second finding - but THE CALL
+ * SITE does not. It calls `point( u, v )`, and `point` uses `findSpan` on the
+ * rounded double. Normally that matters at a single parameter, which is one
+ * point of a continuous piece. Here it matters over a stretch: v moves 2e-9
+ * over the whole chord, so every t above 1 - 2.8e-8 has a rounded v that IS
+ * the knot. Twenty-eight million ulps of t are evaluated on the span to the
+ * knot's right while every box says the span to its left, and the two
+ * polynomials differ by 248.57 at the parameter that matters.
+ *
+ * Certified at 335.968276 against a true departure of 408.4816988 - an
+ * unsound answer, not merely a loose one.
+ */
+void steppingAxisBoxBelowResolutionIsDeclined() {
+
+  printf( "steppingAxisBoxBelowResolutionIsDeclined\n" );
+
+  constexpr double STRIP_MIN = -1.0;
+  constexpr double PERIOD    =  2.0;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 1;
+  surface.degree_v = 1;
+
+  surface.knots_u = { -1.0, -1.0,
+                      -0.99999999799999995,
+                      -0.99999999599999989, -0.99999999599999989,
+                      1.0, 1.0 };
+
+  // MULTIPLICITY 2 AT DEGREE 1 - the surface steps here, and the chord's far
+  // end sits exactly on it.
+  surface.knots_v = { -1.0, -1.0,
+                      -0.81127201727053222,
+                      -0.81127201527053217, -0.81127201527053217,
+                      1.0, 1.0 };
+
+  const double net[ 75 ] = {
+    -169.9957553632207, -41.132363392136909, -145.87756369007079,
+    139.80372154338238, 12.506191339502578, -50.707897174967272,
+    -175.05345266721827, 27.168742267987881, 86.624815630241358,
+    -22.117766762763551, -176.07785699109371, -132.86391356717436,
+    -1.5696927129000642, -165.53884904146835, -8.9130757260750784,
+    18.699445888633903, 144.64542753602871, 41.530717206185869,
+    71.574650064996547, -125.54396950023363, 90.867903285862667,
+    -15.908345442602638, -66.867651452344816, -13.863102913457084,
+    38.89792383958121, 103.88908784372774, 158.25960720542184,
+    -168.75481017041835, 115.72812312156969, -146.25775659258218,
+    -117.13578217143505, 126.60730397272948, -177.30463605391586,
+    167.04055469283242, 25.65881483694946, -143.25310443513311,
+    -69.339173731589341, 17.079050772636293, -97.620718302579107,
+    -101.33055154393435, -156.89376430033667, 110.26488451361746,
+    -117.02486187873714, 138.61061564601948, -166.86941065159783,
+    95.187055101484077, 174.33909506806532, -171.42430851085646,
+    37.162837216709534, 56.459273897988879, 115.57593631492381,
+    157.63172340659526, 42.339565775580837, -2.0623714671639277,
+    -2.0810360459615538, -4.352442881652081, 30.797692461413845,
+    141.57775191022643, 91.376348188891029, -142.44427486761816,
+    -169.9957553632207, -41.132363392136909, -145.87756369007079,
+    139.80372154338238, 12.506191339502578, -50.707897174967272,
+    -175.05345266721827, 27.168742267987881, 86.624815630241358,
+    -22.117766762763551, -176.07785699109371, -132.86391356717436,
+    -1.5696927129000642, -165.53884904146835, -8.9130757260750784 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 25; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 5, 5, points );
+  surface.weights        = tinynurbs::array2( 5, 5, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const glm::dvec2 uv0( 1.0, -0.81127201727053222 );
+  const glm::dvec2 uv1( -1.0, -0.81127201527053217 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  // The rounded v really does sit ON the knot over a macroscopic stretch of
+  // the chord, which is why a single-point argument does not cover this.
+  double firstOnKnot = 1.0;
+
+  {
+    double low  = 0.0;
+    double high = 1.0;
+
+    for ( uint32_t i = 0; i < 100; ++i ) {
+
+      const double mid = 0.5 * ( low + high );
+      const double v   = uv0.y + ( mid * ( uv1.y - uv0.y ) );
+
+      if ( v >= surface.knots_v[ 3 ] ) { high = mid; } else { low = mid; }
+    }
+
+    firstOnKnot = high;
+  }
+
+  char stretch[ 32 ];
+
+  snprintf( stretch, sizeof( stretch ), "%.4g", 1.0 - firstOnKnot );
+
+  check( 1.0 - firstOnKnot > 1.0e-9,
+         "the rounded v sits on the stepping knot over a macroscopic stretch "
+         "of the chord (" + std::string( stretch ) + " of it)" );
+
+  check( RationalSurfaceEvaluator::findSpan(
+           surface.degree_v, surface.knots_v, surface.knots_v[ 3 ] ) != 2,
+         "and findSpan puts that v on the span to the knot's RIGHT, not the "
+         "one the walk walks" );
+
+  const auto departure = [ & ]( long double t ) {
+
+    const double u =
+      static_cast< double >( (long double)uv0.x + ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+    const double v =
+      static_cast< double >( (long double)uv0.y + ( t * ( (long double)uv1.y - uv0.y ) ) );
+
+    const glm::dvec3 q = evaluator.point( wrap( u ), v );
+
+    const long double dx =
+      (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+    const long double dy =
+      (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+    const long double dz =
+      (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+    return static_cast< double >( sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+  };
+
+  double truth = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    truth = std::max( truth, departure( (long double)i / 200000.0L ) );
+  }
+
+  {
+    long double tKnot =
+      ( (long double)surface.knots_u[ 2 ] - uv0.x ) /
+      ( (long double)uv1.x - uv0.x );
+
+    tKnot = std::nextafterl( std::nextafterl( tKnot, 0.0L ), 0.0L );
+
+    truth = std::max( truth, departure( tKnot ) );
+  }
+
+  check( truth > 400.0,
+         "the mismatched polynomial really does carry the departure (" +
+           std::to_string( truth ) + ")" );
+
+  const double tolerance = 1.114693126170528;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD, tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+}
+
+
+/**
+ * GRAZING GENERATOR, TRIAL 272: a box that sits a few ulps short of the knot
+ * the surface steps at, and so passes an EQUALITY test for "touches the
+ * boundary" while the caller evaluates the whole of it on the far side.
+ *
+ * The thirteenth finding on bldrs-ai/conway-geom#214, and the first one this
+ * file's generator was BUILT to produce rather than waited for - the shape
+ * is the eleventh finding's, and the free generator reached it once in
+ * 2,800,000 trials.
+ *
+ * The box's u corner is 41.412005379020393; the knot is 41.4120053790204.
+ * They differ by 7.1e-15, which is the periodic shift the walk removed, and
+ * `roundingU` - the quantity the rest of boundPiece uses to price exactly
+ * that displacement - is 7.4e-14, ten times larger. So the corner is inside
+ * the rounding of the boundary and the equality test said it was not.
+ * Meanwhile the caller's own parameter over that whole box is
+ * 41.41200537902045653, above the knot, on the other polynomial.
+ *
+ * Bound 1.639305956 against a true departure of 2.013100244.
+ */
+void grazingBoxShortOfAStepKnotIsDeclined() {
+
+  printf( "grazingBoxShortOfAStepKnotIsDeclined\n" );
+
+  constexpr double STRIP_MIN = -649.28405088089676;
+  constexpr double PERIOD    = 1298.5681017617935;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 2;
+
+  surface.knots_u = {
+    -649.28405088089676, -649.28405088089676, -649.28405088089676,
+    41.4120053790204, 41.4120053790204, 41.4120053790204,
+    649.28405088089676, 649.28405088089676, 649.28405088089676 };
+
+  surface.knots_v = {
+    -649.28405088089676, -649.28405088089676, -649.28405088089676,
+    -216.42801696029892, -216.42801696029892, -216.42801696029892,
+    216.42801696029892, 216.42801696029892, 649.27781367627631,
+    649.27781367627631, 649.28405088089676, 649.28405088089676,
+    649.28405088089676 };
+
+  // THE FUZZER'S OWN NET. A synthetic stand-in was tried first for an
+  // earlier case in this family and came out VACUOUS - it declined with the
+  // defect restored, so the assertion proved nothing. These are the numbers
+  // the generator produced.
+  const double net[ 180 ] = {
+    0.6955265944896869, 0.4195818939617868, 0.23649686284885174,
+    0.43506442593133676, 0.35349079661584981, 0.24507864971235727,
+    1.482435777576337, 0.51140376283918543, -0.093813248560431717,
+    3.0715151123892643, 0.070186737338705063, -0.09494420126431663,
+    4.126487336092814, -0.71348450135283503, -0.14499906947274765,
+    4.1091813922114184, -0.067044286904324624, 0.10208992476339468,
+    6.2420222988543728, -0.97879065202761639, -0.011724978349541948,
+    6.4859114917319562, -0.32132108199680953, -0.047449718841585942,
+    8.850372349347154, -0.5387577305095832, -0.14864147209030787,
+    9.9638367204209484, -0.55681999747149624, 0.23324048210634496,
+    -0.23989928207377065, 0.48456392004468363, -0.10850431639749408,
+    1.3589609814097299, 0.15442991925399663, -0.031262400324812978,
+    1.2107131495574148, 0.24677633536057808, 0.13043359521834985,
+    2.988537491183286, -0.90512159570873529, -0.027038313803487757,
+    4.1761591743625344, -0.81640372389125315, -0.11160497950537446,
+    4.387754541351585, 0.6768346595081316, 0.20188321897383504,
+    6.602796901892531, -0.13290421978248923, -0.18711567188316958,
+    6.2600465976595574, 0.12187437927312117, 0.0048292243015378156,
+    8.524106602124526, 0.92269790688049835, 0.1571596557312907,
+    9.3630074053930219, -0.83017773915200155, -0.1651702911476719,
+    -0.24685021626395542, -0.67010256586881467, 0.13050054303307057,
+    1.5653427678358236, -0.94367890023758272, -0.13579327411574066,
+    1.5109457067530849, -0.83598041172761128, -0.19622596015997851,
+    3.0710489211629115, 0.38177229059754181, 0.18087397648697151,
+    3.9028292038003229, 0.092179503479963953, -0.23447521456791881,
+    5.5390267104448947, 0.98129259939590718, 0.065282022777113147,
+    6.8518726760440956, 0.54572820006592049, -0.038350037180193863,
+    6.7661701531672565, -0.33196561876674369, -0.20806323365521595,
+    7.4926404710672019, 0.38286235981459704, -0.072417462803534616,
+    8.6844168050590635, 0.97060894862993297, -0.0124975491737635,
+    -0.56869291957948498, 0.68657017261064146, 0.017606502390226986,
+    1.6513828580308323, 0.77061243809262736, 0.093264912038198922,
+    1.5806252723709937, -0.99787560993785274, -0.010074038390889384,
+    2.2375421029582769, -0.30436525819028826, 0.022082181214219121,
+    4.3285786233286592, 0.83950710652961003, -0.084678663139051591,
+    4.7987229762055907, 0.31333012286022055, 0.033536574205692116,
+    5.4786653152798568, 0.14824188345882283, 0.23505708283341914,
+    6.5009154189360849, -0.9008563743945468, 0.22937890894804491,
+    8.4014953110408932, 0.91437835082919094, -0.14643755537291914,
+    8.3941140927363396, -0.26604684867930062, -0.026645643756667392,
+    -0.73820238363975021, -0.88750723274595655, 14.639762184519677,
+    1.154800489251494, 0.8825031822839664, 14.797947804105135,
+    2.5488791991337116, -0.86969832943806336, 14.888347127871308,
+    3.9663849170579715, 0.7264588325171708, 14.72453115190781,
+    3.8631494803974702, -0.78482172588137944, 14.862338645927965,
+    4.5014423534938608, -0.26878504074880905, 15.080944681142245,
+    6.2722896760119626, -0.95422213355722385, 14.63522670700293,
+    7.8265476506490073, -0.5102222353164545, 14.651967255366719,
+    7.2376431288224286, -0.47120671976867357, 14.896362803206376,
+    9.9907446073782591, -0.15269085086784862, 15.007982684967594,
+    0.6955265944896869, 0.4195818939617868, 0.23649686284885174,
+    0.43506442593133676, 0.35349079661584981, 0.24507864971235727,
+    1.482435777576337, 0.51140376283918543, -0.093813248560431717,
+    3.0715151123892643, 0.070186737338705063, -0.09494420126431663,
+    4.126487336092814, -0.71348450135283503, -0.14499906947274765,
+    4.1091813922114184, -0.067044286904324624, 0.10208992476339468,
+    6.2420222988543728, -0.97879065202761639, -0.011724978349541948,
+    6.4859114917319562, -0.32132108199680953, -0.047449718841585942,
+    8.850372349347154, -0.5387577305095832, -0.14864147209030787,
+    9.9638367204209484, -0.55681999747149624, 0.23324048210634496 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 60; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 6, 10, points );
+  surface.weights        = tinynurbs::array2( 6, 10, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const glm::dvec2 uv0( 41.412005379012506,-649.28405088089676 );
+  const glm::dvec2 uv1( 41.4120053790204,649.28405088089676 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  const auto departure = [ & ]( long double t ) {
+
+    const double u =
+      static_cast< double >( (long double)uv0.x + ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+    const double v =
+      static_cast< double >( (long double)uv0.y + ( t * ( (long double)uv1.y - uv0.y ) ) );
+
+    const glm::dvec3 q = evaluator.point( wrap( u ), v );
+
+    const long double dx =
+      (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+    const long double dy =
+      (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+    const long double dz =
+      (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+    return static_cast< double >( sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+  };
+
+  double sweep = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    sweep = std::max( sweep, departure( (long double)i / 200000.0L ) );
+  }
+
+  // The departure lives at the v knots the chord crosses, two ulps of t
+  // below each - which is inside the grazing window and nowhere a uniform
+  // sweep lands.
+  double truth = sweep;
+
+  for ( double knot : surface.knots_v ) {
+
+    long double t =
+      ( (long double)knot - uv0.y ) / ( (long double)uv1.y - uv0.y );
+
+    if ( !( t > 0.0L ) || !( t < 1.0L ) ) continue;
+
+    for ( int nudge = -2; nudge <= 2; ++nudge ) {
+
+      long double tt = t;
+
+      for ( int k = 0; k < std::abs( nudge ); ++k ) {
+        tt = std::nextafterl( tt, nudge < 0 ? 0.0L : 1.0L );
+      }
+
+      truth = std::max( truth, departure( tt ) );
+    }
+  }
+
+  check( truth > sweep,
+         "the grazing window carries a departure a uniform sweep does not "
+         "see (" + std::to_string( truth ) + " vs " +
+           std::to_string( sweep ) + ")" );
+
+  const double tolerance = 0.20308719174249568;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD,
+    tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+}
+
+
+
+/**
+ * GRAZING GENERATOR, TRIAL 2,967: the same shape again, but with the
+ * displacement LARGER than `roundingU` rather than smaller.
+ *
+ * The fourteenth finding on bldrs-ai/conway-geom#214. `wrapChartU( x )` is
+ * `uMin + fmod( x - uMin, P )`, and while `fmod` is exact the subtraction
+ * and the addition each round AT THE MAGNITUDE OF `uMin`, not at the
+ * magnitude of x. The walk's own interior points are `x - shift` with
+ * `shift` fixed from the chord's start, so the two reductions drift apart by
+ * a few ulps of the STRIP as the chord runs.
+ *
+ * Here the strip origin is -27637.36 while the parameter is -399.37, so ulps
+ * of the strip are seventy times ulps of the parameter. The box's corner is
+ * 1.6e-12 from the step knot and `roundingU` was 7.1e-13 - the box was
+ * judged not to touch the boundary, and every parameter the caller evaluates
+ * inside it lands on the far side.
+ *
+ * Bound 2.181686448 against a true departure of 2.563162239. This case
+ * red-proves BOTH the rounding-aware boundary test and the strip term in
+ * `roundingU`; trial 272 red-proves only the first.
+ */
+void reductionDriftAcrossAStepKnotIsPriced() {
+
+  printf( "reductionDriftAcrossAStepKnotIsPriced\n" );
+
+  constexpr double STRIP_MIN = -27637.360607875835;
+  constexpr double PERIOD    = 55274.72121575167;
+
+  tinynurbs::RationalSurface3d surface;
+
+  surface.degree_u = 2;
+  surface.degree_v = 1;
+
+  surface.knots_u = {
+    -27637.360607875835, -27637.360607875835, -27637.360607875835,
+    -399.37070255423532, -399.37070255423532, -399.37070255423532,
+    27637.360607875835, 27637.360607875835, 27637.360607875835 };
+
+  surface.knots_v = {
+    -27637.360607875835, -27637.360607875835, -9212.4535359586116,
+    9212.4535359586116, 27570.420060896493, 27637.360607875835,
+    27637.360607875835 };
+
+  // THE FUZZER'S OWN NET. A synthetic stand-in was tried first for an
+  // earlier case in this family and came out VACUOUS - it declined with the
+  // defect restored, so the assertion proved nothing. These are the numbers
+  // the generator produced.
+  const double net[ 90 ] = {
+    -0.10637260889229627, -0.80506420120276667, -0.24765280605537204,
+    0.98463971838264741, 0.99172047752049197, 0.11647206058754805,
+    2.1835887004361521, -0.63327470946302045, -0.19835542808978235,
+    2.6691221737777013, -0.4410476128906391, 0.071430659019328879,
+    3.0513059480333982, 0.88726749799577753, 0.064484775276447692,
+    0.78511784534872886, 0.92382349200403269, 0.057331797302886678,
+    1.2352289347475816, 0.9906114940427373, 0.24054541991464978,
+    2.8724926199273368, 0.30218567376989047, 0.20546407757403229,
+    3.5698529452138383, 0.87099645825953487, 0.20642441299446562,
+    4.3041424943265003, 0.043582547934907012, -0.14130170125062019,
+    0.83982062358012177, 0.75066005931565494, -0.02107276667048813,
+    0.66376246072443457, -0.88486588603542171, 0.13651035432610525,
+    2.2338456749256581, 0.61660382940451597, -0.21321876778327886,
+    3.9526730214869357, -0.15225280378600226, 0.080363187549146842,
+    3.4717995597296558, -0.42930476694252828, -0.24353180854833673,
+    0.51427662144011999, 0.42957847705122632, 0.12455023851094976,
+    1.5581623964857281, 0.17412151270780818, -0.21874665061059273,
+    2.0502443051206969, 0.56193305292029105, 0.11254665766060451,
+    2.0873407819724754, -0.24344124118713495, 0.21221126001482599,
+    4.3312049067885603, 0.99544719650764901, 0.071692380666408373,
+    -0.33931832901448034, 0.85893528658806173, 271.71326891478748,
+    0.93050701563107241, 0.94466649292117144, 271.66915794704204,
+    1.590620405079854, 0.99989348676669865, 271.80179625231739,
+    3.360409062753658, -0.92194044308811329, 271.6817916104477,
+    3.6351709573108231, 0.99084865809803091, 271.86662880808427,
+    -0.10637260889229627, -0.80506420120276667, -0.24765280605537204,
+    0.98463971838264741, 0.99172047752049197, 0.11647206058754805,
+    2.1835887004361521, -0.63327470946302045, -0.19835542808978235,
+    2.6691221737777013, -0.4410476128906391, 0.071430659019328879,
+    3.0513059480333982, 0.88726749799577753, 0.064484775276447692 };
+
+  std::vector< glm::dvec3 > points;
+  std::vector< double >     weights;
+
+  for ( uint32_t at = 0; at < 30; ++at ) {
+
+    points.push_back(
+      glm::dvec3( net[ ( 3 * at ) ], net[ ( 3 * at ) + 1 ],
+                  net[ ( 3 * at ) + 2 ] ) );
+
+    weights.push_back( 1.0 );
+  }
+
+  surface.control_points = tinynurbs::array2( 6, 5, points );
+  surface.weights        = tinynurbs::array2( 6, 5, weights );
+
+  const RationalSurfaceEvaluator evaluator( surface );
+
+  const auto wrap = []( double u ) {
+
+    const double offset = std::fmod( u - STRIP_MIN, PERIOD );
+
+    return STRIP_MIN + ( offset < 0.0 ? offset + PERIOD : offset );
+  };
+
+  const glm::dvec2 uv0( -399.37070255424464,-27637.360607875835 );
+  const glm::dvec2 uv1( -399.37070255423532,27637.360607875835 );
+
+  const glm::dvec3 at0 = evaluator.point( wrap( uv0.x ), uv0.y );
+  const glm::dvec3 at1 = evaluator.point( wrap( uv1.x ), uv1.y );
+
+  const auto departure = [ & ]( long double t ) {
+
+    const double u =
+      static_cast< double >( (long double)uv0.x + ( t * ( (long double)uv1.x - uv0.x ) ) );
+
+    const double v =
+      static_cast< double >( (long double)uv0.y + ( t * ( (long double)uv1.y - uv0.y ) ) );
+
+    const glm::dvec3 q = evaluator.point( wrap( u ), v );
+
+    const long double dx =
+      (long double)q.x - ( (long double)at0.x + ( t * ( (long double)at1.x - at0.x ) ) );
+    const long double dy =
+      (long double)q.y - ( (long double)at0.y + ( t * ( (long double)at1.y - at0.y ) ) );
+    const long double dz =
+      (long double)q.z - ( (long double)at0.z + ( t * ( (long double)at1.z - at0.z ) ) );
+
+    return static_cast< double >( sqrtl( ( dx * dx ) + ( dy * dy ) + ( dz * dz ) ) );
+  };
+
+  double sweep = 0.0;
+
+  for ( uint32_t i = 0; i <= 200000; ++i ) {
+
+    sweep = std::max( sweep, departure( (long double)i / 200000.0L ) );
+  }
+
+  // The departure lives at the v knots the chord crosses, two ulps of t
+  // below each - which is inside the grazing window and nowhere a uniform
+  // sweep lands.
+  double truth = sweep;
+
+  for ( double knot : surface.knots_v ) {
+
+    long double t =
+      ( (long double)knot - uv0.y ) / ( (long double)uv1.y - uv0.y );
+
+    if ( !( t > 0.0L ) || !( t < 1.0L ) ) continue;
+
+    for ( int nudge = -2; nudge <= 2; ++nudge ) {
+
+      long double tt = t;
+
+      for ( int k = 0; k < std::abs( nudge ); ++k ) {
+        tt = std::nextafterl( tt, nudge < 0 ? 0.0L : 1.0L );
+      }
+
+      truth = std::max( truth, departure( tt ) );
+    }
+  }
+
+  check( truth > sweep,
+         "the grazing window carries a departure a uniform sweep does not "
+         "see (" + std::to_string( truth ) + " vs " +
+           std::to_string( sweep ) + ")" );
+
+  const double tolerance = 0.0001000306590146737;
+
+  const NurbsDeflectionCertificate certificate(
+    evaluator, true, STRIP_MIN, PERIOD,
+    tolerance * tolerance );
+
+  double bound = 0.0;
+
+  const CertificateOutcome outcome =
+    certificate.bound( uv0, uv1, at0, at1, bound );
+
+  check( outcome != CertificateOutcome::Certified || bound >= truth,
+         "and nothing is certified below it (" + std::to_string( bound ) +
+           " vs " + std::to_string( truth ) + ")" );
+}
+
+
 }  // namespace
 
 int main() {
@@ -1823,6 +3107,13 @@ int main() {
   tiedCrossAxisBoundariesCoverBothOrders();
   weightPlacementErrorReachesTheFloor();
   periodicChordThatWrapsStillWalksItsSpans();
+  periodicKnotTieStillCrossesTheStrip();
+  chordManySheetsOutsideTheStripIsPricedByItsRawParameter();
+  tiedStripAndKnotEdgesAreOrderedInParameterSpaceNotChordSpace();
+  periodicStartIsReducedTheWayTheCallbackReducesIt();
+  steppingAxisBoxBelowResolutionIsDeclined();
+  grazingBoxShortOfAStepKnotIsDeclined();
+  reductionDriftAcrossAStepKnotIsPriced();
   descendingChordStartsInTheSpanItTraverses();
   errorTermTracksTheControlValues();
   knotClippingCatchesAZigZag();
