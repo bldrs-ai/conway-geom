@@ -1334,8 +1334,29 @@ void testHeadFixReachesTheEmittedMesh() {
  * control rows; the surface it sweeps is a rounded octagonal tube, which is
  * closed in u and smooth, and closure is the only property under test.
  */
+tinynurbs::RationalSurface3d makeUnclampedOctagonTube( double radius,
+                                                       double height,
+                                                       size_t rows );
+
 tinynurbs::RationalSurface3d makePeriodicClosedTube( double radius,
                                                      double height ) {
+
+  // degree = 2 repeated rows: the periodic spelling.
+  return makeUnclampedOctagonTube( radius, height, 8 + 2 );
+}
+
+/**
+ * The octagonal tube over `rows` control rows, row r at angle r * 45 degrees,
+ * degree 2 in u over a uniform UNCLAMPED knot vector.
+ *
+ * `rows` = 8 + degree repeats the first `degree` rows at the end, which is
+ * the periodic spelling and closes the tube. `rows` = 9 repeats only row 0,
+ * so the END ROWS coincide but the tube does not close - see
+ * testCoincidentEndRowsOnAnUnclampedSurfaceAreNotClosure.
+ */
+tinynurbs::RationalSurface3d makeUnclampedOctagonTube( double radius,
+                                                       double height,
+                                                       size_t rows ) {
 
   tinynurbs::RationalSurface3d surface;
 
@@ -1345,7 +1366,6 @@ tinynurbs::RationalSurface3d makePeriodicClosedTube( double radius,
   constexpr size_t AROUND = 8;
 
   const size_t degree = 2;
-  const size_t rows   = AROUND + degree;
   const size_t cols   = 2;
 
   std::vector< glm::dvec3 > points;
@@ -1373,8 +1393,8 @@ tinynurbs::RationalSurface3d makePeriodicClosedTube( double radius,
   surface.weights        = tinynurbs::array2( rows, cols, weights );
 
   // Uniform and UNCLAMPED: rows + degree + 1 knots at 0, 1, 2 ... so the valid
-  // domain is [ knots[ degree ], knots[ rows ] ] = [ 2, 10 ] and the knot
-  // vector runs outside it at both ends.
+  // domain is [ knots[ degree ], knots[ rows ] ] - [ 2, 10 ] for the periodic
+  // tube - and the knot vector runs outside it at both ends.
   for ( size_t at = 0; at <= rows + degree; ++at ) {
     surface.knots_u.push_back( static_cast< double >( at ) );
   }
@@ -1443,6 +1463,77 @@ void testPeriodicSpellingIsDetectedAsClosed() {
 
   check( !solve.closedV_,
          "and the open v parameter is still read as open" );
+}
+
+/**
+ * Coincident end control rows on an UNCLAMPED surface are not closure
+ * (bldrs-ai/conway#621).
+ *
+ * An unclamped knot vector does not interpolate its end rows: at the domain
+ * ends the surface is a blend of several rows. Here row 8 repeats row 0 and
+ * nothing else does, so with the uniform quadratic basis
+ *
+ *   S( uMin ) = ( row0 + row1 ) / 2      at  22.5 degrees
+ *   S( uMax ) = ( row7 + row8 ) / 2      at 337.5 degrees
+ *
+ * and the tube has a gap of 2 r sin( 22.5 ) cos( 22.5 ) ~ 0.71 r at its seam,
+ * although its end rows are bit-identical. The row-0-against-row-n-1 test
+ * reads this as closed; closedU_ gates the seam crossing and the wrap in
+ * domainRepresentative, so that false positive would make the descent jump
+ * the gap. This is the direction #621 calls dangerous, and the periodic test
+ * above cannot see it - there the end rows differ and the surface closes.
+ */
+void testCoincidentEndRowsOnAnUnclampedSurfaceAreNotClosure() {
+
+  printf( "coincident end rows on an unclamped surface are not closure\n" );
+
+  tinynurbs::RationalSurface3d surface =
+    makeUnclampedOctagonTube( 10.0, 20.0, 9 );
+
+  conway::geometry::RationalNurbsInverseMethod solve( surface );
+
+  const size_t rows = surface.control_points.rows();
+
+  double endRowGap = 0.0;
+
+  for ( size_t col = 0; col < surface.control_points.cols(); ++col ) {
+
+    endRowGap =
+      std::max( endRowGap,
+                glm::distance( surface.control_points( 0, col ),
+                               surface.control_points( rows - 1, col ) ) );
+  }
+
+  const double uMin = solve.min_extent.x;
+  const double uMax = solve.max_extent.x;
+
+  double endGap = 0.0;
+
+  for ( size_t at = 0; at <= 16; ++at ) {
+
+    const double v = static_cast< double >( at ) / 16.0;
+
+    endGap = std::max( endGap,
+                       glm::distance( solve.evaluator.point( uMin, v ),
+                                      solve.evaluator.point( uMax, v ) ) );
+  }
+
+  printf( "      uDomain=[%.1f, %.1f]  end rows %.3e apart, "
+          "|S(uMin,v) - S(uMax,v)| max = %.3f\n",
+          uMin, uMax, endRowGap, endGap );
+
+  check( endRowGap == 0.0,
+         "control rows 0 and n-1 are the SAME points, so a control-row test "
+         "calls this closed" );
+
+  // Every v sees the same gap here (the tube is a straight extrusion), so the
+  // max taken above is also the min.
+  check( endGap > 5.0,
+         "but the surface is OPEN in u by evaluation: its domain-end curves "
+         "are ~7 units apart on a radius-10 tube" );
+
+  check( !solve.closedU_,
+         "and closedU_ reads it as open" );
 }
 
 /**
@@ -1574,6 +1665,7 @@ int main() {
   testGridRequiresIsoparametricChart();
 
   testPeriodicSpellingIsDetectedAsClosed();
+  testCoincidentEndRowsOnAnUnclampedSurfaceAreNotClosure();
   testPeriodicSpellingArmsTheClosedAxisDescent();
 
   if ( failures != 0 ) {
