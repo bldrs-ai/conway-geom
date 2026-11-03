@@ -54,9 +54,12 @@ import { ParamsGetBlock } from './parameters/params_get_block'
 /**
  * Check if pthreads are allowed in this runtime environment.
  *
+ * Exported so conway can pin the platform decision in its tests
+ * (bldrs-ai/conway#540); it is not part of the engine's public API.
+ *
  * @return {boolean} - true if pthreads are allowed
  */
-function pThreadsAllowed(): boolean {
+export function pThreadsAllowed(): boolean {
 
   if ( typeof process !== 'undefined' && process?.env?.FORCE_SINGLE_THREAD === 'true') {
     return false
@@ -68,14 +71,19 @@ function pThreadsAllowed(): boolean {
   }
 
   // If we’re in a browser, check if the context is cross-origin isolated.
-  // (SharedArrayBuffer may exist but will only work with threads if 
+  // (SharedArrayBuffer may exist but will only work with threads if
   // crossOriginIsolated is true.)
+  //
+  // Read it off `globalThis`, not `window`: a Web Worker has no `window`, so
+  // in an isolated worker (where SharedArrayBuffer exists) `window` threw a
+  // ReferenceError here (bldrs-ai/conway#540). `crossOriginIsolated` lives on
+  // WindowOrWorkerGlobalScope, so the global answers in both.
   if ( isWebPlatform() ) {
     if (isIosBrowser()) {
       return false
     }
 
-    return window.crossOriginIsolated === true
+    return ( globalThis as { crossOriginIsolated?: boolean } ).crossOriginIsolated === true
   }
 
   return true
@@ -116,13 +124,36 @@ export function setModulePrefix( to: string ) {
  *
  * @return {boolean} - true if the platform is web
  */
-function isWebPlatform(): boolean {
-  
-  return ( typeof process !== 'undefined' &&
+export function isWebPlatform(): boolean {
+
+  return isWorkerGlobalScope() ||
+    ( typeof process !== 'undefined' &&
     process.env !== void 0 &&
     process.env.PLATFORM !== void 0 &&
-    process.env.PLATFORM === 'web' ) || 
+    process.env.PLATFORM === 'web' ) ||
     ( typeof window !== 'undefined' && typeof window?.document !== 'undefined' )
+}
+
+/**
+ * Whether this code runs in a Web Worker (dedicated, shared or service).
+ *
+ * A worker has neither `window` nor `process`, so without this both arms of
+ * isWebPlatform were false, conway picked the Node build, and `initialize()`
+ * died on `Dynamic require of "../Dist/ConwayGeomWasmNode.js"`
+ * (bldrs-ai/conway#540). A bundler `define` of `process.env.PLATFORM` cannot
+ * fix that, because the first arm is guarded by `typeof process`, which no
+ * define supplies.
+ *
+ * `WorkerGlobalScope` covers module and classic workers alike;
+ * `typeof importScripts` would miss module workers. Node has no
+ * `WorkerGlobalScope` (its worker_threads are not web workers), so the Node
+ * path is untouched.
+ *
+ * @return {boolean} - true inside a WorkerGlobalScope
+ */
+function isWorkerGlobalScope(): boolean {
+  const scope = ( globalThis as { WorkerGlobalScope?: unknown } ).WorkerGlobalScope
+  return typeof scope === 'function' && globalThis instanceof ( scope as new () => unknown )
 }
 
 const dynamicImport = new Function( 'module', 'return import(module)' )
